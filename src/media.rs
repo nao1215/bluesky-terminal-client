@@ -37,6 +37,54 @@ pub fn is_image_name(name: &str) -> bool {
         .is_some_and(|e| EXTENSIONS.iter().any(|x| e.eq_ignore_ascii_case(x)))
 }
 
+/// How a file goes on a post.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Picture,
+    /// A video, or an animated GIF, which Bluesky shows as one.
+    Video,
+}
+
+/// What the browser and the composer show about a file.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Info {
+    pub kind: Kind,
+    /// Pixel size, when the header tells it.
+    pub dims: Option<(u32, u32)>,
+    /// Length of a video, when the header tells it.
+    pub seconds: Option<f64>,
+    /// An animated GIF, posted as a video.
+    pub animated_gif: bool,
+}
+
+/// Look at a file's header (never its frames) to tell what it is.
+pub fn inspect(path: &Path) -> Info {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if crate::video::is_video_name(&name) {
+        let v = crate::video::probe(path);
+        return Info {
+            kind: Kind::Video,
+            dims: v.dims,
+            seconds: v.seconds,
+            animated_gif: false,
+        };
+    }
+    let animated_gif = crate::video::is_animated_gif(path);
+    Info {
+        kind: if animated_gif {
+            Kind::Video
+        } else {
+            Kind::Picture
+        },
+        dims: image::image_dimensions(path).ok(),
+        seconds: None,
+        animated_gif,
+    }
+}
+
 /// A picture ready to upload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Prepared {

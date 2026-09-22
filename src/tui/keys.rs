@@ -89,25 +89,25 @@ pub const HELP: &[Section] = &[
             ("ctrl+s", "send the post / save the profile"),
             (
                 "ctrl+o",
-                "choose pictures for the post (up to 4) / a new avatar",
+                "attach pictures (up to 4) or one video / choose a new avatar",
             ),
             (
                 "tab",
-                "next field: a picture's alt text, the next profile field",
+                "next field: an attachment's alt text, the next profile field",
             ),
             (
                 "ctrl+x",
-                "remove the picture being described, or the last one",
+                "remove the attachment being described, or the last one",
             ),
             ("ctrl+u", "clear to the start of the line"),
             ("esc", "close without sending"),
         ],
     },
     Section {
-        title: "Picture browser",
+        title: "File browser",
         keys: &[
-            ("j k", "move; the selected picture is previewed"),
-            ("enter l", "open the folder / choose the picture"),
+            ("j k", "move; a picture is previewed, a video described"),
+            ("enter l", "open the folder / choose the file"),
             ("space", "mark pictures to choose together with enter"),
             ("h backspace", "the folder above"),
             (".", "show or hide hidden files"),
@@ -142,8 +142,8 @@ pub fn hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Compose(c)) if c.browser.is_some() => return browser_hints(),
         Some(Overlay::EditProfile(e)) if e.browser.is_some() => return browser_hints(),
         Some(Overlay::Compose(c)) => {
-            let mut v = vec![("ctrl+s", "send"), ("ctrl+o", "add picture")];
-            if !c.images.is_empty() {
+            let mut v = vec![("ctrl+s", "send"), ("ctrl+o", "attach")];
+            if !c.media.is_empty() {
                 v.push(("tab", "alt text"));
                 v.push(("ctrl+x", "remove picture"));
             }

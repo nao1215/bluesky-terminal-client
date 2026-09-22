@@ -10,8 +10,8 @@ pub mod types;
 use std::time::Duration;
 
 use chrono::{SecondsFormat, Utc};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -32,6 +32,9 @@ const USER_AGENT: &str = concat!("bs/", env!("CARGO_PKG_VERSION"));
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
+/// How long an upload may take.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
+
 pub fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -151,11 +154,76 @@ pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session>
     })
 }
 
+/// Bluesky's video service, which takes uploaded videos (and animated
+/// GIFs) and prepares them for playback.
+pub const DEFAULT_VIDEO_SERVICE: &str = "https://video.bsky.app";
+
 /// An authenticated client bound to one session.
 pub struct Client {
     agent: ureq::Agent,
     session: Session,
     store: Option<SessionStore>,
+    /// `did:web` of the PDS the account lives on, once looked up.
+    pds_did: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ServiceAuth {
+    token: String,
+}
+
+/// `app.bsky.video.defs#jobStatus`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct JobStatus {
+    job_id: String,
+    state: String,
+    blob: Option<Value>,
+    error: Option<String>,
+    message: Option<String>,
+}
+
+impl JobStatus {
+    fn why(&self) -> String {
+        match (&self.error, &self.message) {
+            (Some(e), Some(m)) => format!("{e}: {m}"),
+            (Some(x), None) | (None, Some(x)) => x.clone(),
+            (None, None) => self.state.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobStatusAnswer {
+    job_status: JobStatus,
+}
+
+/// The PDS endpoint in an account's DID document.
+fn pds_endpoint(did_doc: &Value) -> Option<String> {
+    did_doc
+        .get("service")?
+        .as_array()?
+        .iter()
+        .find(|s| {
+            s.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id.ends_with("#atproto_pds"))
+        })?
+        .get("serviceEndpoint")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// The `did:web` naming a service at `url` (a port is written `%3A`).
+fn did_web(url: &str) -> String {
+    let host = url
+        .split_once("://")
+        .map_or(url, |(_, rest)| rest)
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    format!("did:web:{}", host.replace(':', "%3A"))
 }
 
 enum Payload<'a> {
@@ -171,6 +239,99 @@ impl Client {
             agent: agent(),
             session,
             store,
+            pds_did: None,
+        }
+    }
+
+    /// The `did:web` of the account's PDS: from its DID document, which
+    /// names the host the account really lives on (not the entryway it
+    /// logged in through), else the service logged in to.
+    fn pds_did(&mut self) -> String {
+        if let Some(d) = &self.pds_did {
+            return d.clone();
+        }
+        let endpoint = self
+            .get::<Value>("com.atproto.server.getSession", &[])
+            .ok()
+            .and_then(|s| s.get("didDoc").and_then(pds_endpoint));
+        let did = did_web(endpoint.as_deref().unwrap_or(&self.session.service));
+        self.pds_did = Some(did.clone());
+        did
+    }
+
+    /// Upload a video (or an animated GIF) through the video service and
+    /// wait until it is processed; returns the blob to embed. The service
+    /// is authorized with a short-lived token the PDS issues for it.
+    pub fn upload_video(
+        &mut self,
+        video_service: &str,
+        bytes: &[u8],
+        mime: &str,
+        name: &str,
+        poll_every: Duration,
+    ) -> Result<Value> {
+        let aud = self.pds_did();
+        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
+        let auth: ServiceAuth = self.get(
+            "com.atproto.server.getServiceAuth",
+            &[
+                ("aud", aud.as_str()),
+                ("lxm", "com.atproto.repo.uploadBlob"),
+                ("exp", exp.as_str()),
+            ],
+        )?;
+        let nsid = "app.bsky.video.uploadVideo";
+        let mut resp = self
+            .agent
+            .post(xrpc_url(video_service, nsid))
+            .config()
+            .timeout_global(Some(UPLOAD_TIMEOUT))
+            .build()
+            .query("did", &self.session.did)
+            .query("name", name)
+            .header("Authorization", &format!("Bearer {}", auth.token))
+            .header("Content-Type", mime)
+            .send(bytes)
+            .map_err(|e| transport(nsid, e))?;
+        let status = resp.status();
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        // A video uploaded before is answered (409) with the job that has it.
+        let mut job: JobStatus = serde_json::from_str(&body).unwrap_or_default();
+        if job.job_id.is_empty() && job.blob.is_none() {
+            let err: XrpcError = serde_json::from_str(&body).unwrap_or_default();
+            return Err(XrpcFailure {
+                status: status.as_u16(),
+                error: err.error,
+                message: err.message,
+            }
+            .into_error(nsid));
+        }
+        let job_id = job.job_id.clone();
+        let deadline = std::time::Instant::now() + UPLOAD_TIMEOUT;
+        loop {
+            if let Some(blob) = job.blob.take() {
+                return Ok(blob);
+            }
+            if job.state == "JOB_STATE_FAILED" {
+                return Err(Error::api(format!(
+                    "the video service could not process {name}: {}",
+                    job.why()
+                )));
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(Error::api(format!(
+                    "the video service did not finish {name} in time"
+                )));
+            }
+            std::thread::sleep(poll_every);
+            let nsid = "app.bsky.video.getJobStatus";
+            let resp = self
+                .agent
+                .get(xrpc_url(video_service, nsid))
+                .query("jobId", &job_id)
+                .call()
+                .map_err(|e| transport(nsid, e))?;
+            job = decode::<JobStatusAnswer>(nsid, resp)?.job_status;
         }
     }
 
@@ -202,9 +363,14 @@ impl Client {
                 .header("Authorization", &auth)
                 .header("Content-Type", "application/json")
                 .send(body.as_str()),
+            // A video can take minutes to upload; other calls keep the
+            // agent's short timeout.
             Payload::Bytes(bytes, mime) => self
                 .agent
                 .post(&url)
+                .config()
+                .timeout_global(Some(UPLOAD_TIMEOUT))
+                .build()
                 .header("Authorization", &auth)
                 .header("Content-Type", *mime)
                 .send(*bytes),
@@ -357,18 +523,20 @@ impl Client {
     }
 
     /// Publish a post, optionally as a reply, with link/mention/tag facets
-    /// and uploaded images. A post with images may have no text.
+    /// and uploaded pictures or a video. A post with media may have no text.
     pub fn create_post(
         &mut self,
         text: &str,
         reply: Option<&ReplyRef>,
-        images: &[PostImage],
+        media: &PostMedia,
     ) -> Result<CreatedRecord> {
         let text = text.trim_end();
-        if text.trim().is_empty() && images.is_empty() {
+        if text.trim().is_empty() && matches!(media, PostMedia::None) {
             return Err(Error::new(Kind::Usage, "the post is empty"));
         }
-        if images.len() > crate::media::MAX_POST_IMAGES {
+        if let PostMedia::Images(images) = media
+            && images.len() > crate::media::MAX_POST_IMAGES
+        {
             return Err(Error::new(
                 Kind::Usage,
                 format!(
@@ -406,8 +574,10 @@ impl Client {
         if let Some(reply) = reply {
             record["reply"] = serde_json::to_value(reply).expect("reply serializes");
         }
-        if !images.is_empty() {
-            record["embed"] = images_embed(images);
+        match media {
+            PostMedia::None => {}
+            PostMedia::Images(images) => record["embed"] = images_embed(images),
+            PostMedia::Video(v) => record["embed"] = video_embed(v),
         }
         self.create_record("app.bsky.feed.post", record)
     }
@@ -557,6 +727,36 @@ pub struct PostImage {
     pub height: u32,
 }
 
+/// What a post carries besides its text.
+#[derive(Debug, Clone)]
+pub enum PostMedia {
+    None,
+    Images(Vec<PostImage>),
+    Video(PostVideo),
+}
+
+/// An uploaded video to attach to a post.
+#[derive(Debug, Clone)]
+pub struct PostVideo {
+    pub blob: Value,
+    pub alt: String,
+    /// Width and height, when the file's header gave them.
+    pub dims: Option<(u32, u32)>,
+}
+
+/// The `app.bsky.embed.video` embed: the blob, its alt text when there is
+/// one, and its shape when it is known.
+fn video_embed(v: &PostVideo) -> Value {
+    let mut e = json!({"$type": "app.bsky.embed.video", "video": v.blob});
+    if !v.alt.is_empty() {
+        e["alt"] = json!(v.alt);
+    }
+    if let Some((w, h)) = v.dims {
+        e["aspectRatio"] = json!({"width": w, "height": h});
+    }
+    e
+}
+
 /// The `app.bsky.embed.images` embed for `images`, each with its alt text and
 /// its shape, so clients lay it out before it downloads.
 fn images_embed(images: &[PostImage]) -> Value {
@@ -666,6 +866,47 @@ mod tests {
         assert_eq!(
             v,
             json!({"$type": "app.bsky.actor.profile", "description": "hello", "banner": {"x": 1}})
+        );
+    }
+
+    #[test]
+    fn the_pds_is_named_by_its_did_web() {
+        let doc = json!({"service": [
+            {"id": "#other", "serviceEndpoint": "https://x.test"},
+            {"id": "#atproto_pds", "type": "AtprotoPersonalDataServer", "serviceEndpoint": "https://morel.us-east.host.bsky.network"}
+        ]});
+        let endpoint = pds_endpoint(&doc).unwrap();
+        assert_eq!(
+            did_web(&endpoint),
+            "did:web:morel.us-east.host.bsky.network"
+        );
+        assert_eq!(
+            did_web("http://127.0.0.1:8080/"),
+            "did:web:127.0.0.1%3A8080"
+        );
+        assert_eq!(pds_endpoint(&json!({})), None);
+    }
+
+    #[test]
+    fn video_embed_leaves_out_what_is_not_known() {
+        let blob = json!({"$type": "blob", "ref": {"$link": "v1"}, "mimeType": "video/mp4"});
+        let v = video_embed(&PostVideo {
+            blob: blob.clone(),
+            alt: "a dog".into(),
+            dims: Some((1080, 1920)),
+        });
+        assert_eq!(v["$type"], "app.bsky.embed.video");
+        assert_eq!(v["video"], blob);
+        assert_eq!(v["alt"], "a dog");
+        assert_eq!(v["aspectRatio"], json!({"width": 1080, "height": 1920}));
+        let v = video_embed(&PostVideo {
+            blob,
+            alt: String::new(),
+            dims: None,
+        });
+        assert!(
+            v.get("alt").is_none() && v.get("aspectRatio").is_none(),
+            "{v}"
         );
     }
 

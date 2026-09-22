@@ -7,6 +7,7 @@ mod media;
 mod terminal;
 mod timeline;
 mod tui;
+mod video;
 
 use std::io::Write;
 use std::process::ExitCode;

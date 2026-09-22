@@ -1,0 +1,372 @@
+# Videos and animated GIFs: posting one from the browser, and seeing a video
+# on the timeline. bs does not play video: a video is shown by its thumbnail
+# on the timeline, and described (kind, length, size) in the browser and the
+# composer.
+#
+# A video goes through Bluesky's video service, as the official clients do:
+# the PDS issues a short-lived token for the service (getServiceAuth, for the
+# PDS named in the account's DID document), the file is uploaded to the
+# service (uploadVideo), and its job is polled (getJobStatus) until the blob
+# to embed is ready. BS_VIDEO_SERVICE points bs at the mock, which plays both
+# the PDS and the video service. An animated GIF goes the same way: the
+# service turns it into a video, so bs itself needs no codec.
+#
+# testdata/clip.mp4 is a 1-second 64x36 MP4 and testdata/moving.gif a
+# two-frame 40x30 GIF.
+version: "1"
+
+suite:
+  name: bs videos
+
+scenarios:
+  - name: a video is posted alone, with its alt text and shape
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - &get_session
+            method: GET
+            path: /xrpc/com.atproto.server.getSession
+            json:
+              did: did:plc:me
+              handle: me.test
+              didDoc:
+                id: did:plc:me
+                service:
+                  - { id: "#atproto_pds", type: AtprotoPersonalDataServer, serviceEndpoint: "https://pds.example" }
+          - &service_auth
+            method: GET
+            path: /xrpc/com.atproto.server.getServiceAuth
+            json: { token: "svc-token" }
+          - &upload_video
+            method: POST
+            path: /xrpc/app.bsky.video.uploadVideo
+            json: { jobId: "job-1", did: did:plc:me, state: JOB_STATE_CREATED }
+          - &job_done
+            method: GET
+            path: /xrpc/app.bsky.video.getJobStatus
+            json:
+              jobStatus:
+                jobId: job-1
+                did: did:plc:me
+                state: JOB_STATE_COMPLETED
+                blob: { $type: blob, ref: { $link: bafyvideo }, mimeType: video/mp4, size: 1838 }
+          - &create
+            method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/new", cid: "cid-new" }
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
+            BS_VIDEO_SERVICE: ${api.url}
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: "My clip"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: ["Attach pictures (up to 4) or a video", "media/"]
+            - send: j
+            - send: { key: enter }
+            # Described, not played: kind, length, shape, size.
+            - expect_screen:
+                contains: ["clip.mp4", "▶ video", "video · 0:01 · 64×36 · 1 KB"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["1 clip.mp4 (video 0:01)  alt:", "▶ video"]
+                not_contains: "Attach pictures"
+            # Nothing can join a video.
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "a post with a video can have nothing else attached"
+            - send: { key: tab }
+            - send: "a blue screen"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      # The token is for the PDS in the DID document, to upload a blob.
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, count: 1, query: { name: aud, equals: "did:web:pds.example" } }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, query: { name: lxm, equals: "com.atproto.repo.uploadBlob" } }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.video.uploadVideo
+            count: 1
+            header: { name: Content-Type, equals: "video/mp4" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, header: { name: Authorization, equals: "Bearer svc-token" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: did, equals: "did:plc:me" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "clip.mp4" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.getJobStatus, query: { name: jobId, equals: "job-1" } }
+      # Nothing goes to the PDS's own blob upload.
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "My clip" }
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.video" }
+                - { path: "$.record.embed.video.ref['$link']", equals: "bafyvideo" }
+                - { path: "$.record.embed.alt", equals: "a blue screen" }
+                - { path: "$.record.embed.aspectRatio.width", equals: 64 }
+                - { path: "$.record.embed.aspectRatio.height", equals: 36 }
+
+  - name: an animated GIF goes to the video service as it is
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - *upload_video
+          - *job_done
+          - *create
+    steps:
+      - *session
+      - fixture: { file: media/moving.gif, from: testdata/moving.gif }
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "animated GIF, posted as a video · 40×30"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 moving.gif (GIF, posted as a video)"
+            # No text is needed with a video. ("posted" alone would match the
+            # label above; the composer closing is the sign.)
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.video.uploadVideo
+            count: 1
+            header: { name: Content-Type, equals: "image/gif" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.video" }
+                - { path: "$.record.embed.video.ref['$link']", equals: "bafyvideo" }
+                - { path: "$.record.embed.aspectRatio.width", equals: 40 }
+                - { path: "$.record.embed.aspectRatio.height", equals: 30 }
+
+  - name: a video the service cannot process is reported and nothing is posted
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - *upload_video
+          - method: GET
+            path: /xrpc/app.bsky.video.getJobStatus
+            json:
+              jobStatus: { jobId: job-1, did: did:plc:me, state: JOB_STATE_FAILED, error: "Unsupported", message: "the codec is not supported" }
+          - *create
+    steps:
+      - *session
+      - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 160
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: "not posted"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "clip.mp4"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 clip.mp4 (video 0:01)"
+            - send: { key: ctrl-s }
+            # The draft stays, with the service's own words.
+            - expect_screen:
+                contains: ["the video service could not process clip.mp4: Unsupported: the codec is not supported", "New post", "not posted"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: pictures and a video do not go on one post
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
+      - fixture: { file: media/photo.png, from: testdata/photo.png }
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["clip.mp4", "photo.png"]
+            # Both marked: refused, and nothing is attached.
+            - send: " "
+            - send: " "
+            - expect_screen:
+                contains: "2 marked"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "a post can have up to 4 pictures or one video, not both"
+                not_contains: "1 clip.mp4"
+            # With a picture attached, the browser no longer lists videos.
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: ["Attach pictures (up to 4) or a video", "photo.png"]
+            - send: G
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 photo.png  alt:"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: ["Attach pictures (up to 3)", "photo.png"]
+                not_contains: "clip.mp4"
+            # Esc waits for the screen each time: Esc and a key right after it
+            # read as Alt+key.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Attach pictures"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: a video on the timeline is shown by its thumbnail
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v1
+                    cid: cid-v1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Watch this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/video/playlist.m3u8"
+                      thumbnail: "${api.url}/img/thumb.png"
+                      aspectRatio: { width: 4, height: 3 }
+          - { method: GET, path: /img/thumb.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Watch this", "▶ video"]
+                images: { count: 1 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              count: 1
+              contains:
+                - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
+      # The thumbnail is fetched; the video itself never is.
+      - assert:
+          mock: { name: api, path: /img/thumb.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /video/playlist.m3u8, count: 0 }

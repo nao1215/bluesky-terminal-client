@@ -60,12 +60,12 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: n
             - expect_screen:
-                contains: ["New post", "ctrl+o add picture"]
+                contains: ["New post", "ctrl+o attach pictures or a video"]
             - send: "Two pictures"
             - send: { key: ctrl-o }
             # Folders first; the selection starts on the first of them.
             - expect_screen:
-                contains: ["Choose pictures (up to 4)", "../", "cfg/", "pics/", "enter opens the folder"]
+                contains: ["Attach pictures (up to 4) or a video", "../", "cfg/", "pics/", "enter opens the folder"]
             - send: j
             - send: { key: enter }
             # Only folders and pictures are listed.

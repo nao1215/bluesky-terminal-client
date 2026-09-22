@@ -10,7 +10,7 @@ bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures 
 - The timeline shows posts written by the accounts you follow, and nothing else: no reposts, no posts of your own, no one you do not follow. A reply is shown under the posts it answers, and `v` opens its whole thread with every reply expanded.
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
 - Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
-- Attach up to four pictures to a post, chosen in a folder browser that previews them, each with alt text.
+- Attach up to four pictures, or one video or animated GIF, to a post, chosen in a folder browser that previews them, each with alt text. Videos on the timeline are shown by their thumbnail.
 - Nine color themes, previewed live and remembered.
 - The keys for the current view are always on screen, and `?` lists all of them.
 - A terminal that cannot draw images is refused at startup instead of giving you a client that silently drops every picture.
@@ -68,7 +68,7 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 | `1` `2` `3` `4`, `Tab` `Shift+Tab` | Timeline, Search, Profile, Notifications |
 | `j` `k`, `↓` `↑` | Move the selection (`g` / `G` for top and bottom); more loads by itself near the end |
 | `n` | New post |
-| `Ctrl+O` | In the composer, choose pictures to attach; in the profile editor, choose the avatar |
+| `Ctrl+O` | In the composer, choose pictures or a video to attach; in the profile editor, choose the avatar |
 | `r` | Reply to the selected post |
 | `l` | Like, or remove your like |
 | `b` | Repost, or remove your repost |
@@ -86,23 +86,27 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 
 Links, mentions, and hashtags in posts you write become clickable: bs finds them in the text and sends the rich-text facets Bluesky needs. A mention whose handle does not resolve stays plain text. The composer counts characters the way Bluesky does and refuses to send more than 300.
 
-## Pictures
+## Pictures and videos
 
-`Ctrl+O` in the composer opens a browser of the folder you started bs in (or the one it showed last). It lists folders and pictures (PNG, JPEG, GIF, WebP) only, and draws the selected picture beside the list with its size.
+`Ctrl+O` in the composer opens a browser of the folder you started bs in (or the one it showed last). It lists folders, pictures (PNG, JPEG, GIF, WebP), and videos (MP4, MOV, WebM, MPEG) only. The selected picture is drawn beside the list with its size; a video is described by its length, shape, and size, since bs does not play video.
 
 | Key | Action |
 |-----|--------|
 | `j` `k` | Move; the selected picture is previewed |
 | `Enter`, `l` | Open the folder, or choose the picture |
-| `Space` | Mark a picture; `Enter` then chooses every marked one, from any folder |
+| `Space` | Mark a picture; `Enter` then chooses every marked one (and the one under the cursor), from any folder |
 | `h`, `Backspace` | The folder above |
 | `.` | Show or hide hidden files |
 | `~` | Your home folder |
 | `Esc` | Close without choosing |
 
+A post carries up to four pictures or one video, not both. An animated GIF counts as a video: Bluesky shows animation only as video.
+
 Back in the composer, each picture has a thumbnail and a line for its alt text: `Tab` moves between the post and the alt texts, and `Ctrl+X` removes the picture being described (or the last one). A post with pictures needs no text.
 
 Every picture is decoded and encoded again before it is uploaded: a photo taken sideways is turned upright, one larger than 2000 pixels on a side is scaled down, and the result is brought under Bluesky's 1 MB limit, as a PNG when a screenshot fits and as a JPEG otherwise. The camera's metadata, location included, stays on your disk. All pictures are read before any is uploaded, so one that cannot be read stops the post before anything is sent.
+
+A video (at most 100 MB and 3 minutes) or animated GIF is uploaded to Bluesky's video service, the way the official app does it: the PDS issues a short-lived token for the service, and bs waits while the service processes the file before posting. The service converts a GIF itself, so bs needs no codec and no external program.
 
 ## Themes
 
@@ -118,6 +122,7 @@ Every picture is decoded and encoded again before it is uploaded: a photo taken 
 | `BS_CONFIG_DIR` | Directory for `session.json` and `settings.json` (default: `bs` in the platform config directory: `~/.config/bs` on Linux, `~/Library/Application Support/bs` on macOS, `%APPDATA%\bs` on Windows) |
 | `BS_GRAPHICS` | Force an image protocol: `kitty`, `sixel`, or `iterm2` |
 | `BS_CACHE_DIR` | Directory for downloaded pictures kept between runs (default: `bs` in the platform cache directory); `off` keeps none |
+| `BS_VIDEO_SERVICE` | Video service to upload videos to (default `https://video.bsky.app`) |
 | `NO_COLOR` | Draw without color, whatever theme is chosen |
 
 A `settings.json` that cannot be read is reported and ignored; bs starts with the default theme and leaves the file as it is.

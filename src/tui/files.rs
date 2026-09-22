@@ -1,6 +1,6 @@
-//! A directory browser for choosing pictures from the user's disk. It lists
-//! folders and pictures only, and the view previews the selected picture
-//! beside the list.
+//! A directory browser for choosing pictures and videos from the user's
+//! disk. It lists folders and those files only, and the view previews the
+//! selected one beside the list.
 
 use std::collections::HashMap;
 use std::fs;
@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::media::is_image_name;
+use crate::media::{self, is_image_name};
 use crate::tui::app::List;
+use crate::video::is_video_name;
 
 /// What an entry of the listing is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -17,7 +18,8 @@ pub enum EntryKind {
     /// `..`, the folder above.
     Parent,
     Dir,
-    Image,
+    /// A picture or a video.
+    Media,
 }
 
 /// One line of the listing.
@@ -26,7 +28,7 @@ pub struct Entry {
     pub name: String,
     pub path: PathBuf,
     pub kind: EntryKind,
-    /// File size, for pictures.
+    /// File size, for pictures and videos.
     pub bytes: u64,
 }
 
@@ -53,15 +55,19 @@ pub struct Browser {
     pub marked: Vec<PathBuf>,
     /// How many pictures may still be chosen.
     pub room: usize,
+    /// Whether videos are listed too (not for an avatar, nor next to
+    /// pictures already attached).
+    pub videos: bool,
     /// A message about the last key, such as "no room for more".
     pub note: Option<String>,
-    /// Pixel size of the pictures looked at so far (`None`: unreadable).
-    pub dims: HashMap<PathBuf, Option<(u32, u32)>>,
+    /// What each file looked at so far is, read from its header once.
+    pub info: HashMap<PathBuf, media::Info>,
 }
 
 impl Browser {
-    /// Open at `dir`, where at most `room` pictures may be chosen.
-    pub fn open(dir: &Path, room: usize) -> Self {
+    /// Open at `dir`, where at most `room` pictures, or a video when
+    /// `videos`, may be chosen.
+    pub fn open(dir: &Path, room: usize, videos: bool) -> Self {
         let mut b = Self {
             dir: std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf()),
             list: List::default(),
@@ -69,8 +75,9 @@ impl Browser {
             error: None,
             marked: Vec::new(),
             room: room.max(1),
+            videos,
             note: None,
-            dims: HashMap::new(),
+            info: HashMap::new(),
         };
         b.read(None);
         b
@@ -81,18 +88,18 @@ impl Browser {
         self.list.current()
     }
 
-    /// Pixel size of the selected picture, read from its header once.
-    pub fn current_dims(&self) -> Option<(u32, u32)> {
-        let e = self.current().filter(|e| e.kind == EntryKind::Image)?;
-        self.dims.get(&e.path).copied().flatten()
+    /// What the selected file is.
+    pub fn current_info(&self) -> Option<media::Info> {
+        let e = self.current().filter(|e| e.kind == EntryKind::Media)?;
+        self.info.get(&e.path).copied()
     }
 
     fn look_at_current(&mut self) {
-        if let Some(e) = self.list.current().filter(|e| e.kind == EntryKind::Image)
-            && !self.dims.contains_key(&e.path)
+        if let Some(e) = self.list.current().filter(|e| e.kind == EntryKind::Media)
+            && !self.info.contains_key(&e.path)
         {
-            let d = image::image_dimensions(&e.path).ok();
-            self.dims.insert(e.path.clone(), d);
+            let i = media::inspect(&e.path);
+            self.info.insert(e.path.clone(), i);
         }
     }
 
@@ -122,8 +129,10 @@ impl Browser {
                     };
                     let kind = if meta.is_dir() {
                         EntryKind::Dir
-                    } else if meta.is_file() && is_image_name(&name) {
-                        EntryKind::Image
+                    } else if meta.is_file()
+                        && (is_image_name(&name) || (self.videos && is_video_name(&name)))
+                    {
+                        EntryKind::Media
                     } else {
                         continue;
                     };
@@ -172,7 +181,7 @@ impl Browser {
     }
 
     fn toggle_mark(&mut self) {
-        let Some(e) = self.list.current().filter(|e| e.kind == EntryKind::Image) else {
+        let Some(e) = self.list.current().filter(|e| e.kind == EntryKind::Media) else {
             return;
         };
         let path = e.path.clone();
@@ -234,7 +243,7 @@ impl Browser {
                 match e.kind {
                     EntryKind::Parent => self.up(),
                     EntryKind::Dir => self.enter(e.path, None),
-                    EntryKind::Image => return Action::Choose(self.chosen(e.path)),
+                    EntryKind::Media => return Action::Choose(self.chosen(e.path)),
                 }
             }
             _ => {}
@@ -283,7 +292,7 @@ mod tests {
     #[test]
     fn folders_come_first_then_pictures_and_nothing_else() {
         let dir = tree();
-        let b = Browser::open(&dir.path().join("pics"), 4);
+        let b = Browser::open(&dir.path().join("pics"), 4, false);
         assert_eq!(names(&b), ["..", "Zoo", "A.PNG", "b.png"]);
         assert_eq!(b.current().unwrap().name, "Zoo", "not `..`");
     }
@@ -291,7 +300,7 @@ mod tests {
     #[test]
     fn hidden_names_show_on_request_and_the_selection_stays() {
         let dir = tree();
-        let mut b = Browser::open(&dir.path().join("pics"), 4);
+        let mut b = Browser::open(&dir.path().join("pics"), 4, false);
         b.key(key('G'));
         b.key(key('.'));
         assert!(names(&b).contains(&".secret.png"));
@@ -304,11 +313,15 @@ mod tests {
     fn entering_a_folder_and_going_up_selects_where_it_came_from() {
         let dir = tree();
         let pics = dir.path().join("pics");
-        let mut b = Browser::open(&pics, 4);
+        let mut b = Browser::open(&pics, 4, false);
         b.key(code(KeyCode::Enter));
         assert!(b.dir.ends_with("Zoo"));
         assert_eq!(names(&b), ["..", "lion.png"]);
-        assert_eq!(b.current_dims(), Some((8, 8)), "the picture's size is read");
+        assert_eq!(
+            b.current_info().and_then(|i| i.dims),
+            Some((8, 8)),
+            "the picture's size is read"
+        );
         b.key(key('h'));
         assert_eq!(b.dir, std::path::absolute(&pics).unwrap());
         assert_eq!(b.current().unwrap().name, "Zoo");
@@ -323,7 +336,7 @@ mod tests {
     fn enter_chooses_the_picture_or_every_marked_one() {
         let dir = tree();
         let pics = dir.path().join("pics");
-        let mut b = Browser::open(&pics, 4);
+        let mut b = Browser::open(&pics, 4, false);
         b.key(key('j'));
         assert_eq!(
             b.key(code(KeyCode::Enter)),
@@ -344,7 +357,7 @@ mod tests {
     #[test]
     fn enter_on_an_unmarked_picture_adds_it_to_the_marks() {
         let dir = tree();
-        let mut b = Browser::open(&dir.path().join("pics"), 4);
+        let mut b = Browser::open(&dir.path().join("pics"), 4, false);
         b.key(key('j'));
         b.key(key(' '));
         let Action::Choose(chosen) = b.key(code(KeyCode::Enter)) else {
@@ -353,7 +366,7 @@ mod tests {
         let chosen: Vec<_> = chosen.iter().map(|p| p.file_name().unwrap()).collect();
         assert_eq!(chosen, ["A.PNG", "b.png"]);
         // With room for one, the cursor wins over an earlier mark.
-        let mut b = Browser::open(&dir.path().join("pics"), 1);
+        let mut b = Browser::open(&dir.path().join("pics"), 1, false);
         b.key(key('j'));
         b.key(key(' '));
         let Action::Choose(chosen) = b.key(code(KeyCode::Enter)) else {
@@ -365,7 +378,7 @@ mod tests {
     #[test]
     fn marks_stop_at_the_room_left() {
         let dir = tree();
-        let mut b = Browser::open(&dir.path().join("pics"), 1);
+        let mut b = Browser::open(&dir.path().join("pics"), 1, false);
         b.key(key('j'));
         b.key(key(' '));
         b.key(key(' '));
@@ -379,9 +392,19 @@ mod tests {
     }
 
     #[test]
+    fn videos_are_listed_only_when_one_may_be_chosen() {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        fs::write(pics.join("clip.mp4"), b"\0\0\0\x18ftypisom").unwrap();
+        assert!(!names(&Browser::open(&pics, 4, false)).contains(&"clip.mp4"));
+        let b = Browser::open(&pics, 4, true);
+        assert_eq!(names(&b), ["..", "Zoo", "A.PNG", "b.png", "clip.mp4"]);
+    }
+
+    #[test]
     fn a_folder_that_cannot_be_read_says_why() {
         let dir = tempfile::tempdir().unwrap();
-        let b = Browser::open(&dir.path().join("missing"), 4);
+        let b = Browser::open(&dir.path().join("missing"), 4, false);
         assert!(b.error.as_deref().unwrap().starts_with("cannot read"));
         assert_eq!(names(&b), [".."], "the way out is still there");
     }

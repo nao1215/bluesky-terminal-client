@@ -116,6 +116,18 @@ pub fn config_dir() -> Result<PathBuf> {
     })
 }
 
+/// Environment variable naming the video service to upload videos to.
+pub const VIDEO_SERVICE_ENV: &str = "BS_VIDEO_SERVICE";
+
+/// The video service: `BS_VIDEO_SERVICE`, else Bluesky's.
+pub fn video_service() -> String {
+    std::env::var(VIDEO_SERVICE_ENV)
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| crate::api::DEFAULT_VIDEO_SERVICE.to_string())
+}
+
 /// Environment variable naming the cache directory; `off` keeps no cache.
 pub const CACHE_DIR_ENV: &str = "BS_CACHE_DIR";
 

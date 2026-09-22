@@ -9,11 +9,12 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 use crate::api::types::{Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
-use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, ProfileEdit};
+use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, PostMedia, PostVideo, ProfileEdit};
 use crate::config::{Session, SessionStore};
 use crate::error::{Error, Result};
 use crate::media;
 use crate::timeline;
+use crate::video;
 
 /// Work for the worker thread.
 #[derive(Debug, Clone)]
@@ -63,7 +64,8 @@ pub enum Job {
     Post {
         text: String,
         reply: Option<ReplyRef>,
-        images: Vec<Attachment>,
+        /// Pictures, or one video.
+        media: Vec<Attachment>,
     },
     /// Load the fields the profile editor starts from.
     LoadProfileEditor,
@@ -75,7 +77,7 @@ pub enum Job {
     },
 }
 
-/// A picture on the user's disk to attach to a post.
+/// A picture or video on the user's disk to attach to a post.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attachment {
     pub path: PathBuf,
@@ -327,13 +329,9 @@ impl State {
                 did,
                 result: self.client().and_then(|c| c.unfollow(&follow_uri)),
             },
-            Job::Post {
-                text,
-                reply,
-                images,
-            } => Event::Posted {
+            Job::Post { text, reply, media } => Event::Posted {
                 reply_to: reply.as_ref().map(|r| r.parent.uri.clone()),
-                result: self.post(&text, reply.as_ref(), &images),
+                result: self.post(&text, reply.as_ref(), &media),
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
             Job::SaveProfile {
@@ -491,25 +489,64 @@ impl State {
         })
     }
 
-    /// Prepare every picture, upload them, then publish the post with them.
-    /// All are prepared before any is uploaded, so a picture that cannot be
-    /// read stops the post before anything reaches the server.
-    fn post(&mut self, text: &str, reply: Option<&ReplyRef>, images: &[Attachment]) -> Result<()> {
-        let prepared = images
+    /// Prepare every picture (or the video), upload them, then publish the
+    /// post with them. Everything is prepared before anything is uploaded,
+    /// so a file that cannot be read stops the post before anything reaches
+    /// the server.
+    fn post(&mut self, text: &str, reply: Option<&ReplyRef>, media: &[Attachment]) -> Result<()> {
+        let videos = media
             .iter()
-            .map(|a| media::prepare(&a.path))
-            .collect::<Result<Vec<_>>>()?;
-        let mut uploaded = Vec::with_capacity(images.len());
-        for (a, p) in images.iter().zip(prepared) {
-            let blob = self.client()?.upload_blob(&p.bytes, p.mime)?;
-            uploaded.push(PostImage {
-                blob,
-                alt: a.alt.trim().to_string(),
-                width: p.width,
-                height: p.height,
-            });
-        }
-        self.client()?.create_post(text, reply, &uploaded)?;
+            .filter(|a| media::inspect(&a.path).kind == media::Kind::Video)
+            .count();
+        let embed = match (media.len(), videos) {
+            (0, _) => PostMedia::None,
+            (1, 1) => {
+                let a = &media[0];
+                let v = video::prepare(&a.path)?;
+                let name = a
+                    .path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "video".into());
+                let service = crate::config::video_service();
+                let blob = self.client()?.upload_video(
+                    &service,
+                    &v.bytes,
+                    v.mime,
+                    &name,
+                    std::time::Duration::from_secs(1),
+                )?;
+                PostMedia::Video(PostVideo {
+                    blob,
+                    alt: a.alt.trim().to_string(),
+                    dims: v.dims,
+                })
+            }
+            (_, 0) => {
+                let prepared = media
+                    .iter()
+                    .map(|a| media::prepare(&a.path))
+                    .collect::<Result<Vec<_>>>()?;
+                let mut uploaded = Vec::with_capacity(media.len());
+                for (a, p) in media.iter().zip(prepared) {
+                    let blob = self.client()?.upload_blob(&p.bytes, p.mime)?;
+                    uploaded.push(PostImage {
+                        blob,
+                        alt: a.alt.trim().to_string(),
+                        width: p.width,
+                        height: p.height,
+                    });
+                }
+                PostMedia::Images(uploaded)
+            }
+            _ => {
+                return Err(Error::new(
+                    crate::error::Kind::Usage,
+                    "a post can have up to 4 pictures or one video, not both",
+                ));
+            }
+        };
+        self.client()?.create_post(text, reply, &embed)?;
         Ok(())
     }
 

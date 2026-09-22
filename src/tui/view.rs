@@ -12,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{Embed, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
+use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
     App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab, ThreadView,
@@ -24,6 +25,7 @@ use crate::tui::text::{format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
 use crate::tui::worker::NotifItem;
+use crate::video::format_seconds;
 
 /// Width of the selection marker column.
 const MARK_W: u16 = 2;
@@ -1103,7 +1105,7 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
         Some((_, handle, _)) => format!("Reply to @{handle}"),
         None => "New post".to_string(),
     };
-    let n = c.images.len() as u16;
+    let n = c.media.len() as u16;
     // A row of thumbnails, then a line per picture for its alt text.
     let pics_h = if n > 0 { THUMB.1 + n } else { 0 };
     let inner = popup(frame, area, 72, 14 + pics_h, &title, t);
@@ -1140,9 +1142,9 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
     let action = if c.sending {
         "sending…"
     } else if n > 0 {
-        "ctrl+s send  ctrl+o add picture  tab alt text  ctrl+x remove  esc cancel"
+        "ctrl+s send  ctrl+o attach  tab alt text  ctrl+x remove  esc cancel"
     } else {
-        "ctrl+s send  ctrl+o add picture  esc cancel"
+        "ctrl+s send  ctrl+o attach pictures or a video  esc cancel"
     };
     frame.render_widget(
         truncate_line(
@@ -1168,8 +1170,8 @@ fn draw_attachments(
 ) {
     // No thumbnails behind the browser (they would only cost encodes), nor
     // when the terminal is too low to give them their rows.
-    let thumbs = c.browser.is_none() && area.height >= THUMB.1 + c.images.len() as u16;
-    for (i, a) in c.images.iter().enumerate() {
+    let thumbs = c.browser.is_none() && area.height >= THUMB.1 + c.media.len() as u16;
+    for (i, a) in c.media.iter().enumerate() {
         let i16 = i as u16;
         let x = area.x + 1 + i16 * (THUMB.0 + 1);
         if thumbs && x + THUMB.0 <= area.right() {
@@ -1179,7 +1181,7 @@ fn draw_attachments(
                 width: THUMB.0,
                 height: THUMB.1,
             };
-            images.draw_file(frame, r, &a.path);
+            draw_media_box(frame, r, &a.path, a.info, images, t);
         }
         let row = Rect {
             y: area.y + THUMB.1 + i16,
@@ -1195,7 +1197,15 @@ fn draw_attachments(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let label = format!(" {} {}  alt: ", i + 1, truncate(&name, 20));
+        let what = match (a.info.animated_gif, a.info.seconds) {
+            (true, _) => " (GIF, posted as a video)".to_string(),
+            (false, Some(s)) if a.info.kind == media::Kind::Video => {
+                format!(" (video {})", format_seconds(s))
+            }
+            (false, None) if a.info.kind == media::Kind::Video => " (video)".to_string(),
+            _ => String::new(),
+        };
+        let label = format!(" {} {}{what}  alt: ", i + 1, truncate(&name, 20));
         let label_w = label.width() as u16;
         let style = if focused { t.accent().bold() } else { t.dim() };
         frame.render_widget(Paragraph::new(label).style(style), row);
@@ -1213,6 +1223,51 @@ fn draw_attachments(
             draw_single_input(frame, field, &a.alt, focused);
         }
     }
+}
+
+/// A picture drawn in its box. A video has no frame to show (bs does not
+/// decode video), so its box says what it is and how long it runs; an
+/// animated GIF shows its first frame.
+fn draw_media_box(
+    frame: &mut Frame,
+    area: Rect,
+    path: &std::path::Path,
+    info: media::Info,
+    images: &mut Images,
+    t: &Theme,
+) {
+    if info.kind == media::Kind::Picture || info.animated_gif {
+        images.draw_file(frame, area, path);
+        return;
+    }
+    let mut lines = vec![Line::styled("▶ video", t.accent().bold())];
+    if let Some(s) = info.seconds {
+        lines.push(Line::styled(format_seconds(s), t.dim()));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .alignment(ratatui::layout::Alignment::Center)
+            .block(Block::bordered().border_style(t.dim())),
+        area,
+    );
+}
+
+/// What a picture or video is, in one line: its kind, length, size.
+fn describe(i: media::Info, bytes: u64) -> String {
+    let mut parts = Vec::new();
+    if i.animated_gif {
+        parts.push("animated GIF, posted as a video".to_string());
+    } else if i.kind == media::Kind::Video {
+        parts.push("video".to_string());
+    }
+    if let Some(s) = i.seconds {
+        parts.push(format_seconds(s));
+    }
+    if let Some((w, h)) = i.dims {
+        parts.push(format!("{w}×{h}"));
+    }
+    parts.push(human_bytes(bytes));
+    parts.join(" · ")
 }
 
 /// A byte count the way a person reads it.
@@ -1247,10 +1302,10 @@ fn truncate_start(s: &str, width: usize) -> String {
 /// The picture browser: the folder on top, its folders and pictures on the
 /// left, the selected picture previewed on the right.
 fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Images, t: &Theme) {
-    let title = if b.room == 1 {
-        "Choose a picture".to_string()
-    } else {
-        format!("Choose pictures (up to {})", b.room)
+    let title = match (b.videos, b.room) {
+        (true, n) => format!("Attach pictures (up to {n}) or a video"),
+        (false, 1) => "Choose a picture".to_string(),
+        (false, n) => format!("Attach pictures (up to {n})"),
     };
     let w = area.width.saturating_sub(4).min(110);
     let h = area.height.saturating_sub(2).min(34);
@@ -1303,7 +1358,7 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
         let (name, size) = match e.kind {
             EntryKind::Parent => ("../".to_string(), String::new()),
             EntryKind::Dir => (format!("{}/", e.name), String::new()),
-            EntryKind::Image => (e.name.clone(), human_bytes(e.bytes)),
+            EntryKind::Media => (e.name.clone(), human_bytes(e.bytes)),
         };
         let size_w = size.width();
         let name = truncate(&name, width.saturating_sub(size_w + 4));
@@ -1311,7 +1366,7 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
         let line = format!("{mark}{name}{}{size} ", " ".repeat(pad));
         let style = if i == b.list.selected {
             t.selected()
-        } else if e.kind == EntryKind::Image {
+        } else if e.kind == EntryKind::Media {
             Style::new()
         } else {
             t.accent()
@@ -1331,16 +1386,16 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
         ..right
     };
     match b.current() {
-        Some(e) if e.kind == EntryKind::Image => {
-            let info = match b.current_dims() {
-                Some((w, h)) => format!("{w}×{h} · {}", human_bytes(e.bytes)),
-                None => human_bytes(e.bytes),
-            };
+        Some(e) if e.kind == EntryKind::Media => {
+            let about = b.current_info();
+            let info = about.map_or_else(|| human_bytes(e.bytes), |i| describe(i, e.bytes));
             let pic = Rect {
                 height: preview.height.saturating_sub(3),
                 ..preview
             };
-            images.draw_file(frame, pic, &e.path);
+            if let Some(i) = about {
+                draw_media_box(frame, pic, &e.path, i, images, t);
+            }
             frame.render_widget(
                 Paragraph::new(vec![
                     Line::styled(
@@ -1361,7 +1416,7 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
             preview,
         ),
         None => frame.render_widget(
-            Paragraph::new("no folders or pictures here").style(t.dim()),
+            Paragraph::new("no folders, pictures, or videos here").style(t.dim()),
             preview,
         ),
     }
@@ -1902,10 +1957,8 @@ mod tests {
         let Some(Overlay::Compose(c)) = &mut app.overlay else {
             panic!()
         };
-        c.images.push(crate::tui::app::Attached {
-            path: dir.path().join("cat.png"),
-            alt: TextInput::single(""),
-        });
+        c.media
+            .push(crate::tui::app::Attached::new(dir.path().join("cat.png")));
         let screen = render(&mut app, 100, 40);
         assert!(
             screen.contains("1 cat.png  alt: (none; tab to describe it)"),
@@ -1934,7 +1987,10 @@ mod tests {
             ));
         }
         let screen = render(&mut app, 100, 30);
-        assert!(screen.contains("Choose pictures (up to 4)"), "{screen}");
+        assert!(
+            screen.contains("Attach pictures (up to 4) or a video"),
+            "{screen}"
+        );
         assert!(screen.contains("trips/"), "{screen}");
         assert!(screen.contains("enter opens the folder"), "{screen}");
         app.handle_key(crossterm::event::KeyEvent::new(

@@ -11,7 +11,7 @@ use crate::api::types::{Post, Profile, ReplyRef};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::config::{Session, Settings};
 use crate::error::Error;
-use crate::media::MAX_POST_IMAGES;
+use crate::media::{self, MAX_POST_IMAGES};
 use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
@@ -242,10 +242,10 @@ pub struct Compose {
     /// Reply target, the handle being answered, and an excerpt of the post.
     pub reply: Option<(ReplyRef, String, String)>,
     pub sending: bool,
-    /// Pictures to attach, in order.
-    pub images: Vec<Attached>,
+    /// Pictures (up to four) or one video to attach, in order.
+    pub media: Vec<Attached>,
     /// What typing goes to: 0 is the post's text, `i + 1` the alt text of
-    /// image `i`.
+    /// attachment `i`.
     pub focus: usize,
     /// The picture browser, open over the composer.
     pub browser: Option<Browser>,
@@ -257,7 +257,7 @@ impl Compose {
             input: TextInput::multi(""),
             reply,
             sending: false,
-            images: Vec::new(),
+            media: Vec::new(),
             focus: 0,
             browser: None,
         }
@@ -267,17 +267,47 @@ impl Compose {
     fn field(&mut self) -> &mut TextInput {
         match self.focus {
             0 => &mut self.input,
-            i => &mut self.images[i - 1].alt,
+            i => &mut self.media[i - 1].alt,
         }
     }
 }
 
-/// A picture attached in the composer.
+/// A picture or video attached in the composer.
 #[derive(Debug, Clone)]
 pub struct Attached {
     pub path: PathBuf,
     /// A description for people who cannot see it.
     pub alt: TextInput,
+    /// What the file is, read when it was attached.
+    pub info: media::Info,
+}
+
+impl Attached {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            info: media::inspect(&path),
+            path,
+            alt: TextInput::single(""),
+        }
+    }
+
+    fn is_video(&self) -> bool {
+        self.info.kind == media::Kind::Video
+    }
+}
+
+/// Why `attached` cannot go on one post, if it cannot.
+fn media_problem(attached: &[Attached]) -> Option<String> {
+    let videos = attached.iter().filter(|a| a.is_video()).count();
+    if videos > 0 && attached.len() > 1 {
+        Some("a post can have up to 4 pictures or one video, not both".into())
+    } else if attached.len() > MAX_POST_IMAGES {
+        Some(format!(
+            "a post can have at most {MAX_POST_IMAGES} pictures"
+        ))
+    } else {
+        None
+    }
 }
 
 /// The profile editor.
@@ -690,40 +720,47 @@ impl App {
                         Action::Choose(paths) => {
                             self.browse_from = Some(b.dir.clone());
                             c.browser = None;
-                            c.images.extend(paths.into_iter().map(|path| Attached {
-                                path,
-                                alt: TextInput::single(""),
-                            }));
-                            c.images.truncate(MAX_POST_IMAGES);
+                            let mut all = c.media.clone();
+                            all.extend(paths.into_iter().map(Attached::new));
+                            match media_problem(&all) {
+                                Some(why) => self.error(why),
+                                None => c.media = all,
+                            }
                         }
                     }
                     return Vec::new();
                 }
-                let fields = c.images.len() + 1;
+                let fields = c.media.len() + 1;
                 match key.code {
                     KeyCode::Esc => self.overlay = None,
                     KeyCode::Tab => c.focus = (c.focus + 1) % fields,
                     KeyCode::BackTab => c.focus = (c.focus + fields - 1) % fields,
                     KeyCode::Char('o') if ctrl => {
-                        let room = MAX_POST_IMAGES - c.images.len();
-                        if room == 0 {
+                        let room = MAX_POST_IMAGES.saturating_sub(c.media.len());
+                        if c.media.iter().any(Attached::is_video) {
+                            self.error("a post with a video can have nothing else attached");
+                        } else if room == 0 {
                             self.error(format!(
                                 "a post can have at most {MAX_POST_IMAGES} pictures"
                             ));
                         } else {
-                            c.browser = Some(Browser::open(&browse_start(&self.browse_from), room));
+                            c.browser = Some(Browser::open(
+                                &browse_start(&self.browse_from),
+                                room,
+                                c.media.is_empty(),
+                            ));
                         }
                     }
                     // The picture whose alt text is being typed, or the last.
-                    KeyCode::Char('x') if ctrl && !c.images.is_empty() => {
-                        let i = c.focus.checked_sub(1).unwrap_or(c.images.len() - 1);
-                        c.images.remove(i);
-                        c.focus = c.focus.min(c.images.len());
+                    KeyCode::Char('x') if ctrl && !c.media.is_empty() => {
+                        let i = c.focus.checked_sub(1).unwrap_or(c.media.len() - 1);
+                        c.media.remove(i);
+                        c.focus = c.focus.min(c.media.len());
                     }
                     KeyCode::Char('s') if ctrl => {
                         let text = c.input.text();
                         let len = grapheme_len(text.trim_end());
-                        if text.trim().is_empty() && c.images.is_empty() {
+                        if text.trim().is_empty() && c.media.is_empty() {
                             self.error("the post is empty");
                         } else if len > MAX_POST_GRAPHEMES {
                             self.error(format!(
@@ -732,19 +769,15 @@ impl App {
                         } else {
                             c.sending = true;
                             let reply = c.reply.as_ref().map(|(r, _, _)| r.clone());
-                            let images = c
-                                .images
+                            let media = c
+                                .media
                                 .iter()
                                 .map(|a| Attachment {
                                     path: a.path.clone(),
                                     alt: a.alt.text(),
                                 })
                                 .collect();
-                            return vec![Job::Post {
-                                text,
-                                reply,
-                                images,
-                            }];
+                            return vec![Job::Post { text, reply, media }];
                         }
                     }
                     _ => {
@@ -783,7 +816,7 @@ impl App {
                     KeyCode::Tab => e.focus = (e.focus + 1) % 3,
                     KeyCode::BackTab => e.focus = (e.focus + 2) % 3,
                     KeyCode::Char('o') if ctrl => {
-                        e.browser = Some(Browser::open(&browse_start(&self.browse_from), 1));
+                        e.browser = Some(Browser::open(&browse_start(&self.browse_from), 1, false));
                     }
                     KeyCode::Char('s') if ctrl => {
                         e.saving = true;
@@ -1756,13 +1789,13 @@ mod tests {
                 Job::Post {
                     text,
                     reply: Some(r),
-                    images,
+                    media,
                 },
             ] => {
                 assert_eq!(text, "hello");
                 assert_eq!(r.parent.uri, "at://b/p/2");
                 assert_eq!(r.root.uri, "at://b/p/2");
-                assert!(images.is_empty());
+                assert!(media.is_empty());
             }
             other => panic!("{other:?}"),
         }
@@ -2818,7 +2851,7 @@ mod tests {
         app.handle_key(key(' '));
         app.handle_key(code(KeyCode::Enter));
         assert!(composer(&app).browser.is_none());
-        assert_eq!(composer(&app).images.len(), 2);
+        assert_eq!(composer(&app).media.len(), 2);
         app
     }
 
@@ -2835,12 +2868,12 @@ mod tests {
         app.handle_key(code(KeyCode::Tab));
         assert_eq!(composer(&app).focus, 0);
         let jobs = app.handle_key(ctrl('s'));
-        let [Job::Post { text, images, .. }] = &jobs[..] else {
+        let [Job::Post { text, media, .. }] = &jobs[..] else {
             panic!("{jobs:?}")
         };
         assert_eq!(text, "");
         assert_eq!(
-            images,
+            media,
             &[
                 Attachment {
                     path: dir.path().join("a.png"),
@@ -2861,12 +2894,12 @@ mod tests {
         app.handle_key(code(KeyCode::Tab));
         app.handle_key(ctrl('x'));
         let c = composer(&app);
-        assert_eq!(c.images.len(), 1);
-        assert!(c.images[0].path.ends_with("b.png"));
+        assert_eq!(c.media.len(), 1);
+        assert!(c.media[0].path.ends_with("b.png"));
         assert_eq!(c.focus, 1, "on the picture that moved up");
         app.handle_key(code(KeyCode::BackTab));
         app.handle_key(ctrl('x'));
-        assert!(composer(&app).images.is_empty());
+        assert!(composer(&app).media.is_empty());
         assert!(
             app.handle_key(ctrl('x')).is_empty(),
             "nothing left to remove"
@@ -2891,8 +2924,8 @@ mod tests {
         let Some(Overlay::Compose(c)) = &mut app.overlay else {
             unreachable!()
         };
-        let one = c.images[0].clone();
-        c.images.extend([one.clone(), one]);
+        let one = c.media[0].clone();
+        c.media.extend([one.clone(), one]);
         app.handle_key(ctrl('o'));
         assert!(composer(&app).browser.is_none());
         assert!(
@@ -2933,5 +2966,52 @@ mod tests {
             e.fields[2].text(),
             dir.path().join("b.png").display().to_string()
         );
+    }
+
+    fn testdata(name: &str) -> PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("e2e/atago/testdata")
+            .join(name)
+    }
+
+    #[test]
+    fn one_video_goes_alone_and_nothing_joins_it() {
+        let mut app = logged_in();
+        app.handle_key(key('n'));
+        let Some(Overlay::Compose(c)) = &mut app.overlay else {
+            unreachable!()
+        };
+        c.media.push(Attached::new(testdata("clip.mp4")));
+        assert!(c.media[0].is_video());
+        assert_eq!(c.media[0].info.dims, Some((64, 36)));
+        app.handle_key(ctrl('o'));
+        assert!(composer(&app).browser.is_none());
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("a video can have nothing else")
+        );
+        let jobs = app.handle_key(ctrl('s'));
+        let [Job::Post { media, .. }] = &jobs[..] else {
+            panic!("{jobs:?}")
+        };
+        assert_eq!(media[0].path, testdata("clip.mp4"));
+    }
+
+    #[test]
+    fn pictures_and_a_video_cannot_share_a_post() {
+        let photo = Attached::new(testdata("photo.png"));
+        let clip = Attached::new(testdata("clip.mp4"));
+        let gif = Attached::new(testdata("moving.gif"));
+        assert!(gif.is_video() && gif.info.animated_gif);
+        assert_eq!(media_problem(std::slice::from_ref(&clip)), None);
+        assert_eq!(media_problem(&[photo.clone(), photo.clone()]), None);
+        let mixed = media_problem(&[photo.clone(), clip.clone()]).unwrap();
+        assert!(mixed.contains("up to 4 pictures or one video"), "{mixed}");
+        assert!(media_problem(&[clip.clone(), gif]).is_some());
+        let five = vec![photo; 5];
+        assert!(media_problem(&five).unwrap().contains("at most 4 pictures"));
     }
 }
