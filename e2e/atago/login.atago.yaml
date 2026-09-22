@@ -14,6 +14,7 @@ secrets:
 
 scenarios:
   - name: logging in saves the session and loads the timeline with its token
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -85,6 +86,7 @@ scenarios:
             not_contains: "app-pass-1234"
 
   - name: a saved session skips the login screen on the next start
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -121,6 +123,7 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc-9" }
 
   - name: rejected credentials keep the form open and save nothing
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -177,6 +180,7 @@ scenarios:
             exists: false
 
   - name: an empty field is caught before anything is sent
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -211,6 +215,7 @@ scenarios:
             count: 0
 
   - name: an unreachable server is reported on the form
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     steps:

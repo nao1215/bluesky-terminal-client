@@ -12,6 +12,7 @@ suite:
 
 scenarios:
   - name: notifications show who did what and are marked seen
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -139,6 +140,7 @@ scenarios:
               json: { path: "$.seenAt", equals: "2026-09-22T01:00:00.000Z" }
 
   - name: notifications load at the start, but are seen only when their tab is
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -172,6 +174,7 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
 
   - name: a reply notification can be answered, and a follow opens the profile
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -242,6 +245,7 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
   - name: failing notifications are reported and R tries again
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:

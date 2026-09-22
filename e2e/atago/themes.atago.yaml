@@ -12,6 +12,7 @@ suite:
 
 scenarios:
   - name: applying a theme saves it in settings.json
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -68,6 +69,7 @@ scenarios:
             json: { path: "$.accessJwt", equals: "acc" }
 
   - name: previewing and cancelling writes nothing
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -103,6 +105,7 @@ scenarios:
             exists: false
 
   - name: a saved theme is back on the next start
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -142,6 +145,7 @@ scenarios:
               - { path: "$.keep['written by']", equals: "a newer bsky" }
 
   - name: a broken settings file is reported, ignored, and left alone
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -184,6 +188,7 @@ scenarios:
             deleted: []
 
   - name: an unknown theme name falls back to bluesky and says so
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:
@@ -208,6 +213,7 @@ scenarios:
           exit_code: 0
 
   - name: NO_COLOR draws without color and keeps the picker closed
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
       os: windows
     mock_servers:

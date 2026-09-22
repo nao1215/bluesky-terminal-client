@@ -29,14 +29,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The suite drives bsky in a pseudo-terminal, so it runs where atago's pty
-  # emulates a kitty-graphics terminal: Linux and macOS. On Windows the scenarios
-  # skip themselves; the unit tests in rust.yml cover that platform.
+  # The suite drives bsky in a pseudo-terminal that answers like a
+  # kitty-graphics terminal: a pty on Linux and macOS, a ConPTY on Windows.
+  # A ConPTY does not pass kitty graphics through (nao1215/atago#676), so the
+  # scenarios that need them skip Windows; the rest run on all three.
   atago:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -60,6 +61,7 @@ jobs:
           go-version: stable
 
       - name: Install atago
+        shell: bash
         env:
           ATAGO_REF: e7a21227e604a116be00477f8ca2719304e59ae3
         run: |
@@ -67,4 +69,5 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Run atago E2E tests
+        shell: bash
         run: ./e2e/run.sh
