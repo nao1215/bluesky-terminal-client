@@ -435,12 +435,14 @@ scenarios:
                 contains: ["New avatar (path, or ctrl+o to browse; optional)", "old bio"]
             - send: "!"
             - send: { key: ctrl-s }
+            # The error is in a box in the middle of the screen; the next key
+            # closes it and the edit is still there.
             - expect_screen:
-                contains:
-                  - "the profile was changed elsewhere since the editor opened"
-                  - "press Esc and e to start from the current version"
-                  - "Old Name!"
-                  - "Edit profile"
+                contains: [" Error ", "the profile was changed elsewhere", "the current version"]
+            - send: { key: right }
+            - expect_screen:
+                contains: ["Old Name!", "Edit profile"]
+                not_contains: " Error "
             - send: { key: esc }
             - expect_screen:
                 not_contains: "Edit profile"

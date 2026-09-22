@@ -42,7 +42,9 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: T
             - expect_screen:
-                contains: ["Theme", "▶ bluesky", "bluesky-dark", "bluesky-light", "terminal", "catppuccin-mocha", "dracula", "1/42  enter apply"]
+                # A window of ten themes, with more below it.
+                contains: ["Theme", "▶ bluesky", "bluesky-dark", "bluesky-light", "terminal", "▼", "1/42  enter apply"]
+                not_contains: ["zenburn", "▲"]
             # Two down is bluesky-light; the screen is already drawn in it.
             - send: j
             - send: j

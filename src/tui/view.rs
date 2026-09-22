@@ -56,6 +56,10 @@ fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
         url.into()
     }
 }
+/// Themes the picker shows at once; the rest scroll.
+const THEME_ROWS: usize = 10;
+/// Widest the error box gets, in cells.
+const ERROR_W: u16 = 76;
 /// Size of a picture's thumbnail in the composer, in cells.
 const THUMB: (u16, u16) = (14, 5);
 
@@ -103,6 +107,45 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         None => {}
     }
+    if let Some(s) = app.status.as_ref().filter(|s| s.error) {
+        draw_error(frame, area, &s.text, &t);
+    }
+}
+
+/// An error in a box in the middle of the screen, over everything, where it
+/// is seen. It goes with the next key, or by itself after a while.
+fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
+    let w = ERROR_W.min(area.width.saturating_sub(4)).max(10);
+    let inner_w = usize::from(w.saturating_sub(4)).max(1);
+    let mut lines: Vec<Line> = wrap(text, inner_w)
+        .into_iter()
+        .map(|l| Line::styled(l, t.error()))
+        .collect();
+    lines.push(Line::default());
+    lines.push(Line::styled("any key closes this", t.dim()));
+    let h = lines.len() as u16 + 2;
+    let r = Rect {
+        x: area.x + area.width.saturating_sub(w) / 2,
+        y: area.y + area.height.saturating_sub(h) / 2,
+        width: w.min(area.width),
+        height: h.min(area.height),
+    };
+    frame.render_widget(Clear, r);
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Error ")
+        .border_style(t.error())
+        .style(t.base());
+    let inner = block.inner(r);
+    frame.render_widget(block, r);
+    frame.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            x: inner.x + 1,
+            width: inner.width.saturating_sub(2),
+            ..inner
+        },
+    );
 }
 
 fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
@@ -197,10 +240,11 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     } else {
         format!("{} ", protocol_name(images.protocol_type()))
     };
-    if let Some(s) = &app.status {
-        let style = if s.error { t.error() } else { t.ok() };
+    // Errors are drawn in the middle of the screen (draw_error); the row
+    // keeps the passing news.
+    if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
         frame.render_widget(
-            Line::from(Span::styled(format!(" {}", s.text), style)),
+            Line::from(Span::styled(format!(" {}", s.text), t.ok())),
             area,
         );
     }
@@ -1539,9 +1583,10 @@ fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, t: &Theme) 
 /// moving the selection applies it.
 fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
     let n = THEMES.len();
-    // As many as fit; the window follows the selection, keeping it in the
-    // middle where it can.
-    let rows = usize::from(area.height.saturating_sub(6)).clamp(1, n);
+    // A window of a few themes that scrolls with the selection, keeping it in
+    // the middle where it can; not a list from the top of the screen to the
+    // bottom.
+    let rows = usize::from(area.height.saturating_sub(6)).clamp(1, THEME_ROWS.min(n));
     let first = selected.saturating_sub(rows / 2).min(n - rows);
     let width = THEMES.iter().map(|t| t.name.len()).max().unwrap_or(0) + 1;
     let lines: Vec<Line> = THEMES
@@ -1568,6 +1613,27 @@ fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
     let inner = popup(frame, area, w.max(34), rows as u16 + 4, "Theme", t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(lines), body);
+    // Arrows on the frame say there is more above or below.
+    let more = |show: bool, y: u16, mark: &'static str| {
+        if show { Some((mark, y)) } else { None }
+    };
+    for (mark, y) in [
+        more(first > 0, body.y.saturating_sub(1), "▲"),
+        more(first + rows < n, foot.y + 1, "▼"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        frame.render_widget(
+            Paragraph::new(mark).style(t.accent()),
+            Rect {
+                x: body.right().saturating_sub(2),
+                y,
+                width: 1,
+                height: 1,
+            },
+        );
+    }
     frame.render_widget(
         Paragraph::new(format!(" {}/{n}  enter apply  esc cancel", selected + 1)).style(t.dim()),
         foot,
@@ -1842,7 +1908,7 @@ mod tests {
     }
 
     #[test]
-    fn the_picker_lists_every_theme_on_a_tall_screen() {
+    fn the_picker_shows_a_window_of_themes_even_on_a_tall_screen() {
         let (mut app, _) = App::new(Some(session()), "x");
         let nord = crate::tui::theme::index_of("nord").unwrap();
         app.overlay = Some(Overlay::Themes {
@@ -1850,14 +1916,57 @@ mod tests {
             previous: 0,
         });
         let screen = render(&mut app, 100, 60);
-        for theme in THEMES.iter() {
+        assert!(screen.contains("▶ nord"), "{screen}");
+        let shown = THEMES
+            .iter()
+            .filter(|t| screen.contains(&format!(" {} ", t.name)))
+            .count();
+        assert!(shown <= THEME_ROWS + 1, "{shown} themes drawn:\n{screen}");
+        assert!(screen.contains('▲') && screen.contains('▼'), "{screen}");
+        // Every theme is reached by scrolling.
+        for (i, theme) in THEMES.iter().enumerate() {
+            app.overlay = Some(Overlay::Themes {
+                selected: i,
+                previous: 0,
+            });
+            let screen = render(&mut app, 100, 60);
             assert!(
-                screen.contains(theme.name),
-                "{} missing:\n{screen}",
+                screen.contains(&format!("▶ {}", theme.name)),
+                "{}",
                 theme.name
             );
         }
-        assert!(screen.contains("▶ nord"), "{screen}");
+    }
+
+    #[test]
+    fn an_error_is_shown_in_the_middle_until_a_key() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('f'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        app.status = Some(crate::tui::app::Status {
+            text: "something went wrong".into(),
+            error: true,
+            at: std::time::Instant::now(),
+        });
+        let screen = render(&mut app, 80, 24);
+        let rows: Vec<&str> = screen.lines().collect();
+        let row = rows
+            .iter()
+            .position(|l| l.contains("something went wrong"))
+            .expect("shown");
+        assert!(
+            (8..16).contains(&row),
+            "in the middle, not the bottom:\n{screen}"
+        );
+        assert!(!rows[23].contains("something went wrong"));
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('j'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert!(!render(&mut app, 80, 24).contains("something went wrong"));
     }
 
     #[test]

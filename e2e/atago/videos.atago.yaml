@@ -258,7 +258,12 @@ scenarios:
             - send: { key: ctrl-s }
             # The draft stays, with the service's own words.
             - expect_screen:
-                contains: ["the video service could not process clip.mp4: Unsupported: the codec is not supported", "New post", "not posted"]
+                contains: [" Error ", "could not process clip.mp4", "Unsupported"]
+            # A key closes the box; the draft is still there.
+            - send: { key: right }
+            - expect_screen:
+                contains: ["New post", "not posted"]
+                not_contains: " Error "
             - send: { key: esc }
             - expect_screen:
                 not_contains: "New post"
@@ -310,8 +315,12 @@ scenarios:
                 contains: "1 clip.mp4 (video 0:01)"
             - send: { key: ctrl-s }
             - expect_screen:
-                contains: ["Bluesky does not take videos from this account now: Confirm your email address to upload videos", "New post"]
+                contains: [" Error ", "Bluesky does not take videos from this account now", "Confirm your email", "any key closes this"]
                 not_contains: "log in again"
+            - send: { key: right }
+            - expect_screen:
+                contains: "New post"
+                not_contains: " Error "
             - send: { key: esc }
             - expect_screen:
                 not_contains: "New post"

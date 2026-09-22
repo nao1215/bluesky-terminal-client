@@ -576,8 +576,12 @@ impl App {
         }
     }
 
-    /// Handle a key press.
+    /// Handle a key press. A key also closes an error on screen, and still
+    /// does what it does, so the box never stands in the way.
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Job> {
+        if self.status.as_ref().is_some_and(|s| s.error) {
+            self.status = None;
+        }
         let jobs = self.key(key);
         self.pending += jobs.len();
         jobs
