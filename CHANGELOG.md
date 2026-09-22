@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- Removing a like, a repost, or a follow deletes only that kind of record in your own account. When the server named a like, repost, or follow that was another record, such as one of your posts, bsky deleted that record; it now shows an error and sends nothing.
+
 ## [0.1.0] - 2026-09-22
 
 ### Added
