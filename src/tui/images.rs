@@ -750,6 +750,9 @@ mod tests {
     /// ready through the real loader and encoder threads, for comparing a
     /// change to the picture pipeline before and after:
     /// `cargo test --release screen_of_photos -- --ignored --nocapture`.
+    // Not built for scripts/coverage.sh: it never runs there, so it would
+    // count as untested code.
+    #[cfg(not(coverage))]
     #[test]
     #[ignore = "measurement"]
     fn a_screen_of_photos_until_ready() {

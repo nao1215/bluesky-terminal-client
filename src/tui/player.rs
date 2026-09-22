@@ -418,6 +418,9 @@ mod tests {
     }
 
     /// Against Bluesky itself; run with `cargo test -- --ignored`.
+    // Not built for scripts/coverage.sh: it never runs there, so it would
+    // count as untested code.
+    #[cfg(not(coverage))]
     #[test]
     #[ignore = "needs the network"]
     fn a_real_bluesky_video_plays() {
@@ -442,6 +445,9 @@ mod tests {
     }
 
     /// The whole video plays in its own length (17.3 s by its playlist).
+    // Not built for scripts/coverage.sh: it never runs there, so it would
+    // count as untested code.
+    #[cfg(not(coverage))]
     #[test]
     #[ignore = "needs the network"]
     fn a_real_bluesky_video_takes_its_own_time() {
@@ -456,6 +462,158 @@ mod tests {
         eprintln!("{frames} frames in {took:.2} s");
         assert!((16.8..18.5).contains(&took), "{took} s");
         assert!(frames as f64 >= 17.0 * MAX_FPS * 0.9, "{frames} frames");
+    }
+
+    /// Serve `routes` (path to body) over HTTP; any other path is a 404.
+    fn serve_routes(routes: Vec<(&'static str, Vec<u8>)>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req.split_whitespace().nth(1).unwrap_or("/");
+                let found = routes.iter().find(|(p, _)| *p == path);
+                let (status, body) = match found {
+                    Some((_, b)) => ("200 OK", b.clone()),
+                    None => ("404 Not Found", b"missing".to_vec()),
+                };
+                let head = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&body);
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn fixture_segment() -> Vec<u8> {
+        std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/hls/v/seg0.ts"),
+        )
+        .unwrap()
+    }
+
+    const ONE_SEGMENT: &str =
+        "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1.000,\nseg0.ts\n#EXT-X-ENDLIST\n";
+
+    /// One 188-byte transport stream packet on `pid` carrying `payload`.
+    fn ts_packet(pid: u16, payload: &[u8]) -> Vec<u8> {
+        let mut p = vec![0x47, 0x40 | (pid >> 8) as u8, pid as u8, 0x10];
+        p.extend_from_slice(payload);
+        p.resize(188, 0xff);
+        p
+    }
+
+    /// A program whose only video stream is HEVC (stream type 0x24).
+    fn hevc_segment() -> Vec<u8> {
+        // PAT: program 1 has its PMT on PID 0x1000 (the CRC is not checked).
+        let pat = [
+            0, 0x00, 0xb0, 0x0d, 0, 1, 0xc1, 0, 0, 0, 1, 0xf0, 0x00, 0, 0, 0, 0,
+        ];
+        // PMT: PCR on 0x100, no program info, one HEVC stream on 0x100.
+        let pmt = [
+            0, 0x02, 0xb0, 0x12, 0, 1, 0xc1, 0, 0, 0xe1, 0x00, 0xf0, 0x00, 0x24, 0xe1, 0x00, 0xf0,
+            0x00, 0, 0, 0, 0,
+        ];
+        [ts_packet(0, &pat), ts_packet(0x1000, &pmt)].concat()
+    }
+
+    #[test]
+    fn a_media_playlist_without_variants_plays_directly() {
+        let base = serve_routes(vec![
+            ("/media.m3u8", ONE_SEGMENT.into()),
+            ("/seg0.ts", fixture_segment()),
+        ]);
+        let (result, frames) = run(&format!("{base}/media.m3u8"));
+        assert_eq!(result, Ok(()));
+        assert!(frames >= 8, "{frames} frames");
+    }
+
+    #[rstest::rstest]
+    #[case::nothing_listed(
+        "#EXTM3U\n#EXT-X-ENDLIST\n",
+        None,
+        "the video's playlist lists nothing to play"
+    )]
+    #[case::not_h264(
+        ONE_SEGMENT,
+        Some(hevc_segment()),
+        "this video is not H.264 (stream type 0x24), which bsky cannot decode"
+    )]
+    #[case::no_picture(ONE_SEGMENT, Some(vec![0x47; 188 * 4]), "no picture of the video could be decoded")]
+    #[case::segment_missing(ONE_SEGMENT, None, "cannot load the video: HTTP 404")]
+    fn a_video_that_cannot_play_says_why(
+        #[case] playlist: &'static str,
+        #[case] segment: Option<Vec<u8>>,
+        #[case] why: &str,
+    ) {
+        let mut routes = vec![("/media.m3u8", playlist.as_bytes().to_vec())];
+        if let Some(seg) = segment {
+            routes.push(("/seg0.ts", seg));
+        }
+        let base = serve_routes(routes);
+        let (result, frames) = run(&format!("{base}/media.m3u8"));
+        assert_eq!(result, Err(why.to_string()));
+        assert_eq!(frames, 0);
+    }
+
+    #[test]
+    fn a_stopped_player_shows_nothing_more_and_ends_quietly() {
+        let base = serve();
+        let (tx, rx) = channel();
+        let stop = AtomicBool::new(true);
+        let size = Mutex::new((20, 10));
+        let result = play(
+            &Picker::halfblocks(),
+            &format!("{base}/playlist.m3u8"),
+            &stop,
+            &size,
+            &tx,
+        );
+        drop(tx);
+        assert_eq!(result, Ok(()));
+        assert_eq!(rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count(), 0);
+    }
+
+    #[test]
+    fn a_player_ends_with_its_state_and_forgets_the_video_on_drop() {
+        let base = serve();
+        let url = format!("{base}/playlist.m3u8");
+        let mut player = Player::start(Picker::halfblocks(), &url, (20, 10), 1);
+        assert!(player.is(&url, 1));
+        assert!(!player.is(&url, 2));
+        assert_eq!(player.state, State::Loading);
+        player.resize((30, 12));
+        let begin = Instant::now();
+        while player.state != State::Ended && begin.elapsed() < Duration::from_secs(10) {
+            player.poll();
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(player.state, State::Ended);
+        assert!(player.frame().is_some());
+
+        let broken = Player::start(
+            Picker::halfblocks(),
+            &format!("{base}/gone.m3u8"),
+            (20, 10),
+            1,
+        );
+        let mut broken = broken;
+        let begin = Instant::now();
+        while broken.state == State::Loading && begin.elapsed() < Duration::from_secs(10) {
+            broken.poll();
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            broken.state,
+            State::Warning("cannot load the video: HTTP 404".into())
+        );
+        assert!(broken.frame().is_none());
     }
 
     #[test]
