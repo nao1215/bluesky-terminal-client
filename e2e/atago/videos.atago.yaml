@@ -43,6 +43,10 @@ scenarios:
             method: GET
             path: /xrpc/com.atproto.server.getServiceAuth
             json: { token: "svc-token" }
+          - &limits_ok
+            method: GET
+            path: /xrpc/app.bsky.video.getUploadLimits
+            json: { canUpload: true, remainingDailyVideos: 25, remainingDailyBytes: 10737418240 }
           - &upload_video
             method: POST
             path: /xrpc/app.bsky.video.uploadVideo
@@ -108,9 +112,12 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
-      # The token is for the PDS in the DID document, to upload a blob.
+      # Two tokens: one to ask the video service for the upload limits, then
+      # the one to upload with, for the PDS in the DID document.
       - assert:
-          mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, count: 1, query: { name: aud, equals: "did:web:pds.example" } }
+          mock: { name: api, path: /xrpc/app.bsky.video.getUploadLimits, count: 1, header: { name: Authorization, equals: "Bearer svc-token" } }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, count: 2, query: { name: aud, equals: "did:web:pds.example" } }
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, query: { name: lxm, equals: "com.atproto.repo.uploadBlob" } }
       - assert:
@@ -153,6 +160,7 @@ scenarios:
           - *empty_timeline
           - *get_session
           - *service_auth
+          - *limits_ok
           - *upload_video
           - *job_done
           - *create
@@ -215,6 +223,7 @@ scenarios:
           - *empty_timeline
           - *get_session
           - *service_auth
+          - *limits_ok
           - *upload_video
           - method: GET
             path: /xrpc/app.bsky.video.getJobStatus
@@ -256,6 +265,64 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: an account Bluesky will not take videos from says why before anything is sent
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - method: GET
+            path: /xrpc/app.bsky.video.getUploadLimits
+            status: 401
+            json: { canUpload: false, error: unconfirmed_email, message: "Confirm your email address to upload videos" }
+          - *upload_video
+          - *job_done
+          - *create
+    steps:
+      - *session
+      - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 180
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "clip.mp4"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 clip.mp4 (video 0:01)"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: ["Bluesky does not take videos from this account now: Confirm your email address to upload videos", "New post"]
+                not_contains: "log in again"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      # The limits are asked with a token for the video service itself.
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.getServiceAuth, count: 1, query: { name: lxm, equals: "app.bsky.video.getUploadLimits" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 0 }
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 

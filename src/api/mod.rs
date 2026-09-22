@@ -199,6 +199,50 @@ struct JobStatusAnswer {
     job_status: JobStatus,
 }
 
+/// `app.bsky.video.getUploadLimits`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct UploadLimits {
+    can_upload: bool,
+    remaining_daily_videos: Option<u64>,
+    remaining_daily_bytes: Option<u64>,
+    error: Option<String>,
+    message: Option<String>,
+}
+
+impl UploadLimits {
+    /// Why a video of `len` bytes cannot be uploaded now, if it cannot.
+    fn refusal(&self, len: usize) -> Option<Error> {
+        let hint = match self.error.as_deref() {
+            Some("unconfirmed_email") => {
+                Some("confirm the account's email address in the Bluesky app (Settings, Account)")
+            }
+            _ => None,
+        };
+        let why = if !self.can_upload {
+            Some(
+                self.message
+                    .clone()
+                    .or_else(|| self.error.clone())
+                    .unwrap_or_else(|| "no reason given".into()),
+            )
+        } else if self.remaining_daily_videos == Some(0) {
+            Some("the daily number of videos has been reached".into())
+        } else if self.remaining_daily_bytes.is_some_and(|b| b < len as u64) {
+            Some("the video is larger than what is left of today's upload allowance".into())
+        } else {
+            None
+        }?;
+        let err = Error::api(format!(
+            "Bluesky does not take videos from this account now: {why}"
+        ));
+        Some(match hint {
+            Some(h) => err.with_hint(h),
+            None => err,
+        })
+    }
+}
+
 /// The PDS endpoint in an account's DID document.
 fn pds_endpoint(did_doc: &Value) -> Option<String> {
     did_doc
@@ -259,6 +303,39 @@ impl Client {
         did
     }
 
+    /// Whether the video service will take a video of `len` bytes now.
+    fn check_upload_limits(&mut self, video_service: &str, len: usize) -> Result<()> {
+        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
+        let lxm = "app.bsky.video.getUploadLimits";
+        let auth: ServiceAuth = self.get(
+            "com.atproto.server.getServiceAuth",
+            &[
+                ("aud", did_web(video_service).as_str()),
+                ("lxm", lxm),
+                ("exp", exp.as_str()),
+            ],
+        )?;
+        let mut resp = self
+            .agent
+            .get(xrpc_url(video_service, lxm))
+            .header("Authorization", &format!("Bearer {}", auth.token))
+            .call()
+            .map_err(|e| transport(lxm, e))?;
+        let status = resp.status();
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        let limits: UploadLimits = serde_json::from_str(&body).unwrap_or_default();
+        if let Some(e) = limits.refusal(len) {
+            return Err(e);
+        }
+        if !status.is_success() {
+            return Err(Error::api(format!(
+                "{lxm} failed: HTTP {}",
+                status.as_u16()
+            )));
+        }
+        Ok(())
+    }
+
     /// Upload a video (or an animated GIF) through the video service and
     /// wait until it is processed; returns the blob to embed. The service
     /// is authorized with a short-lived token the PDS issues for it.
@@ -270,6 +347,10 @@ impl Client {
         name: &str,
         poll_every: Duration,
     ) -> Result<Value> {
+        // Asked first, as the official app does: a refusal (an unconfirmed
+        // email, the daily allowance) comes with its reason, before the
+        // file is sent.
+        self.check_upload_limits(video_service, bytes.len())?;
         let aud = self.pds_did();
         let exp = (Utc::now().timestamp() + 30 * 60).to_string();
         let auth: ServiceAuth = self.get(
@@ -298,13 +379,20 @@ impl Client {
         // A video uploaded before is answered (409) with the job that has it.
         let mut job: JobStatus = serde_json::from_str(&body).unwrap_or_default();
         if job.job_id.is_empty() && job.blob.is_none() {
+            // The video service's refusal, in its words; a 401 here is about
+            // the account's standing there, not the login, so no hint to log
+            // in again.
             let err: XrpcError = serde_json::from_str(&body).unwrap_or_default();
-            return Err(XrpcFailure {
+            let mut e = XrpcFailure {
                 status: status.as_u16(),
                 error: err.error,
                 message: err.message,
             }
-            .into_error(nsid));
+            .into_error(nsid);
+            if status.as_u16() == 401 {
+                e = Error::api(e.message().to_string());
+            }
+            return Err(e);
         }
         let job_id = job.job_id.clone();
         let deadline = std::time::Instant::now() + UPLOAD_TIMEOUT;
@@ -866,6 +954,44 @@ mod tests {
         assert_eq!(
             v,
             json!({"$type": "app.bsky.actor.profile", "description": "hello", "banner": {"x": 1}})
+        );
+    }
+
+    #[test]
+    fn upload_limits_say_why_a_video_is_refused() {
+        let limits = |v: Value| serde_json::from_value::<UploadLimits>(v).unwrap();
+        let unconfirmed = limits(json!({
+            "canUpload": false, "error": "unconfirmed_email",
+            "message": "Confirm your email address to upload videos"
+        }))
+        .refusal(10)
+        .unwrap();
+        assert!(
+            unconfirmed
+                .message()
+                .ends_with("Confirm your email address to upload videos")
+        );
+        assert!(
+            unconfirmed
+                .to_string()
+                .contains("confirm the account's email")
+        );
+        let ok = json!({"canUpload": true, "remainingDailyVideos": 3, "remainingDailyBytes": 100});
+        assert!(limits(ok.clone()).refusal(100).is_none());
+        assert!(
+            limits(ok)
+                .refusal(101)
+                .unwrap()
+                .message()
+                .contains("allowance")
+        );
+        let none_left = json!({"canUpload": true, "remainingDailyVideos": 0});
+        assert!(
+            limits(none_left)
+                .refusal(1)
+                .unwrap()
+                .message()
+                .contains("daily number")
         );
     }
 
