@@ -1,11 +1,15 @@
 //! A small text editor for the login form, the composer, and the profile editor.
 //!
-//! The buffer is a `Vec<char>` with a cursor index, which keeps editing and
-//! cursor movement exact for multibyte text. Layout wraps by display width at
-//! character boundaries, so CJK text (which has no spaces) wraps too.
+//! The buffer is a `Vec<char>` with a cursor index. The cursor only ever
+//! stops between grapheme clusters (what a reader sees as one character), so
+//! an emoji with a skin tone, a ZWJ family, a flag, or a letter with a
+//! combining accent is stepped over, deleted, and wrapped as one. Layout wraps
+//! by display width at those boundaries, so CJK text (which has no spaces)
+//! wraps too.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// One editable text field.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -100,17 +104,17 @@ impl TextInput {
                 self.cursor = start;
             }
             KeyCode::Enter if self.multiline => self.insert('\n'),
-            KeyCode::Backspace if self.cursor > 0 => {
-                self.cursor -= 1;
-                self.chars.remove(self.cursor);
+            KeyCode::Backspace => {
+                let prev = self.prev_stop();
+                self.chars.drain(prev..self.cursor);
+                self.cursor = prev;
             }
-            KeyCode::Backspace => {}
-            KeyCode::Delete if self.cursor < self.chars.len() => {
-                self.chars.remove(self.cursor);
+            KeyCode::Delete => {
+                let next = self.next_stop();
+                self.chars.drain(self.cursor..next);
             }
-            KeyCode::Delete => {}
-            KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
-            KeyCode::Right => self.cursor = (self.cursor + 1).min(self.chars.len()),
+            KeyCode::Left => self.cursor = self.prev_stop(),
+            KeyCode::Right => self.cursor = self.next_stop(),
             KeyCode::Home => self.cursor = self.line_start(),
             KeyCode::End => self.cursor = self.line_end(),
             KeyCode::Up if self.multiline => self.vertical(-1),
@@ -118,6 +122,52 @@ impl TextInput {
             _ => return false,
         }
         true
+    }
+
+    /// The char indices the cursor may stop at: every grapheme cluster
+    /// boundary, from 0 to the end of the text.
+    fn stops(&self) -> Vec<usize> {
+        let text = self.text();
+        let mut stops = vec![0];
+        let mut at = 0;
+        for g in text.graphemes(true) {
+            at += g.chars().count();
+            stops.push(at);
+        }
+        stops
+    }
+
+    fn prev_stop(&self) -> usize {
+        self.stops()
+            .into_iter()
+            .rev()
+            .find(|&i| i < self.cursor)
+            .unwrap_or(0)
+    }
+
+    fn next_stop(&self) -> usize {
+        self.stops()
+            .into_iter()
+            .find(|&i| i > self.cursor)
+            .unwrap_or(self.chars.len())
+    }
+
+    /// How many clusters lie between the char indices `from` and `to`.
+    fn clusters_between(stops: &[usize], from: usize, to: usize) -> usize {
+        stops.iter().filter(|&&i| i > from && i <= to).count()
+    }
+
+    /// The char index `n` clusters after `from`, but not past `limit`.
+    fn advance(stops: &[usize], from: usize, n: usize, limit: usize) -> usize {
+        if n == 0 {
+            return from;
+        }
+        stops
+            .iter()
+            .copied()
+            .filter(|&i| i > from && i <= limit)
+            .nth(n - 1)
+            .unwrap_or(limit)
     }
 
     fn line_start(&self) -> usize {
@@ -134,9 +184,11 @@ impl TextInput {
             .map_or(self.chars.len(), |i| self.cursor + i)
     }
 
-    /// Move to the same column of the previous or next logical line.
+    /// Move to the same column, counted in clusters, of the previous or
+    /// next logical line.
     fn vertical(&mut self, dir: i32) {
-        let col = self.cursor - self.line_start();
+        let stops = self.stops();
+        let col = Self::clusters_between(&stops, self.line_start(), self.cursor);
         if dir < 0 {
             let start = self.line_start();
             if start == 0 {
@@ -145,7 +197,7 @@ impl TextInput {
             }
             self.cursor = start - 1;
             let prev_start = self.line_start();
-            self.cursor = (prev_start + col).min(start - 1);
+            self.cursor = Self::advance(&stops, prev_start, col, start - 1);
         } else {
             let end = self.line_end();
             if end == self.chars.len() {
@@ -154,7 +206,7 @@ impl TextInput {
             }
             self.cursor = end + 1;
             let next_end = self.line_end();
-            self.cursor = (end + 1 + col).min(next_end);
+            self.cursor = Self::advance(&stops, end + 1, col, next_end);
         }
     }
 
@@ -164,25 +216,28 @@ impl TextInput {
         let mut lines = vec![String::new()];
         let mut col = 0usize;
         let mut cursor = (0, 0);
-        for (i, &c) in self.chars.iter().enumerate() {
+        let text = self.text();
+        let mut i = 0;
+        for g in text.graphemes(true) {
             if i == self.cursor {
                 cursor = (lines.len() - 1, col);
             }
-            if c == '\n' {
+            i += g.chars().count();
+            if g == "\n" {
                 lines.push(String::new());
                 col = 0;
                 continue;
             }
-            let shown = if self.masked { '•' } else { c };
-            let w = shown.width().unwrap_or(0);
+            let shown = if self.masked { "•" } else { g };
+            let w = shown.width();
             if col + w > width {
                 lines.push(String::new());
                 col = 0;
-                if i == self.cursor {
+                if i - g.chars().count() == self.cursor {
                     cursor = (lines.len() - 1, 0);
                 }
             }
-            lines.last_mut().unwrap().push(shown);
+            lines.last_mut().unwrap().push_str(shown);
             col += w;
         }
         if self.cursor == self.chars.len() {
@@ -278,6 +333,67 @@ mod tests {
         typed(&mut t, "secret");
         assert_eq!(t.layout(20).lines, ["••••••"]);
         assert_eq!(t.text(), "secret");
+    }
+
+    /// Emoji and other characters made of several code points, each with
+    /// the text before and after it so the edits land between them.
+    const CLUSTERS: &[&str] = &["👍🏽", "👨‍👩‍👧‍👦", "🇯🇵", "1️⃣", "❤️", "e\u{301}"];
+
+    #[test]
+    fn backspace_and_delete_remove_a_whole_emoji() {
+        for c in CLUSTERS {
+            let mut t = TextInput::single(&format!("a{c}"));
+            t.handle_key(key(KeyCode::Backspace));
+            assert_eq!(t.text(), "a", "backspace after {c:?}");
+
+            let mut t = TextInput::single(&format!("{c}b"));
+            t.handle_key(key(KeyCode::Home));
+            t.handle_key(key(KeyCode::Delete));
+            assert_eq!(t.text(), "b", "delete before {c:?}");
+        }
+    }
+
+    #[test]
+    fn the_cursor_steps_over_an_emoji_and_never_lands_inside_it() {
+        for c in CLUSTERS {
+            let mut t = TextInput::single(&format!("a{c}b"));
+            t.handle_key(key(KeyCode::Left));
+            t.handle_key(key(KeyCode::Left));
+            typed(&mut t, "x");
+            assert_eq!(t.text(), format!("ax{c}b"), "left over {c:?}");
+            t.handle_key(key(KeyCode::Right));
+            typed(&mut t, "y");
+            assert_eq!(t.text(), format!("ax{c}yb"), "right over {c:?}");
+        }
+    }
+
+    #[test]
+    fn an_emoji_takes_its_display_width_and_is_never_split_across_lines() {
+        let t = TextInput::single("👨‍👩‍👧‍👦");
+        assert_eq!(t.layout(20).cursor, (0, 2));
+        let t = TextInput::single("a👍🏽");
+        assert_eq!(t.layout(20).cursor, (0, 3));
+        let t = TextInput::multi("👍🏽👍🏽👍🏽");
+        let l = t.layout(4);
+        assert_eq!(l.lines, ["👍🏽👍🏽", "👍🏽"]);
+        assert_eq!(l.cursor, (1, 2));
+    }
+
+    #[test]
+    fn vertical_moves_count_an_emoji_as_one_column_step() {
+        let mut t = TextInput::multi("👨‍👩‍👧‍👦x\nab");
+        t.handle_key(key(KeyCode::Up));
+        typed(&mut t, "!");
+        assert_eq!(t.text(), "👨‍👩‍👧‍👦x!\nab");
+    }
+
+    #[test]
+    fn vertical_moves_from_a_line_start_stay_at_the_line_start() {
+        let mut t = TextInput::multi("👍🏽x\nab");
+        t.handle_key(key(KeyCode::Home));
+        t.handle_key(key(KeyCode::Up));
+        typed(&mut t, "!");
+        assert_eq!(t.text(), "!👍🏽x\nab");
     }
 
     #[test]

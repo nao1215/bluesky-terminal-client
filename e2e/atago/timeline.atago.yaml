@@ -464,6 +464,119 @@ scenarios:
                 - { path: "$.record.facets[2].index.byteEnd", equals: 46 }
                 - { path: "$.record.facets[2].features[0].uri", equals: "https://example.com/a" }
 
+  - name: a tag ends before full-width punctuation, and digits with punctuation are no tag
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "日本語の #タグ！ と #1.5"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "日本語の #タグ！ と #1.5" }
+                # Bluesky's app tags "タグ" here: "！" ends the sentence, and
+                # "#1.5" has no character that is not a digit or punctuation.
+                - { path: "$.record.facets", length: 1 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 13 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 20 }
+                - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
+
+  # Emoji made of several code points are edited as one character: Backspace
+  # takes the whole thumbs-up with its skin tone, and Left steps over the whole
+  # family, so the text sent has no half emoji and the link's byte range is
+  # counted over the full sequences.
+  - name: emoji are edited as whole characters and the link after them keeps its byte range
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "家族👨‍👩‍👧‍👦👍🏽"
+            - expect_screen:
+                contains: "家族👨‍👩‍👧‍👦👍🏽"
+            - send: { key: backspace }
+            - expect_screen:
+                not_contains: "👍"
+            - send: { key: left }
+            - send: "が"
+            - send: { key: end }
+            - send: " （https://example.com） 🇯🇵"
+            - expect_screen:
+                contains: "家族が👨‍👩‍👧‍👦 （https://example.com） 🇯🇵"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "家族が👨‍👩‍👧‍👦 （https://example.com） 🇯🇵" }
+                # 9 bytes of kana and kanji, 25 of the family, a space, and
+                # the 3-byte full-width parenthesis, which is not in the link.
+                - { path: "$.record.facets", length: 1 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 38 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 57 }
+                - { path: "$.record.facets[0].features[0].uri", equals: "https://example.com" }
+
   - name: an empty post is refused before anything is sent
     skip:
       os: windows
