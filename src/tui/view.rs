@@ -1538,12 +1538,20 @@ fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, t: &Theme) 
 /// selected one marked. The rest of the screen already shows it, since
 /// moving the selection applies it.
 fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
+    let n = THEMES.len();
+    // As many as fit; the window follows the selection, keeping it in the
+    // middle where it can.
+    let rows = usize::from(area.height.saturating_sub(6)).clamp(1, n);
+    let first = selected.saturating_sub(rows / 2).min(n - rows);
+    let width = THEMES.iter().map(|t| t.name.len()).max().unwrap_or(0) + 1;
     let lines: Vec<Line> = THEMES
         .iter()
         .enumerate()
+        .skip(first)
+        .take(rows)
         .map(|(i, theme)| {
             let marker = if i == selected { "▶ " } else { "  " };
-            let name = format!("{marker}{:<13}", theme.name);
+            let name = format!("{marker}{:<width$}", theme.name);
             let mut spans = vec![if i == selected {
                 Span::styled(name, t.accent().bold())
             } else {
@@ -1556,11 +1564,12 @@ fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
             Line::from(spans)
         })
         .collect();
-    let inner = popup(frame, area, 40, lines.len() as u16 + 4, "Theme", t);
+    let w = (width + 2 + 10 + 4) as u16;
+    let inner = popup(frame, area, w.max(34), rows as u16 + 4, "Theme", t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(lines), body);
     frame.render_widget(
-        Paragraph::new(" enter apply  esc cancel").style(t.dim()),
+        Paragraph::new(format!(" {}/{n}  enter apply  esc cancel", selected + 1)).style(t.dim()),
         foot,
     );
 }
@@ -1833,14 +1842,15 @@ mod tests {
     }
 
     #[test]
-    fn the_picker_lists_every_theme() {
+    fn the_picker_lists_every_theme_on_a_tall_screen() {
         let (mut app, _) = App::new(Some(session()), "x");
+        let nord = crate::tui::theme::index_of("nord").unwrap();
         app.overlay = Some(Overlay::Themes {
-            selected: 3,
+            selected: nord,
             previous: 0,
         });
-        let screen = render(&mut app, 100, 30);
-        for theme in crate::tui::theme::THEMES.iter() {
+        let screen = render(&mut app, 100, 60);
+        for theme in THEMES.iter() {
             assert!(
                 screen.contains(theme.name),
                 "{} missing:\n{screen}",
@@ -1848,6 +1858,26 @@ mod tests {
             );
         }
         assert!(screen.contains("▶ nord"), "{screen}");
+    }
+
+    #[test]
+    fn the_picker_scrolls_to_keep_the_selection_on_a_short_screen() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let last = THEMES.len() - 1;
+        app.overlay = Some(Overlay::Themes {
+            selected: last,
+            previous: 0,
+        });
+        let screen = render(&mut app, 80, 20);
+        assert!(screen.contains("▶ monochrome"), "{screen}");
+        assert!(
+            screen.contains(&format!("{}/{}", last + 1, THEMES.len())),
+            "{screen}"
+        );
+        assert!(
+            !screen.contains("  bluesky "),
+            "the top has scrolled away:\n{screen}"
+        );
     }
 
     #[test]

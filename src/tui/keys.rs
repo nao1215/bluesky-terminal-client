@@ -119,6 +119,7 @@ pub const HELP: &[Section] = &[
         title: "Theme picker",
         keys: &[
             ("j k", "preview the next / previous theme"),
+            ("g G pgdn pgup", "first / last / ten further"),
             ("enter", "use it and remember it"),
             ("esc", "go back to the theme you had"),
         ],

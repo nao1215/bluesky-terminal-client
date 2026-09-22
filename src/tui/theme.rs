@@ -4,7 +4,8 @@
 //! errors, likes, ...), and every drawing function asks the theme for its
 //! styles instead of naming colors itself.
 //!
-//! `default` uses the sixteen ANSI colors, so it follows the terminal's own
+//! `bluesky`, the default, draws in the colors of Bluesky's own app.
+//! `terminal` uses the sixteen ANSI colors, so it follows the terminal's own
 //! palette; `monochrome` uses no color at all and marks emphasis with bold
 //! and reverse video. The others are 24-bit palettes. On a terminal that does
 //! not announce 24-bit color they are mapped to the nearest xterm-256 colors,
@@ -59,10 +60,34 @@ const fn palette(
     }
 }
 
-/// The built-in themes, in the order the picker lists them.
-pub static THEMES: [Theme; 9] = [
+/// The built-in themes, in the order the picker lists them: Bluesky's own
+/// looks first (`bluesky`, its "dim" look, is the default), then the
+/// terminal's palette, then well-known editor and terminal themes by name,
+/// and `monochrome` last.
+pub static THEMES: [Theme; 42] = [
+    palette(
+        "bluesky",
+        [
+            0x161e27, 0xf1f3f5, 0x8b98a5, 0x1185fe, 0xffffff, 0xff5c5c, 0x20bc07, 0xec4899,
+            0x20bc07,
+        ],
+    ),
+    palette(
+        "bluesky-dark",
+        [
+            0x000000, 0xffffff, 0x8b98a5, 0x1185fe, 0xffffff, 0xff5c5c, 0x20bc07, 0xec4899,
+            0x20bc07,
+        ],
+    ),
+    palette(
+        "bluesky-light",
+        [
+            0xffffff, 0x0b0f14, 0x6e7d8c, 0x1185fe, 0xffffff, 0xe0245e, 0x13a60b, 0xec4899,
+            0x13a60b,
+        ],
+    ),
     Theme {
-        name: "default",
+        name: "terminal",
         bg: Color::Reset,
         fg: Color::Reset,
         dim: Color::DarkGray,
@@ -75,10 +100,52 @@ pub static THEMES: [Theme; 9] = [
         mono: false,
     },
     palette(
-        "light",
+        "ayu-dark",
         [
-            0xfafafa, 0x1f2328, 0x6e7781, 0x0969da, 0xffffff, 0xcf222e, 0x1a7f37, 0xbf3989,
-            0x1a7f37,
+            0x0b0e14, 0xbfbdb6, 0x565b66, 0xe6b450, 0x0b0e14, 0xd95757, 0x7fd962, 0xf07178,
+            0x95e6cb,
+        ],
+    ),
+    palette(
+        "ayu-light",
+        [
+            0xfcfcfc, 0x5c6166, 0x8a9199, 0xff9940, 0xfcfcfc, 0xe65050, 0x86b300, 0xf07171,
+            0x4cbf99,
+        ],
+    ),
+    palette(
+        "catppuccin-frappe",
+        [
+            0x303446, 0xc6d0f5, 0x838ba7, 0xca9ee6, 0x303446, 0xe78284, 0xa6d189, 0xf4b8e4,
+            0x81c8be,
+        ],
+    ),
+    palette(
+        "catppuccin-latte",
+        [
+            0xeff1f5, 0x4c4f69, 0x8c8fa1, 0x8839ef, 0xeff1f5, 0xd20f39, 0x40a02b, 0xea76cb,
+            0x179299,
+        ],
+    ),
+    palette(
+        "catppuccin-macchiato",
+        [
+            0x24273a, 0xcad3f5, 0x8087a2, 0xc6a0f6, 0x24273a, 0xed8796, 0xa6da95, 0xf5bde6,
+            0x8bd5ca,
+        ],
+    ),
+    palette(
+        "catppuccin-mocha",
+        [
+            0x1e1e2e, 0xcdd6f4, 0x7f849c, 0xcba6f7, 0x1e1e2e, 0xf38ba8, 0xa6e3a1, 0xf5c2e7,
+            0x94e2d5,
+        ],
+    ),
+    palette(
+        "cobalt2",
+        [
+            0x193549, 0xffffff, 0x8aa4b8, 0xffc600, 0x193549, 0xff628c, 0x3ad900, 0xff9d00,
+            0x2affdf,
         ],
     ),
     palette(
@@ -89,10 +156,24 @@ pub static THEMES: [Theme; 9] = [
         ],
     ),
     palette(
-        "nord",
+        "everforest",
         [
-            0x2e3440, 0xeceff4, 0x7b88a1, 0x88c0d0, 0x2e3440, 0xbf616a, 0xa3be8c, 0xb48ead,
-            0xa3be8c,
+            0x2d353b, 0xd3c6aa, 0x859289, 0xa7c080, 0x2d353b, 0xe67e80, 0xa7c080, 0xd699b6,
+            0x83c092,
+        ],
+    ),
+    palette(
+        "github-dark",
+        [
+            0x0d1117, 0xe6edf3, 0x7d8590, 0x2f81f7, 0xffffff, 0xf85149, 0x3fb950, 0xdb61a2,
+            0x3fb950,
+        ],
+    ),
+    palette(
+        "github-light",
+        [
+            0xffffff, 0x1f2328, 0x656d76, 0x0969da, 0xffffff, 0xcf222e, 0x1a7f37, 0xbf3989,
+            0x1a7f37,
         ],
     ),
     palette(
@@ -103,6 +184,125 @@ pub static THEMES: [Theme; 9] = [
         ],
     ),
     palette(
+        "gruvbox-light",
+        [
+            0xfbf1c7, 0x3c3836, 0x928374, 0xb57614, 0xfbf1c7, 0x9d0006, 0x79740e, 0x8f3f71,
+            0x427b58,
+        ],
+    ),
+    palette(
+        "horizon",
+        [
+            0x1c1e26, 0xd5d8da, 0x6c6f93, 0x26bbd9, 0x1c1e26, 0xe95678, 0x29d398, 0xee64ac,
+            0x59e3e3,
+        ],
+    ),
+    palette(
+        "iceberg",
+        [
+            0x161821, 0xc6c8d1, 0x6b7089, 0x84a0c6, 0x161821, 0xe27878, 0xb4be82, 0xa093c7,
+            0x89b8c2,
+        ],
+    ),
+    palette(
+        "kanagawa",
+        [
+            0x1f1f28, 0xdcd7ba, 0x727169, 0x7e9cd8, 0x1f1f28, 0xe82424, 0x98bb6c, 0xd27e99,
+            0x7aa89f,
+        ],
+    ),
+    palette(
+        "material",
+        [
+            0x263238, 0xeeffff, 0x546e7a, 0x82aaff, 0x263238, 0xf07178, 0xc3e88d, 0xc792ea,
+            0x89ddff,
+        ],
+    ),
+    palette(
+        "monokai",
+        [
+            0x272822, 0xf8f8f2, 0x75715e, 0x66d9ef, 0x272822, 0xf92672, 0xa6e22e, 0xae81ff,
+            0xa6e22e,
+        ],
+    ),
+    palette(
+        "night-owl",
+        [
+            0x011627, 0xd6deeb, 0x637777, 0x82aaff, 0x011627, 0xef5350, 0x22da6e, 0xc792ea,
+            0x7fdbca,
+        ],
+    ),
+    palette(
+        "nightfox",
+        [
+            0x192330, 0xcdcecf, 0x738091, 0x719cd6, 0x192330, 0xc94f6d, 0x81b29a, 0x9d79d6,
+            0x63cdcf,
+        ],
+    ),
+    palette(
+        "nord",
+        [
+            0x2e3440, 0xeceff4, 0x7b88a1, 0x88c0d0, 0x2e3440, 0xbf616a, 0xa3be8c, 0xb48ead,
+            0xa3be8c,
+        ],
+    ),
+    palette(
+        "oceanic-next",
+        [
+            0x1b2b34, 0xd8dee9, 0x65737e, 0x6699cc, 0x1b2b34, 0xec5f67, 0x99c794, 0xc594c5,
+            0x5fb3b3,
+        ],
+    ),
+    palette(
+        "one-dark",
+        [
+            0x282c34, 0xabb2bf, 0x5c6370, 0x61afef, 0x282c34, 0xe06c75, 0x98c379, 0xc678dd,
+            0x56b6c2,
+        ],
+    ),
+    palette(
+        "one-light",
+        [
+            0xfafafa, 0x383a42, 0xa0a1a7, 0x4078f2, 0xfafafa, 0xe45649, 0x50a14f, 0xa626a4,
+            0x0184bc,
+        ],
+    ),
+    palette(
+        "palenight",
+        [
+            0x292d3e, 0xa6accd, 0x676e95, 0x82aaff, 0x292d3e, 0xff5370, 0xc3e88d, 0xc792ea,
+            0x89ddff,
+        ],
+    ),
+    palette(
+        "papercolor-light",
+        [
+            0xeeeeee, 0x444444, 0x878787, 0x005f87, 0xeeeeee, 0xaf0000, 0x008700, 0xd7005f,
+            0x0087af,
+        ],
+    ),
+    palette(
+        "rose-pine",
+        [
+            0x191724, 0xe0def4, 0x6e6a86, 0xc4a7e7, 0x191724, 0xeb6f92, 0x9ccfd8, 0xebbcba,
+            0x9ccfd8,
+        ],
+    ),
+    palette(
+        "rose-pine-dawn",
+        [
+            0xfaf4ed, 0x575279, 0x9893a5, 0x907aa9, 0xfaf4ed, 0xb4637a, 0x286983, 0xd7827e,
+            0x56949f,
+        ],
+    ),
+    palette(
+        "rose-pine-moon",
+        [
+            0x232136, 0xe0def4, 0x6e6a86, 0xc4a7e7, 0x232136, 0xeb6f92, 0x9ccfd8, 0xea9a97,
+            0x9ccfd8,
+        ],
+    ),
+    palette(
         "solarized",
         [
             0x002b36, 0x93a1a1, 0x657b83, 0x268bd2, 0xfdf6e3, 0xdc322f, 0x859900, 0xd33682,
@@ -110,10 +310,17 @@ pub static THEMES: [Theme; 9] = [
         ],
     ),
     palette(
-        "catppuccin",
+        "solarized-light",
         [
-            0x1e1e2e, 0xcdd6f4, 0x7f849c, 0xcba6f7, 0x1e1e2e, 0xf38ba8, 0xa6e3a1, 0xf5c2e7,
-            0x94e2d5,
+            0xfdf6e3, 0x586e75, 0x93a1a1, 0x268bd2, 0xfdf6e3, 0xdc322f, 0x859900, 0xd33682,
+            0x2aa198,
+        ],
+    ),
+    palette(
+        "synthwave-84",
+        [
+            0x262335, 0xffffff, 0x848bbd, 0xff7edb, 0x262335, 0xfe4450, 0x72f1b8, 0xff7edb,
+            0x36f9f6,
         ],
     ),
     palette(
@@ -121,6 +328,34 @@ pub static THEMES: [Theme; 9] = [
         [
             0x1a1b26, 0xc0caf5, 0x737aa2, 0x7aa2f7, 0x1a1b26, 0xf7768e, 0x9ece6a, 0xbb9af7,
             0x73daca,
+        ],
+    ),
+    palette(
+        "tokyo-night-day",
+        [
+            0xe1e2e7, 0x3760bf, 0x848cb5, 0x2e7de9, 0xe1e2e7, 0xf52a65, 0x587539, 0x9854f1,
+            0x118c74,
+        ],
+    ),
+    palette(
+        "tokyo-night-storm",
+        [
+            0x24283b, 0xc0caf5, 0x737aa2, 0x7aa2f7, 0x24283b, 0xf7768e, 0x9ece6a, 0xbb9af7,
+            0x73daca,
+        ],
+    ),
+    palette(
+        "tomorrow-night",
+        [
+            0x1d1f21, 0xc5c8c6, 0x969896, 0x81a2be, 0x1d1f21, 0xcc6666, 0xb5bd68, 0xb294bb,
+            0x8abeb7,
+        ],
+    ),
+    palette(
+        "zenburn",
+        [
+            0x3f3f3f, 0xdcdccc, 0x7f9f7f, 0x8cd0d3, 0x3f3f3f, 0xcc9393, 0x9fc59f, 0xdc8cc3,
+            0x93e0e3,
         ],
     ),
     Theme {
@@ -138,11 +373,23 @@ pub static THEMES: [Theme; 9] = [
     },
 ];
 
+/// Names themes had before, still read from `settings.json`.
+const OLD_NAMES: [(&str, &str); 3] = [
+    ("default", "terminal"),
+    ("light", "github-light"),
+    ("catppuccin", "catppuccin-mocha"),
+];
+
 /// Index of the theme named `name`, ignoring case.
 pub fn index_of(name: &str) -> Option<usize> {
+    let name = name.trim();
+    let name = OLD_NAMES
+        .iter()
+        .find(|(old, _)| old.eq_ignore_ascii_case(name))
+        .map_or(name, |(_, new)| new);
     THEMES
         .iter()
-        .position(|t| t.name.eq_ignore_ascii_case(name.trim()))
+        .position(|t| t.name.eq_ignore_ascii_case(name))
 }
 
 /// Index of `monochrome`, which `NO_COLOR` forces.
@@ -384,11 +631,48 @@ mod tests {
     }
 
     #[test]
-    fn the_default_theme_follows_the_terminal_palette() {
-        let t = THEMES[0];
-        assert_eq!(t.name, "default");
+    fn the_default_is_bluesky_and_terminal_follows_the_palette() {
+        assert_eq!(THEMES[0].name, "bluesky");
+        assert_eq!(THEMES[0].accent, rgb(0x1185fe), "Bluesky's blue");
+        let t = THEMES[index_of("terminal").unwrap()];
         for c in [t.bg, t.fg, t.dim, t.accent, t.error, t.like] {
             assert!(!matches!(c, Color::Rgb(..) | Color::Indexed(_)), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn old_theme_names_still_load() {
+        assert_eq!(THEMES[index_of("default").unwrap()].name, "terminal");
+        assert_eq!(THEMES[index_of("Light").unwrap()].name, "github-light");
+        assert_eq!(
+            THEMES[index_of("catppuccin").unwrap()].name,
+            "catppuccin-mocha"
+        );
+    }
+
+    #[test]
+    fn every_theme_keeps_its_text_readable() {
+        // Rough WCAG luminance contrast: text and accents against the
+        // background, so no theme hides what it draws.
+        let lum = |c: Color| {
+            let Color::Rgb(r, g, b) = c else { return None };
+            let ch = |v: u8| {
+                let v = f64::from(v) / 255.0;
+                if v <= 0.039_28 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            Some(0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b))
+        };
+        let contrast = |a: f64, b: f64| (a.max(b) + 0.05) / (a.min(b) + 0.05);
+        for t in THEMES.iter().filter(|t| matches!(t.bg, Color::Rgb(..))) {
+            let bg = lum(t.bg).unwrap();
+            assert!(contrast(bg, lum(t.fg).unwrap()) >= 4.5, "{}: text", t.name);
+            for (role, c) in [("accent", t.accent), ("like", t.like), ("error", t.error)] {
+                assert!(contrast(bg, lum(c).unwrap()) >= 2.0, "{}: {role}", t.name);
+            }
         }
     }
 

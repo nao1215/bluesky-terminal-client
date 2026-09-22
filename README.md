@@ -11,7 +11,7 @@ bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures 
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
 - Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
 - Attach up to four pictures, or one video or animated GIF, to a post, chosen in a folder browser that previews them, each with alt text. Videos on the timeline are shown by their thumbnail.
-- Nine color themes, previewed live and remembered.
+- Bluesky's own colors by default, and 42 themes in all (Dracula, Nord, Gruvbox, Solarized, Catppuccin, Tokyo Night, Rosé Pine, One Dark, GitHub, and more), previewed live and remembered.
 - The keys for the current view are always on screen, and `?` lists all of them.
 - A terminal that cannot draw images is refused at startup instead of giving you a client that silently drops every picture.
 
@@ -110,9 +110,16 @@ A video (at most 100 MB and 3 minutes) or animated GIF is uploaded to Bluesky's 
 
 ## Themes
 
-`T` opens the theme picker: `default`, `light`, `dracula`, `nord`, `gruvbox`, `solarized`, `catppuccin`, `tokyo-night`, and `monochrome`. Moving the selection redraws the screen in that theme; `Enter` keeps it and `Esc` goes back to the one you had. The choice is saved in `settings.json` in the config directory, which bs writes only when you apply a theme.
+`T` opens the theme picker. Moving the selection (`j` `k`, `g` `G`, `PgUp` `PgDn`) redraws the screen in that theme; `Enter` keeps it and `Esc` goes back to the one you had. The choice is saved in `settings.json` in the config directory, which bs writes only when you apply a theme.
 
-`default` uses your terminal's own sixteen colors. The others are 24-bit palettes; on a terminal that does not set `COLORTERM=truecolor` they are drawn with the nearest of the 256 standard colors. With `NO_COLOR` set, bs draws without color.
+| Themes | |
+|--------|-|
+| Bluesky | `bluesky` (the default, Bluesky's "dim" look), `bluesky-dark`, `bluesky-light` |
+| Dark | `ayu-dark`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `cobalt2`, `dracula`, `everforest`, `github-dark`, `gruvbox`, `horizon`, `iceberg`, `kanagawa`, `material`, `monokai`, `night-owl`, `nightfox`, `nord`, `oceanic-next`, `one-dark`, `palenight`, `rose-pine`, `rose-pine-moon`, `solarized`, `synthwave-84`, `tokyo-night`, `tokyo-night-storm`, `tomorrow-night`, `zenburn` |
+| Light | `ayu-light`, `catppuccin-latte`, `github-light`, `gruvbox-light`, `one-light`, `papercolor-light`, `rose-pine-dawn`, `solarized-light`, `tokyo-night-day` |
+| Terminal | `terminal` (your terminal's own palette), `monochrome` (no color) |
+
+`terminal` uses your terminal's own sixteen colors. The others are 24-bit palettes; on a terminal that does not set `COLORTERM=truecolor` they are drawn with the nearest of the 256 standard colors. With `NO_COLOR` set, bs draws without color.
 
 ## Configuration
 

@@ -42,15 +42,15 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: T
             - expect_screen:
-                contains: ["Theme", "▶ default", "light", "dracula", "nord", "gruvbox", "solarized", "catppuccin", "tokyo-night", "monochrome", "enter apply"]
-            # Two down is dracula; the screen is already drawn in it.
+                contains: ["Theme", "▶ bluesky", "bluesky-dark", "bluesky-light", "terminal", "catppuccin-mocha", "dracula", "1/42  enter apply"]
+            # Two down is bluesky-light; the screen is already drawn in it.
             - send: j
             - send: j
             - expect_screen:
-                contains: "▶ dracula"
+                contains: ["▶ bluesky-light", "3/42"]
             - send: { key: enter }
             - expect_screen:
-                contains: "theme: dracula"
+                contains: "theme: bluesky-light"
                 not_contains: "enter apply"
             - send: q
       - assert:
@@ -58,7 +58,7 @@ scenarios:
       - assert:
           file:
             path: cfg/settings.json
-            json: { path: "$.theme", equals: "dracula" }
+            json: { path: "$.theme", equals: "bluesky-light" }
       # The session file is untouched by a theme change.
       - assert:
           file:
@@ -85,10 +85,10 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: T
             - expect_screen:
-                contains: "▶ default"
+                contains: "▶ bluesky"
             - send: j
             - expect_screen:
-                contains: "▶ light"
+                contains: "▶ bluesky-dark"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "enter apply"
@@ -128,7 +128,7 @@ scenarios:
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: "theme: gruvbox"
+                contains: "theme: oceanic-next"
             - send: q
       - assert:
           exit_code: 0
@@ -136,7 +136,7 @@ scenarios:
           file:
             path: cfg/settings.json
             json:
-              - { path: "$.theme", equals: "gruvbox" }
+              - { path: "$.theme", equals: "oceanic-next" }
               - { path: "$.keep['written by']", equals: "a newer bs" }
 
   - name: a broken settings file is reported, ignored, and left alone
@@ -164,13 +164,13 @@ scenarios:
             # A theme can still be used, but saving it would lose the file.
             - send: T
             - expect_screen:
-                contains: "▶ default"
+                contains: "▶ bluesky"
             - send: j
             - expect_screen:
-                contains: "▶ light"
+                contains: "▶ bluesky-dark"
             - send: { key: enter }
             - expect_screen:
-                contains: "theme: light for this session only"
+                contains: "theme: bluesky-dark for this session only"
             - send: q
       - assert:
           exit_code: 0
@@ -179,7 +179,7 @@ scenarios:
             modified: []
             deleted: []
 
-  - name: an unknown theme name falls back to default and says so
+  - name: an unknown theme name falls back to bluesky and says so
     skip:
       os: windows
     mock_servers:
@@ -198,7 +198,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: 'unknown theme "neon"; using default'
+                contains: 'unknown theme "neon"; using bluesky'
             - send: q
       - assert:
           exit_code: 0

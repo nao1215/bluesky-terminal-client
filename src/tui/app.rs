@@ -504,7 +504,7 @@ impl App {
         let mut warning = warning;
         let index = match settings.theme.as_deref() {
             Some(name) => theme::index_of(name).unwrap_or_else(|| {
-                warning = Some(format!("unknown theme {name:?}; using default"));
+                warning = Some(format!("unknown theme {name:?}; using {}", THEMES[0].name));
                 0
             }),
             None => 0,
@@ -688,6 +688,10 @@ impl App {
                 let pick = match key.code {
                     KeyCode::Char('j') | KeyCode::Down => Some((selected + 1) % n),
                     KeyCode::Char('k') | KeyCode::Up => Some((selected + n - 1) % n),
+                    KeyCode::PageDown => Some((selected + 10).min(n - 1)),
+                    KeyCode::PageUp => Some(selected.saturating_sub(10)),
+                    KeyCode::Char('g') | KeyCode::Home => Some(0),
+                    KeyCode::Char('G') | KeyCode::End => Some(n - 1),
                     KeyCode::Enter => {
                         self.overlay = None;
                         self.settings.theme = Some(THEMES[selected].name.to_string());
@@ -2292,7 +2296,7 @@ mod tests {
             ..Settings::default()
         };
         app.apply_settings(settings, ColorDepth::TrueColor, None);
-        assert_eq!(app.theme.name, "default");
+        assert_eq!(app.theme.name, "bluesky");
         assert!(
             app.status
                 .as_ref()
