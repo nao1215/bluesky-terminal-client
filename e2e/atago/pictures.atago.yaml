@@ -2,13 +2,13 @@
 # the selected picture (ctrl+o), attaching up to four to a post with alt text,
 # and choosing a new avatar the same way.
 #
-# bs runs in the workdir, so the browser opens there: cfg/ (the session) and
+# bsky runs in the workdir, so the browser opens there: cfg/ (the session) and
 # the pics/ folder each scenario sets up. The pictures are the solid-color
 # PNGs of testdata, and a "picture" that is really text.
 version: "1"
 
 suite:
-  name: bs pictures
+  name: bsky pictures
 
 scenarios:
   - name: two pictures from two folders are posted with their alt text and shape
@@ -46,13 +46,13 @@ scenarios:
           file: pics/notes.txt
           content: "not a picture, and not listed"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -161,7 +161,7 @@ scenarios:
           file: pics/broken.png
           content: "only text"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110
@@ -213,7 +213,7 @@ scenarios:
             # No text is needed with pictures; the unreadable one is named.
             - send: { key: ctrl-s }
             - expect_screen:
-                contains: ["broken.png is not a picture bs can read", "New post"]
+                contains: ["broken.png is not a picture bsky can read", "New post"]
             # The draft and its pictures are still there.
             - expect_screen:
                 contains: ["1 p1.png", "4 broken.png"]
@@ -260,7 +260,7 @@ scenarios:
       - fixture: { file: me.png, from: testdata/new-avatar.png }
       - fixture: { file: .hidden.png, from: testdata/avatar-bob.png }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110

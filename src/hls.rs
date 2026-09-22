@@ -91,7 +91,7 @@ const H264: u8 = 0x1b;
 pub struct Demuxer {
     pmt_pid: Option<u16>,
     video_pid: Option<u16>,
-    /// The program's video stream is of a type bs cannot decode.
+    /// The program's video stream is of a type bsky cannot decode.
     pub unsupported: Option<u8>,
     pes: Vec<u8>,
     pes_pts: Option<u64>,

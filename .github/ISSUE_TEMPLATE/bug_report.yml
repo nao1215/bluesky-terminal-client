@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in bs
+description: Report a bug in bsky
 labels: ["bug"]
 body:
   - type: textarea
@@ -14,7 +14,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run `bs`
+        1. Run `bsky`
         2. Open the Search tab and search for ...
         3. See error ...
     validations:
@@ -28,8 +28,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: bs version
-      description: Output of `bs --version`.
+      label: bsky version
+      description: Output of `bsky --version`.
     validations:
       required: true
   - type: input

@@ -3,12 +3,12 @@
 #
 # The list has a reply and a like (both unread), a follow, a like of a repost
 # (its subject is a repost URI, which getPosts cannot return), and a reason
-# this version of bs does not know. updateSeen answers 200 with an empty
+# this version of bsky does not know. updateSeen answers 200 with an empty
 # body, as the real service does.
 version: "1"
 
 suite:
-  name: bs notifications
+  name: bsky notifications
 
 scenarios:
   - name: notifications show who did what and are marked seen
@@ -83,13 +83,13 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -151,7 +151,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -193,7 +193,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -255,7 +255,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           cols: 120
           env: *env

@@ -7,7 +7,7 @@
 version: "1"
 
 suite:
-  name: bs login
+  name: bsky login
 
 secrets:
   - app-pass-1234
@@ -27,11 +27,11 @@ scenarios:
             json: { feed: [] }
     steps:
       - pty:
-          command: bs --service ${api.url}
+          command: bsky --service ${api.url}
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             # The service field starts filled in from --service, and focus
@@ -99,11 +99,11 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc-9", "refreshJwt": "ref-9"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -135,11 +135,11 @@ scenarios:
             json: { feed: [] }
     steps:
       - pty:
-          command: bs --service ${api.url}
+          command: bsky --service ${api.url}
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -187,11 +187,11 @@ scenarios:
             json: { did: "did:plc:me", handle: "me.test", accessJwt: "a", refreshJwt: "r" }
     steps:
       - pty:
-          command: bs --service ${api.url}
+          command: bsky --service ${api.url}
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -216,12 +216,12 @@ scenarios:
     steps:
       - pty:
           # Port 9 (discard) on loopback: nothing listens there.
-          command: bs --service http://127.0.0.1:9
+          command: bsky --service http://127.0.0.1:9
           graphics: kitty
           cols: 120
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 40s
           session:
             - expect_screen:

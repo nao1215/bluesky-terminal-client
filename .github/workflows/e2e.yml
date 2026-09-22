@@ -29,7 +29,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The suite drives bs in a pseudo-terminal, so it runs where atago's pty
+  # The suite drives bsky in a pseudo-terminal, so it runs where atago's pty
   # emulates a kitty-graphics terminal: Linux and macOS. On Windows the scenarios
   # skip themselves; the unit tests in rust.yml cover that platform.
   atago:

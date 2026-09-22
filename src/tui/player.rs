@@ -1,10 +1,10 @@
 //! Playing a Bluesky video in the terminal, without sound.
 //!
 //! A thread fetches the HLS playlists and segments, pulls the H.264 out of
-//! each segment, decodes it with OpenH264 (built into bs, so nothing else is
+//! each segment, decodes it with OpenH264 (built into bsky, so nothing else is
 //! installed), and turns each picture into the terminal's image protocol at
 //! the size of the box it is shown in, paced by the video's own clock. The
-//! UI draws the newest picture it has been handed. A video bs cannot play is
+//! UI draws the newest picture it has been handed. A video bsky cannot play is
 //! not an error: the viewer shows its thumbnail and says why.
 
 use std::cmp::Reverse;
@@ -205,7 +205,7 @@ fn play(
         let units = if last { demux.finish() } else { demux.take() };
         if let Some(kind) = demux.unsupported {
             return Err(format!(
-                "this video is not H.264 (stream type 0x{kind:02x}), which bs cannot decode"
+                "this video is not H.264 (stream type 0x{kind:02x}), which bsky cannot decode"
             ));
         }
         for unit in units {

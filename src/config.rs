@@ -1,15 +1,15 @@
-//! Where bs keeps its state on disk: the login session and the settings.
+//! Where bsky keeps its state on disk: the login session and the settings.
 //!
-//! Both files live in the config directory: `$BS_CONFIG_DIR` when set,
-//! otherwise `<platform config dir>/bs` (`$XDG_CONFIG_HOME/bs` or
-//! `~/.config/bs` on Linux, `~/Library/Application Support/bs` on macOS,
-//! `%APPDATA%\bs` on Windows).
+//! Both files live in the config directory: `$BSKY_CONFIG_DIR` when set,
+//! otherwise `<platform config dir>/bsky` (`$XDG_CONFIG_HOME/bsky` or
+//! `~/.config/bsky` on Linux, `~/Library/Application Support/bsky` on macOS,
+//! `%APPDATA%\bsky` on Windows).
 //!
 //! - `session.json` holds the tokens of an app-password login, so it is
-//!   written with owner-only permissions on Unix. `bs logout` removes it.
+//!   written with owner-only permissions on Unix. `bsky logout` removes it.
 //! - `settings.json` holds preferences (the color theme). It is written only
 //!   when a preference is changed, and a broken one is ignored with a
-//!   warning rather than stopping bs.
+//!   warning rather than stopping bsky.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 
 /// Environment variable that overrides the config directory.
-pub const CONFIG_DIR_ENV: &str = "BS_CONFIG_DIR";
+pub const CONFIG_DIR_ENV: &str = "BSKY_CONFIG_DIR";
 
 const SESSION_FILE: &str = "session.json";
 const SETTINGS_FILE: &str = "settings.json";
@@ -30,7 +30,7 @@ pub struct Settings {
     /// Name of the color theme.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// Keys this version of bs does not know, kept so that saving does not
+    /// Keys this version of bsky does not know, kept so that saving does not
     /// drop what a newer version wrote.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
@@ -110,30 +110,45 @@ pub fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
-    dirs::config_dir().map(|d| d.join("bs")).ok_or_else(|| {
-        Error::io("cannot determine the config directory")
-            .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
-    })
+    dirs::config_dir()
+        .map(|d| platform_config_dir(&d))
+        .ok_or_else(|| {
+            Error::io("cannot determine the config directory")
+                .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
+        })
+}
+
+/// `bsky` inside the platform config directory. The command used to be
+/// called `bs` and kept its state in `bs`; when only that folder exists it is
+/// moved, so a login made before the rename is kept. A move that fails
+/// leaves both as they are and bsky starts logged out.
+fn platform_config_dir(platform: &Path) -> PathBuf {
+    let dir = platform.join("bsky");
+    let old = platform.join("bs");
+    if !dir.exists() && old.join(SESSION_FILE).is_file() {
+        let _ = fs::rename(&old, &dir);
+    }
+    dir
 }
 
 /// Environment variable naming the folder downloads are saved in.
-pub const DOWNLOAD_DIR_ENV: &str = "BS_DOWNLOAD_DIR";
+pub const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
 
-/// Where the viewer's `d` saves pictures and videos: `bs` in the platform
-/// download folder (`~/Downloads/bs`), or `BS_DOWNLOAD_DIR`.
+/// Where the viewer's `d` saves pictures and videos: `bsky` in the platform
+/// download folder (`~/Downloads/bsky`), or `BSKY_DOWNLOAD_DIR`.
 pub fn download_dir() -> Option<PathBuf> {
     match std::env::var_os(DOWNLOAD_DIR_ENV).filter(|v| !v.is_empty()) {
         Some(v) => Some(PathBuf::from(v)),
         None => dirs::download_dir()
             .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
-            .map(|d| d.join("bs")),
+            .map(|d| d.join("bsky")),
     }
 }
 
 /// Environment variable naming the video service to upload videos to.
-pub const VIDEO_SERVICE_ENV: &str = "BS_VIDEO_SERVICE";
+pub const VIDEO_SERVICE_ENV: &str = "BSKY_VIDEO_SERVICE";
 
-/// The video service: `BS_VIDEO_SERVICE`, else Bluesky's.
+/// The video service: `BSKY_VIDEO_SERVICE`, else Bluesky's.
 pub fn video_service() -> String {
     std::env::var(VIDEO_SERVICE_ENV)
         .ok()
@@ -143,10 +158,10 @@ pub fn video_service() -> String {
 }
 
 /// Environment variable naming the cache directory; `off` keeps no cache.
-pub const CACHE_DIR_ENV: &str = "BS_CACHE_DIR";
+pub const CACHE_DIR_ENV: &str = "BSKY_CACHE_DIR";
 
 /// Where downloaded pictures are kept between runs, or `None` for no cache:
-/// `BS_CACHE_DIR` when set (`off` turns the cache off), else `bs` in the
+/// `BSKY_CACHE_DIR` when set (`off` turns the cache off), else `bsky` in the
 /// platform cache directory.
 pub fn cache_dir() -> Option<PathBuf> {
     cache_dir_from(std::env::var_os(CACHE_DIR_ENV), dirs::cache_dir())
@@ -156,7 +171,7 @@ fn cache_dir_from(var: Option<std::ffi::OsString>, platform: Option<PathBuf>) ->
     match var {
         Some(v) if v == "off" => None,
         Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
-        _ => platform.map(|d| d.join("bs")),
+        _ => platform.map(|d| d.join("bsky")),
     }
 }
 
@@ -190,7 +205,7 @@ impl SessionStore {
                 "{} is not a valid session file: {e}",
                 path.display()
             ))
-            .with_hint("run `bs logout` to discard it and log in again")
+            .with_hint("run `bsky logout` to discard it and log in again")
         })
     }
 
@@ -220,7 +235,7 @@ impl SessionStore {
 /// refresh, and losing the new one means logging in again.
 fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    // The process id keeps two running copies of bs from writing the same
+    // The process id keeps two running copies of bsky from writing the same
     // temporary file, which on Windows would make one of the renames fail.
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let mut file = open_private(&tmp)?;
@@ -258,11 +273,11 @@ mod tests {
         let platform = Some(PathBuf::from("/c"));
         assert_eq!(
             cache_dir_from(None, platform.clone()),
-            Some(PathBuf::from("/c").join("bs"))
+            Some(PathBuf::from("/c").join("bsky"))
         );
         assert_eq!(
             cache_dir_from(Some("".into()), platform.clone()),
-            Some(PathBuf::from("/c").join("bs"))
+            Some(PathBuf::from("/c").join("bsky"))
         );
         assert_eq!(
             cache_dir_from(Some("/mine".into()), platform.clone()),
@@ -280,6 +295,34 @@ mod tests {
             access_jwt: "access".into(),
             refresh_jwt: "refresh".into(),
         }
+    }
+
+    #[test]
+    fn the_config_of_the_old_bs_name_is_moved_once() {
+        let platform = tempfile::tempdir().unwrap();
+        fs::create_dir(platform.path().join("bs")).unwrap();
+        fs::write(platform.path().join("bs").join(SESSION_FILE), "{}").unwrap();
+
+        let dir = platform_config_dir(platform.path());
+        assert_eq!(dir, platform.path().join("bsky"));
+        assert_eq!(fs::read_to_string(dir.join(SESSION_FILE)).unwrap(), "{}");
+        assert!(!platform.path().join("bs").exists());
+
+        // A later `bs` folder (another program's, say) is left alone.
+        fs::create_dir(platform.path().join("bs")).unwrap();
+        fs::write(platform.path().join("bs").join(SESSION_FILE), "other").unwrap();
+        platform_config_dir(platform.path());
+        assert_eq!(fs::read_to_string(dir.join(SESSION_FILE)).unwrap(), "{}");
+        assert!(platform.path().join("bs").exists());
+    }
+
+    #[test]
+    fn a_bs_folder_without_a_session_is_not_taken() {
+        let platform = tempfile::tempdir().unwrap();
+        fs::create_dir(platform.path().join("bs")).unwrap();
+        let dir = platform_config_dir(platform.path());
+        assert!(!dir.exists());
+        assert!(platform.path().join("bs").exists());
     }
 
     #[test]
@@ -313,7 +356,10 @@ mod tests {
         fs::write(store.path(), b"{not json").unwrap();
         let err = store.load().unwrap_err();
         assert_eq!(err.kind(), crate::error::Kind::Io);
-        assert!(err.to_string().contains("\nhint: run `bs logout`"), "{err}");
+        assert!(
+            err.to_string().contains("\nhint: run `bsky logout`"),
+            "{err}"
+        );
     }
 
     #[test]

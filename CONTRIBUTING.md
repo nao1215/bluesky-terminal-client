@@ -1,4 +1,4 @@
-# Contributing to bs
+# Contributing to bsky
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ just e2e         # end-to-end suite
 
 The suite lives in `e2e/atago/*.atago.yaml` and runs with `e2e/run.sh`, which builds the release binary and puts it first on `PATH`. It needs no account and no network:
 
-- The Bluesky PDS is an atago mock server. Each scenario declares the XRPC routes it needs and asserts what bs sent (`mock:` with `body:`, `header:`, and `query:`).
-- The terminal is an atago pseudo-terminal. `graphics: kitty` makes it answer like a terminal that draws images, and `screen.images` asserts what bs drew, down to the pixels. Leaving `graphics` out is how a terminal without image support is tested.
-- The session file is written with a `fixture:` step, and `changes:` and `file:` assert what bs wrote to disk.
+- The Bluesky PDS is an atago mock server. Each scenario declares the XRPC routes it needs and asserts what bsky sent (`mock:` with `body:`, `header:`, and `query:`).
+- The terminal is an atago pseudo-terminal. `graphics: kitty` makes it answer like a terminal that draws images, and `screen.images` asserts what bsky drew, down to the pixels. Leaving `graphics` out is how a terminal without image support is tested.
+- The session file is written with a `fixture:` step, and `changes:` and `file:` assert what bsky wrote to disk.
 
 The pty scenarios are skipped on Windows, where the unit tests still run.
 

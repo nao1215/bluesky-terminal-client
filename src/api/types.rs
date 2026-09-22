@@ -1,4 +1,4 @@
-//! The subset of the `app.bsky.*` and `com.atproto.*` lexicons bs reads.
+//! The subset of the `app.bsky.*` and `com.atproto.*` lexicons bsky reads.
 //!
 //! Every struct is lenient: unknown fields are ignored and optional fields
 //! default, because the AppView adds fields over time and a client that fails
@@ -65,7 +65,7 @@ pub struct ReplyRef {
     pub parent: StrongRef,
 }
 
-/// The fields of an `app.bsky.feed.post` record bs shows.
+/// The fields of an `app.bsky.feed.post` record bsky shows.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PostRecord {
@@ -125,7 +125,7 @@ pub struct ExternalView {
     pub thumb: Option<String>,
 }
 
-/// The embed kinds bs renders. Anything else is [`Embed::Other`].
+/// The embed kinds bsky renders. Anything else is [`Embed::Other`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "$type")]
 pub enum Embed {
@@ -263,7 +263,7 @@ pub struct Post {
     pub indexed_at: String,
     pub viewer: Option<PostViewer>,
     /// The thread above a reply, when the feed gave it. Not part of the
-    /// lexicon's postView: bs attaches it from the feedViewPost around it.
+    /// lexicon's postView: bsky attaches it from the feedViewPost around it.
     #[serde(skip)]
     pub context: Option<Box<ReplyContext>>,
 }
@@ -408,7 +408,7 @@ where
 }
 
 impl Post {
-    /// The record decoded into the fields bs shows.
+    /// The record decoded into the fields bsky shows.
     pub fn record(&self) -> PostRecord {
         serde_json::from_value(self.raw_record.clone()).unwrap_or_default()
     }

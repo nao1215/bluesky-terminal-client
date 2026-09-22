@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# run.sh builds bs from this checkout (cargo, release profile) and runs the
+# run.sh builds bsky from this checkout (cargo, release profile) and runs the
 # atago end-to-end suite (e2e/atago/*.atago.yaml) against the real binary.
 #
 # The test definitions are atago YAML; this script only bootstraps the
-# environment. The suite drives bs in a pseudo-terminal that answers like a
+# environment. The suite drives bsky in a pseudo-terminal that answers like a
 # kitty-graphics terminal (`pty.graphics: kitty`) and stubs the Bluesky API
 # with atago mock servers, so it needs no network and no account.
 #
 # Environment contract used by the specs:
-#   PATH   bs resolves here (target/release from this checkout)
+#   PATH   bsky resolves here (target/release from this checkout)
 #
 # Usage: e2e/run.sh [atago args...]        (e.g. e2e/run.sh --filter search)
 set -euo pipefail
@@ -25,12 +25,12 @@ fi
 
 cd "$REPO_ROOT"
 
-echo "e2e: building bs (cargo build --release --locked)..."
+echo "e2e: building bsky (cargo build --release --locked)..."
 cargo build --release --locked
 
 export PATH="$REPO_ROOT/target/release:$PATH"
 
-echo "e2e: $(bs --version)"
+echo "e2e: $(bsky --version)"
 echo "e2e: $(atago --version)"
 # Extra args (e.g. --filter X) go before the path so the flag parser sees them.
 atago run "$@" e2e/atago

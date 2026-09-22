@@ -10,7 +10,7 @@
 //! and reverse video. The others are 24-bit palettes. On a terminal that does
 //! not announce 24-bit color they are mapped to the nearest xterm-256 colors,
 //! because sending 24-bit escapes there garbles the screen; with `NO_COLOR`
-//! set, bs uses `monochrome` whatever is chosen.
+//! set, bsky uses `monochrome` whatever is chosen.
 
 use ratatui::style::{Color, Modifier, Style};
 
@@ -480,7 +480,7 @@ impl Theme {
             .add_modifier(Modifier::BOLD | Modifier::REVERSED)
     }
 
-    /// The " bs " badge.
+    /// The " bsky " badge.
     pub fn badge(&self) -> Style {
         let s = Style::new().add_modifier(Modifier::BOLD);
         if self.mono {

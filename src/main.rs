@@ -1,4 +1,4 @@
-//! bs: a Bluesky client for the terminal.
+//! bsky: a Bluesky client for the terminal.
 
 mod api;
 mod browser;
@@ -19,13 +19,13 @@ use clap::{Parser, Subcommand};
 use crate::config::{SessionStore, SettingsStore};
 use crate::error::{Error, Kind, Result};
 
-/// Command line: `bs` opens the client, `bs logout` forgets the session.
+/// Command line: `bsky` opens the client, `bsky logout` forgets the session.
 /// The `--help` text comes from the package description and `AFTER_HELP`.
 #[derive(Debug, Parser)]
-#[command(name = "bs", version, about, long_about = None, after_help = AFTER_HELP)]
+#[command(name = "bsky", version, about, long_about = None, after_help = AFTER_HELP)]
 struct Cli {
     /// PDS to log in to.
-    #[arg(long, env = "BS_SERVICE", value_name = "URL", default_value = api::DEFAULT_SERVICE)]
+    #[arg(long, env = "BSKY_SERVICE", value_name = "URL", default_value = api::DEFAULT_SERVICE)]
     service: String,
 
     #[command(subcommand)]
@@ -40,7 +40,7 @@ enum Command {
 
 const AFTER_HELP: &str = "\
 The terminal must display images: kitty graphics, sixel, or iTerm2 inline
-images. bs exits with status 2 on a terminal that supports none of them.
+images. bsky exits with status 2 on a terminal that supports none of them.
 
 Exit status: 0 success, 1 usage error, 2 terminal unsupported,
 3 local file error. Network and server errors are shown in the client and
@@ -73,7 +73,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             let err = Error::new(Kind::Usage, first_line(&e.to_string()))
-                .with_hint("run `bs --help` for usage");
+                .with_hint("run `bsky --help` for usage");
             eprintln!("{err}");
             return ExitCode::from(Kind::Usage.exit_code());
         }

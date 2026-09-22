@@ -1,10 +1,10 @@
 # The terminal contract and the exit codes.
 #
-# bs draws images with the terminal's own graphics protocol and refuses to
+# bsky draws images with the terminal's own graphics protocol and refuses to
 # start where there is none. Every failure class has its own exit code:
 #
 #   0  success
-#   1  usage error (bad flag, bad --service, bad BS_GRAPHICS)
+#   1  usage error (bad flag, bad --service, bad BSKY_GRAPHICS)
 #   2  terminal unsupported (not a terminal, no image protocol)
 #   3  local file error (unreadable session file)
 #
@@ -16,13 +16,13 @@
 version: "1"
 
 suite:
-  name: bs terminal and exit codes
+  name: bsky terminal and exit codes
 
 scenarios:
   - name: help documents the image requirement and the exit codes
     steps:
       - run:
-          command: bs --help
+          command: bsky --help
       - assert:
           exit_code: 0
           stderr:
@@ -39,16 +39,16 @@ scenarios:
   - name: version names the binary and a semantic version
     steps:
       - run:
-          command: bs --version
+          command: bsky --version
       - assert:
           exit_code: 0
           stdout:
-            matches: '^bs \d+\.\d+\.\d+\n$'
+            matches: '^bsky \d+\.\d+\.\d+\n$'
 
   - name: an unknown flag is a usage error that points at help
     steps:
       - run:
-          command: bs --no-such-flag
+          command: bsky --no-such-flag
       - assert:
           exit_code: 1
           stdout:
@@ -56,12 +56,12 @@ scenarios:
           stderr:
             contains:
               - "error: unexpected argument '--no-such-flag'"
-              - "hint: run `bs --help` for usage"
+              - "hint: run `bsky --help` for usage"
 
   - name: a service URL without a scheme is a usage error
     steps:
       - run:
-          command: bs --service bsky.social
+          command: bsky --service bsky.social
       - assert:
           exit_code: 1
           stdout:
@@ -71,32 +71,32 @@ scenarios:
               - 'error: invalid service URL "bsky.social"'
               - "hint: pass an http:// or https:// URL"
 
-  - name: BS_SERVICE is checked like --service
+  - name: BSKY_SERVICE is checked like --service
     steps:
       - run:
-          command: bs
+          command: bsky
           env:
-            BS_SERVICE: "ftp://pds.example"
+            BSKY_SERVICE: "ftp://pds.example"
       - assert:
           exit_code: 1
           stderr:
             contains: 'error: invalid service URL "ftp://pds.example"'
 
-  - name: without a terminal bs refuses to start and touches nothing
+  - name: without a terminal bsky refuses to start and touches nothing
     steps:
       - run:
-          command: bs
+          command: bsky
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 2
           stdout:
             empty: true
           stderr:
             contains:
-              - "error: bs needs an interactive terminal"
-              - "hint: run bs directly in a terminal, not through a pipe or redirect"
+              - "error: bsky needs an interactive terminal"
+              - "hint: run bsky directly in a terminal, not through a pipe or redirect"
           changes:
             created: []
             modified: []
@@ -117,11 +117,11 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           cols: 200
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 15s
       - assert:
           exit_code: 2
@@ -129,7 +129,7 @@ scenarios:
             contains:
               - "error: this terminal cannot display images"
               - "hint: use a terminal with kitty graphics, sixel, or iTerm2 inline images"
-              - "or set BS_GRAPHICS when yours supports one but does not answer the query"
+              - "or set BSKY_GRAPHICS when yours supports one but does not answer the query"
       # Refusing means refusing up front: no timeline was requested.
       - assert:
           mock:
@@ -141,11 +141,11 @@ scenarios:
       os: windows
     steps:
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 15s
           session:
             - expect_screen:
@@ -158,16 +158,16 @@ scenarios:
             modified: []
             deleted: []
 
-  - name: BS_GRAPHICS forces a protocol on a terminal that does not answer
+  - name: BSKY_GRAPHICS forces a protocol on a terminal that does not answer
     skip:
       os: windows
     steps:
       - pty:
-          command: bs
+          command: bsky
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_GRAPHICS: kitty
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_GRAPHICS: kitty
           timeout: 15s
           session:
             - expect_screen:
@@ -176,25 +176,25 @@ scenarios:
       - assert:
           exit_code: 0
 
-  - name: BS_GRAPHICS naming something that is not an image protocol is a usage error
+  - name: BSKY_GRAPHICS naming something that is not an image protocol is a usage error
     skip:
       os: windows
     steps:
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           cols: 200
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_GRAPHICS: halfblocks
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_GRAPHICS: halfblocks
           timeout: 15s
       - assert:
           exit_code: 1
           screen:
             contains:
-              - 'error: BS_GRAPHICS="halfblocks" is not a graphics protocol'
-              - "hint: set BS_GRAPHICS to kitty, sixel, or iterm2, or unset it"
+              - 'error: BSKY_GRAPHICS="halfblocks" is not a graphics protocol'
+              - "hint: set BSKY_GRAPHICS to kitty, sixel, or iterm2, or unset it"
 
   - name: a corrupt session file is a local-file error that names the way out
     skip:
@@ -204,19 +204,19 @@ scenarios:
           file: cfg/session.json
           content: "{not json"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           cols: 200
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 15s
       - assert:
           exit_code: 3
           screen:
             contains:
               - "is not a valid session file"
-              - "hint: run `bs logout` to discard it and log in again"
+              - "hint: run `bsky logout` to discard it and log in again"
           # The broken file is reported, not repaired or deleted behind the user's back.
           changes:
             created: []
@@ -233,10 +233,10 @@ scenarios:
           file: cfg/unrelated.txt
           content: "keep me\n"
       - run:
-          command: bs logout
+          command: bsky logout
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           stdout:
@@ -248,10 +248,10 @@ scenarios:
             modified: []
             deleted: [cfg/session.json]
       - run:
-          command: bs logout
+          command: bsky logout
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           stdout:

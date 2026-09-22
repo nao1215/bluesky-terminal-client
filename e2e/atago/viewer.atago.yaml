@@ -3,13 +3,13 @@
 #
 # The video is played from its HLS playlist: testdata/hls is a master
 # playlist, one variant, and one 1-second 64x36 H.264 segment, as Bluesky's
-# video service serves them. bs decodes it with the OpenH264 it is built
+# video service serves them. bsky decodes it with the OpenH264 it is built
 # with; nothing else needs to be installed. (atago counts every picture sent
 # to the terminal, so the frames of the video add to the count.)
 version: "1"
 
 suite:
-  name: bs viewer
+  name: bsky viewer
 
 scenarios:
   - name: space shows a post's pictures full screen, one after another, and esc goes back
@@ -48,14 +48,14 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_DOWNLOAD_DIR: ${workdir}/downloads
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_DOWNLOAD_DIR: ${workdir}/downloads
             TZ: UTC
           timeout: 20s
           session:
@@ -129,7 +129,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -170,7 +170,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
 
-  - name: a video bs cannot play is a warning, not an error, and its thumbnail stays
+  - name: a video bsky cannot play is a warning, not an error, and its thumbnail stays
     skip:
       os: windows
     mock_servers:
@@ -199,7 +199,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 120
@@ -274,14 +274,14 @@ scenarios:
             #!/bin/sh
             printf '%s\n' "$@" >> "$(dirname "$0")/opened.txt"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 100
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_BROWSER: ${workdir}/opener.sh
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_BROWSER: ${workdir}/opener.sh
           timeout: 20s
           session:
             - expect_screen:
@@ -329,21 +329,21 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_BROWSER: ${workdir}/no-such-browser
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_BROWSER: ${workdir}/no-such-browser
           timeout: 20s
           session:
             - expect_screen:
                 contains: "Read this article"
             - send: o
             - expect_screen:
-                contains: [" Error ", "cannot open the link", "no-such-browser", "hint: set BS_BROWSER to the program that opens"]
+                contains: [" Error ", "cannot open the link", "no-such-browser", "hint: set BSKY_BROWSER to the program that opens"]
             - send: q
       - assert:
           exit_code: 0

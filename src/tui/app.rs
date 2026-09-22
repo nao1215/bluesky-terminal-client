@@ -432,7 +432,7 @@ pub struct App {
     /// Index into [`THEMES`] of the chosen theme.
     pub theme_index: usize,
     pub color_depth: ColorDepth,
-    /// The settings as loaded, so saving keeps what bs did not change.
+    /// The settings as loaded, so saving keeps what bsky did not change.
     pub settings: Settings,
     /// The folder the picture browser last showed, where it opens next.
     pub browse_from: Option<PathBuf>,

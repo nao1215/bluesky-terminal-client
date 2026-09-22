@@ -1,13 +1,13 @@
 //! Opening a post's link in the user's web browser, with what the system
 //! already has: `xdg-open` on Linux and the BSDs, `open` on macOS, the URL
-//! handler on Windows. `BS_BROWSER` names another program to open links with.
+//! handler on Windows. `BSKY_BROWSER` names another program to open links with.
 
 use std::process::{Command, Stdio};
 
 use crate::error::{Error, Kind, Result};
 
 /// Environment variable naming the program that opens links.
-pub const BROWSER_ENV: &str = "BS_BROWSER";
+pub const BROWSER_ENV: &str = "BSKY_BROWSER";
 
 /// The program and arguments that open `url` here.
 fn opener(url: &str) -> (String, Vec<String>) {
@@ -31,7 +31,7 @@ fn opener(url: &str) -> (String, Vec<String>) {
 }
 
 /// Open `url` in the browser. Only web links are opened, so a post cannot
-/// make bs run a file or a command.
+/// make bsky run a file or a command.
 pub fn open(url: &str) -> Result<()> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(Error::new(Kind::Usage, format!("not a web link: {url}")));
@@ -46,7 +46,7 @@ fn spawn(program: &str, args: &[String]) -> Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    // A browser that runs in the terminal must not take over the screen bs
+    // A browser that runs in the terminal must not take over the screen bsky
     // is drawing on.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);

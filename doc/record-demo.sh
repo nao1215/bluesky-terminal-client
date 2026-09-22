@@ -1,6 +1,6 @@
 #!/bin/sh
 # Record the README's demos in a real kitty window, with the account logged
-# in with bs:
+# in with bsky:
 #
 #   doc/record-demo.sh demo     doc/img/demo.gif: the timeline, then a search
 #   doc/record-demo.sh viewer   doc/img/viewer.gif: a picture and a video of
@@ -31,7 +31,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Start bs in a kitty window of WIDTH x HEIGHT pixels.
+# Start bsky in a kitty window of WIDTH x HEIGHT pixels.
 start() {
   # Software rendering: a GPU-drawn window read from outside stops showing
   # changes after a while, and a playing video would look frozen.
@@ -40,8 +40,8 @@ start() {
     -o font_family="DejaVu Sans Mono" -o font_size=11 \
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
     -o cursor_blink_interval=0 -o window_padding_width=0 \
-    --listen-on "$SOCK" --class bsdemo --title bs \
-    env PATH="$BIN:$PATH" COLORTERM=truecolor bs &
+    --listen-on "$SOCK" --class bsdemo --title bsky \
+    env PATH="$BIN:$PATH" COLORTERM=truecolor bsky &
   KPID=$!
   W=""
   for _ in $(seq 1 50); do
@@ -188,7 +188,7 @@ themes() {
 }
 
 bs_config_dir() {
-  if [ -n "${BS_CONFIG_DIR:-}" ]; then echo "$BS_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bs"; fi
+  if [ -n "${BSKY_CONFIG_DIR:-}" ]; then echo "$BSKY_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bsky"; fi
 }
 
 case "${1:-demo}" in

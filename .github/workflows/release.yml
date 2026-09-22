@@ -1,6 +1,6 @@
 name: Release
 
-# A pushed version tag builds bs for every target below and attaches the
+# A pushed version tag builds bsky for every target below and attaches the
 # archives, with a SHA-256 checksum file, to a GitHub release for that tag.
 on:
   push:
@@ -44,20 +44,20 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          name="bs-${GITHUB_REF_NAME}-${TARGET}"
+          name="bsky-${GITHUB_REF_NAME}-${TARGET}"
           mkdir -p "dist/${name}"
           cp README.md LICENSE CHANGELOG.md "dist/${name}/"
           if [[ "${TARGET}" == *windows* ]]; then
-            cp "target/${TARGET}/release/bs.exe" "dist/${name}/"
+            cp "target/${TARGET}/release/bsky.exe" "dist/${name}/"
             (cd dist && 7z a "${name}.zip" "${name}" > /dev/null)
           else
-            cp "target/${TARGET}/release/bs" "dist/${name}/"
+            cp "target/${TARGET}/release/bsky" "dist/${name}/"
             tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           fi
 
       - uses: actions/upload-artifact@v7
         with:
-          name: bs-${{ matrix.target }}
+          name: bsky-${{ matrix.target }}
           path: |
             dist/*.tar.gz
             dist/*.zip

@@ -29,7 +29,7 @@ use ratatui_image::{FilterType, Image, Resize};
 
 use crate::tui::player::{Player, State};
 
-/// Largest image body bs downloads.
+/// Largest image body bsky downloads.
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Parallel downloads. Pictures are small and most of their time is spent
@@ -38,7 +38,7 @@ const LOADERS: usize = 8;
 /// Parallel encoders.
 const ENCODERS: usize = 2;
 
-/// Longest side a local picture is kept at once decoded. The largest box bs
+/// Longest side a local picture is kept at once decoded. The largest box bsky
 /// draws (the browser's preview) is well under this on any screen, and
 /// scaling from a smaller source makes each encode cheaper.
 const MAX_LOCAL_SIDE: u32 = 1600;

@@ -1,13 +1,13 @@
 # The Profile tab and the profile editor.
 #
 # Saving rewrites the whole app.bsky.actor.profile record, so the contract is
-# as much about what is kept (fields bs does not edit, the avatar when no new
+# as much about what is kept (fields bsky does not edit, the avatar when no new
 # one is given) as about what changes. The write is guarded with swapRecord so
 # it cannot silently overwrite an edit made elsewhere in the meantime.
 version: "1"
 
 suite:
-  name: bs profile
+  name: bsky profile
 
 scenarios:
   - name: the Profile tab shows the account itself
@@ -48,13 +48,13 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -82,7 +82,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
-  - name: saving keeps the fields bs does not edit and guards the write with swapRecord
+  - name: saving keeps the fields bsky does not edit and guards the write with swapRecord
     skip:
       os: windows
     mock_servers:
@@ -111,7 +111,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -187,7 +187,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -247,7 +247,7 @@ scenarios:
           file: me.png
           from: testdata/new-avatar.png
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -313,7 +313,7 @@ scenarios:
           file: notes.txt
           content: "not an image\n"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -336,7 +336,7 @@ scenarios:
             - send: { key: ctrl-s }
             # The editor stays open with the input, and says why.
             - expect_screen:
-                contains: ["notes.txt is not a picture bs can read", "Edit profile"]
+                contains: ["notes.txt is not a picture bsky can read", "Edit profile"]
             - send: { key: esc }
             - expect_screen:
                 not_contains: "Edit profile"
@@ -365,7 +365,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -416,7 +416,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 120
@@ -487,7 +487,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
