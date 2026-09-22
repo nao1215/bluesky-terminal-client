@@ -1526,17 +1526,19 @@ fn truncate_start(s: &str, width: usize) -> String {
     if s.width() <= width {
         return s.to_string();
     }
-    let mut out: Vec<char> = Vec::new();
+    // Whole grapheme clusters, so an emoji keeps its modifier and a flag
+    // both of its letters.
+    let mut out: Vec<&str> = Vec::new();
     let mut used = 1;
-    for ch in s.chars().rev() {
-        let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+    for g in unicode_segmentation::UnicodeSegmentation::graphemes(s, true).rev() {
+        let w = g.width();
         if used + w > width {
             break;
         }
         used += w;
-        out.push(ch);
+        out.push(g);
     }
-    out.push('…');
+    out.push("…");
     out.into_iter().rev().collect()
 }
 
@@ -1916,6 +1918,83 @@ mod tests {
         assert!(screen.contains("post number 15"), "{screen}");
         assert!(!screen.contains("post number 0\n"));
         assert!(app.timeline.offset > 0);
+    }
+
+    /// Each row's cells, skipping the cells a wide character covers, so the
+    /// text reads as a terminal shows it.
+    fn cells(app: &mut App, w: u16, h: u16) -> Vec<Vec<String>> {
+        let mut images = Images::new(Picker::halfblocks(), None);
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| draw(f, app, &mut images)).unwrap();
+        let buf = term.backend().buffer().clone();
+        (0..h)
+            .map(|y| {
+                let mut row = Vec::new();
+                let mut x = 0;
+                while x < w {
+                    let sym = buf[(x, y)].symbol().to_string();
+                    x += sym.width().max(1) as u16;
+                    row.push(sym);
+                }
+                row
+            })
+            .collect()
+    }
+
+    /// A piece of a cluster that only shows when the cluster was cut: a
+    /// skin tone alone, one letter of a flag, a joiner or a variation
+    /// selector at an end, a combining mark alone.
+    fn is_fragment(sym: &str) -> bool {
+        let first = sym.chars().next();
+        let last = sym.chars().next_back();
+        let lone_flag_letter =
+            sym.chars().count() == 1 && matches!(first, Some('\u{1F1E6}'..='\u{1F1FF}'));
+        matches!(
+            first,
+            Some(
+                '\u{1F3FB}'..='\u{1F3FF}'
+                | '\u{200D}'
+                | '\u{FE0F}'
+                | '\u{20E3}'
+                | '\u{300}'..='\u{36F}',
+            )
+        ) || matches!(last, Some('\u{200D}'))
+            || lone_flag_letter
+    }
+
+    #[test]
+    fn emoji_in_names_and_text_are_never_cut_apart() {
+        let name = "👨‍👩‍👧‍👦 Family 🇯🇵";
+        let text = "今日は👍🏽 1️⃣ ❤️ e\u{301}t\u{e9} 🇯🇵🇺🇸 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀";
+        let post: Post = serde_json::from_value(json!({
+            "uri": "at://p/e", "cid": "c",
+            "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": name},
+            "record": {"text": text, "createdAt": "2026-09-22T00:00:00Z"},
+            "likeCount": 3,
+        }))
+        .unwrap();
+        for width in 12u16..=80 {
+            let (mut app, _) = App::new(Some(session()), "x");
+            app.handle_event(Event::Timeline(Ok(vec![post.clone()].into())));
+            let rows = cells(&mut app, width, 24);
+            for row in &rows {
+                let shown: usize = row.iter().map(|c| c.width().max(1)).sum();
+                assert!(shown <= width as usize, "{width}: {row:?}");
+                for c in row {
+                    assert!(!is_fragment(c), "{width}: a cut cluster {c:?} in {row:?}");
+                }
+            }
+            let screen: String = rows.iter().map(|r| r.concat() + "\n").collect();
+            for whole in ["👍🏽", "1️⃣", "🇯🇵", "🇺🇸", "e\u{301}"] {
+                assert!(
+                    screen.contains(whole),
+                    "{width}: {whole} is not whole in\n{screen}"
+                );
+            }
+            if width >= 41 {
+                assert!(screen.contains("👨‍👩‍👧‍👦 Family 🇯🇵"), "{screen}");
+            }
+        }
     }
 
     #[test]
@@ -2407,5 +2486,12 @@ mod tests {
         // Wide characters count as two columns.
         assert_eq!(truncate_start("/ホーム/写真", 6), "…/写真");
         assert_eq!(truncate_start("/ホーム/写真", 5), "…写真");
+    }
+
+    #[test]
+    fn a_long_path_is_not_cut_inside_a_grapheme_cluster() {
+        assert_eq!(truncate_start("/pics/👍🏽👍🏽", 3), "…👍🏽");
+        assert_eq!(truncate_start("/pics/👨‍👩‍👧", 3), "…👨‍👩‍👧");
+        assert_eq!(truncate_start("/pics/🇯🇵🇯🇵", 3), "…🇯🇵");
     }
 }

@@ -26,9 +26,16 @@ pub struct Span {
     pub target: Target,
 }
 
-/// Characters that end a sentence rather than a URL, handle, or tag.
+/// Characters that end a sentence rather than a URL, including the
+/// full-width ones Japanese and Chinese text closes with.
 const TRAILING: &[char] = &[
-    '.', ',', ';', ':', '!', '?', ')', ']', '}', '"', '\'', '」', '。', '、',
+    '.', ',', ';', ':', '!', '?', ')', ']', '}', '"', '\'', '」', '。', '、', '！', '？', '）',
+    '』', '】', '〉', '》', '〕', '］', '｝', '，', '．', '：', '；', '…', '”', '’',
+];
+
+/// Brackets and quotes that open before a URL, handle, or tag.
+const LEADING: &[char] = &[
+    '(', '[', '「', '（', '『', '【', '〈', '《', '〔', '［', '｛', '“', '‘', '"', '\'',
 ];
 
 /// Find every link, mention, and hashtag in `text`.
@@ -72,14 +79,22 @@ pub fn detect(text: &str) -> Vec<Span> {
 }
 
 /// Strip sentence punctuation from the end of a URL, except a closing
-/// parenthesis the URL itself opened (`https://en.wikipedia.org/wiki/Rust_(programming_language)`).
+/// parenthesis, ASCII or full-width, the URL itself opened
+/// (`https://en.wikipedia.org/wiki/Rust_(programming_language)`).
 fn trim_url(token: &str) -> &str {
     let mut url = token;
     while let Some(c) = url.chars().next_back() {
         if !TRAILING.contains(&c) {
             break;
         }
-        if c == ')' && url.matches('(').count() >= url.matches(')').count() {
+        let opener = match c {
+            ')' => Some('('),
+            '）' => Some('（'),
+            _ => None,
+        };
+        if let Some(open) = opener
+            && url.matches(open).count() >= url.matches(c).count()
+        {
             break;
         }
         url = &url[..url.len() - c.len_utf8()];
@@ -87,8 +102,8 @@ fn trim_url(token: &str) -> &str {
     url
 }
 
-/// Whitespace-separated tokens with their byte offsets. A leading `(` is
-/// dropped so `(https://x)` still yields the URL.
+/// Whitespace-separated tokens with their byte offsets. Leading brackets and
+/// quotes are dropped so `(https://x)` and `（https://x）` still yield the URL.
 fn tokens(text: &str) -> impl Iterator<Item = (usize, &str)> {
     let mut out = Vec::new();
     let mut start = None;
@@ -105,7 +120,7 @@ fn tokens(text: &str) -> impl Iterator<Item = (usize, &str)> {
         out.push((s, &text[s..]));
     }
     out.into_iter().map(|(s, tok)| {
-        let stripped = tok.trim_start_matches(['(', '[', '「']);
+        let stripped = tok.trim_start_matches(LEADING);
         (s + (tok.len() - stripped.len()), stripped)
     })
 }
@@ -276,6 +291,32 @@ mod tests {
     #[case("#！？")]
     fn rejects_a_tag_of_digits_and_punctuation(#[case] text: &str) {
         assert!(detect(text).is_empty(), "{text}");
+    }
+
+    #[rstest]
+    #[case("（https://example.com）", "https://example.com")]
+    #[case("『https://example.com』", "https://example.com")]
+    #[case("【https://example.com】", "https://example.com")]
+    #[case("見て https://example.com！", "https://example.com")]
+    #[case("見て https://example.com？", "https://example.com")]
+    #[case("（@alice.test）", "@alice.test")]
+    #[case("（#rust）", "#rust")]
+    #[case("“#rust”", "#rust")]
+    #[case("#rust…", "#rust")]
+    fn full_width_brackets_and_punctuation_are_not_part_of_a_facet(
+        #[case] text: &str,
+        #[case] want: &str,
+    ) {
+        let spans = detect(text);
+        assert_eq!(spans.len(), 1, "{text}");
+        assert_eq!(&text[spans[0].start..spans[0].end], want, "{text}");
+    }
+
+    #[test]
+    fn a_url_keeps_full_width_parentheses_it_opened() {
+        let text = "https://ja.wikipedia.org/wiki/東京（曖昧さ回避）";
+        let spans = detect(text);
+        assert_eq!(&text[spans[0].start..spans[0].end], text);
     }
 
     #[test]
