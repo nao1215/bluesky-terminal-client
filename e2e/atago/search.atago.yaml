@@ -438,3 +438,64 @@ scenarios:
             count: 1
             body:
               json: { path: "$.record.subject", equals: "did:plc:carol" }
+
+  - name: post results say whether each author is followed, and f follows from them
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              posts:
+                - uri: at://did:plc:dave/app.bsky.feed.post/s1
+                  cid: cid-s1
+                  author: { did: did:plc:dave, handle: dave.test, displayName: Dave }
+                  record: { text: "Dave writes about snow", createdAt: "2026-09-19T12:00:00.000Z" }
+                - uri: at://did:plc:erin/app.bsky.feed.post/s2
+                  cid: cid-s2
+                  author: { did: did:plc:erin, handle: erin.test, displayName: Erin, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fe } }
+                  record: { text: "Erin writes about snow too", createdAt: "2026-09-19T11:00:00.000Z" }
+                - uri: at://did:plc:me/app.bsky.feed.post/s3
+                  cid: cid-s3
+                  author: { did: did:plc:me, handle: me.test, displayName: Me }
+                  record: { text: "My own snow post", createdAt: "2026-09-19T10:00:00.000Z" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/fd", cid: "cid-fd" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: "snow"
+            - send: { key: enter }
+            # Each author but you is marked; f is on the hint row.
+            - expect_screen:
+                contains: ["Dave @dave.test not following", "Erin @erin.test ✓ following", "f follow"]
+                not_contains: "Me @me.test not following"
+            - send: f
+            - expect_screen:
+                contains: ["followed", "Dave @dave.test ✓ following"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.record.subject", equals: "did:plc:dave" }

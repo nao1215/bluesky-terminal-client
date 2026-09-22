@@ -1646,6 +1646,9 @@ impl App {
                     }
                     None => self.info("posted"),
                 }
+                // Your own posts are on the timeline: load it again so the
+                // new one is there.
+                return vec![Job::Timeline];
             }
             Event::Posted { result: Err(e), .. } => {
                 if let Some(Overlay::Compose(c)) = &mut self.overlay {
@@ -3136,5 +3139,19 @@ mod tests {
             )),
         });
         assert!(app.login.is_some());
+    }
+
+    #[test]
+    fn a_sent_post_reloads_the_timeline_so_it_shows() {
+        let mut app = logged_in();
+        app.handle_key(key('n'));
+        type_str(&mut app, "hello");
+        app.handle_key(ctrl('s'));
+        let jobs = app.handle_event(Event::Posted {
+            reply_to: None,
+            result: Ok(()),
+        });
+        assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
+        assert!(app.overlay.is_none());
     }
 }

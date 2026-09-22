@@ -57,6 +57,8 @@ fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
         url.into()
     }
 }
+/// Most rows the key hints take on a narrow screen.
+const MAX_HINT_ROWS: u16 = 3;
 /// Themes the picker shows at once; the rest scroll.
 const THEME_ROWS: usize = 10;
 /// Widest the error box gets, in cells.
@@ -76,20 +78,25 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         draw_login(frame, area, form, &t);
         return;
     }
+    // The key hints wrap onto more rows on a narrow screen rather than
+    // being cut off.
+    let hint_lines = hint_lines(&keys::hints(app), area.width, &t);
+    let hint_h = (hint_lines.len() as u16).clamp(1, MAX_HINT_ROWS);
     let [top, body, hint_row, status_row] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
-        Constraint::Length(1),
+        Constraint::Length(hint_h),
         Constraint::Length(1),
     ])
     .areas(area);
     draw_tabs(frame, top, app);
     if let Some(th) = app.threads.last_mut() {
-        draw_thread(frame, body, th, images, &t);
+        let me = app.session.as_ref().map(|s| s.did.as_str());
+        draw_thread(frame, body, th, images, me, &t);
     } else {
         draw_tab(frame, body, app, images, &t);
     }
-    draw_hints(frame, hint_row, app);
+    frame.render_widget(Paragraph::new(hint_lines), hint_row);
     draw_status(frame, status_row, app, images);
     match &mut app.overlay {
         Some(Overlay::Compose(c)) => {
@@ -112,7 +119,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             replay,
         }) => {
             let body = Rect {
-                height: area.height.saturating_sub(2),
+                height: area.height.saturating_sub(hint_h + 1),
                 ..area
             };
             draw_viewer(frame, body, media, *index, *replay, images, &t)
@@ -258,7 +265,7 @@ fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t
     match app.tab {
         Tab::Timeline => {
             let empty = "No posts from accounts you follow yet. Press R to refresh.";
-            draw_posts(frame, body, &mut app.timeline, images, empty, &t);
+            draw_posts(frame, body, &mut app.timeline, images, empty, None, &t);
         }
         Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
@@ -268,7 +275,14 @@ fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t
 
 /// A thread over the current tab: a title row, then the posts, the opened
 /// one among them where the selection starts.
-fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut Images, t: &Theme) {
+fn draw_thread(
+    frame: &mut Frame,
+    area: Rect,
+    th: &mut ThreadView,
+    images: &mut Images,
+    me: Option<&str>,
+    t: &Theme,
+) {
     let [title, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     frame.render_widget(
         Line::from(vec![
@@ -286,7 +300,15 @@ fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut 
         );
         return;
     }
-    draw_posts(frame, list, &mut th.list, images, "The thread is empty.", t);
+    draw_posts(
+        frame,
+        list,
+        &mut th.list,
+        images,
+        "The thread is empty.",
+        me,
+        t,
+    );
 }
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
@@ -310,21 +332,33 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Line::from(spans), area);
 }
 
-/// The keys that work in the current view, always visible.
-fn draw_hints(frame: &mut Frame, area: Rect, app: &App) {
-    let t = &app.theme.clone();
-    let mut spans = vec![Span::raw(" ")];
-    for (i, (key, what)) in keys::hints(app).into_iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("  "));
+/// The keys that work in the current view, packed into as many rows of
+/// `width` as they need; a hint is never split across rows.
+fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>> {
+    let width = usize::from(width.max(1));
+    let mut lines: Vec<Vec<Span<'static>>> = vec![vec![Span::raw(" ")]];
+    let mut used = 1;
+    for (key, what) in hints {
+        let w = key.width() + 1 + what.width();
+        let row = lines.last_mut().expect("one row");
+        let first = row.len() == 1;
+        let gap = if first { 0 } else { 2 };
+        if !first && used + gap + w > width {
+            lines.push(vec![Span::raw(" ")]);
+            used = 1;
+        } else if !first {
+            row.push(Span::raw("  "));
+            used += 2;
         }
-        spans.push(Span::styled(key, t.accent().bold()));
-        spans.push(Span::styled(format!(" {what}"), t.dim()));
+        let row = lines.last_mut().expect("one row");
+        row.push(Span::styled(*key, t.accent().bold()));
+        row.push(Span::styled(format!(" {what}"), t.dim()));
+        used += w;
     }
-    frame.render_widget(
-        truncate_line(Line::from(spans), usize::from(area.width)),
-        area,
-    );
+    lines
+        .into_iter()
+        .map(|spans| truncate_line(Line::from(spans), width))
+        .collect()
 }
 
 /// The last message on the left; activity or the image protocol on the right.
@@ -428,15 +462,28 @@ fn image_rows(aspect: Option<(u32, u32)>, box_w: u16, cell: (u16, u16)) -> u16 {
 }
 
 impl PostLines {
-    fn new(post: &Post, width: u16, cell: (u16, u16), t: &Theme) -> Self {
+    /// `me` is the viewer's DID when the post should say whether its author
+    /// is followed (a search, a thread); `None` where that goes without
+    /// saying (the timeline is only followed accounts, a profile says it once).
+    fn new(post: &Post, width: u16, cell: (u16, u16), me: Option<&str>, t: &Theme) -> Self {
         let width = usize::from(width.max(1));
         let record = post.record();
         let time = format_time(record.created_at.as_deref().unwrap_or(&post.indexed_at));
         let mut header = vec![
             Span::styled(post.author.name().to_string(), Style::new().bold()),
             Span::styled(format!(" @{}", post.author.handle), t.dim()),
-            Span::styled(format!(" · {time}"), t.dim()),
         ];
+        match me {
+            Some(me) if me != post.author.did => {
+                header.push(if post.author.following_uri().is_some() {
+                    Span::styled(" ✓ following", t.accent())
+                } else {
+                    Span::styled(" not following", t.dim())
+                })
+            }
+            _ => {}
+        }
+        header.push(Span::styled(format!(" · {time}"), t.dim()));
         if record.reply.is_some() {
             header.push(Span::styled(" ↩ reply", t.dim()));
         }
@@ -646,9 +693,15 @@ impl PostRow for ThreadRow {
     }
 }
 
-fn row_lines<T: PostRow>(row: &T, width: u16, cell: (u16, u16), t: &Theme) -> PostLines {
+fn row_lines<T: PostRow>(
+    row: &T,
+    width: u16,
+    cell: (u16, u16),
+    me: Option<&str>,
+    t: &Theme,
+) -> PostLines {
     match row.post() {
-        Some(post) => PostLines::new(post, width, cell, t),
+        Some(post) => PostLines::new(post, width, cell, me, t),
         None => PostLines::placeholder(row.placeholder(), t),
     }
 }
@@ -659,6 +712,7 @@ fn draw_posts<T: PostRow>(
     list: &mut List<T>,
     images: &mut Images,
     empty: &str,
+    me: Option<&str>,
     t: &Theme,
 ) {
     if !list.loaded {
@@ -680,7 +734,7 @@ fn draw_posts<T: PostRow>(
     list.offset = scroll_offset(selected, list.offset, area.height, |i| {
         lines
             .entry(i)
-            .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, t))
+            .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, me, t))
             .height()
     });
 
@@ -692,7 +746,7 @@ fn draw_posts<T: PostRow>(
         }
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
         let h = pl.height();
         let visible = (area.bottom() - y).min(h);
         let row = Rect {
@@ -777,7 +831,7 @@ fn draw_posts<T: PostRow>(
     for (i, item) in list.items.iter().enumerate().skip(below).take(PREFETCH) {
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
         if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref()) {
             images.prefetch(&small_avatar(url), AVATAR.0, AVATAR.1);
         }
@@ -1053,12 +1107,14 @@ fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images
     match mode {
         SearchMode::Posts => {
             if app.search.posts.loaded || !app.search.posts.items.is_empty() || app.pending > 0 {
+                let me = app.session.as_ref().map(|s| s.did.as_str());
                 draw_posts(
                     frame,
                     results,
                     &mut app.search.posts,
                     images,
                     "No posts found.",
+                    me,
                     t,
                 );
             }
@@ -1156,6 +1212,7 @@ fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Image
         &mut app.profile.posts,
         images,
         "No posts yet.",
+        None,
         t,
     );
 }
@@ -2299,6 +2356,44 @@ mod tests {
             small_avatar("http://127.0.0.1/img/a.png"),
             "http://127.0.0.1/img/a.png"
         );
+    }
+
+    #[test]
+    fn hints_wrap_whole_onto_more_rows_when_narrow() {
+        let t = THEMES[0];
+        let hints: Vec<keys::Hint> = vec![
+            ("?", "help"),
+            ("j k", "move"),
+            ("enter", "profile"),
+            ("q", "quit"),
+        ];
+        let text = |lines: &[Line]| -> Vec<String> {
+            lines
+                .iter()
+                .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+                .collect()
+        };
+        assert_eq!(
+            text(&hint_lines(&hints, 80, &t)),
+            [" ? help  j k move  enter profile  q quit"]
+        );
+        assert_eq!(
+            text(&hint_lines(&hints, 20, &t)),
+            [" ? help  j k move", " enter profile", " q quit"]
+        );
+    }
+
+    #[test]
+    fn a_narrow_screen_shows_every_hint() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+        let screen = render(&mut app, 50, 24);
+        for (key, what) in keys::hints(&app) {
+            assert!(
+                screen.contains(&format!("{key} {what}")),
+                "{key} {what}:\n{screen}"
+            );
+        }
     }
 
     #[test]

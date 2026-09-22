@@ -1,12 +1,12 @@
 # The home timeline: only posts written by followed accounts, drawn with their
 # images, and the actions on a post (like, reply, new post, unfollow).
 #
-# The timeline the mock serves has five items and only two belong on screen:
+# The timeline the mock serves has five items and three belong on screen:
 #
 #   Alice (followed)  "Photo from the mountains", with a photo
 #   Bob (followed)    "Replying to carol", a reply in Carol's thread, liked
 #   Alice reposting Dave's post  (a repost: not written by a followed account)
-#   me                           (the viewer's own post)
+#   me                (the viewer's own post, shown too)
 #   Eve (not followed)
 #
 # Images come from the same mock (`${api.url}/img/...`) and are solid colors,
@@ -96,9 +96,9 @@ scenarios:
                   - "Replying to carol"
                   - "♡ 2   ⟳ 1   ↩ 0"
                   - "♥ 5"
+                  - "My own post"
                 not_contains:
                   - "Reposted content by dave"
-                  - "My own post"
                   - "Eve is not followed"
             - expect_screen:
                 images: { count: 3 }

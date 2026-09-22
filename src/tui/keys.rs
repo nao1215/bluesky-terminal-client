@@ -65,6 +65,7 @@ pub const HELP: &[Section] = &[
             ("enter", "search, then move through the results"),
             ("/ i", "type in the search box again"),
             ("ctrl+t t", "search posts or accounts"),
+            ("f", "follow / unfollow the account, or the post's author"),
             ("esc", "leave the search box"),
         ],
     },
@@ -219,6 +220,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
         ],
         Tab::Search => vec![
             ("j k", "move"),
+            ("f", "follow"),
             ("l", "like"),
             ("b", "repost"),
             ("r", "reply"),
