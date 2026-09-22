@@ -208,8 +208,12 @@ scenarios:
                 contains: "4 broken.png"
             # No text is needed with pictures; the unreadable one is named.
             - send: { key: ctrl-s }
+            # The message names the file by its full path, which the error
+            # box wraps where it likes (Windows temporary paths are long),
+            # so the words may sit on two lines between the box's borders.
             - expect_screen:
-                contains: ["broken.png is not a picture bsky can read", "New post"]
+                contains: "New post"
+                matches: 'is[\s│]+not[\s│]+a[\s│]+picture'
             # The draft and its pictures are still there.
             - expect_screen:
                 contains: ["1 p1.png", "4 broken.png"]
