@@ -33,11 +33,16 @@ export CARGO_TARGET_DIR="$REPO_ROOT/target/coverage"
 eval "$(cargo llvm-cov show-env --sh)"
 cargo llvm-cov clean --workspace
 
+# Dependencies are built optimized: only bsky's own code is instrumented, and
+# an unoptimized video decoder is too slow for the E2E scenarios that play a
+# video in real time (they failed on CI runners).
+deps_optimized=(--config 'profile.dev.package."*".opt-level=3')
+
 echo "coverage: unit tests"
-cargo test --locked --all-targets
+cargo test "${deps_optimized[@]}" --locked --all-targets
 
 echo "coverage: end-to-end suite"
-cargo build --locked
+cargo build "${deps_optimized[@]}" --locked
 PATH="$CARGO_TARGET_DIR/debug:$PATH" atago run e2e/atago
 
 cargo llvm-cov report --lcov --output-path "$OUT"
