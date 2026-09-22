@@ -32,6 +32,10 @@ unicode-segmentation = "1"
 unicode-width = "0.2"
 ureq = "3"
 
+# Reads the console input before crossterm does; see src/tui/events.rs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
+
 [dev-dependencies]
 rstest = "0.27"
 tempfile = "3"
