@@ -932,6 +932,99 @@ mod tests {
         cache.trim();
     }
 
+    /// A long session draws far more pictures than it keeps: past
+    /// MAX_SLOTS decoded pictures the least recently drawn are dropped, and
+    /// never the ones on screen now.
+    #[test]
+    fn decoded_pictures_are_bounded_and_the_ones_on_screen_stay() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (0..MAX_SLOTS + 40)
+            .map(|i| {
+                let p = dir.path().join(format!("p{i}.png"));
+                image::RgbImage::from_pixel(2, 2, image::Rgb([i as u8, 0, 0]))
+                    .save(&p)
+                    .unwrap();
+                p
+            })
+            .collect();
+        let mut images = Images::new(Picker::halfblocks(), None);
+        let mut term = Terminal::new(TestBackend::new(40, 10)).unwrap();
+        // Ten new pictures a frame, each frame waiting for its pictures, as
+        // a reader scrolling down a long list.
+        for chunk in paths.chunks(10) {
+            let start = Instant::now();
+            loop {
+                term.draw(|f| {
+                    images.begin_frame(f.area().as_size(), Style::new());
+                    for (i, p) in chunk.iter().enumerate() {
+                        images.draw_file(f, Rect::new(i as u16 * 4, 0, 4, 2), p);
+                    }
+                })
+                .unwrap();
+                images.poll();
+                if !images.loading() || start.elapsed() > Duration::from_secs(10) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(2));
+            }
+        }
+        // One more frame drawing only the last ten: the trim runs.
+        let last: Vec<&PathBuf> = paths.iter().rev().take(10).collect();
+        term.draw(|f| {
+            images.begin_frame(f.area().as_size(), Style::new());
+            for (i, p) in last.iter().enumerate() {
+                images.draw_file(f, Rect::new(i as u16 * 4, 0, 4, 2), p);
+            }
+        })
+        .unwrap();
+        assert!(
+            images.slots.len() <= MAX_SLOTS,
+            "{} decoded pictures kept",
+            images.slots.len()
+        );
+        for p in last {
+            assert!(
+                images.slots.contains_key(&file_key(p)),
+                "{} was dropped",
+                p.display()
+            );
+        }
+        // An encoded picture is kept only for a picture still kept.
+        assert!(
+            images
+                .protocols
+                .keys()
+                .all(|(url, _, _)| images.slots.contains_key(url))
+        );
+    }
+
+    /// Temporary files a crashed run left in the cache are removed once they
+    /// are an hour old; one being written now is not.
+    #[test]
+    fn the_cache_trim_removes_stale_temporary_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = DiskCache::new(dir.path().to_path_buf(), 1 << 20);
+        let stale = dir.path().join("tmp.1.0");
+        let fresh = dir.path().join("tmp.1.1");
+        fs::write(&stale, b"half written").unwrap();
+        fs::write(&fresh, b"being written").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(SystemTime::now() - Duration::from_secs(2 * 3600))
+            .unwrap();
+        cache.put("https://a.test/p.png", b"body");
+        cache.trim();
+        assert!(!stale.exists(), "a stale temporary file is left");
+        assert!(fresh.exists(), "a fresh temporary file was removed");
+        assert_eq!(
+            cache.get("https://a.test/p.png").as_deref(),
+            Some(&b"body"[..])
+        );
+    }
+
     #[test]
     fn a_local_picture_is_loaded_by_its_file_key() {
         let dir = tempfile::tempdir().unwrap();
