@@ -2,13 +2,13 @@
 # never written.
 #
 # settings.json is written only when a theme is applied with Enter. Opening
-# the picker, previewing, cancelling, a broken settings file, and `bs logout`
+# the picker, previewing, cancelling, a broken settings file, and `bsky logout`
 # must leave it alone. COLORTERM is set so the colors are the theme's own
 # 24-bit ones rather than their 256-color approximation.
 version: "1"
 
 suite:
-  name: bs themes
+  name: bsky themes
 
 scenarios:
   - name: applying a theme saves it in settings.json
@@ -28,12 +28,12 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             COLORTERM: truecolor
             TZ: UTC
           timeout: 20s
@@ -77,7 +77,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           env: *env
@@ -113,9 +113,9 @@ scenarios:
       - *session
       - fixture:
           file: cfg/settings.json
-          content: '{"theme": "nord", "keep": {"written by": "a newer bs"}}'
+          content: '{"theme": "nord", "keep": {"written by": "a newer bsky"}}'
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           env: *env
@@ -126,7 +126,7 @@ scenarios:
             - send: T
             - expect_screen:
                 contains: "▶ nord"
-            # Applying another theme keeps what this bs does not know about.
+            # Applying another theme keeps what this bsky does not know about.
             - send: j
             - send: { key: enter }
             - expect_screen:
@@ -139,7 +139,7 @@ scenarios:
             path: cfg/settings.json
             json:
               - { path: "$.theme", equals: "oceanic-next" }
-              - { path: "$.keep['written by']", equals: "a newer bs" }
+              - { path: "$.keep['written by']", equals: "a newer bsky" }
 
   - name: a broken settings file is reported, ignored, and left alone
     skip:
@@ -154,7 +154,7 @@ scenarios:
           file: cfg/settings.json
           content: "{broken"
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 160
@@ -196,7 +196,7 @@ scenarios:
           file: cfg/settings.json
           content: '{"theme": "neon"}'
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env: *env
           timeout: 20s
@@ -220,11 +220,11 @@ scenarios:
           file: cfg/settings.json
           content: '{"theme": "dracula"}'
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             COLORTERM: truecolor
             NO_COLOR: "1"
           timeout: 20s
@@ -258,10 +258,10 @@ scenarios:
           file: cfg/settings.json
           content: '{"theme": "nord"}'
       - run:
-          command: bs logout
+          command: bsky logout
           env:
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           changes:

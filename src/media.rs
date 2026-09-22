@@ -24,12 +24,12 @@ pub const MAX_POST_IMAGES: usize = 4;
 /// Longest side, in pixels, of an uploaded image; larger ones are scaled
 /// down, which Bluesky's own clients also do.
 const MAX_SIDE: u32 = 2000;
-/// Largest file bs reads as a picture.
+/// Largest file bsky reads as a picture.
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 /// File name extensions shown as pictures.
 const EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 
-/// Whether a file name looks like a picture bs can read.
+/// Whether a file name looks like a picture bsky can read.
 pub fn is_image_name(name: &str) -> bool {
     Path::new(name)
         .extension()
@@ -108,7 +108,7 @@ pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
     }
     let not_image = |e: &dyn std::fmt::Display| {
         Error::io(format!(
-            "{shown} is not a picture bs can read (PNG, JPEG, GIF, WebP): {e}"
+            "{shown} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {e}"
         ))
     };
     let reader = ImageReader::new(BufReader::new(file))

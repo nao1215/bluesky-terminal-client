@@ -677,7 +677,7 @@ fn free_path(dir: &std::path::Path, name: &str) -> PathBuf {
 /// joined into one MPEG transport stream, which players play as it is).
 fn download(media: &Media) -> Result<PathBuf> {
     let dir = crate::config::download_dir()
-        .ok_or_else(|| Error::io("there is no download folder; set BS_DOWNLOAD_DIR"))?;
+        .ok_or_else(|| Error::io("there is no download folder; set BSKY_DOWNLOAD_DIR"))?;
     let agent = api::agent();
     let bytes = match media {
         Media::Image { url, .. } => fetch_bytes(&agent, url)?,
@@ -751,7 +751,7 @@ mod tests {
         std::fs::write(&text, "not an image").unwrap();
         let err = read_avatar(&text).unwrap_err();
         assert!(
-            err.message().contains("is not a picture bs can read"),
+            err.message().contains("is not a picture bsky can read"),
             "{err}"
         );
     }

@@ -1,6 +1,6 @@
 //! Terminal checks that run before the UI starts.
 //!
-//! bs draws images with the terminal's own graphics protocol. It asks the
+//! bsky draws images with the terminal's own graphics protocol. It asks the
 //! terminal which protocols it speaks (kitty graphics, sixel, or iTerm2
 //! inline images) and refuses to start when the answer is none of them,
 //! rather than degrading to a client that silently drops every picture.
@@ -13,7 +13,7 @@ use crate::error::{Error, Kind, Result};
 
 /// Environment variable that forces a graphics protocol, for terminals that
 /// support one but do not answer the detection query (some multiplexers).
-pub const GRAPHICS_ENV: &str = "BS_GRAPHICS";
+pub const GRAPHICS_ENV: &str = "BSKY_GRAPHICS";
 
 /// Fail unless stdin and stdout are both terminals.
 pub fn ensure_interactive() -> Result<()> {
@@ -21,13 +21,13 @@ pub fn ensure_interactive() -> Result<()> {
         Ok(())
     } else {
         Err(
-            Error::new(Kind::Terminal, "bs needs an interactive terminal")
-                .with_hint("run bs directly in a terminal, not through a pipe or redirect"),
+            Error::new(Kind::Terminal, "bsky needs an interactive terminal")
+                .with_hint("run bsky directly in a terminal, not through a pipe or redirect"),
         )
     }
 }
 
-/// Parse a `BS_GRAPHICS` value.
+/// Parse a `BSKY_GRAPHICS` value.
 pub fn parse_protocol(value: &str) -> Result<ProtocolType> {
     match value.trim().to_ascii_lowercase().as_str() {
         "kitty" => Ok(ProtocolType::Kitty),

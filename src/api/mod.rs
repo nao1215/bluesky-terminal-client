@@ -1,4 +1,4 @@
-//! A small blocking XRPC client for the calls bs makes.
+//! A small blocking XRPC client for the calls bsky makes.
 //!
 //! Every request goes to the account's PDS, which answers `com.atproto.*`
 //! itself and proxies `app.bsky.*` to the AppView. When the access token
@@ -19,7 +19,7 @@ use crate::config::{Session, SessionStore};
 use crate::error::{Error, Kind, Result};
 use types::*;
 
-/// PDS used when neither `--service` nor `BS_SERVICE` is given.
+/// PDS used when neither `--service` nor `BSKY_SERVICE` is given.
 pub const DEFAULT_SERVICE: &str = "https://bsky.social";
 
 /// Longest post the AppView accepts, in grapheme clusters.
@@ -28,7 +28,7 @@ pub const MAX_POST_GRAPHEMES: usize = 300;
 /// Largest avatar the PDS accepts, in bytes.
 pub const MAX_AVATAR_BYTES: usize = 1_000_000;
 
-const USER_AGENT: &str = concat!("bs/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("bsky/", env!("CARGO_PKG_VERSION"));
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.

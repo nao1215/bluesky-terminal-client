@@ -13,7 +13,7 @@ categories = ["command-line-utilities"]
 exclude = ["e2e/", ".github/", "doc/"]
 
 [[bin]]
-name = "bs"
+name = "bsky"
 path = "src/main.rs"
 
 [dependencies]

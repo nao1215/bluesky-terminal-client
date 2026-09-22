@@ -6,7 +6,7 @@
 version: "1"
 
 suite:
-  name: bs search
+  name: bsky search
 
 scenarios:
   - name: searching posts sends the typed words and shows the hits with images
@@ -38,13 +38,13 @@ scenarios:
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 100
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -88,7 +88,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env: *env
           timeout: 20s
@@ -134,7 +134,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env: *env
           timeout: 20s
@@ -168,7 +168,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env: *env
           timeout: 20s
@@ -211,7 +211,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -283,7 +283,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -321,7 +321,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           env: *env
           timeout: 20s
@@ -380,7 +380,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 30
           cols: 100
@@ -468,7 +468,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 100

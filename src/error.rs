@@ -1,13 +1,13 @@
 //! Error type shared by every layer, and the exit code each failure class maps to.
 //!
-//! bs prints failures in one shape, `error: <message>` followed by an optional
+//! bsky prints failures in one shape, `error: <message>` followed by an optional
 //! `hint: <next step>`, and exits with a code that tells scripts which class of
 //! failure happened:
 //!
 //! | code | class     | examples                                                       |
 //! |------|-----------|----------------------------------------------------------------|
 //! | 0    | success   |                                                                |
-//! | 1    | usage     | unknown flag, malformed `--service` URL, unknown `BS_GRAPHICS` |
+//! | 1    | usage     | unknown flag, malformed `--service` URL, unknown `BSKY_GRAPHICS` |
 //! | 2    | terminal  | stdin or stdout is not a terminal, no image protocol           |
 //! | 3    | local I/O | session file unreadable, corrupt, or unwritable                |
 //!

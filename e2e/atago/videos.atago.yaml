@@ -1,5 +1,5 @@
 # Videos and animated GIFs: posting one from the browser, and seeing a video
-# on the timeline. bs does not play video: a video is shown by its thumbnail
+# on the timeline. bsky does not play video: a video is shown by its thumbnail
 # on the timeline, and described (kind, length, size) in the browser and the
 # composer.
 #
@@ -7,16 +7,16 @@
 # the PDS issues a short-lived token for the service (getServiceAuth, for the
 # PDS named in the account's DID document), the file is uploaded to the
 # service (uploadVideo), and its job is polled (getJobStatus) until the blob
-# to embed is ready. BS_VIDEO_SERVICE points bs at the mock, which plays both
+# to embed is ready. BSKY_VIDEO_SERVICE points bsky at the mock, which plays both
 # the PDS and the video service. An animated GIF goes the same way: the
-# service turns it into a video, so bs itself needs no codec.
+# service turns it into a video, so bsky itself needs no codec.
 #
 # testdata/clip.mp4 is a 1-second 64x36 MP4 and testdata/moving.gif a
 # two-frame 40x30 GIF.
 version: "1"
 
 suite:
-  name: bs videos
+  name: bsky videos
 
 scenarios:
   - name: a video is posted alone, with its alt text and shape
@@ -72,14 +72,14 @@ scenarios:
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110
           env: &env
-            BS_CONFIG_DIR: ${workdir}/cfg
-            BS_CACHE_DIR: ${workdir}/cache
-            BS_VIDEO_SERVICE: ${api.url}
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_VIDEO_SERVICE: ${api.url}
             TZ: UTC
           timeout: 20s
           session:
@@ -168,7 +168,7 @@ scenarios:
       - *session
       - fixture: { file: media/moving.gif, from: testdata/moving.gif }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110
@@ -234,7 +234,7 @@ scenarios:
       - *session
       - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 160
@@ -293,7 +293,7 @@ scenarios:
       - *session
       - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 180
@@ -347,7 +347,7 @@ scenarios:
       - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
       - fixture: { file: media/photo.png, from: testdata/photo.png }
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 110
@@ -422,7 +422,7 @@ scenarios:
     steps:
       - *session
       - pty:
-          command: bs
+          command: bsky
           graphics: kitty
           rows: 40
           cols: 100

@@ -3,20 +3,20 @@
 [![tested with atago](https://img.shields.io/badge/tested%20with-atago-7c3aed?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMuNiA0LjIgMTEuOSAxMmwtOC4zIDcuOC0xLjktMi4yTDcuOSAxMiAxLjcgNi40eiIvPjxyZWN0IGZpbGw9IiNmZmYiIHg9IjEyLjYiIHk9IjE3LjIiIHdpZHRoPSI5LjciIGhlaWdodD0iMi44IiByeD0iMS40Ii8%2BPC9zdmc%2B&logoColor=white)](https://github.com/nao1215/atago)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-# bs
+# bsky
 
-bs is an unofficial [Bluesky](https://bsky.app) client for the terminal that shows pictures and videos right in the terminal: avatars and photos inline next to their posts, full screen on `Space`, and videos played in place. It draws with the terminal's own image protocol (kitty graphics, sixel, or iTerm2 inline images), and needs nothing else installed.
+bsky is an unofficial [Bluesky](https://bsky.app) client for the terminal that shows pictures and videos right in the terminal: avatars and photos inline next to their posts, full screen on `Space`, and videos played in place. It draws with the terminal's own image protocol (kitty graphics, sixel, or iTerm2 inline images), and needs nothing else installed.
 
-![bs in kitty: the timeline scrolled, then a search for "github"](doc/img/demo.gif)
+![bsky in kitty: the timeline scrolled, then a search for "github"](doc/img/demo.gif)
 
 ## Try it
 
 ```sh
 cargo install --locked --git https://github.com/nao1215/bluesky-terminal-client
-bs
+bsky
 ```
 
-Log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bs keeps only the session tokens, never the password; `bs logout` forgets them. Rust 1.90 or later builds it; the command is `bs`.
+Log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them. Rust 1.90 or later builds it; the command is `bsky`.
 
 You need a terminal that can draw images:
 
@@ -26,7 +26,7 @@ You need a terminal that can draw images:
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 inline images | iTerm2, WezTerm |
 
-A terminal that answers none of them is refused at startup (exit status 2) rather than handed a client that drops every picture. Behind a multiplexer that hides the answer, name the protocol with `BS_GRAPHICS=kitty`, `sixel`, or `iterm2`.
+A terminal that answers none of them is refused at startup (exit status 2) rather than handed a client that drops every picture. Behind a multiplexer that hides the answer, name the protocol with `BSKY_GRAPHICS=kitty`, `sixel`, or `iterm2`.
 
 ## What it does
 
@@ -41,17 +41,17 @@ A terminal that answers none of them is refused at startup (exit status 2) rathe
 
 ## Pictures and videos
 
-`Space` on a post shows its pictures full screen at their own shape, or plays its video (without sound). `←` `→` go through several pictures, `r` plays the video again, `d` saves it in `Downloads/bs`, and `Esc` goes back. On a post with only a link, `Space` (or `o` anywhere) opens it in your web browser.
+`Space` on a post shows its pictures full screen at their own shape, or plays its video (without sound). `←` `→` go through several pictures, `r` plays the video again, `d` saves it in `Downloads/bsky`, and `Esc` goes back. On a post with only a link, `Space` (or `o` anywhere) opens it in your web browser.
 
 ![a picture and a video of a profile's posts, full screen](doc/img/viewer.gif)
 
-Videos come from Bluesky's HLS stream and are decoded by OpenH264, which is built into bs, so no player or codec needs to be installed. A video bs cannot play shows its thumbnail and a warning.
+Videos come from Bluesky's HLS stream and are decoded by OpenH264, which is built into bsky, so no player or codec needs to be installed. A video bsky cannot play shows its thumbnail and a warning.
 
 ## Posting pictures and videos
 
 `n` writes a post; `Ctrl+O` in it opens a folder browser that previews pictures and describes videos. Attach up to four pictures, or one video or animated GIF, and give each alt text with `Tab`.
 
-bs turns each photo upright, scales it under Bluesky's size limit, and leaves the camera's metadata (location included) on your disk. Videos go through Bluesky's video service, as the official app does; an account whose email is not confirmed yet is told so before anything is uploaded.
+bsky turns each photo upright, scales it under Bluesky's size limit, and leaves the camera's metadata (location included) on your disk. Videos go through Bluesky's video service, as the official app does; an account whose email is not confirmed yet is told so before anything is uploaded.
 
 ## Themes
 
@@ -86,16 +86,16 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 
 | Variable | Meaning |
 |----------|---------|
-| `BS_SERVICE` | PDS to log in to (default `https://bsky.social`; also `--service`) |
-| `BS_CONFIG_DIR` | Where `session.json` and `settings.json` live (default `~/.config/bs` and the platform equivalents) |
-| `BS_CACHE_DIR` | Where downloaded pictures are kept between runs; `off` keeps none |
-| `BS_DOWNLOAD_DIR` | Where `d` saves (default `Downloads/bs`) |
-| `BS_GRAPHICS` | Force `kitty`, `sixel`, or `iterm2` |
-| `BS_BROWSER` | Program that opens links (default `xdg-open`, `open`, or the Windows URL handler) |
-| `BS_VIDEO_SERVICE` | Video service for uploads (default `https://video.bsky.app`) |
+| `BSKY_SERVICE` | PDS to log in to (default `https://bsky.social`; also `--service`) |
+| `BSKY_CONFIG_DIR` | Where `session.json` and `settings.json` live (default `~/.config/bsky` and the platform equivalents) |
+| `BSKY_CACHE_DIR` | Where downloaded pictures are kept between runs; `off` keeps none |
+| `BSKY_DOWNLOAD_DIR` | Where `d` saves (default `Downloads/bsky`) |
+| `BSKY_GRAPHICS` | Force `kitty`, `sixel`, or `iterm2` |
+| `BSKY_BROWSER` | Program that opens links (default `xdg-open`, `open`, or the Windows URL handler) |
+| `BSKY_VIDEO_SERVICE` | Video service for uploads (default `https://video.bsky.app`) |
 | `NO_COLOR` | No color |
 
-Exit status: 0 success, 1 usage error, 2 terminal unsupported, 3 local file error. Server errors do not end bs; they are shown in it and can be retried.
+Exit status: 0 success, 1 usage error, 2 terminal unsupported, 3 local file error. Server errors do not end bsky; they are shown in it and can be retried.
 
 ## Contributing
 
@@ -109,4 +109,4 @@ The end-to-end tests in [e2e/atago](e2e/atago) run the real binary with [atago](
 
 ## License
 
-[MIT](LICENSE). bs is not made by, affiliated with, or endorsed by Bluesky Social PBC.
+[MIT](LICENSE). bsky is not made by, affiliated with, or endorsed by Bluesky Social PBC.

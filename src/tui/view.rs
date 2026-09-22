@@ -314,7 +314,7 @@ fn draw_thread(
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme.clone();
-    let mut spans = vec![Span::styled(" bs ", t.badge()), Span::raw(" ")];
+    let mut spans = vec![Span::styled(" bsky ", t.badge()), Span::raw(" ")];
     for (i, tab) in Tab::ALL.iter().enumerate() {
         let label = match (tab, app.unread) {
             (Tab::Notifications, n) if n > 0 => format!(" {} {} ({n}) ", i + 1, tab.title()),
@@ -1291,7 +1291,10 @@ fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
         Paragraph::new(vec![
             Line::from(" Your Bluesky password works; an app password is safer."),
             Line::styled(" Settings → Privacy and security → App passwords", t.dim()),
-            Line::styled(" bs is an unofficial client, not made by Bluesky.", t.dim()),
+            Line::styled(
+                " bsky is an unofficial client, not made by Bluesky.",
+                t.dim(),
+            ),
         ]),
         rows[0],
     );
@@ -1466,7 +1469,7 @@ fn draw_attachments(
     }
 }
 
-/// A picture drawn in its box. A video has no frame to show (bs does not
+/// A picture drawn in its box. A video has no frame to show (bsky does not
 /// decode video), so its box says what it is and how long it runs; an
 /// animated GIF shows its first frame.
 fn draw_media_box(

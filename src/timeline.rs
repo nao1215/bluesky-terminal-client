@@ -1,7 +1,7 @@
 //! The "following only" rule for the home timeline.
 //!
 //! `app.bsky.feed.getTimeline` mixes in reposts, which bring in posts by
-//! accounts the viewer does not follow. bs shows a post only when it is in
+//! accounts the viewer does not follow. bsky shows a post only when it is in
 //! the feed because its author wrote it, not because somebody reposted it,
 //! and its author is someone the viewer follows or the viewer.
 

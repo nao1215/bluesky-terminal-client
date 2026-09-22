@@ -1,4 +1,4 @@
-# bs — Bluesky client for the terminal
+# bsky — Bluesky client for the terminal
 #
 # Run `just` with no arguments to see available recipes.
 
@@ -36,7 +36,7 @@ audit:
 deny:
     cargo deny check
 
-# Run the end-to-end suite with atago (builds bs, needs atago on PATH)
+# Run the end-to-end suite with atago (builds bsky, needs atago on PATH)
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}
 

@@ -3,7 +3,7 @@
 //!
 //! Bluesky shows animation only as video, so an animated GIF is posted as a
 //! video too: Bluesky's video service turns it into one. Nothing here decodes
-//! or encodes video, so bs needs no codec and no external program.
+//! or encodes video, so bsky needs no codec and no external program.
 
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
@@ -221,7 +221,7 @@ pub fn prepare(file: &Path) -> Result<Prepared> {
     }
     let mime = sniff_mime(&bytes).ok_or_else(|| {
         Error::io(format!(
-            "{name} is not a video bs can post (MP4, MOV, WebM, MPEG)"
+            "{name} is not a video bsky can post (MP4, MOV, WebM, MPEG)"
         ))
     })?;
     let info = probe(file);

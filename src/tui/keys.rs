@@ -127,7 +127,7 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("← → h l", "previous / next picture"),
             ("r", "play the video again"),
-            ("d", "download it to the download folder (Downloads/bs)"),
+            ("d", "download it to the download folder (Downloads/bsky)"),
             ("esc q", "back to where you were"),
         ],
     },
