@@ -200,6 +200,140 @@ pub struct Post {
     pub like_count: u64,
     pub indexed_at: String,
     pub viewer: Option<PostViewer>,
+    /// The thread above a reply, when the feed gave it. Not part of the
+    /// lexicon's postView: bs attaches it from the feedViewPost around it.
+    #[serde(skip)]
+    pub context: Option<Box<ReplyContext>>,
+}
+
+/// A post referenced from a reply or a thread: the post itself, or what the
+/// AppView says instead when it cannot show it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "$type")]
+pub enum RefPost {
+    #[serde(rename = "app.bsky.feed.defs#postView")]
+    Post(Box<Post>),
+    #[serde(rename = "app.bsky.feed.defs#notFoundPost")]
+    NotFound {
+        #[serde(default)]
+        uri: String,
+    },
+    #[serde(rename = "app.bsky.feed.defs#blockedPost")]
+    Blocked {
+        #[serde(default)]
+        uri: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+impl RefPost {
+    /// The referenced post's URI, when known.
+    pub fn uri(&self) -> Option<&str> {
+        match self {
+            RefPost::Post(p) => Some(&p.uri),
+            RefPost::NotFound { uri } | RefPost::Blocked { uri } => Some(uri),
+            RefPost::Other => None,
+        }
+    }
+}
+
+/// `app.bsky.feed.defs#replyRef` in a feed: the posts a reply belongs under.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedReply {
+    pub root: RefPost,
+    pub parent: RefPost,
+    #[serde(default)]
+    pub grandparent_author: Option<Profile>,
+}
+
+/// What is shown above a reply in a feed, so it reads in context.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyContext {
+    /// The thread's first post, when the reply is not directly under it.
+    pub root: Option<RefPost>,
+    /// Whether posts sit between the root and the parent, shown as a gap.
+    pub gap: bool,
+    /// The post being answered.
+    pub parent: RefPost,
+}
+
+impl ReplyContext {
+    /// The context for a reply, from the feed's reply references.
+    pub fn from_reply(reply: FeedReply) -> Self {
+        let root_uri = reply.root.uri().map(str::to_string);
+        let same = root_uri.is_some() && root_uri.as_deref() == reply.parent.uri();
+        // The parent answers something other than the root: there is more
+        // thread between them than is shown.
+        let gap = !same
+            && match &reply.parent {
+                RefPost::Post(p) => p
+                    .record()
+                    .reply
+                    .is_some_and(|r| Some(r.parent.uri.as_str()) != root_uri.as_deref()),
+                _ => false,
+            };
+        Self {
+            root: (!same).then_some(reply.root),
+            gap,
+            parent: reply.parent,
+        }
+    }
+}
+
+/// `app.bsky.feed.defs#threadViewPost` and the placeholders a thread can hold.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "$type")]
+pub enum ThreadNode {
+    #[serde(rename = "app.bsky.feed.defs#threadViewPost")]
+    Post {
+        post: Box<Post>,
+        #[serde(default, deserialize_with = "lenient_parent")]
+        parent: Option<Box<ThreadNode>>,
+        #[serde(default, deserialize_with = "lenient_replies")]
+        replies: Vec<ThreadNode>,
+    },
+    #[serde(rename = "app.bsky.feed.defs#notFoundPost")]
+    NotFound {
+        #[serde(default)]
+        uri: String,
+    },
+    #[serde(rename = "app.bsky.feed.defs#blockedPost")]
+    Blocked {
+        #[serde(default)]
+        uri: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+fn lenient_parent<'de, D>(de: D) -> Result<Option<Box<ThreadNode>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(de)?;
+    Ok(value
+        .and_then(|v| serde_json::from_value(v).ok())
+        .map(Box::new))
+}
+
+fn lenient_replies<'de, D>(de: D) -> Result<Vec<ThreadNode>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // One reply the client cannot read must not hide the others.
+    let values = Option::<Vec<Value>>::deserialize(de)?.unwrap_or_default();
+    Ok(values
+        .into_iter()
+        .map(|v| serde_json::from_value(v).unwrap_or(ThreadNode::Other))
+        .collect())
+}
+
+/// `app.bsky.feed.getPostThread` output.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PostThread {
+    pub thread: ThreadNode,
 }
 
 fn lenient_embed<'de, D>(de: D) -> Result<Option<Embed>, D::Error>
@@ -255,6 +389,18 @@ pub struct FeedItem {
     pub post: Post,
     /// Present when the item is in the feed because of a repost.
     pub reason: Option<Value>,
+    /// Present when the post is a reply: the thread it belongs under.
+    #[serde(deserialize_with = "lenient_reply")]
+    pub reply: Option<FeedReply>,
+}
+
+fn lenient_reply<'de, D>(de: D) -> Result<Option<FeedReply>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // A reply context the client cannot read must not hide the reply.
+    let value = Option::<Value>::deserialize(de)?;
+    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 /// `app.bsky.feed.getTimeline` output.
@@ -420,5 +566,73 @@ mod tests {
             (r.root.uri.as_str(), r.parent.uri.as_str()),
             ("at://top", "at://mid")
         );
+    }
+
+    fn reply_item(reply: Value) -> FeedItem {
+        serde_json::from_value(json!({
+            "post": {"uri": "at://me/p/child", "cid": "c", "author": {"did": "d", "handle": "h"}, "record": {"text": "child"}},
+            "reply": reply,
+        }))
+        .unwrap()
+    }
+
+    fn view(uri: &str, parent_of: Option<&str>) -> Value {
+        let mut record = json!({"text": format!("text of {uri}")});
+        if let Some(p) = parent_of {
+            record["reply"] =
+                json!({"root": {"uri": "at://root", "cid": "c"}, "parent": {"uri": p, "cid": "c"}});
+        }
+        json!({"$type": "app.bsky.feed.defs#postView", "uri": uri, "cid": "c",
+               "author": {"did": "d", "handle": "a.test"}, "record": record})
+    }
+
+    #[test]
+    fn a_reply_directly_under_the_root_shows_only_the_parent() {
+        let item =
+            reply_item(json!({"root": view("at://root", None), "parent": view("at://root", None)}));
+        let ctx = ReplyContext::from_reply(item.reply.unwrap());
+        assert!(ctx.root.is_none());
+        assert!(!ctx.gap);
+        assert_eq!(ctx.parent.uri(), Some("at://root"));
+    }
+
+    #[test]
+    fn a_deeper_reply_shows_the_root_and_marks_the_gap() {
+        // parent answers "mid", not the root: something sits in between.
+        let item = reply_item(json!({
+            "root": view("at://root", None),
+            "parent": view("at://parent", Some("at://mid")),
+            "grandparentAuthor": {"did": "g", "handle": "g.test"}
+        }));
+        let ctx = ReplyContext::from_reply(item.reply.unwrap());
+        assert_eq!(ctx.root.as_ref().and_then(RefPost::uri), Some("at://root"));
+        assert!(ctx.gap);
+        // parent answers the root itself: no gap.
+        let item = reply_item(
+            json!({"root": view("at://root", None), "parent": view("at://parent", Some("at://root"))}),
+        );
+        assert!(!ReplyContext::from_reply(item.reply.unwrap()).gap);
+    }
+
+    #[test]
+    fn missing_and_blocked_posts_in_a_reply_are_read_as_placeholders() {
+        let item = reply_item(json!({
+            "root": {"$type": "app.bsky.feed.defs#notFoundPost", "uri": "at://gone", "notFound": true},
+            "parent": {"$type": "app.bsky.feed.defs#blockedPost", "uri": "at://b", "blocked": true, "author": {"did": "x"}}
+        }));
+        let reply = item.reply.unwrap();
+        assert!(matches!(reply.root, RefPost::NotFound { ref uri } if uri == "at://gone"));
+        assert!(matches!(reply.parent, RefPost::Blocked { ref uri } if uri == "at://b"));
+    }
+
+    #[test]
+    fn an_unreadable_reply_context_keeps_the_post() {
+        let item = reply_item(json!({"root": 1}));
+        assert!(item.reply.is_none());
+        assert_eq!(item.post.record().text, "child");
+        let item = reply_item(
+            json!({"root": {"$type": "app.bsky.feed.defs#future"}, "parent": view("at://p", None)}),
+        );
+        assert_eq!(item.reply.unwrap().root, RefPost::Other);
     }
 }

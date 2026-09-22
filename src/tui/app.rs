@@ -12,6 +12,7 @@ use crate::config::{Session, Settings};
 use crate::error::Error;
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
+use crate::tui::thread::{self as thread_rows, ThreadRow};
 use crate::tui::worker::{Event, Feed, Job, MorePage, Page};
 
 /// The three top-level views.
@@ -73,7 +74,7 @@ impl Keyed for Profile {
 const MORE_AHEAD: usize = 3;
 
 /// A scrollable list with a selection.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct List<T> {
     pub items: Vec<T>,
     pub selected: usize,
@@ -85,6 +86,21 @@ pub struct List<T> {
     pub cursor: Option<String>,
     /// A next page has been asked for and not answered yet.
     pub more_pending: bool,
+}
+
+// Not derived: a derive would demand `T: Default`, which an empty list does
+// not need.
+impl<T> Default for List<T> {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            selected: 0,
+            offset: 0,
+            loaded: false,
+            cursor: None,
+            more_pending: false,
+        }
+    }
 }
 
 impl<T: Keyed> List<T> {
@@ -170,6 +186,15 @@ pub struct ProfilePane {
     /// The tab the profile was opened from (Enter on an account or a post),
     /// which Esc goes back to with its results and selection as they were.
     pub came_from: Option<Tab>,
+}
+
+/// A thread opened with `v`, shown over the current tab.
+#[derive(Debug, Clone, Default)]
+pub struct ThreadView {
+    /// The post it was opened on.
+    pub uri: String,
+    pub list: List<ThreadRow>,
+    pub error: Option<String>,
 }
 
 /// The post composer.
@@ -268,6 +293,8 @@ pub struct App {
     pub timeline: List<Post>,
     pub search: Search,
     pub profile: ProfilePane,
+    /// Threads opened with `v`, the last on top; Esc closes the top one.
+    pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
@@ -308,6 +335,7 @@ impl App {
                 query: String::new(),
             },
             profile: ProfilePane::default(),
+            threads: Vec::new(),
             overlay: None,
             status: None,
             pending: 0,
@@ -653,6 +681,7 @@ impl App {
         self.tab = tab;
         // Choosing a tab is a new place to be, not a detour to return from.
         self.profile.came_from = None;
+        self.threads.clear();
         // Arriving at an empty Search tab means wanting to type: letters go to
         // the box, not to the commands they are bound to on the result list.
         // With a query already there, the results keep the keys (/ or i types).
@@ -696,11 +725,17 @@ impl App {
     }
 
     fn selected_post(&mut self) -> Option<Post> {
+        if let Some(th) = self.threads.last() {
+            return th.list.current().and_then(ThreadRow::post).cloned();
+        }
         self.current_posts()?.current().cloned()
     }
 
     /// The account `f` and Enter act on in the current view.
     fn selected_account(&mut self) -> Option<Profile> {
+        if !self.threads.is_empty() {
+            return self.selected_post().map(|p| p.author);
+        }
         match self.tab {
             Tab::Search if self.search.mode == SearchMode::Accounts => {
                 self.search.actors.current().cloned()
@@ -748,6 +783,12 @@ impl App {
             KeyCode::Char('b') => return self.toggle_repost(),
             KeyCode::Char('f') => return self.toggle_follow(),
             KeyCode::Char('e') if self.tab == Tab::Profile => return self.edit_profile(),
+            KeyCode::Enter if !self.threads.is_empty() => {
+                if let Some(author) = self.selected_post().map(|p| p.author) {
+                    self.threads.clear();
+                    return self.open_profile(Some(author.did));
+                }
+            }
             KeyCode::Enter => {
                 if self.tab != Tab::Profile
                     && let Some(account) = self.selected_account()
@@ -755,6 +796,10 @@ impl App {
                     return self.open_profile(Some(account.did));
                 }
             }
+            KeyCode::Esc if !self.threads.is_empty() => {
+                self.threads.pop();
+            }
+            KeyCode::Char('v') => return self.open_thread(),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             _ => {}
@@ -781,6 +826,11 @@ impl App {
     }
 
     fn step(&mut self, delta: isize) -> Vec<Job> {
+        if let Some(th) = self.threads.last_mut() {
+            // A thread arrives whole (to the depth asked for): no pages.
+            th.list.step(delta);
+            return Vec::new();
+        }
         let more = match self.tab {
             Tab::Search if self.search.mode == SearchMode::Accounts => {
                 self.search.actors.step(delta);
@@ -818,7 +868,23 @@ impl App {
             .collect()
     }
 
+    fn open_thread(&mut self) -> Vec<Job> {
+        let Some(post) = self.selected_post() else {
+            return Vec::new();
+        };
+        self.threads.push(ThreadView {
+            uri: post.uri.clone(),
+            ..ThreadView::default()
+        });
+        vec![Job::Thread(post.uri)]
+    }
+
     fn refresh(&mut self) -> Vec<Job> {
+        if let Some(th) = self.threads.last_mut() {
+            th.list.loaded = false;
+            th.error = None;
+            return vec![Job::Thread(th.uri.clone())];
+        }
         match self.tab {
             Tab::Timeline => {
                 self.info("refreshing…");
@@ -939,6 +1005,14 @@ impl App {
                 .filter(|p| p.uri == uri)
                 .for_each(&mut f);
         }
+        for th in &mut self.threads {
+            th.list
+                .items
+                .iter_mut()
+                .filter_map(ThreadRow::post_mut)
+                .filter(|p| p.uri == uri)
+                .for_each(&mut f);
+        }
     }
 
     /// Set the follow state of `did` everywhere it is shown.
@@ -956,6 +1030,13 @@ impl App {
             list.items.iter_mut().for_each(|p| apply(&mut p.author));
         }
         self.search.actors.items.iter_mut().for_each(apply);
+        for th in &mut self.threads {
+            th.list
+                .items
+                .iter_mut()
+                .filter_map(ThreadRow::post_mut)
+                .for_each(|p| apply(&mut p.author));
+        }
         if let Some(p) = &mut self.profile.profile {
             apply(p);
         }
@@ -1115,6 +1196,30 @@ impl App {
                 cursor,
                 result,
             } => self.more(feed, &cursor, result),
+            Event::Thread { uri, result } => {
+                // Only the thread on top, still waiting, takes the answer.
+                let Some(th) = self
+                    .threads
+                    .last_mut()
+                    .filter(|t| t.uri == uri && !t.list.loaded)
+                else {
+                    return Vec::new();
+                };
+                match result {
+                    Ok(node) => {
+                        let (rows, focus) = thread_rows::flatten(node);
+                        th.list.items = rows;
+                        th.list.selected = focus;
+                        th.list.offset = 0;
+                        th.list.loaded = true;
+                    }
+                    Err(e) => {
+                        th.list.loaded = true;
+                        th.error = Some(e.message().to_string());
+                        self.fail(&e);
+                    }
+                }
+            }
             Event::Followed {
                 did,
                 result: Ok(uri),
@@ -2010,6 +2115,100 @@ mod tests {
         });
         assert_eq!(app.timeline.items[0].repost_count, 0);
         assert!(app.timeline.items[0].repost_uri().is_none());
+    }
+
+    fn thread_json(focus: &str, replies: &[&str]) -> crate::api::types::ThreadNode {
+        let node = |uri: &str| {
+            json!({"$type": "app.bsky.feed.defs#threadViewPost",
+                   "post": {"uri": uri, "cid": format!("cid-{uri}"), "author": {"did": "did:plc:z", "handle": "z.test"}, "record": {"text": uri}},
+                   "replies": []})
+        };
+        let mut v = node(focus);
+        v["parent"] = node("at://parent");
+        v["replies"] = json!(replies.iter().map(|r| node(r)).collect::<Vec<_>>());
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn v_opens_the_thread_and_esc_closes_it() {
+        let mut app = logged_in();
+        let jobs = app.handle_key(key('v'));
+        assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        });
+        let th = app.threads.last().unwrap();
+        assert_eq!(th.list.items.len(), 4);
+        assert_eq!(
+            th.list.selected, 1,
+            "the opened post is selected, below its parent"
+        );
+        // Keys act on the thread: j moves to the first reply and l likes it.
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(key('l'));
+        assert!(matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://r1"));
+        app.handle_event(Event::Liked {
+            post_uri: "at://r1".into(),
+            result: Ok("at://like".into()),
+        });
+        let liked = app.threads.last().unwrap().list.items[2]
+            .post()
+            .unwrap()
+            .clone();
+        assert_eq!(liked.like_count, 1);
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.threads.is_empty());
+        assert_eq!(app.tab, Tab::Timeline);
+        assert_eq!(app.timeline.selected, 0, "the timeline is where it was");
+    }
+
+    #[test]
+    fn a_thread_inside_a_thread_stacks() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        });
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(key('v'));
+        assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://r1"));
+        assert_eq!(app.threads.len(), 2);
+        app.handle_key(code(KeyCode::Esc));
+        assert_eq!(app.threads.len(), 1);
+    }
+
+    #[test]
+    fn a_late_thread_answer_is_dropped_and_a_tab_switch_closes_threads() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_key(code(KeyCode::Esc));
+        // The answer for the thread already closed changes nothing.
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &[])),
+        });
+        assert!(app.threads.is_empty());
+        app.handle_key(key('v'));
+        app.handle_key(key('2'));
+        assert!(app.threads.is_empty());
+    }
+
+    #[test]
+    fn a_failed_thread_says_why_and_r_retries() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Err(Error::api("NotFound: Post not found")),
+        });
+        assert_eq!(
+            app.threads[0].error.as_deref(),
+            Some("NotFound: Post not found")
+        );
+        let jobs = app.handle_key(key('R'));
+        assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"));
     }
 
     #[test]

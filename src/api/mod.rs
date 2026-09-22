@@ -272,6 +272,16 @@ impl Client {
         self.get("app.bsky.feed.getAuthorFeed", &q)
     }
 
+    /// `app.bsky.feed.getPostThread`: the post, the posts above it, and its
+    /// replies ten levels deep.
+    pub fn post_thread(&mut self, uri: &str) -> Result<ThreadNode> {
+        let r: PostThread = self.get(
+            "app.bsky.feed.getPostThread",
+            &[("uri", uri), ("depth", "10"), ("parentHeight", "20")],
+        )?;
+        Ok(r.thread)
+    }
+
     /// `app.bsky.actor.getProfile`.
     pub fn profile(&mut self, actor: &str) -> Result<Profile> {
         self.get("app.bsky.actor.getProfile", &[("actor", actor)])

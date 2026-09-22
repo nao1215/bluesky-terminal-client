@@ -1,0 +1,206 @@
+# Threads: the context a reply is shown with on the timeline, and the thread
+# view opened with v, fully expanded.
+#
+# The timeline has one post: Bob's reply deep in a thread Carol started. The
+# feed gives its root (Carol), its parent (Dave), and Dave's own parent is not
+# the root, so a gap is shown between them. getPostThread answers with a
+# parent that no longer exists, the post, and two levels of replies.
+version: "1"
+
+suite:
+  name: bs threads
+
+scenarios:
+  - name: a reply is shown under its thread, and v opens the whole thread
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/b1
+                    cid: cid-b1
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record:
+                      text: "Bob's answer"
+                      createdAt: "2026-09-20T09:00:00.000Z"
+                      reply:
+                        root: { uri: at://did:plc:carol/app.bsky.feed.post/root, cid: cid-root }
+                        parent: { uri: at://did:plc:dave/app.bsky.feed.post/d1, cid: cid-d1 }
+                  reply:
+                    root:
+                      $type: app.bsky.feed.defs#postView
+                      uri: at://did:plc:carol/app.bsky.feed.post/root
+                      cid: cid-root
+                      author: { did: did:plc:carol, handle: carol.test, displayName: Carol }
+                      record: { text: "Carol asks a question", createdAt: "2026-09-20T07:00:00.000Z" }
+                    parent:
+                      $type: app.bsky.feed.defs#postView
+                      uri: at://did:plc:dave/app.bsky.feed.post/d1
+                      cid: cid-d1
+                      author: { did: did:plc:dave, handle: dave.test, displayName: Dave }
+                      record:
+                        text: "Dave replies to someone"
+                        createdAt: "2026-09-20T08:00:00.000Z"
+                        reply:
+                          root: { uri: at://did:plc:carol/app.bsky.feed.post/root, cid: cid-root }
+                          parent: { uri: at://did:plc:erin/app.bsky.feed.post/e1, cid: cid-e1 }
+                    grandparentAuthor: { did: did:plc:erin, handle: erin.test }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPostThread
+            json:
+              thread:
+                $type: app.bsky.feed.defs#threadViewPost
+                post:
+                  uri: at://did:plc:bob/app.bsky.feed.post/b1
+                  cid: cid-b1
+                  author: { did: did:plc:bob, handle: bob.test, displayName: Bob }
+                  record: { text: "Bob's answer", createdAt: "2026-09-20T09:00:00.000Z" }
+                  replyCount: 2
+                parent:
+                  $type: app.bsky.feed.defs#threadViewPost
+                  post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/d1
+                    cid: cid-d1
+                    author: { did: did:plc:dave, handle: dave.test, displayName: Dave }
+                    record: { text: "Dave replies to someone", createdAt: "2026-09-20T08:00:00.000Z" }
+                  parent: { $type: app.bsky.feed.defs#notFoundPost, uri: at://did:plc:erin/app.bsky.feed.post/e1, notFound: true }
+                replies:
+                  - $type: app.bsky.feed.defs#threadViewPost
+                    post:
+                      uri: at://did:plc:fay/app.bsky.feed.post/f1
+                      cid: cid-f1
+                      author: { did: did:plc:fay, handle: fay.test, displayName: Fay }
+                      record: { text: "Fay replies to Bob", createdAt: "2026-09-20T10:00:00.000Z" }
+                    replies:
+                      - $type: app.bsky.feed.defs#threadViewPost
+                        post:
+                          uri: at://did:plc:gus/app.bsky.feed.post/g1
+                          cid: cid-g1
+                          author: { did: did:plc:gus, handle: gus.test, displayName: Gus }
+                          record: { text: "Gus replies to Fay", createdAt: "2026-09-20T11:00:00.000Z" }
+                        replies: []
+                  - $type: app.bsky.feed.defs#blockedPost
+                    uri: at://did:plc:hal/app.bsky.feed.post/h1
+                    blocked: true
+                    author: { did: did:plc:hal }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.like/l9", cid: "cid-l9" }
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+          timeout: 20s
+          session:
+            # On the timeline, the thread above the reply: root, gap, parent.
+            - expect_screen:
+                contains:
+                  - "┆ Carol @carol.test: Carol asks a question"
+                  - "┆ ⋮"
+                  - "┆ Dave @dave.test: Dave replies to someone"
+                  - "Bob @bob.test"
+                  - "Bob's answer"
+            - send: v
+            - expect_screen:
+                contains:
+                  - "Thread"
+                  - "(post not found)"
+                  - "Dave replies to someone"
+                  - "Bob's answer"
+                  - "Fay replies to Bob"
+                  - "Gus replies to Fay"
+                  - "(blocked post)"
+                  - "esc back"
+            # The opened post is selected; j moves to Fay's reply, l likes it.
+            - send: j
+            - send: l
+            - expect_screen:
+                contains: "liked"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "┆ Carol @carol.test: Carol asks a question"
+                not_contains: "Fay replies to Bob"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getPostThread
+            count: 1
+            query: { name: uri, equals: "at://did:plc:bob/app.bsky.feed.post/b1" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, query: { name: depth, equals: "10" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, query: { name: parentHeight, equals: "20" } }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.like" }
+                - { path: "$.record.subject.uri", equals: "at://did:plc:fay/app.bsky.feed.post/f1" }
+                - { path: "$.record.subject.cid", equals: "cid-f1" }
+
+  - name: a thread that cannot be loaded says why and R tries again
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/b1
+                    cid: cid-b1
+                    author: { did: did:plc:bob, handle: bob.test, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Bob's post", createdAt: "2026-09-20T09:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPostThread
+            status: 400
+            json: { error: "NotFound", message: "Post not found" }
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          cols: 120
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Bob's post"
+            - send: v
+            - expect_screen:
+                contains: "could not load the thread: app.bsky.feed.getPostThread failed: NotFound: Post not found"
+            - send: R
+            - expect_screen:
+                contains: "could not load the thread"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, count: 2 }

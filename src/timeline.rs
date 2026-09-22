@@ -5,14 +5,24 @@
 //! post only when its author is someone the viewer follows and it is in the
 //! feed because that author wrote it, not because somebody reposted it.
 
-use crate::api::types::{FeedItem, Post};
+use crate::api::types::{FeedItem, Post, ReplyContext};
 
 /// Keep only posts written by accounts `viewer_did` follows.
+///
+/// A reply keeps the thread above it ([`Post::context`]), whoever wrote those
+/// posts: the rule is about who wrote the item, and the context is what makes
+/// a followed account's reply readable.
 pub fn followed_posts(feed: Vec<FeedItem>, viewer_did: &str) -> Vec<Post> {
     feed.into_iter()
         .filter(|item| item.reason.is_none())
-        .map(|item| item.post)
-        .filter(|post| post.author.did != viewer_did && post.author.following_uri().is_some())
+        .filter(|item| {
+            item.post.author.did != viewer_did && item.post.author.following_uri().is_some()
+        })
+        .map(|item| {
+            let mut post = item.post;
+            post.context = item.reply.map(|r| Box::new(ReplyContext::from_reply(r)));
+            post
+        })
         .collect()
 }
 

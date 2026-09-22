@@ -6,6 +6,7 @@ pub mod input;
 pub mod keys;
 pub mod text;
 pub mod theme;
+pub mod thread;
 pub mod view;
 pub mod worker;
 

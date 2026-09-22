@@ -43,7 +43,17 @@ pub const HELP: &[Section] = &[
             ("l", "like / remove like"),
             ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
+            ("v", "open the thread: the posts above it and every reply"),
             ("enter", "open the selected account's profile"),
+        ],
+    },
+    Section {
+        title: "Thread",
+        keys: &[
+            ("j k", "move through the posts and replies"),
+            ("l b r f", "like, repost, reply, follow on any of them"),
+            ("v", "open the thread of the selected reply"),
+            ("esc", "close the thread"),
         ],
     },
     Section {
@@ -113,6 +123,18 @@ pub fn hints(app: &App) -> Vec<Hint> {
         }
         None => {}
     }
+    if !app.threads.is_empty() {
+        return vec![
+            ("esc", "back"),
+            ("j k", "move"),
+            ("l", "like"),
+            ("b", "repost"),
+            ("r", "reply"),
+            ("v", "thread"),
+            ("enter", "profile"),
+            ("?", "help"),
+        ];
+    }
     let mut v: Vec<Hint> = match app.tab {
         Tab::Search if app.search.editing => {
             return vec![
@@ -143,6 +165,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("l", "like"),
             ("b", "repost"),
             ("r", "reply"),
+            ("v", "thread"),
             ("n", "post"),
             ("f", "unfollow"),
             ("enter", "profile"),

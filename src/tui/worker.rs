@@ -7,7 +7,7 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
-use crate::api::types::{Post, Profile, Record, ReplyRef, StrongRef};
+use crate::api::types::{Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
 use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
 use crate::config::{Session, SessionStore};
 use crate::error::{Error, Result};
@@ -26,6 +26,8 @@ pub enum Job {
     SearchActors(String),
     /// Load an actor's profile and recent posts.
     OpenProfile(String),
+    /// A post's thread, by the post's URI.
+    Thread(String),
     /// The page of `feed` that starts at `cursor`.
     More {
         feed: Feed,
@@ -120,6 +122,10 @@ pub enum Event {
         feed: Feed,
         cursor: String,
         result: Result<MorePage>,
+    },
+    Thread {
+        uri: String,
+        result: Result<ThreadNode>,
     },
     Liked {
         post_uri: String,
@@ -222,6 +228,10 @@ impl State {
             Job::SearchPosts(q) => Event::SearchPosts(self.search_posts(&q, None)),
             Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
+            Job::Thread(uri) => Event::Thread {
+                result: self.client().and_then(|c| c.post_thread(&uri)),
+                uri,
+            },
             Job::More { feed, cursor } => Event::More {
                 result: self.more(&feed, &cursor),
                 feed,

@@ -10,15 +10,18 @@ use std::collections::HashMap;
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::api::types::{Embed, Post, Profile};
+use crate::api::types::{Embed, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::terminal::protocol_name;
-use crate::tui::app::{App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab};
+use crate::tui::app::{
+    App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab, ThreadView,
+};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
 use crate::tui::text::{format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
+use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
 
 /// Width of the selection marker column.
 const MARK_W: u16 = 2;
@@ -54,13 +57,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     ])
     .areas(area);
     draw_tabs(frame, top, app);
-    match app.tab {
-        Tab::Timeline => {
-            let empty = "No posts from accounts you follow yet. Press R to refresh.";
-            draw_posts(frame, body, &mut app.timeline, images, empty, &t);
-        }
-        Tab::Search => draw_search(frame, body, app, images),
-        Tab::Profile => draw_profile(frame, body, app, images),
+    if let Some(th) = app.threads.last_mut() {
+        draw_thread(frame, body, th, images, &t);
+    } else {
+        draw_tab(frame, body, app, images, &t);
     }
     draw_hints(frame, hint_row, app);
     draw_status(frame, status_row, app, images);
@@ -71,6 +71,41 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         None => {}
     }
+}
+
+fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
+    let t = *t;
+    match app.tab {
+        Tab::Timeline => {
+            let empty = "No posts from accounts you follow yet. Press R to refresh.";
+            draw_posts(frame, body, &mut app.timeline, images, empty, &t);
+        }
+        Tab::Search => draw_search(frame, body, app, images),
+        Tab::Profile => draw_profile(frame, body, app, images),
+    }
+}
+
+/// A thread over the current tab: a title row, then the posts, the opened
+/// one among them where the selection starts.
+fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut Images, t: &Theme) {
+    let [title, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+    frame.render_widget(
+        Line::from(vec![
+            Span::styled(" Thread ", t.selected()),
+            Span::styled("  esc back", t.dim()),
+        ]),
+        title,
+    );
+    if let Some(e) = &th.error {
+        frame.render_widget(
+            Paragraph::new(format!(" could not load the thread: {e}  (R to retry)"))
+                .style(t.error())
+                .wrap(ratatui::widgets::Wrap { trim: true }),
+            list,
+        );
+        return;
+    }
+    draw_posts(frame, list, &mut th.list, images, "The thread is empty.", t);
 }
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
@@ -165,6 +200,8 @@ fn scroll<T>(list: &mut List<T>, heights: &[u16], viewport: u16) {
 
 /// Everything a post draws besides images, precomputed for a width.
 struct PostLines {
+    /// The thread above a reply, one dim line per post.
+    context: Vec<Line<'static>>,
     header: Line<'static>,
     body: Vec<Line<'static>>,
     images: Vec<String>,
@@ -238,7 +275,13 @@ impl PostLines {
             Span::styled(format!("⟳ {}", post.repost_count), repost_style),
             Span::styled(format!("   ↩ {}", post.reply_count), t.dim()),
         ]);
+        let context = post
+            .context
+            .as_deref()
+            .map(|c| context_lines(c, width, t))
+            .unwrap_or_default();
         Self {
+            context,
             header,
             body,
             images,
@@ -247,10 +290,51 @@ impl PostLines {
         }
     }
 
-    fn height(&self) -> u16 {
-        let content = 2 + self.body.len() as u16 + self.image_rows;
-        content.max(AVATAR.1) + 1
+    /// A row that stands in for a post that cannot be shown.
+    fn placeholder(text: &'static str, t: &Theme) -> Self {
+        Self {
+            context: Vec::new(),
+            header: Line::styled(text, t.dim()),
+            body: Vec::new(),
+            images: Vec::new(),
+            image_rows: 0,
+            stats: Line::default(),
+        }
     }
+
+    fn height(&self) -> u16 {
+        let ctx = self.context.len() as u16;
+        let content = ctx + 2 + self.body.len() as u16 + self.image_rows;
+        content.max(ctx + AVATAR.1) + 1
+    }
+}
+
+/// The posts above a reply, each on one dim line: the root when the reply is
+/// not directly under it, a gap when more of the thread sits in between, and
+/// the parent.
+fn context_lines(c: &ReplyContext, width: usize, t: &Theme) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if let Some(root) = &c.root {
+        lines.push(ref_post_line(root, width, t));
+        if c.gap {
+            lines.push(Line::styled("┆ ⋮", t.dim()));
+        }
+    }
+    lines.push(ref_post_line(&c.parent, width, t));
+    lines
+}
+
+fn ref_post_line(p: &RefPost, width: usize, t: &Theme) -> Line<'static> {
+    let text = match p {
+        RefPost::Post(post) => {
+            let first = post.record().text.lines().next().unwrap_or("").to_string();
+            format!("┆ {} @{}: {first}", post.author.name(), post.author.handle)
+        }
+        RefPost::NotFound { .. } => "┆ (post not found)".into(),
+        RefPost::Blocked { .. } => "┆ (blocked post)".into(),
+        RefPost::Other => "┆ (post not shown)".into(),
+    };
+    Line::styled(truncate(&text, width), t.dim())
 }
 
 fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
@@ -300,6 +384,11 @@ fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) -> Option<Lin
     ))
 }
 
+/// Width left for a row's text once its indentation is taken off.
+fn content_width<T: PostRow>(content: Rect, row: &T) -> u16 {
+    content.width.saturating_sub(row.indent() * 2)
+}
+
 /// The content column of a list row, right of the marker and avatar.
 fn content_rect(area: Rect) -> Rect {
     let left = MARK_W + AVATAR.0 + 1;
@@ -326,10 +415,52 @@ fn draw_marker(frame: &mut Frame, area: Rect, height: u16, selected: bool, t: &T
     );
 }
 
-fn draw_posts(
+/// Something drawn as one entry of a post list: a feed item, or a row of a
+/// thread (indented, possibly a placeholder for a post that cannot be shown).
+pub trait PostRow {
+    fn post(&self) -> Option<&Post>;
+    /// Reply depth, drawn as indentation with guide lines.
+    fn indent(&self) -> u16 {
+        0
+    }
+    /// What to show instead of a post that is not there.
+    fn placeholder(&self) -> &'static str {
+        "(post not shown)"
+    }
+}
+
+impl PostRow for Post {
+    fn post(&self) -> Option<&Post> {
+        Some(self)
+    }
+}
+
+impl PostRow for ThreadRow {
+    fn post(&self) -> Option<&Post> {
+        ThreadRow::post(self)
+    }
+    fn indent(&self) -> u16 {
+        self.depth.min(MAX_INDENT)
+    }
+    fn placeholder(&self) -> &'static str {
+        match self.kind {
+            RowKind::Blocked(_) => "(blocked post)",
+            _ => "(post not found)",
+        }
+    }
+}
+
+fn row_lines<T: PostRow>(row: &T, width: u16, cell: (u16, u16), t: &Theme) -> PostLines {
+    match row.post() {
+        Some(post) => PostLines::new(post, width, cell, t),
+        None => PostLines::placeholder(row.placeholder(), t),
+    }
+}
+
+fn draw_posts<T: PostRow>(
     frame: &mut Frame,
     area: Rect,
-    list: &mut List<Post>,
+    list: &mut List<T>,
     images: &mut Images,
     empty: &str,
     t: &Theme,
@@ -352,21 +483,21 @@ fn draw_posts(
     let first = list.offset.min(list.selected);
     let mut heights = vec![0; list.items.len()];
     let last = list.selected.min(list.items.len() - 1);
-    for (i, post) in list.items.iter().enumerate().take(last + 1).skip(first) {
-        let pl = PostLines::new(post, content.width, cell, t);
+    for (i, item) in list.items.iter().enumerate().take(last + 1).skip(first) {
+        let pl = row_lines(item, content_width(content, item), cell, t);
         heights[i] = pl.height();
         lines.insert(i, pl);
     }
     scroll(list, &heights, area.height);
 
     let mut y = area.y;
-    for (i, post) in list.items.iter().enumerate().skip(list.offset) {
+    for (i, item) in list.items.iter().enumerate().skip(list.offset) {
         if y >= area.bottom() {
             break;
         }
         let pl = lines
             .entry(i)
-            .or_insert_with(|| PostLines::new(post, content.width, cell, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, t));
         let h = pl.height();
         let visible = (area.bottom() - y).min(h);
         let row = Rect {
@@ -377,25 +508,46 @@ fn draw_posts(
         let whole = visible == h;
         draw_marker(frame, row, h, i == list.selected, t);
 
-        if whole || visible >= AVATAR.1 {
+        // Replies are indented, with a guide line for each level.
+        let indent = item.indent() * 2;
+        for level in 0..item.indent() {
+            let guide = vec![Line::from("│"); usize::from(visible.saturating_sub(1).max(1))];
+            let x = area.x + MARK_W + level * 2;
+            frame.render_widget(
+                Paragraph::new(guide).style(t.dim()),
+                Rect {
+                    x,
+                    y,
+                    width: 1,
+                    height: visible,
+                }
+                .intersection(area),
+            );
+        }
+        if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref())
+            && whole
+        {
+            // Beside the post itself, below the thread lines above it.
             let avatar = Rect {
-                x: area.x + MARK_W,
-                y,
+                x: area.x + MARK_W + indent,
+                y: y + pl.context.len() as u16,
                 width: AVATAR.0,
                 height: AVATAR.1,
             };
-            if let Some(url) = &post.author.avatar
-                && whole
-            {
-                images.draw(frame, avatar, url);
-            }
+            images.draw(frame, avatar, url);
         }
+        let content = Rect {
+            x: content.x + indent.min(content.width),
+            width: content.width.saturating_sub(indent),
+            ..content
+        };
         let c = Rect {
             y,
             height: visible,
             ..content
         };
-        let mut text: Vec<Line> = vec![pl.header.clone()];
+        let mut text: Vec<Line> = pl.context.clone();
+        text.push(pl.header.clone());
         text.extend(pl.body.iter().cloned());
         let body_rows = text.len() as u16;
         frame.render_widget(Paragraph::new(text), c);
@@ -1221,6 +1373,73 @@ mod tests {
             );
         }
         assert!(screen.contains("▶ nord"), "{screen}");
+    }
+
+    #[test]
+    fn a_reply_shows_its_thread_above_it() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let mut reply = posts(1).remove(0);
+        let parent: crate::api::types::RefPost = serde_json::from_value(json!({
+            "$type": "app.bsky.feed.defs#postView", "uri": "at://parent", "cid": "c",
+            "author": {"did": "d", "handle": "carol.test", "displayName": "Carol"},
+            "record": {"text": "the question\nsecond line"}
+        }))
+        .unwrap();
+        reply.context = Some(Box::new(crate::api::types::ReplyContext {
+            root: Some(crate::api::types::RefPost::NotFound {
+                uri: "at://root".into(),
+            }),
+            gap: true,
+            parent,
+        }));
+        app.handle_event(Event::Timeline(Ok(vec![reply].into())));
+        let screen = render(&mut app, 80, 24);
+        let rows: Vec<&str> = screen.lines().collect();
+        let at = |s: &str| {
+            rows.iter()
+                .position(|r| r.contains(s))
+                .unwrap_or_else(|| panic!("{s}:\n{screen}"))
+        };
+        assert!(at("(post not found)") < at("┆ ⋮"));
+        assert!(at("┆ ⋮") < at("Carol @carol.test: the question"));
+        assert!(at("Carol @carol.test: the question") < at("post number 0"));
+        assert!(!screen.contains("second line"), "one line per post above");
+    }
+
+    #[test]
+    fn a_thread_indents_replies_and_shows_placeholders() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let node: crate::api::types::ThreadNode = serde_json::from_value(json!({
+            "$type": "app.bsky.feed.defs#threadViewPost",
+            "post": {"uri": "at://focus", "cid": "c", "author": {"did": "d", "handle": "a.test"}, "record": {"text": "the focus"}},
+            "parent": {"$type": "app.bsky.feed.defs#notFoundPost", "uri": "at://gone", "notFound": true},
+            "replies": [{"$type": "app.bsky.feed.defs#threadViewPost",
+                "post": {"uri": "at://r1", "cid": "c", "author": {"did": "d", "handle": "b.test"}, "record": {"text": "a reply"}},
+                "replies": []}]
+        }))
+        .unwrap();
+        let (rows, focus) = crate::tui::thread::flatten(node);
+        app.threads.push(crate::tui::app::ThreadView {
+            uri: "at://focus".into(),
+            list: List {
+                items: rows,
+                selected: focus,
+                loaded: true,
+                ..List::default()
+            },
+            error: None,
+        });
+        let screen = render(&mut app, 80, 24);
+        assert!(screen.contains("Thread"), "{screen}");
+        assert!(screen.contains("(post not found)"), "{screen}");
+        let focus_line = screen.lines().find(|l| l.contains("the focus")).unwrap();
+        let reply_line = screen.lines().find(|l| l.contains("a reply")).unwrap();
+        let col = |l: &str, s: &str| l.find(s).unwrap();
+        assert!(
+            col(reply_line, "a reply") > col(focus_line, "the focus"),
+            "the reply is indented:\n{screen}"
+        );
+        assert!(reply_line.contains('│'), "with a guide line:\n{screen}");
     }
 
     #[test]
