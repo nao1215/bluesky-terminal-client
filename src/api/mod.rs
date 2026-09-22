@@ -423,9 +423,12 @@ impl Client {
             "rkey": "self",
             "record": value,
         });
-        if let Some(cid) = swap {
-            // Refuse to overwrite a profile another client changed meanwhile.
-            body["swapRecord"] = Value::String(cid);
+        // Refuse to overwrite a profile another client changed meanwhile. For
+        // an account that had no profile, null asks that it still has none.
+        match (base.is_some(), swap) {
+            (_, Some(cid)) => body["swapRecord"] = Value::String(cid),
+            (false, None) => body["swapRecord"] = Value::Null,
+            (true, None) => {}
         }
         let _: Value = self.post("com.atproto.repo.putRecord", &body)?;
         Ok(())

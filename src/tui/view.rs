@@ -2,7 +2,7 @@
 //! the only state it changes is each list's scroll offset.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Position, Rect};
+use ratatui::layout::{Constraint, Layout, Position, Rect, Size};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
@@ -34,6 +34,7 @@ const BIG_AVATAR: (u16, u16) = (12, 6);
 /// Draw the whole UI.
 pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     let area = frame.area();
+    images.begin_frame(Size::new(area.width, area.height));
     if let Some(form) = &app.login {
         draw_login(frame, area, form);
         return;
@@ -576,7 +577,13 @@ fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images
 
 fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
     let Some(p) = app.profile.profile.clone() else {
-        frame.render_widget(Paragraph::new(" loading…").dark_gray(), area);
+        let msg = match &app.profile.error {
+            Some(e) => {
+                Paragraph::new(format!(" could not load the profile: {e}  (R to retry)")).red()
+            }
+            None => Paragraph::new(" loading…").dark_gray(),
+        };
+        frame.render_widget(msg.wrap(ratatui::widgets::Wrap { trim: true }), area);
         return;
     };
     let text_x = MARK_W + BIG_AVATAR.0 + 2;

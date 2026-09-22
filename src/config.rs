@@ -99,24 +99,36 @@ impl SessionStore {
     }
 }
 
-#[cfg(unix)]
+/// Write `data` to `path` so that a crash leaves either the old file or the
+/// new one, never a truncated one: the refresh token is rotated on every
+/// refresh, and losing the new one means logging in again.
 fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    let mut file = open_private(&tmp)?;
+    file.write_all(data)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&tmp, path)
+}
+
+#[cfg(unix)]
+fn open_private(path: &Path) -> std::io::Result<fs::File> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let mut file = fs::OpenOptions::new()
+    let file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(0o600)
         .open(path)?;
-    // An existing file keeps its old mode through open(); tighten it explicitly.
+    // A leftover file keeps its old mode through open(); tighten it explicitly.
     file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    file.write_all(data)
+    Ok(file)
 }
 
 #[cfg(not(unix))]
-fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    fs::write(path, data)
+fn open_private(path: &Path) -> std::io::Result<fs::File> {
+    fs::File::create(path)
 }
 
 #[cfg(test)]
@@ -165,6 +177,19 @@ mod tests {
         let err = store.load().unwrap_err();
         assert_eq!(err.kind(), crate::error::Kind::Io);
         assert!(err.to_string().contains("\nhint: run `bs logout`"), "{err}");
+    }
+
+    #[test]
+    fn save_leaves_no_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        store.save(&sample()).unwrap();
+        store.save(&sample()).unwrap();
+        let names: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["session.json"]);
     }
 
     #[cfg(unix)]

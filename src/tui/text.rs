@@ -1,12 +1,14 @@
 //! Text helpers for drawing: wrapping by display width, truncation, and times.
 
 use chrono::{DateTime, Local};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Wrap `text` into lines at most `width` columns wide.
 ///
 /// Words move to the next line whole when they fit on one; longer words,
-/// and text without spaces such as Japanese, break between characters.
+/// and text without spaces such as Japanese, break between grapheme
+/// clusters, so an emoji with a skin-tone modifier is never split.
 /// Explicit newlines are kept, and trailing blank lines are dropped.
 pub fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
@@ -33,14 +35,14 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
                 col = w;
                 continue;
             }
-            for c in word.chars() {
-                let cw = c.width().unwrap_or(0);
-                if col + cw > width && col > 0 {
+            for g in word.graphemes(true) {
+                let gw = g.width();
+                if col + gw > width && col > 0 {
                     out.push(std::mem::take(&mut line));
                     col = 0;
                 }
-                line.push(c);
-                col += cw;
+                line.push_str(g);
+                col += gw;
             }
         }
         out.push(line.trim_end().to_string());
@@ -51,14 +53,14 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-/// Split into alternating runs of non-space and space characters. Wide
-/// characters are their own runs so CJK text can break between them.
+/// Split into alternating runs of non-space and space grapheme clusters.
+/// Wide clusters are their own runs so CJK text can break between them.
 fn split_keep_spaces(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
     let mut prev: Option<Class> = None;
-    for (i, c) in s.char_indices() {
-        let class = Class::of(c);
+    for (i, g) in s.grapheme_indices(true) {
+        let class = Class::of(g);
         if let Some(p) = prev
             && (p != class || class == Class::Wide)
         {
@@ -81,10 +83,10 @@ enum Class {
 }
 
 impl Class {
-    fn of(c: char) -> Self {
-        if c.is_whitespace() {
+    fn of(g: &str) -> Self {
+        if g.chars().all(char::is_whitespace) {
             Class::Space
-        } else if c.width().unwrap_or(0) >= 2 {
+        } else if g.width() >= 2 {
             Class::Wide
         } else {
             Class::Narrow
@@ -137,6 +139,16 @@ mod tests {
     #[case("hi 日本語", 5, &["hi 日", "本語"])]
     fn wraps_by_display_width(#[case] text: &str, #[case] width: usize, #[case] want: &[&str]) {
         assert_eq!(wrap(text, width), want);
+    }
+
+    #[test]
+    fn an_emoji_with_a_modifier_is_never_split() {
+        for width in 1..6 {
+            for line in wrap("👍🏽👍🏽👍🏽", width) {
+                assert!(!line.starts_with('\u{1F3FD}'), "{width}: {line:?}");
+                assert!(line.chars().filter(|c| *c == '👍').count() * 2 == line.chars().count());
+            }
+        }
     }
 
     #[test]

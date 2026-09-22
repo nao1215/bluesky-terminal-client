@@ -607,6 +607,55 @@ scenarios:
               - { path: "$.refreshJwt", equals: "ref-2" }
               - { path: "$.service", equals: "${api.url}" }
 
+  - name: a refresh token the server refuses brings back the login form
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has been revoked" }
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            # The account is filled in; only the password is asked for.
+            - expect_screen:
+                contains: ["Log in to Bluesky", "the session has expired; log in again", "me.test", "${api.url}"]
+            - send: "app-pass-1234"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "logged in as @me.test"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.createSession
+            count: 1
+            body:
+              json:
+                - { path: "$.identifier", equals: "me.test" }
+                - { path: "$.password", equals: "app-pass-1234" }
+      - assert:
+          file:
+            path: cfg/session.json
+            json: { path: "$.refreshJwt", equals: "ref-new" }
+
   - name: the help overlay lists the keys and any key closes it
     skip:
       os: windows

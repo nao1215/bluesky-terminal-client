@@ -347,7 +347,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.putRecord, count: 0 }
 
-  - name: an account that never saved a profile gets a new record without swapRecord
+  - name: an account that never saved a profile gets a new record, swapped against none
     skip:
       os: windows
     mock_servers:
@@ -395,14 +395,10 @@ scenarios:
               json:
                 - { path: "$.record['$type']", equals: "app.bsky.actor.profile" }
                 - { path: "$.record.displayName", equals: "First Name" }
-      - assert:
-          mock:
-            name: api
-            path: /xrpc/com.atproto.repo.putRecord
-            body:
-              not_contains: "swapRecord"
+                # null: "only if there is still no profile record".
+                - { path: "$.swapRecord", equals: null }
 
-  - name: a rejected save keeps the editor open with the reason
+  - name: a save that lost a race with another client says so and keeps the edit
     skip:
       os: windows
     mock_servers:
@@ -440,7 +436,8 @@ scenarios:
             - send: { key: ctrl-s }
             - expect_screen:
                 contains:
-                  - "com.atproto.repo.putRecord failed: InvalidSwap: Record was at cid-profile-9"
+                  - "the profile was changed elsewhere since the editor opened"
+                  - "press Esc and e to start from the current version"
                   - "Old Name!"
                   - "Edit profile"
             - send: { key: esc }
@@ -508,10 +505,12 @@ scenarios:
             - send: f
             - expect_screen:
                 contains: ["✓ following", "followed"]
+            # Esc asks for the account's own profile. This stub answers every
+            # getProfile with Alice, and bs drops an answer for someone other
+            # than the profile it asked for, so Alice's page must be gone.
             - send: { key: esc }
             - expect_screen:
-                contains: "Alice"
-                not_contains: "(f to toggle)"
+                not_contains: ["(f to toggle)", "✓ following"]
                 stable_for: 300ms
             - send: q
       - assert:

@@ -1,11 +1,14 @@
 //! UI state and what every key does. Nothing here touches the terminal or
 //! the network: keys and finished jobs go in, [`Job`]s come out.
 
+use std::collections::HashSet;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::api::types::{Post, Profile, ReplyRef};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::config::Session;
+use crate::error::Error;
 use crate::tui::input::TextInput;
 use crate::tui::worker::{Event, Job};
 
@@ -95,6 +98,8 @@ pub struct ProfilePane {
     pub actor: Option<String>,
     pub profile: Option<Profile>,
     pub posts: List<Post>,
+    /// Why the profile could not be loaded, shown instead of "loading…".
+    pub error: Option<String>,
 }
 
 /// The post composer.
@@ -179,6 +184,10 @@ pub struct App {
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
     pub pending: usize,
+    /// Likes and follows waiting for the server, keyed `like:<post uri>` and
+    /// `follow:<did>`. A second press on the same target is refused until the
+    /// first is answered, or two presses would create two records.
+    pub in_flight: HashSet<String>,
     pub quit: bool,
 }
 
@@ -203,6 +212,7 @@ impl App {
             overlay: None,
             status: None,
             pending: 0,
+            in_flight: HashSet::new(),
             quit: false,
         };
         let jobs = if app.session.is_some() {
@@ -546,10 +556,23 @@ impl App {
         Vec::new()
     }
 
+    /// Claim `key` for a like or follow; false when one is already in flight.
+    fn claim(&mut self, key: String) -> bool {
+        if self.in_flight.insert(key) {
+            true
+        } else {
+            self.info("still waiting for the server…");
+            false
+        }
+    }
+
     fn toggle_like(&mut self) -> Vec<Job> {
         let Some(post) = self.selected_post() else {
             return Vec::new();
         };
+        if !self.claim(format!("like:{}", post.uri)) {
+            return Vec::new();
+        }
         match post.like_uri() {
             Some(like) => vec![Job::Unlike {
                 post_uri: post.uri.clone(),
@@ -567,6 +590,9 @@ impl App {
         };
         if self.session.as_ref().is_some_and(|s| s.did == account.did) {
             self.error("you cannot follow yourself");
+            return Vec::new();
+        }
+        if !self.claim(format!("follow:{}", account.did)) {
             return Vec::new();
         }
         match account.following_uri() {
@@ -632,7 +658,47 @@ impl App {
         }
     }
 
+    /// Show a failed job's error. A refresh token the server no longer
+    /// accepts cannot be recovered in place, so it brings back the login form,
+    /// filled in with the account that was logged in.
+    fn fail(&mut self, e: &Error) {
+        if e.message().starts_with("com.atproto.server.refreshSession") {
+            let (service, handle) = self
+                .session
+                .as_ref()
+                .map(|s| (s.service.clone(), s.handle.clone()))
+                .unwrap_or_default();
+            let mut form = LoginForm::new(&service);
+            form.fields[1] = TextInput::single(&handle);
+            form.focus = 2;
+            form.error = Some("the session has expired; log in again".into());
+            self.login = Some(form);
+            self.overlay = None;
+            return;
+        }
+        self.error(e.message().to_string());
+    }
+
+    /// Whether a loaded profile is the one the Profile tab is waiting for;
+    /// an answer for a profile opened earlier is dropped.
+    fn wanted_profile(&self, p: &Profile) -> bool {
+        match (&self.profile.actor, &self.session) {
+            (Some(actor), _) => *actor == p.did || *actor == p.handle,
+            (None, Some(s)) => s.did == p.did,
+            (None, None) => false,
+        }
+    }
+
     fn event(&mut self, event: Event) -> Vec<Job> {
+        match &event {
+            Event::Liked { post_uri, .. } | Event::Unliked { post_uri, .. } => {
+                self.in_flight.remove(&format!("like:{post_uri}"));
+            }
+            Event::Followed { did, .. } | Event::Unfollowed { did, .. } => {
+                self.in_flight.remove(&format!("follow:{did}"));
+            }
+            _ => {}
+        }
         match event {
             Event::LoggedIn(Ok(session)) => {
                 self.info(format!("logged in as @{}", session.handle));
@@ -659,8 +725,11 @@ impl App {
             Event::SearchPosts(Ok(posts)) => self.search.posts.set(posts),
             Event::SearchActors(Ok(actors)) => self.search.actors.set(actors),
             Event::Profile(Ok((profile, posts))) => {
-                self.profile.profile = Some(profile);
-                self.profile.posts.set(posts);
+                if self.wanted_profile(&profile) {
+                    self.profile.profile = Some(profile);
+                    self.profile.posts.set(posts);
+                    self.profile.error = None;
+                }
             }
             Event::Liked {
                 post_uri,
@@ -717,10 +786,14 @@ impl App {
                 if let Some(Overlay::Compose(c)) = &mut self.overlay {
                     c.sending = false;
                 }
-                self.error(e.message().to_string());
+                self.fail(&e);
             }
             Event::ProfileEditor(result) => {
-                if let Some(Overlay::EditProfile(e)) = &mut self.overlay {
+                // Only an editor still waiting takes the answer: a late one
+                // must not overwrite what the user has typed since.
+                if let Some(Overlay::EditProfile(e)) = &mut self.overlay
+                    && e.loading
+                {
                     match result {
                         Ok(fields) => {
                             e.fields[0] = TextInput::single(&fields.display_name);
@@ -729,7 +802,7 @@ impl App {
                         }
                         Err(err) => {
                             self.overlay = None;
-                            self.error(err.message().to_string());
+                            self.fail(&err);
                         }
                     }
                 }
@@ -745,22 +818,37 @@ impl App {
                 if let Some(Overlay::EditProfile(ed)) = &mut self.overlay {
                     ed.saving = false;
                 }
-                self.error(e.message().to_string());
+                if e.message().contains("InvalidSwap") {
+                    self.error(
+                        "the profile was changed elsewhere since the editor opened; \
+                         press Esc and e to start from the current version",
+                    );
+                } else {
+                    self.fail(&e);
+                }
             }
-            Event::Timeline(Err(e))
-            | Event::SearchPosts(Err(e))
-            | Event::SearchActors(Err(e))
-            | Event::Profile(Err(e))
-            | Event::Liked { result: Err(e), .. }
+            // Each failure settles the view that was waiting for it, so no
+            // list is left showing "loading…" after its answer has come.
+            Event::Timeline(Err(e)) => {
+                self.timeline.loaded = true;
+                self.fail(&e);
+            }
+            Event::SearchPosts(Err(e)) => {
+                self.search.posts.loaded = true;
+                self.fail(&e);
+            }
+            Event::SearchActors(Err(e)) => {
+                self.search.actors.loaded = true;
+                self.fail(&e);
+            }
+            Event::Profile(Err(e)) => {
+                self.profile.error = Some(e.message().to_string());
+                self.fail(&e);
+            }
+            Event::Liked { result: Err(e), .. }
             | Event::Unliked { result: Err(e), .. }
             | Event::Followed { result: Err(e), .. }
-            | Event::Unfollowed { result: Err(e), .. } => {
-                if matches!(self.tab, Tab::Search) {
-                    self.search.posts.loaded = true;
-                    self.search.actors.loaded = true;
-                }
-                self.error(e.message().to_string());
-            }
+            | Event::Unfollowed { result: Err(e), .. } => self.fail(&e),
         }
         Vec::new()
     }
@@ -1071,6 +1159,99 @@ mod tests {
             result: Err(Error::api("x")),
         });
         assert_eq!(app.pending, 0);
+    }
+
+    #[test]
+    fn a_second_like_press_waits_for_the_first_answer() {
+        let mut app = logged_in();
+        assert_eq!(app.handle_key(key('l')).len(), 1);
+        // The answer has not arrived: a second press must not create a second record.
+        assert!(app.handle_key(key('l')).is_empty());
+        app.handle_event(Event::Liked {
+            post_uri: "at://a/p/1".into(),
+            result: Err(Error::api("boom")),
+        });
+        // Answered (even with an error): the post can be liked again.
+        assert_eq!(app.handle_key(key('l')).len(), 1);
+    }
+
+    #[test]
+    fn a_second_follow_press_waits_for_the_first_answer() {
+        let mut app = logged_in();
+        assert_eq!(app.handle_key(key('f')).len(), 1);
+        assert!(app.handle_key(key('f')).is_empty());
+        app.handle_event(Event::Unfollowed {
+            did: "did:plc:alice".into(),
+            result: Ok(()),
+        });
+        // Alice's post left the timeline; f now acts on Bob.
+        assert!(
+            matches!(&app.handle_key(key('f'))[..], [Job::Unfollow { did, .. }] if did == "did:plc:bob")
+        );
+    }
+
+    #[test]
+    fn a_late_editor_answer_does_not_overwrite_typing() {
+        let mut app = logged_in();
+        app.handle_key(key('3'));
+        app.handle_key(key('e'));
+        let fields = || crate::tui::worker::ProfileFields {
+            display_name: "Server".into(),
+            description: String::new(),
+        };
+        app.handle_event(Event::ProfileEditor(Ok(fields())));
+        app.handle_key(ctrl('u'));
+        type_str(&mut app, "Typed");
+        // A second answer (from an earlier, abandoned editor) arrives late.
+        app.handle_event(Event::ProfileEditor(Ok(fields())));
+        let Some(Overlay::EditProfile(e)) = &app.overlay else {
+            panic!()
+        };
+        assert_eq!(e.fields[0].text(), "Typed");
+    }
+
+    #[test]
+    fn an_expired_refresh_token_brings_back_the_login_form() {
+        let mut app = logged_in();
+        app.handle_event(Event::Timeline(Err(Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+        ))));
+        let form = app.login.as_ref().expect("login form");
+        assert_eq!(form.fields[0].text(), "https://pds.test");
+        assert_eq!(form.fields[1].text(), "me.test");
+        assert_eq!(form.focus, 2);
+        assert!(form.error.as_deref().unwrap().contains("expired"));
+    }
+
+    #[test]
+    fn a_failed_search_settles_even_after_leaving_the_tab() {
+        let mut app = logged_in();
+        app.handle_key(key('/'));
+        type_str(&mut app, "x");
+        app.handle_key(code(KeyCode::Enter));
+        assert!(!app.search.posts.loaded);
+        app.handle_key(key('1'));
+        app.handle_event(Event::SearchPosts(Err(Error::api("boom"))));
+        assert!(app.search.posts.loaded);
+    }
+
+    #[test]
+    fn a_failed_profile_says_why_and_a_stale_one_is_dropped() {
+        let mut app = logged_in();
+        app.handle_key(code(KeyCode::Enter)); // alice
+        app.handle_event(Event::Profile(Err(Error::api("gone"))));
+        assert_eq!(app.profile.error.as_deref(), Some("gone"));
+        // Bob's profile, opened earlier, answering late, is not shown as Alice's.
+        let bob: Profile =
+            serde_json::from_value(json!({"did": "did:plc:bob", "handle": "bob.test"})).unwrap();
+        app.handle_event(Event::Profile(Ok((bob, vec![]))));
+        assert!(app.profile.profile.is_none());
+        let alice: Profile =
+            serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"}))
+                .unwrap();
+        app.handle_event(Event::Profile(Ok((alice, vec![]))));
+        assert_eq!(app.profile.profile.as_ref().unwrap().did, "did:plc:alice");
+        assert!(app.profile.error.is_none());
     }
 
     #[test]

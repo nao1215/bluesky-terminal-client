@@ -35,35 +35,56 @@ const TRAILING: &[char] = &[
 pub fn detect(text: &str) -> Vec<Span> {
     let mut spans = Vec::new();
     for (start, token) in tokens(text) {
-        let trimmed = token.trim_end_matches(TRAILING);
-        let end = start + trimmed.len();
-        if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
-            if trimmed.len() > trimmed.find("://").unwrap() + 3 {
+        if token.starts_with("https://") || token.starts_with("http://") {
+            let url = trim_url(token);
+            if url.len() > url.find("://").unwrap() + 3 {
                 spans.push(Span {
                     start,
-                    end,
-                    target: Target::Link(trimmed.to_string()),
+                    end: start + url.len(),
+                    target: Target::Link(url.to_string()),
                 });
             }
-        } else if let Some(handle) = trimmed.strip_prefix('@') {
+        } else if let Some(rest) = token.strip_prefix('@') {
+            // A handle is ASCII, so it ends at the first character that
+            // cannot be in one: "@alice.test、こんにちは" mentions alice.test.
+            let len = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+                .unwrap_or(rest.len());
+            let handle = rest[..len].trim_end_matches('.');
             if is_handle(handle) {
                 spans.push(Span {
                     start,
-                    end,
+                    end: start + 1 + handle.len(),
                     target: Target::Mention(handle.to_string()),
                 });
             }
-        } else if let Some(tag) = trimmed.strip_prefix('#')
+        } else if let Some(tag) = token.trim_end_matches(TRAILING).strip_prefix('#')
             && is_tag(tag)
         {
             spans.push(Span {
                 start,
-                end,
+                end: start + 1 + tag.len(),
                 target: Target::Tag(tag.to_string()),
             });
         }
     }
     spans
+}
+
+/// Strip sentence punctuation from the end of a URL, except a closing
+/// parenthesis the URL itself opened (`https://en.wikipedia.org/wiki/Rust_(programming_language)`).
+fn trim_url(token: &str) -> &str {
+    let mut url = token;
+    while let Some(c) = url.chars().next_back() {
+        if !TRAILING.contains(&c) {
+            break;
+        }
+        if c == ')' && url.matches('(').count() >= url.matches(')').count() {
+            break;
+        }
+        url = &url[..url.len() - c.len_utf8()];
+    }
+    url
 }
 
 /// Whitespace-separated tokens with their byte offsets. A leading `(` is
@@ -183,6 +204,32 @@ mod tests {
     #[case("mail@alice.test")] // @ not at token start
     fn rejects_non_facets(#[case] text: &str) {
         assert!(detect(text).is_empty(), "{text}");
+    }
+
+    #[rstest]
+    #[case("@alice.test、こんにちは", "@alice.test")]
+    #[case("@alice.test.", "@alice.test")]
+    #[case("@alice.test's post", "@alice.test")]
+    fn a_mention_ends_where_a_handle_cannot_continue(#[case] text: &str, #[case] want: &str) {
+        let spans = detect(text);
+        assert_eq!(spans.len(), 1, "{text}");
+        assert_eq!(&text[spans[0].start..spans[0].end], want);
+    }
+
+    #[rstest]
+    #[case(
+        "https://en.wikipedia.org/wiki/Rust_(programming_language)",
+        "https://en.wikipedia.org/wiki/Rust_(programming_language)"
+    )]
+    #[case(
+        "(see https://en.wikipedia.org/wiki/Rust_(lang)).",
+        "https://en.wikipedia.org/wiki/Rust_(lang)"
+    )]
+    #[case("(https://example.com/a)", "https://example.com/a")]
+    fn a_url_keeps_the_parentheses_it_opened(#[case] text: &str, #[case] want: &str) {
+        let spans = detect(text);
+        assert_eq!(spans.len(), 1, "{text}");
+        assert_eq!(&text[spans[0].start..spans[0].end], want);
     }
 
     #[test]

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use image::DynamicImage;
 use ratatui::Frame;
@@ -28,16 +29,27 @@ const LOADERS: usize = 4;
 enum Slot {
     Loading,
     Ready(DynamicImage),
-    Failed,
+    /// The download or decode failed at this time; it is tried again after
+    /// [`RETRY_AFTER`], so a network blip does not leave a mark for good.
+    Failed(Instant),
 }
+
+/// How long a failed image waits before it is fetched again.
+const RETRY_AFTER: Duration = Duration::from_secs(30);
+
+/// Images kept decoded; past this, the ones not drawn recently are dropped.
+const MAX_SLOTS: usize = 256;
 
 type Loaded = (String, Result<DynamicImage, String>);
 
 /// Cache and renderer for every image on screen.
 pub struct Images {
     picker: Picker,
-    slots: HashMap<String, Slot>,
+    /// Each image with the frame number it was last drawn in.
+    slots: HashMap<String, (Slot, u64)>,
     protocols: HashMap<(String, u16, u16), Protocol>,
+    frame: u64,
+    frame_size: Size,
     tx: Sender<String>,
     rx: Receiver<Loaded>,
 }
@@ -69,6 +81,8 @@ impl Images {
             picker,
             slots: HashMap::new(),
             protocols: HashMap::new(),
+            frame: 0,
+            frame_size: Size::default(),
             tx: url_tx,
             rx: img_rx,
         }
@@ -91,9 +105,10 @@ impl Images {
         while let Ok((url, result)) = self.rx.try_recv() {
             let slot = match result {
                 Ok(img) => Slot::Ready(img),
-                Err(_) => Slot::Failed,
+                Err(_) => Slot::Failed(Instant::now()),
             };
-            self.slots.insert(url, slot);
+            let last = self.slots.get(&url).map_or(self.frame, |(_, f)| *f);
+            self.slots.insert(url, (slot, last));
             changed = true;
         }
         changed
@@ -101,7 +116,26 @@ impl Images {
 
     /// Whether any requested image is still downloading.
     pub fn loading(&self) -> bool {
-        self.slots.values().any(|s| matches!(s, Slot::Loading))
+        self.slots.values().any(|(s, _)| matches!(s, Slot::Loading))
+    }
+
+    /// Start a frame of `size` cells. Encoded images are per size, so a
+    /// resize drops them all; and the cache is trimmed to what was drawn in
+    /// the last frames, so a long session does not keep every image it saw.
+    pub fn begin_frame(&mut self, size: Size) {
+        self.frame += 1;
+        if size != self.frame_size {
+            self.frame_size = size;
+            self.protocols.clear();
+        }
+        if self.slots.len() > MAX_SLOTS {
+            let keep_after = self.frame.saturating_sub(2);
+            self.slots
+                .retain(|_, (slot, last)| matches!(slot, Slot::Loading) || *last >= keep_after);
+            let slots = &self.slots;
+            self.protocols
+                .retain(|(url, _, _), _| slots.contains_key(url));
+        }
     }
 
     /// Draw `url` fitted inside `area`, starting its download when needed.
@@ -110,14 +144,22 @@ impl Images {
         if area.width == 0 || area.height == 0 || url.is_empty() {
             return;
         }
-        let slot = self.slots.entry(url.to_string()).or_insert_with(|| {
+        let frame_no = self.frame;
+        let (slot, last) = self.slots.entry(url.to_string()).or_insert_with(|| {
             let _ = self.tx.send(url.to_string());
-            Slot::Loading
+            (Slot::Loading, frame_no)
         });
+        *last = frame_no;
+        if let Slot::Failed(at) = slot
+            && at.elapsed() >= RETRY_AFTER
+        {
+            let _ = self.tx.send(url.to_string());
+            *slot = Slot::Loading;
+        }
         let img = match slot {
             Slot::Ready(img) => img,
             Slot::Loading => return placeholder(frame, area, "…"),
-            Slot::Failed => return placeholder(frame, area, "×"),
+            Slot::Failed(_) => return placeholder(frame, area, "×"),
         };
         let key = (url.to_string(), area.width, area.height);
         if !self.protocols.contains_key(&key) {
