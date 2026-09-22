@@ -1,6 +1,7 @@
 //! The interactive client: terminal setup, the event loop, and teardown.
 
 pub mod app;
+pub mod events;
 pub mod files;
 pub mod images;
 pub mod input;
@@ -17,7 +18,7 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
+    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
 };
 use crossterm::execute;
 
@@ -80,6 +81,7 @@ fn event_loop(
     jobs.into_iter().for_each(|j| worker.send(j));
 
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
+    let mut input = events::Input::new().map_err(io_err)?;
     let mut dirty = true;
     while !app.quit {
         if dirty {
@@ -91,10 +93,13 @@ fn event_loop(
         // for keys would show them late and unevenly.
         let mut wait = if images.playing() { VIDEO_TICK } else { TICK };
         for _ in 0..EVENTS_PER_FRAME {
-            if app.quit || !event::poll(wait).map_err(io_err)? {
+            if app.quit {
                 break;
             }
-            match event::read().map_err(io_err)? {
+            let Some(ev) = input.next(wait).map_err(io_err)? else {
+                break;
+            };
+            match ev {
                 TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
                     app.handle_key(k).into_iter().for_each(|j| worker.send(j));
                 }

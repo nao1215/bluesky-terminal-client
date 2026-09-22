@@ -763,10 +763,6 @@ scenarios:
   # family, so the text sent has no half emoji and the link's byte range is
   # counted over the full sequences.
   - name: emoji are edited as whole characters and the link after them keeps its byte range
-    # Windows: crossterm 0.29 drops characters outside the BMP there, pairing
-    # a surrogate's key-up record with its key-down (#20).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -828,10 +824,6 @@ scenarios:
   # lines) and its emoji, and the facets after them are counted in bytes of
   # the pasted text.
   - name: a paste into the composer keeps its lines and emoji and links what it holds
-    # Windows: crossterm 0.29 drops characters outside the BMP there, pairing
-    # a surrogate's key-up record with its key-down (#20).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -1060,10 +1052,6 @@ scenarios:
   # (300): a family is one character of 25 bytes. The composer counts both and
   # refuses before sending, instead of the server refusing after.
   - name: a post of emoji over 3000 bytes is refused before anything is sent
-    # Windows: crossterm 0.29 drops characters outside the BMP there, pairing
-    # a surrogate's key-up record with its key-down (#20).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

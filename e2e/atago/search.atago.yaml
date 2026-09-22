@@ -184,10 +184,6 @@ scenarios:
   # the line breaks of a pasted snippet are dropped rather than sending the
   # search half-typed, and emoji arrive whole.
   - name: a paste into the search box drops its line breaks and keeps emoji whole
-    # Windows: crossterm 0.29 drops characters outside the BMP there, pairing
-    # a surrogate's key-up record with its key-down (#20).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
