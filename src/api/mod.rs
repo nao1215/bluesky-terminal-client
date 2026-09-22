@@ -723,8 +723,8 @@ impl Client {
         self.post("com.atproto.repo.createRecord", &body)
     }
 
-    fn delete_record(&mut self, uri: &str) -> Result<()> {
-        let (collection, rkey) = split_record_uri(uri)?;
+    fn delete_record(&mut self, collection: &str, uri: &str) -> Result<()> {
+        let rkey = own_rkey(uri, &self.session.did, collection)?;
         let body = json!({"repo": self.session.did, "collection": collection, "rkey": rkey});
         let _: Value = self.post("com.atproto.repo.deleteRecord", &body)?;
         Ok(())
@@ -794,7 +794,7 @@ impl Client {
 
     /// Remove a like by its record URI.
     pub fn unlike(&mut self, like_uri: &str) -> Result<()> {
-        self.delete_record(like_uri)
+        self.delete_record("app.bsky.feed.like", like_uri)
     }
 
     /// Repost a post; returns the repost record's URI.
@@ -806,7 +806,7 @@ impl Client {
 
     /// Remove a repost by its record URI.
     pub fn unrepost(&mut self, repost_uri: &str) -> Result<()> {
-        self.delete_record(repost_uri)
+        self.delete_record("app.bsky.feed.repost", repost_uri)
     }
 
     /// Follow an account; returns the follow record's URI.
@@ -817,7 +817,7 @@ impl Client {
 
     /// Remove a follow by its record URI.
     pub fn unfollow(&mut self, follow_uri: &str) -> Result<()> {
-        self.delete_record(follow_uri)
+        self.delete_record("app.bsky.graph.follow", follow_uri)
     }
 
     /// The account's own `app.bsky.actor.profile` record, or `None` when the
@@ -907,17 +907,21 @@ fn set_or_remove(obj: &mut Value, key: &str, text: &str) {
     }
 }
 
-/// Split `at://<did>/<collection>/<rkey>` into collection and rkey.
-fn split_record_uri(uri: &str) -> Result<(&str, &str)> {
-    let rest = uri
-        .strip_prefix("at://")
-        .ok_or_else(|| Error::api(format!("not an AT-URI: {uri}")))?;
+/// The rkey of `uri` when it names a record of `collection` in `did`'s repo.
+/// deleteRecord names the repo and collection itself, so a URI pointing
+/// anywhere else would delete the account's own record with the same rkey.
+fn own_rkey<'a>(uri: &'a str, did: &str, collection: &str) -> Result<&'a str> {
+    let noun = collection.rsplit('.').next().unwrap_or(collection);
+    let foreign = || Error::api(format!("not a {noun} of yours: {uri}"));
+    let rest = uri.strip_prefix("at://").ok_or_else(foreign)?;
     let mut parts = rest.splitn(3, '/');
     match (parts.next(), parts.next(), parts.next()) {
-        (Some(_), Some(c), Some(k)) if !c.is_empty() && !k.is_empty() && !k.contains('/') => {
-            Ok((c, k))
+        (Some(repo), Some(c), Some(k))
+            if repo == did && c == collection && !k.is_empty() && !k.contains('/') =>
+        {
+            Ok(k)
         }
-        _ => Err(Error::api(format!("not a record AT-URI: {uri}"))),
+        _ => Err(foreign()),
     }
 }
 
@@ -1074,13 +1078,29 @@ mod tests {
     }
 
     #[test]
-    fn record_uri_splits_into_collection_and_rkey() {
+    fn an_own_record_uri_gives_its_rkey() {
         assert_eq!(
-            split_record_uri("at://did:plc:a/app.bsky.feed.like/3k").unwrap(),
-            ("app.bsky.feed.like", "3k")
+            own_rkey(
+                "at://did:plc:me/app.bsky.feed.like/3k",
+                "did:plc:me",
+                "app.bsky.feed.like"
+            )
+            .unwrap(),
+            "3k"
         );
-        assert!(split_record_uri("at://did:plc:a/app.bsky.feed.like").is_err());
-        assert!(split_record_uri("https://x/y/z").is_err());
+    }
+
+    // deleteRecord names the repo and collection itself, so a URI from the
+    // server that points elsewhere must not become a delete of the account's
+    // own record with the same rkey.
+    #[rstest]
+    #[case::another_account("at://did:plc:other/app.bsky.feed.like/3k")]
+    #[case::another_collection("at://did:plc:me/app.bsky.feed.post/3k")]
+    #[case::a_handle_for_the_repo("at://me.test/app.bsky.feed.like/3k")]
+    #[case::not_a_record("at://did:plc:me/app.bsky.feed.like")]
+    fn a_record_that_is_not_the_accounts_own_is_not_deleted(#[case] uri: &str) {
+        let e = own_rkey(uri, "did:plc:me", "app.bsky.feed.like").unwrap_err();
+        assert!(e.message().contains(uri), "{}", e.message());
     }
 
     #[test]
