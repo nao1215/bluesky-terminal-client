@@ -85,6 +85,11 @@ fn event_loop(
     let mut dirty = true;
     while !app.quit {
         if dirty {
+            if let Some(delete) = images.viewer_closed(app.viewer_open()) {
+                let mut out = io::stdout();
+                let _ = io::Write::write_all(&mut out, delete.as_bytes());
+                let _ = io::Write::flush(&mut out);
+            }
             term.draw(|f| view::draw(f, &mut app, &mut images))
                 .map_err(io_err)?;
             dirty = false;

@@ -589,6 +589,11 @@ impl App {
         });
     }
 
+    /// Whether pictures or a video are shown full screen.
+    pub fn viewer_open(&self) -> bool {
+        matches!(self.overlay, Some(Overlay::Viewer { .. }))
+    }
+
     /// Clear a status message older than [`STATUS_TTL`]. Returns whether the
     /// screen changed.
     pub fn expire_status(&mut self, now: Instant) -> bool {
