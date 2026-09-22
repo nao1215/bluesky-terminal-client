@@ -73,6 +73,8 @@ pub enum Job {
     LoadProfileEditor,
     /// Save a picture or video of a post in the download folder.
     Download(Media),
+    /// Open a link in the web browser.
+    OpenLink(String),
     SaveProfile {
         display_name: String,
         description: String,
@@ -206,6 +208,10 @@ pub enum Event {
     ProfileSaved(Result<()>),
     /// Where the download was saved.
     Downloaded(Result<PathBuf>),
+    Opened {
+        url: String,
+        result: Result<()>,
+    },
 }
 
 /// Handle to the running worker.
@@ -341,6 +347,10 @@ impl State {
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
             Job::Download(media) => Event::Downloaded(download(&media)),
+            Job::OpenLink(url) => Event::Opened {
+                result: crate::browser::open(&url),
+                url,
+            },
             Job::SaveProfile {
                 display_name,
                 description,

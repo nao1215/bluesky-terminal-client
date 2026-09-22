@@ -75,7 +75,8 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 | `b` | Repost, or remove your repost |
 | `f` | Follow or unfollow the selected account (the author of the selected post, or the profile shown) |
 | `v` | Open the thread of the selected post: the posts above it and every reply |
-| `Space` | View the selected post's pictures full screen, or play its video |
+| `Space` | View the selected post's pictures full screen, or play its video; a post with neither opens its link |
+| `o` | Open the selected post's link (its link card, else the first link in its text) in the web browser |
 | `Enter` | Open the profile of the selected account or post author |
 | `/` | Search. Arriving at an empty Search tab puts the cursor in the box; `/` or `i` types again later. `Ctrl+T` in the box, or `t` outside it, switches between posts and accounts |
 | `e` | Edit your profile (Profile tab) |
@@ -145,6 +146,7 @@ Videos are played from Bluesky's HLS stream, in its lightest variant, and decode
 | `BS_GRAPHICS` | Force an image protocol: `kitty`, `sixel`, or `iterm2` |
 | `BS_CACHE_DIR` | Directory for downloaded pictures kept between runs (default: `bs` in the platform cache directory); `off` keeps none |
 | `BS_VIDEO_SERVICE` | Video service to upload videos to (default `https://video.bsky.app`) |
+| `BS_BROWSER` | Program that opens links (default: `xdg-open` on Linux, `open` on macOS, the URL handler on Windows) |
 | `BS_DOWNLOAD_DIR` | Folder the viewer's `d` saves in (default: `bs` in the platform download folder) |
 | `NO_COLOR` | Draw without color, whatever theme is chosen |
 

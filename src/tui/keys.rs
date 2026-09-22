@@ -45,7 +45,11 @@ pub const HELP: &[Section] = &[
             ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
             ("v", "open the thread: the posts above it and every reply"),
-            ("space", "view the post's pictures or video full screen"),
+            (
+                "space",
+                "view the post's pictures or video full screen, or open its link",
+            ),
+            ("o", "open the post's link in the web browser"),
             ("enter", "open the selected account's profile"),
         ],
     },

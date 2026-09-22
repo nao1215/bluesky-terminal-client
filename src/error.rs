@@ -77,6 +77,11 @@ impl Error {
         &self.message
     }
 
+    /// The next step the user can take, if there is one.
+    pub fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
+
     /// Shorthand for [`Kind::Api`].
     pub fn api(message: impl Into<String>) -> Self {
         Self::new(Kind::Api, message)

@@ -1084,7 +1084,8 @@ impl App {
                 self.threads.pop();
             }
             KeyCode::Char('v') => return self.open_thread(),
-            KeyCode::Char(' ') => self.open_viewer(),
+            KeyCode::Char(' ') => return self.open_viewer(),
+            KeyCode::Char('o') => return self.open_link(),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             _ => {}
@@ -1159,27 +1160,48 @@ impl App {
             .collect()
     }
 
-    /// Open the selected post's pictures (or video) full screen.
-    fn open_viewer(&mut self) {
-        let post = if self.tab == Tab::Notifications && self.threads.is_empty() {
+    /// The post Space and `o` act on: the selected one, or on the
+    /// Notifications tab the post a notification is about.
+    fn post_to_view(&mut self) -> Option<Post> {
+        if self.tab == Tab::Notifications && self.threads.is_empty() {
             self.notifications
                 .current()
                 .and_then(|i| i.post.clone().or_else(|| i.subject.clone()))
         } else {
             self.selected_post()
+        }
+    }
+
+    /// Open the selected post's pictures (or video) full screen; a post
+    /// with none but a link opens the link.
+    fn open_viewer(&mut self) -> Vec<Job> {
+        let Some(post) = self.post_to_view() else {
+            return Vec::new();
         };
-        let media = post
-            .and_then(|p| p.embed.map(|e| e.media()))
-            .unwrap_or_default();
+        let media = post.embed.as_ref().map(|e| e.media()).unwrap_or_default();
         if media.is_empty() {
-            self.info("this post has no pictures or video");
-            return;
+            return self.open_link();
         }
         self.overlay = Some(Overlay::Viewer {
             media,
             index: 0,
             replay: 0,
         });
+        Vec::new()
+    }
+
+    /// Open the selected post's first link in the web browser.
+    fn open_link(&mut self) -> Vec<Job> {
+        let Some(post) = self.post_to_view() else {
+            return Vec::new();
+        };
+        match post.links().into_iter().next() {
+            Some(url) => vec![Job::OpenLink(url)],
+            None => {
+                self.info("this post has no pictures, video, or link");
+                Vec::new()
+            }
+        }
     }
 
     fn open_thread(&mut self) -> Vec<Job> {
@@ -1395,7 +1417,11 @@ impl App {
             self.overlay = None;
             return;
         }
-        self.error(e.message().to_string());
+        // The hint is the part that says what to do; the error box shows it.
+        match e.hint() {
+            Some(hint) => self.error(format!("{}\nhint: {hint}", e.message())),
+            None => self.error(e.message().to_string()),
+        }
     }
 
     /// Drop everything loaded for the account that was logged in, when
@@ -1676,6 +1702,11 @@ impl App {
                 }
             }
             Event::Downloaded(Ok(path)) => self.info(format!("saved {}", path.display())),
+            Event::Opened {
+                url,
+                result: Ok(()),
+            } => self.info(format!("opened {url}")),
+            Event::Opened { result: Err(e), .. } => self.fail(&e),
             Event::Downloaded(Err(e)) => self.fail(&e),
             Event::ProfileSaved(Ok(())) => {
                 self.overlay = None;

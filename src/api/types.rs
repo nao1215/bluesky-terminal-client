@@ -409,6 +409,44 @@ impl Post {
         serde_json::from_value(self.raw_record.clone()).unwrap_or_default()
     }
 
+    /// The web links of the post, in order: its link card, then the links in
+    /// its text. Only http(s) links; each once.
+    pub fn links(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut add = |u: &str| {
+            if (u.starts_with("https://") || u.starts_with("http://"))
+                && !out.iter().any(|x| x == u)
+            {
+                out.push(u.to_string());
+            }
+        };
+        let card = match &self.embed {
+            Some(Embed::External { external }) => Some(&external.uri),
+            Some(Embed::RecordWithMedia { media }) => match media.as_ref() {
+                Embed::External { external } => Some(&external.uri),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(uri) = card {
+            add(uri);
+        }
+        let facets = self.raw_record.get("facets").and_then(Value::as_array);
+        for feature in facets
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f.get("features")?.as_array())
+            .flatten()
+        {
+            if feature.get("$type").and_then(Value::as_str) == Some("app.bsky.richtext.facet#link")
+                && let Some(uri) = feature.get("uri").and_then(Value::as_str)
+            {
+                add(uri);
+            }
+        }
+        out
+    }
+
     /// Strong reference to this post.
     pub fn strong_ref(&self) -> StrongRef {
         StrongRef {
@@ -561,6 +599,32 @@ pub struct UploadedBlob {
 pub struct XrpcError {
     pub error: String,
     pub message: String,
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn links_come_from_the_card_then_the_text_web_only_and_once() {
+        let post: Post = serde_json::from_value(json!({
+            "uri": "at://a/p/1", "cid": "c", "author": {"did": "d", "handle": "h.test"},
+            "record": {"text": "see", "facets": [
+                {"index": {"byteStart": 0, "byteEnd": 3}, "features": [
+                    {"$type": "app.bsky.richtext.facet#link", "uri": "https://b.test/x"}]},
+                {"index": {"byteStart": 4, "byteEnd": 5}, "features": [
+                    {"$type": "app.bsky.richtext.facet#mention", "did": "did:plc:z"}]},
+                {"index": {"byteStart": 6, "byteEnd": 7}, "features": [
+                    {"$type": "app.bsky.richtext.facet#link", "uri": "javascript:alert(1)"},
+                    {"$type": "app.bsky.richtext.facet#link", "uri": "https://a.test/card"}]}
+            ]},
+            "embed": {"$type": "app.bsky.embed.external#view",
+                      "external": {"uri": "https://a.test/card", "title": "A", "description": ""}}
+        }))
+        .unwrap();
+        assert_eq!(post.links(), ["https://a.test/card", "https://b.test/x"]);
+    }
 }
 
 #[cfg(test)]

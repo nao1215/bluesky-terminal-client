@@ -1,6 +1,7 @@
 //! bs: a Bluesky client for the terminal.
 
 mod api;
+mod browser;
 mod config;
 mod error;
 mod hls;
