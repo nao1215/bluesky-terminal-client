@@ -12,8 +12,6 @@ suite:
 
 scenarios:
   - name: a reply is shown under its thread, and v opens the whole thread
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -160,8 +158,6 @@ scenarios:
                 - { path: "$.record.subject.cid", equals: "cid-f1" }
 
   - name: a thread that cannot be loaded says why and R tries again
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

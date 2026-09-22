@@ -12,8 +12,6 @@ suite:
 
 scenarios:
   - name: notifications show who did what and are marked seen
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -139,8 +137,6 @@ scenarios:
               json: { path: "$.seenAt", equals: "2026-09-22T01:00:00.000Z" }
 
   - name: notifications load at the start, but are seen only when their tab is
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -172,8 +168,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
 
   - name: a reply notification can be answered, and a follow opens the profile
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -242,8 +236,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
   - name: failing notifications are reported and R tries again
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

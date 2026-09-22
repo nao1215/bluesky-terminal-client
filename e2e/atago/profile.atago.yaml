@@ -11,8 +11,6 @@ suite:
 
 scenarios:
   - name: the Profile tab shows the account itself
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -83,8 +81,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: saving keeps the fields bsky does not edit and guards the write with swapRecord
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -174,8 +170,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 2 }
 
   - name: a cleared description is removed from the record, not saved empty
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -227,8 +221,6 @@ scenarios:
               json: { path: "$.record.displayName", equals: "Old Name" }
 
   - name: a new avatar is uploaded first and the record points at the uploaded blob
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -297,8 +289,6 @@ scenarios:
             exists: true
 
   - name: a file that is not a picture is refused as an avatar before anything is uploaded
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -349,8 +339,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.putRecord, count: 0 }
 
   - name: an account that never saved a profile gets a new record, swapped against none
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -400,8 +388,6 @@ scenarios:
                 - { path: "$.swapRecord", equals: null }
 
   - name: a save that lost a race with another client says so and keeps the edit
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -451,8 +437,6 @@ scenarios:
           exit_code: 0
 
   - name: someone else's profile can be followed but not edited, and Esc goes back to the timeline
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

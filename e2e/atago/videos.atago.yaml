@@ -20,8 +20,6 @@ suite:
 
 scenarios:
   - name: a video is posted alone, with its alt text and shape
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -152,8 +150,6 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.height", equals: 36 }
 
   - name: an animated GIF goes to the video service as it is
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -215,8 +211,6 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.height", equals: 30 }
 
   - name: a video the service cannot process is reported and nothing is posted
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -274,8 +268,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: an account Bluesky will not take videos from says why before anything is sent
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -336,8 +328,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: pictures and a video do not go on one post
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -398,8 +388,6 @@ scenarios:
           exit_code: 0
 
   - name: a video on the timeline is shown by its thumbnail
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

@@ -10,8 +10,6 @@ suite:
 
 scenarios:
   - name: searching posts sends the typed words and shows the hits with images
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -78,8 +76,6 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc" }
 
   - name: arriving at the Search tab with 2 puts the cursor in the box
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -121,8 +117,6 @@ scenarios:
             query: { name: q, equals: "quit like" }
 
   - name: letters typed into the search box are text, not commands
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -158,8 +152,6 @@ scenarios:
             query: { name: q, equals: "q l f 日本" }
 
   - name: an empty query sends nothing
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -189,8 +181,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, count: 0 }
 
   - name: account search follows and unfollows from the result list
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -272,8 +262,6 @@ scenarios:
                 - { path: "$.rkey", equals: "fd" }
 
   - name: switching from posts to accounts re-runs the same query
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -309,8 +297,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.actor.searchActors, count: 1, query: { name: q, equals: "alps" } }
 
   - name: no matching accounts says so
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -339,8 +325,6 @@ scenarios:
           exit_code: 0
 
   - name: enter on an account opens its profile, where f follows it
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -440,8 +424,6 @@ scenarios:
               json: { path: "$.record.subject", equals: "did:plc:carol" }
 
   - name: post results say whether each author is followed, and f follows from them
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

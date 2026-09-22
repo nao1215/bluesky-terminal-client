@@ -12,8 +12,6 @@ suite:
 
 scenarios:
   - name: applying a theme saves it in settings.json
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -68,8 +66,6 @@ scenarios:
             json: { path: "$.accessJwt", equals: "acc" }
 
   - name: previewing and cancelling writes nothing
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -103,8 +99,6 @@ scenarios:
             exists: false
 
   - name: a saved theme is back on the next start
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -142,8 +136,6 @@ scenarios:
               - { path: "$.keep['written by']", equals: "a newer bsky" }
 
   - name: a broken settings file is reported, ignored, and left alone
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -184,8 +176,6 @@ scenarios:
             deleted: []
 
   - name: an unknown theme name falls back to bluesky and says so
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -208,8 +198,6 @@ scenarios:
           exit_code: 0
 
   - name: NO_COLOR draws without color and keeps the picker closed
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

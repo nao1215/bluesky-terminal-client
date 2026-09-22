@@ -103,8 +103,6 @@ scenarios:
             deleted: []
 
   - name: a terminal that cannot draw images is refused before any request
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -137,8 +135,6 @@ scenarios:
             count: 0
 
   - name: a kitty terminal is detected from its answer alone
-    skip:
-      os: windows
     steps:
       - pty:
           command: bsky
@@ -159,8 +155,6 @@ scenarios:
             deleted: []
 
   - name: BSKY_GRAPHICS forces a protocol on a terminal that does not answer
-    skip:
-      os: windows
     steps:
       - pty:
           command: bsky
@@ -177,8 +171,6 @@ scenarios:
           exit_code: 0
 
   - name: BSKY_GRAPHICS naming something that is not an image protocol is a usage error
-    skip:
-      os: windows
     steps:
       - pty:
           command: bsky
@@ -197,8 +189,6 @@ scenarios:
               - "hint: set BSKY_GRAPHICS to kitty, sixel, or iterm2, or unset it"
 
   - name: a corrupt session file is a local-file error that names the way out
-    skip:
-      os: windows
     steps:
       - fixture:
           file: cfg/session.json
