@@ -2451,6 +2451,67 @@ mod tests {
         assert!(screen.contains("tab alt text"), "{screen}");
     }
 
+    /// Folder and file names come from the user's disk and are often
+    /// Japanese with emoji: the browser's path line, its list, the preview's
+    /// caption, and the composer's attachment list never cut one apart, at
+    /// any width.
+    #[test]
+    fn emoji_in_folder_and_file_names_are_never_cut_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir
+            .path()
+            .join("家族👨\u{200d}👩\u{200d}👧\u{200d}👦の旅行🇯🇵");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::create_dir(folder.join("サブ👍🏽フォルダ")).unwrap();
+        let name = "👍🏽いいね写真_with_a_rather_long_name_1️⃣.png";
+        image::RgbImage::from_pixel(30, 20, image::Rgb([5, 5, 5]))
+            .save(folder.join(name))
+            .unwrap();
+        for width in (20u16..=100).step_by(3) {
+            let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+            app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+            app.browse_from = Some(folder.clone());
+            for (c, m) in [
+                ('n', crossterm::event::KeyModifiers::NONE),
+                ('o', crossterm::event::KeyModifiers::CONTROL),
+                ('j', crossterm::event::KeyModifiers::NONE),
+                ('j', crossterm::event::KeyModifiers::NONE),
+            ] {
+                app.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char(c),
+                    m,
+                ));
+            }
+            let rows = cells(&mut app, width, 30);
+            for row in &rows {
+                for c in row {
+                    assert!(!is_fragment(c), "{width}: a cut cluster {c:?} in {row:?}");
+                }
+            }
+            if width >= 98 {
+                let screen: String = rows.iter().map(|r| r.concat() + "\n").collect();
+                assert!(
+                    screen.contains("家族👨\u{200d}👩\u{200d}👧\u{200d}👦の旅行🇯🇵"),
+                    "{screen}"
+                );
+                assert!(screen.contains("サブ👍🏽フォルダ/"), "{screen}");
+                assert!(screen.contains("👍🏽いいね写真"), "{screen}");
+            }
+            // Chosen, the picture is listed in the composer by its name.
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Enter,
+            ));
+            for row in cells(&mut app, width, 30) {
+                for c in &row {
+                    assert!(
+                        !is_fragment(c),
+                        "{width}: composer: a cut cluster {c:?} in {row:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_browser_shows_the_folder_its_entries_and_the_selection() {
         let dir = tempfile::tempdir().unwrap();
