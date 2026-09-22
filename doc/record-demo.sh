@@ -33,7 +33,9 @@ trap cleanup EXIT INT TERM
 
 # Start bs in a kitty window of WIDTH x HEIGHT pixels.
 start() {
-  kitty -o linux_display_server=x11 -o remember_window_size=no \
+  # Software rendering: a GPU-drawn window read from outside stops showing
+  # changes after a while, and a playing video would look frozen.
+  LIBGL_ALWAYS_SOFTWARE=1 kitty -o linux_display_server=x11 -o remember_window_size=no \
     -o initial_window_width="$1" -o initial_window_height="$2" \
     -o font_family="DejaVu Sans Mono" -o font_size=11 \
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
@@ -99,12 +101,12 @@ record() {
   sleep 1
 }
 
-stop() { # OUTPUT.gif
+stop() { # OUTPUT.gif [WIDTH] [FPS]
   kill -INT "$FPID"
   wait "$FPID" || true
   FPID=""
   ffmpeg -nostdin -loglevel error -y -i "$WORK/rec.mp4" -vf \
-    "fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
+    "fps=${3:-10},scale=${2:-960}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
     "$1"
   ls -la "$1"
 }
@@ -151,10 +153,12 @@ viewer() {
   sleep 1.5
   send " "
   ready "playing"
-  sleep 8
+  sleep 5
   send "\x1b"
   sleep 1.5
-  stop "$OUT/viewer.gif"
+  # A playing video changes every frame: smaller and slower, so the GIF
+  # stays a size GitHub shows.
+  stop "$OUT/viewer.gif" 720 8
   quit
 }
 
