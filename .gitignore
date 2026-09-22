@@ -1,3 +1,4 @@
 target
 .atago/
 lcov.info
+*.profraw

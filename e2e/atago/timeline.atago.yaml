@@ -586,6 +586,162 @@ scenarios:
                 - { path: "$.record.facets[0].index.byteEnd", equals: 57 }
                 - { path: "$.record.facets[0].features[0].uri", equals: "https://example.com" }
 
+  # A paste into the composer keeps its line breaks (a post may have several
+  # lines) and its emoji, and the facets after them are counted in bytes of
+  # the pasted text.
+  - name: a paste into the composer keeps its lines and emoji and links what it holds
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: { paste: "一行目👍🏽\r\n#タグ https://example.com" }
+            - expect_screen:
+                contains: ["一行目👍🏽", "#タグ https://example.com"]
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                # The CR of a CRLF paste is dropped, the LF kept.
+                - { path: "$.record.text", equals: "一行目👍🏽\n#タグ https://example.com" }
+                # 9 bytes of kanji, 8 of the thumbs-up, 1 of the line break.
+                - { path: "$.record.facets", length: 2 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 18 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 25 }
+                - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
+                - { path: "$.record.facets[1].index.byteStart", equals: 26 }
+                - { path: "$.record.facets[1].index.byteEnd", equals: 45 }
+
+  # G and g move the selection to the last and first post, and what the next
+  # key acts on is the post selected there.
+  - name: G and g jump to the last and first post, and l likes the one selected
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "My own post"
+            # The last post is the viewer's own, with no likes yet.
+            - send: G
+            - send: l
+            - expect_screen:
+                contains: ["♥ 1   ⟳ 0", "liked"]
+            # The first is Alice's, with two.
+            - send: g
+            - send: l
+            - expect_screen:
+                contains: ["♥ 3   ⟳ 1", "♥ 1   ⟳ 0"]
+            - send: q
+      - assert:
+          exit_code: 0
+      # Two likes; the body checked is the last one's.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 2
+            body:
+              json: { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+
+  # A terminal made smaller and larger again is drawn at each size, and the
+  # selection is where it was.
+  - name: a resized terminal is redrawn at its new size and keeps the selection
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *delete_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "My own post"
+            - send: j
+            - resize: { rows: 16, cols: 40 }
+            - expect_screen:
+                contains: "Replying to carol"
+                stable_for: 300ms
+            - resize: { rows: 50, cols: 140 }
+            - expect_screen:
+                contains: ["Photo from the mountains", "Replying to carol", "My own post"]
+                stable_for: 300ms
+            - send: l
+            - expect_screen:
+                contains: ["♡ 4", "like removed"]
+            - send: q
+      - assert:
+          exit_code: 0
+      # Bob's post was selected before the resizes and is liked already, so l
+      # removes that like.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json: { path: "$.rkey", equals: "l1" }
+
   - name: an empty post is refused before anything is sent
     # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:
