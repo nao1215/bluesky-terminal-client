@@ -23,7 +23,7 @@ use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
-use ratatui_image::picker::Picker;
+use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Image, Resize};
 
@@ -176,6 +176,11 @@ pub struct Images {
     picker: Picker,
     /// The video playing in the viewer.
     video: Option<Player>,
+    /// Whether the full-screen viewer was open in the last frame.
+    viewer_open: bool,
+    /// Pictures are sent inside tmux's passthrough, which a delete would
+    /// need too.
+    tmux: bool,
 }
 
 impl Images {
@@ -254,8 +259,10 @@ impl Images {
             encode,
             encode_rx: done_rx,
             local: HashMap::new(),
+            tmux: player_picker.tmux_detected(),
             picker: player_picker,
             video: None,
+            viewer_open: false,
         }
     }
 
@@ -351,6 +358,27 @@ impl Images {
             self.protocols
                 .retain(|(url, _, _), _| slots.contains_key(url));
         }
+    }
+
+    /// Note whether the viewer is open in the frame about to be drawn. When
+    /// it has just closed and pictures go by kitty, every encoded picture is
+    /// forgotten so the ones on screen are sent again, and the sequence that
+    /// deletes kitty's copies is returned for the caller to write first.
+    ///
+    /// kitty keeps each picture it is sent once, and the list only redraws
+    /// its place afterwards; but kitty drops the oldest pictures once its
+    /// store is full, and the full-size pictures and the video of the viewer
+    /// can fill it. The list then drew only empty places: the avatars and
+    /// photos were gone after the viewer closed.
+    pub fn viewer_closed(&mut self, open: bool) -> Option<&'static str> {
+        let closed = self.viewer_open && !open;
+        self.viewer_open = open;
+        if !closed || self.protocol_type != ProtocolType::Kitty {
+            return None;
+        }
+        self.protocols.clear();
+        // Every image of this window and its data; quietly (q=2).
+        (!self.tmux).then_some("\x1b_Ga=d,d=A,q=2\x1b\\")
     }
 
     /// Play the video at `playlist` in `area`, starting it (again, for a new
@@ -842,6 +870,38 @@ mod tests {
         thread::sleep(Duration::from_millis(50));
         q.close();
         assert_eq!(worker.join().unwrap(), None);
+    }
+
+    #[test]
+    fn closing_the_viewer_sends_kittys_pictures_again() {
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize((10, 20).into());
+        picker.set_protocol_type(ProtocolType::Kitty);
+        let mut images = Images::new(picker, None);
+        images
+            .protocols
+            .insert(("https://x/a.png".into(), 4, 2), Encoded::Failed);
+        assert_eq!(images.viewer_closed(false), None);
+        assert_eq!(images.viewer_closed(true), None);
+        assert_eq!(images.protocols.len(), 1, "kept while the viewer is open");
+        assert_eq!(images.viewer_closed(false), Some("\x1b_Ga=d,d=A,q=2\x1b\\"));
+        assert!(images.protocols.is_empty());
+        // Only once per close.
+        assert_eq!(images.viewer_closed(false), None);
+    }
+
+    #[test]
+    fn other_protocols_keep_their_pictures_when_the_viewer_closes() {
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize((10, 20).into());
+        picker.set_protocol_type(ProtocolType::Sixel);
+        let mut images = Images::new(picker, None);
+        images
+            .protocols
+            .insert(("https://x/a.png".into(), 4, 2), Encoded::Failed);
+        images.viewer_closed(true);
+        assert_eq!(images.viewer_closed(false), None);
+        assert_eq!(images.protocols.len(), 1);
     }
 
     #[test]
