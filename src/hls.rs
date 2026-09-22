@@ -337,7 +337,10 @@ mod tests {
         use openh264::formats::YUVSource;
         let mut d = Demuxer::new();
         d.feed(&fixture());
-        let mut decoder = Decoder::new().unwrap();
+        let config = openh264::decoder::DecoderConfig::new()
+            .flush_after_decode(openh264::decoder::Flush::NoFlush);
+        let mut decoder =
+            Decoder::with_api_config(openh264::OpenH264API::from_source(), config).unwrap();
         let mut pictures = 0;
         for unit in d.finish() {
             if let Ok(Some(yuv)) = decoder.decode(&unit.data) {

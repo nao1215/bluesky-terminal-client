@@ -29,6 +29,8 @@ use worker::Worker;
 
 /// How long the loop waits for a key before checking the worker again.
 const TICK: Duration = Duration::from_millis(50);
+/// How long the loop waits while a video plays.
+const VIDEO_TICK: Duration = Duration::from_millis(5);
 /// Most input events handled before the screen is drawn again. Keys that
 /// arrive faster than a frame draws (a held j) are applied together, so the
 /// selection keeps up with the key instead of trailing behind it.
@@ -84,7 +86,9 @@ fn event_loop(
                 .map_err(io_err)?;
             dirty = false;
         }
-        let mut wait = TICK;
+        // A playing video's pictures come every 67 ms; waiting a whole tick
+        // for keys would show them late and unevenly.
+        let mut wait = if images.playing() { VIDEO_TICK } else { TICK };
         for _ in 0..EVENTS_PER_FRAME {
             if app.quit || !event::poll(wait).map_err(io_err)? {
                 break;

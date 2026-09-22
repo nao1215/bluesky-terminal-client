@@ -171,19 +171,36 @@ fn play(
     if segments.is_empty() {
         return Err("the video's playlist lists nothing to play".into());
     }
-    let mut decoder = Decoder::new().map_err(|e| format!("cannot start the video decoder: {e}"))?;
+    let mut decoder = decoder()?;
     let mut demux = Demuxer::new();
     let mut pacer = Pacer::new(picker, size, tx);
     // Pictures come out of the decoder in the order they are shown, which
     // with B-frames is not the order they go in; each takes the earliest
     // presentation time not yet used.
     let mut pending: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
-    for (n, url) in segments.iter().enumerate() {
+    // The segments download ahead on a thread of their own, a couple at a
+    // time, so the next one is there when this one has played.
+    let (seg_tx, seg_rx) = std::sync::mpsc::sync_channel::<Result<Vec<u8>, String>>(2);
+    {
+        let (segments, agent) = (segments.clone(), agent.clone());
+        thread::spawn(move || {
+            for url in segments {
+                let got = fetch(&agent, &url);
+                let failed = got.is_err();
+                if seg_tx.send(got).is_err() || failed {
+                    return;
+                }
+            }
+        });
+    }
+    for n in 0..segments.len() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
         }
         let last = n + 1 == segments.len();
-        let bytes = fetch(&agent, url)?;
+        let bytes = seg_rx
+            .recv()
+            .map_err(|_| "the video download stopped".to_string())??;
         demux.feed(&bytes);
         let units = if last { demux.finish() } else { demux.take() };
         if let Some(kind) = demux.unsupported {
@@ -231,6 +248,17 @@ fn play(
     Ok(())
 }
 
+/// A decoder that holds pictures until their turn. Forcing one out after
+/// every frame (the crate's default) breaks streams with B-frames, which
+/// Bluesky's are: most frames then fail to decode.
+fn decoder() -> Result<Decoder, String> {
+    use openh264::OpenH264API;
+    use openh264::decoder::{DecoderConfig, Flush};
+    let config = DecoderConfig::new().flush_after_decode(Flush::NoFlush);
+    Decoder::with_api_config(OpenH264API::from_source(), config)
+        .map_err(|e| format!("cannot start the video decoder: {e}"))
+}
+
 fn to_rgb(yuv: &DecodedYUV<'_>) -> Option<RgbImage> {
     let (w, h) = yuv.dimensions();
     let mut rgb = vec![0u8; w * h * 3];
@@ -248,7 +276,8 @@ struct Pacer<'a> {
     /// and set again after a wait for the network, so a slow download
     /// pauses the video instead of skipping it.
     clock: Option<(Instant, u64)>,
-    last_shown: Option<Instant>,
+    /// When the last picture shown was due.
+    last_due: Option<Instant>,
     shown: usize,
 }
 
@@ -261,7 +290,7 @@ impl<'a> Pacer<'a> {
             tx,
             cell: (u32::from(f.width.max(1)), u32::from(f.height.max(1))),
             clock: None,
-            last_shown: None,
+            last_due: None,
             shown: 0,
         }
     }
@@ -289,10 +318,11 @@ impl<'a> Pacer<'a> {
             }
             (None, _) => now,
         };
-        // Late, or too soon after the last one shown (measured from when
-        // this one is due): decoded, not shown.
-        let too_soon = self.last_shown.is_some_and(|l| {
-            due.saturating_duration_since(l) < Duration::from_secs_f64(1.0 / MAX_FPS)
+        // Late, or too soon after the last one shown (both by when they are
+        // due, so the time a picture takes to prepare is not counted against
+        // the next): decoded, not shown.
+        let too_soon = self.last_due.is_some_and(|l| {
+            due.saturating_duration_since(l) < Duration::from_secs_f64(1.0 / MAX_FPS) * 9 / 10
         });
         if (now > due + Duration::from_millis(250) || too_soon) && self.shown > 0 {
             return Ok(true);
@@ -320,7 +350,7 @@ impl<'a> Pacer<'a> {
         if self.tx.send(Msg::Frame(Box::new(p))).is_err() {
             return Ok(false);
         }
-        self.last_shown = Some(Instant::now());
+        self.last_due = Some(due);
         self.shown += 1;
         Ok(true)
     }
@@ -408,7 +438,24 @@ mod tests {
         assert_eq!(t.join().unwrap(), Ok(()));
         let frames = times.len();
         eprintln!("frame times (ms): {times:?}");
-        assert!(frames >= 10, "{frames} frames in 4 seconds");
+        assert!(frames >= 50, "{frames} frames in 4 seconds");
+    }
+
+    /// The whole video plays in its own length (17.3 s by its playlist).
+    #[test]
+    #[ignore = "needs the network"]
+    fn a_real_bluesky_video_takes_its_own_time() {
+        let url = "https://video.bsky.app/watch/did%3Aplc%3Az72i7hdynmk6r22z27h6tvur/bafkreifhuv36ji7vcq3tmdjltceyrfaat6vdccn2pklxf7j7dgsobdlgbm/playlist.m3u8";
+        let (tx, rx) = channel();
+        let (stop, size) = (AtomicBool::new(false), Mutex::new((20, 40)));
+        let begin = Instant::now();
+        assert_eq!(play(&Picker::halfblocks(), url, &stop, &size, &tx), Ok(()));
+        let took = begin.elapsed().as_secs_f64();
+        drop(tx);
+        let frames = rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count();
+        eprintln!("{frames} frames in {took:.2} s");
+        assert!((16.8..18.5).contains(&took), "{took} s");
+        assert!(frames as f64 >= 17.0 * MAX_FPS * 0.9, "{frames} frames");
     }
 
     #[test]

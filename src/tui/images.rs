@@ -342,6 +342,13 @@ impl Images {
         self.video = None;
     }
 
+    /// Whether a video is playing, so the screen should follow it closely.
+    pub fn playing(&self) -> bool {
+        self.video
+            .as_ref()
+            .is_some_and(|v| matches!(v.state, State::Loading | State::Playing))
+    }
+
     /// Whether a video picture is on screen.
     pub fn video_shown(&self) -> bool {
         self.video.as_ref().is_some_and(|v| v.frame().is_some())
