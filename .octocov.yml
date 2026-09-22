@@ -1,0 +1,23 @@
+# Line coverage of the unit tests and the atago end-to-end suite together
+# (scripts/coverage.sh), so the drawing, terminal setup, and network worker
+# that only the real binary reaches are measured against one number. What
+# stays below 100% is mostly error paths of the operating system (a browser
+# that cannot be started, a terminal that fails mid-write) and the network
+# video tests that CI does not run.
+coverage:
+  paths:
+    - lcov.info
+  acceptable: 90%
+testExecutionTime:
+  if: true
+comment:
+  if: is_pull_request
+summary:
+  if: true
+report:
+  if: is_default_branch
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
