@@ -511,6 +511,37 @@ pub struct Timeline {
     pub cursor: Option<String>,
 }
 
+/// `app.bsky.actor.getPreferences` output.
+#[derive(Debug, Deserialize)]
+pub struct Preferences {
+    #[serde(default)]
+    pub preferences: Vec<Value>,
+}
+
+/// A custom feed's generator view, as `app.bsky.feed.getFeedGenerators`
+/// returns it (only what bsky shows).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedGenerator {
+    pub uri: String,
+    #[serde(default)]
+    pub display_name: String,
+}
+
+/// `app.bsky.feed.getFeedGenerators` output.
+#[derive(Debug, Deserialize)]
+pub struct FeedGenerators {
+    #[serde(default)]
+    pub feeds: Vec<FeedGenerator>,
+}
+
+/// A pinned custom feed: where it is and what it is called.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FeedInfo {
+    pub uri: String,
+    pub name: String,
+}
+
 /// `app.bsky.feed.getAuthorFeed` output (same shape as the timeline).
 pub type AuthorFeed = Timeline;
 

@@ -217,6 +217,13 @@ pub struct Search {
     pub actors_query: String,
 }
 
+/// A pinned custom feed and what has been loaded of it.
+#[derive(Debug, Clone, Default)]
+pub struct CustomFeed {
+    pub info: crate::api::types::FeedInfo,
+    pub list: List<Post>,
+}
+
 /// State of the profile tab.
 #[derive(Debug, Clone, Default)]
 pub struct ProfilePane {
@@ -413,7 +420,13 @@ pub struct App {
     pub session: Option<Session>,
     pub login: Option<LoginForm>,
     pub tab: Tab,
+    /// The following timeline: the first feed on the Timeline tab.
     pub timeline: List<Post>,
+    /// The custom feeds the account pinned, after the following timeline.
+    pub feeds: Vec<CustomFeed>,
+    /// Which feed the Timeline tab shows: 0 is the following timeline,
+    /// `n` is `feeds[n - 1]`.
+    pub feed: usize,
     pub search: Search,
     pub profile: ProfilePane,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
@@ -460,6 +473,8 @@ impl App {
             login,
             tab: Tab::Timeline,
             timeline: List::default(),
+            feeds: Vec::new(),
+            feed: 0,
             search: Search {
                 input: TextInput::single(""),
                 editing: false,
@@ -501,7 +516,7 @@ impl App {
     /// without waiting. They are marked seen only when the tab is visited.
     fn startup_jobs(&mut self) -> Vec<Job> {
         self.notifications.begin();
-        vec![Job::Timeline, Job::Notifications]
+        vec![Job::Timeline, Job::Notifications, Job::PinnedFeeds]
     }
 
     /// Take the saved settings and the terminal's color depth into account.
@@ -999,7 +1014,7 @@ impl App {
     /// The post list of the current view, if it shows posts.
     pub fn current_posts(&mut self) -> Option<&mut List<Post>> {
         match self.tab {
-            Tab::Timeline => Some(&mut self.timeline),
+            Tab::Timeline => Some(self.feed_list()),
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&mut self.search.posts),
             Tab::Search => None,
             Tab::Profile => Some(&mut self.profile.posts),
@@ -1091,6 +1106,12 @@ impl App {
             KeyCode::Char('o') => return self.open_link(),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
+            KeyCode::Char('[') if self.tab == Tab::Timeline && self.threads.is_empty() => {
+                return self.switch_feed(-1);
+            }
+            KeyCode::Char(']') if self.tab == Tab::Timeline && self.threads.is_empty() => {
+                return self.switch_feed(1);
+            }
             _ => {}
         }
         Vec::new()
@@ -1136,8 +1157,10 @@ impl App {
                     .map(|c| (Feed::SearchPosts(self.search.posts_query.clone()), c))
             }
             Tab::Timeline => {
-                self.timeline.step(delta);
-                self.timeline.want_more().map(|c| (Feed::Timeline, c))
+                let feed = self.current_feed();
+                let list = self.feed_list();
+                list.step(delta);
+                list.want_more().map(|c| (feed, c))
             }
             Tab::Notifications => {
                 self.notifications.step(delta);
@@ -1235,7 +1258,13 @@ impl App {
         match self.tab {
             Tab::Timeline => {
                 self.info("refreshing…");
-                vec![Job::Timeline]
+                match self.current_feed() {
+                    Feed::Custom(uri) => {
+                        self.feed_list().begin();
+                        vec![Job::CustomFeed(uri)]
+                    }
+                    _ => vec![Job::Timeline],
+                }
             }
             Tab::Search => self.run_search(),
             Tab::Profile => self.open_profile(self.profile.actor.clone()),
@@ -1344,12 +1373,81 @@ impl App {
     }
 
     /// Apply `f` to every copy of the post `uri` on screen.
+    /// The list of the feed the Timeline tab shows.
+    pub fn feed_list(&mut self) -> &mut List<Post> {
+        match self.feed.checked_sub(1).and_then(|i| self.feeds.get_mut(i)) {
+            Some(f) => &mut f.list,
+            None => &mut self.timeline,
+        }
+    }
+
+    /// The feed the Timeline tab shows, as the worker names it.
+    pub fn current_feed(&self) -> Feed {
+        match self.feed.checked_sub(1).and_then(|i| self.feeds.get(i)) {
+            Some(f) => Feed::Custom(f.info.uri.clone()),
+            None => Feed::Timeline,
+        }
+    }
+
+    /// Show the next (`1`) or previous (`-1`) feed, going round, and load
+    /// it the first time it is shown.
+    fn switch_feed(&mut self, delta: isize) -> Vec<Job> {
+        if self.feeds.is_empty() {
+            return Vec::new();
+        }
+        let count = self.feeds.len() as isize + 1;
+        self.feed = (self.feed as isize + delta).rem_euclid(count) as usize;
+        let feed = self.current_feed();
+        let list = self.feed_list();
+        match feed {
+            Feed::Custom(uri) if !list.loaded && !list.loading => {
+                list.begin();
+                vec![Job::CustomFeed(uri)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Take the pinned feeds, keeping what was loaded of a feed still
+    /// pinned, and the feed shown when it still is.
+    fn set_pinned_feeds(&mut self, infos: Vec<crate::api::types::FeedInfo>) {
+        let shown = self.current_feed();
+        let mut old: Vec<CustomFeed> = std::mem::take(&mut self.feeds);
+        self.feeds = infos
+            .into_iter()
+            .map(
+                |info| match old.iter().position(|f| f.info.uri == info.uri) {
+                    Some(i) => CustomFeed {
+                        info,
+                        list: std::mem::take(&mut old[i].list),
+                    },
+                    None => CustomFeed {
+                        info,
+                        list: List::default(),
+                    },
+                },
+            )
+            .collect();
+        self.feed = match shown {
+            Feed::Custom(uri) => self
+                .feeds
+                .iter()
+                .position(|f| f.info.uri == uri)
+                .map_or(0, |i| i + 1),
+            _ => 0,
+        };
+    }
+
     fn each_post(&mut self, uri: &str, mut f: impl FnMut(&mut Post)) {
+        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
             &mut self.profile.posts,
-        ] {
+        ]
+        .into_iter()
+        .chain(feeds)
+        {
             list.items
                 .iter_mut()
                 .filter(|p| p.uri == uri)
@@ -1379,11 +1477,15 @@ impl App {
                 p.viewer.get_or_insert_with(Default::default).following = uri.clone();
             }
         };
+        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
             &mut self.profile.posts,
-        ] {
+        ]
+        .into_iter()
+        .chain(feeds)
+        {
             list.items.iter_mut().for_each(|p| apply(&mut p.author));
         }
         self.search.actors.items.iter_mut().for_each(apply);
@@ -1431,6 +1533,8 @@ impl App {
     /// another one logs in: its notifications, its profile, its threads.
     fn forget_account(&mut self) {
         self.timeline = List::default();
+        self.feeds.clear();
+        self.feed = 0;
         self.search.posts = List::default();
         self.search.actors = List::default();
         self.profile = ProfilePane::default();
@@ -1458,6 +1562,11 @@ impl App {
         let own_did = self.profile.profile.as_ref().map(|p| p.did.clone());
         match (feed, result) {
             (Feed::Timeline, Ok(MorePage::Posts(page))) => self.timeline.append(cursor, page),
+            (Feed::Custom(uri), Ok(MorePage::Posts(page))) => {
+                if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
+                    f.list.append(cursor, page);
+                }
+            }
             (Feed::SearchPosts(q), Ok(MorePage::Posts(page))) if q == self.search.posts_query => {
                 self.search.posts.append(cursor, page)
             }
@@ -1477,6 +1586,11 @@ impl App {
                 match feed {
                     Feed::Notifications => self.notifications.more_pending = false,
                     Feed::Timeline => self.timeline.more_pending = false,
+                    Feed::Custom(uri) => {
+                        if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
+                            f.list.more_pending = false;
+                        }
+                    }
                     Feed::SearchPosts(_) => self.search.posts.more_pending = false,
                     Feed::SearchActors(_) => self.search.actors.more_pending = false,
                     Feed::Author(_) => self.profile.posts.more_pending = false,
@@ -1525,6 +1639,33 @@ impl App {
                     self.status = None;
                 }
                 self.timeline.set(posts);
+            }
+            Event::PinnedFeeds(Ok(infos)) => self.set_pinned_feeds(infos),
+            // The following timeline still works; the feeds just do not show.
+            Event::PinnedFeeds(Err(_)) => {}
+            Event::CustomFeed { uri, result } => {
+                let shown = self.current_feed() == Feed::Custom(uri.clone());
+                if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
+                    match result {
+                        Ok(page) => {
+                            f.list.set(page);
+                            if shown
+                                && self
+                                    .status
+                                    .as_ref()
+                                    .is_some_and(|s| s.text == "refreshing…")
+                            {
+                                self.status = None;
+                            }
+                        }
+                        Err(e) => {
+                            f.list.failed(&e);
+                            if shown {
+                                self.fail(&e);
+                            }
+                        }
+                    }
+                }
             }
             Event::SearchPosts(Ok(posts)) => self.search.posts.set(posts),
             Event::SearchActors(Ok(actors)) => self.search.actors.set(actors),
@@ -1814,7 +1955,10 @@ mod tests {
 
     fn logged_in() -> App {
         let (mut app, jobs) = App::new(Some(session()), "https://bsky.social");
-        assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
+        assert!(matches!(
+            jobs[..],
+            [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
+        ));
         app.handle_event(Event::Timeline(Ok(vec![
             post("at://a/p/1", "did:plc:alice", true),
             post("at://b/p/2", "did:plc:bob", true),
@@ -1854,7 +1998,10 @@ mod tests {
         }
         let jobs = app.handle_event(Event::LoggedIn(Ok(session())));
         assert!(app.login.is_none());
-        assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
+        assert!(matches!(
+            jobs[..],
+            [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
+        ));
     }
 
     #[test]
@@ -1991,6 +2138,112 @@ mod tests {
         )]
         .into())));
         assert_eq!(app.timeline.selected, 0);
+    }
+
+    fn feed_info(name: &str) -> crate::api::types::FeedInfo {
+        crate::api::types::FeedInfo {
+            uri: format!("at://did:plc:f/app.bsky.feed.generator/{name}"),
+            name: name.to_string(),
+        }
+    }
+
+    fn feed_uri(name: &str) -> String {
+        format!("at://did:plc:f/app.bsky.feed.generator/{name}")
+    }
+
+    /// The Timeline tab shows the following timeline first, then each
+    /// pinned feed; [ and ] go through them, round, and a feed is loaded the
+    /// first time it is shown.
+    #[test]
+    fn brackets_go_through_the_pinned_feeds_and_load_each_once() {
+        let mut app = logged_in();
+        assert!(app.handle_key(key(']')).is_empty(), "no feeds pinned yet");
+        app.handle_event(Event::PinnedFeeds(Ok(vec![
+            feed_info("discover"),
+            feed_info("science"),
+        ])));
+        let jobs = app.handle_key(key(']'));
+        assert!(
+            matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("discover")),
+            "{jobs:?}"
+        );
+        assert_eq!(app.current_feed(), Feed::Custom(feed_uri("discover")));
+        // Pressed again while it loads: not asked twice.
+        app.handle_key(key('['));
+        assert!(app.handle_key(key(']')).is_empty());
+        app.handle_event(Event::CustomFeed {
+            uri: feed_uri("discover"),
+            result: Ok(vec![post("at://x/p/9", "did:plc:x", false)].into()),
+        });
+        // Posts of a feed are acted on like any other.
+        let jobs = app.handle_key(key('l'));
+        assert!(matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://x/p/9"));
+        let jobs = app.handle_key(key(']'));
+        assert!(matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("science")));
+        // Round to the following timeline, which is already there.
+        assert!(app.handle_key(key(']')).is_empty());
+        assert_eq!(app.current_feed(), Feed::Timeline);
+        assert_eq!(app.current_posts().unwrap().items.len(), 2);
+        // The like's answer arrives while another feed is shown.
+        app.handle_event(Event::Liked {
+            post_uri: "at://x/p/9".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/9".into()),
+        });
+        // Back to Discover: loaded, so nothing is asked; the like shows.
+        assert!(app.handle_key(key('[')).is_empty());
+        assert!(app.handle_key(key('[')).is_empty());
+        let p = app.current_posts().unwrap().current().unwrap();
+        assert!(p.like_uri().is_some());
+        // R reloads the feed shown.
+        let jobs = app.handle_key(key('R'));
+        assert!(matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("discover")));
+    }
+
+    /// A page of a feed goes to that feed whatever is shown when it
+    /// arrives, and an answer for a feed no longer pinned is dropped.
+    #[test]
+    fn feed_pages_land_in_their_own_feed() {
+        let mut app = logged_in();
+        app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("discover")])));
+        app.handle_key(key(']'));
+        let posts: Vec<Post> = (0..MORE_AHEAD + 1)
+            .map(|i| post(&format!("at://x/p/{i}"), "did:plc:x", false))
+            .collect();
+        app.handle_event(Event::CustomFeed {
+            uri: feed_uri("discover"),
+            result: Ok(page(posts, Some("d1"))),
+        });
+        let mut asked = Vec::new();
+        for _ in 0..3 {
+            asked.extend(app.handle_key(key('j')));
+        }
+        assert!(
+            matches!(&asked[..], [Job::More { feed: Feed::Custom(u), cursor }] if *u == feed_uri("discover") && cursor == "d1"),
+            "{asked:?}"
+        );
+        // The reader goes back to the following timeline before it arrives.
+        app.handle_key(key('['));
+        app.handle_event(Event::More {
+            feed: Feed::Custom(feed_uri("discover")),
+            cursor: "d1".into(),
+            result: Ok(MorePage::Posts(
+                vec![post("at://x/p/next", "did:plc:x", false)].into(),
+            )),
+        });
+        assert_eq!(
+            app.timeline.items.len(),
+            2,
+            "the following timeline is untouched"
+        );
+        assert_eq!(app.feeds[0].list.items.len(), MORE_AHEAD + 2);
+        // Unpinned meanwhile: its late answer goes nowhere.
+        app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("science")])));
+        app.handle_event(Event::CustomFeed {
+            uri: feed_uri("discover"),
+            result: Ok(vec![post("at://x/p/late", "did:plc:x", false)].into()),
+        });
+        assert!(app.feeds.iter().all(|f| f.list.items.is_empty()));
+        assert_eq!(app.current_feed(), Feed::Timeline);
     }
 
     #[test]
@@ -2179,15 +2432,16 @@ mod tests {
     #[test]
     fn pending_counts_jobs_in_flight() {
         let mut app = logged_in();
-        // The notifications loading in the background since the start.
-        assert_eq!(app.pending, 1);
-        app.handle_key(key('l'));
+        // The notifications and the pinned feeds, loading in the
+        // background since the start.
         assert_eq!(app.pending, 2);
+        app.handle_key(key('l'));
+        assert_eq!(app.pending, 3);
         app.handle_event(Event::Liked {
             post_uri: "at://a/p/1".into(),
             result: Err(Error::api("x")),
         });
-        assert_eq!(app.pending, 1);
+        assert_eq!(app.pending, 2);
     }
 
     #[test]
@@ -2482,7 +2736,10 @@ mod tests {
     #[test]
     fn nothing_more_is_fetched_on_load_or_far_from_the_end() {
         let mut app = timeline_with(MORE_AHEAD + 3, Some("c1"));
-        assert_eq!(app.pending, 1, "only the notifications, in the background");
+        assert_eq!(
+            app.pending, 2,
+            "only the notifications and the pinned feeds, in the background"
+        );
         assert!(app.handle_key(key('j')).is_empty());
         assert!(app.handle_key(key('j')).is_empty());
     }
@@ -2896,7 +3153,10 @@ mod tests {
             ..session()
         };
         let jobs = app.handle_event(Event::LoggedIn(Ok(other)));
-        assert!(matches!(&jobs[..], [Job::Timeline, Job::Notifications]));
+        assert!(matches!(
+            &jobs[..],
+            [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
+        ));
         assert!(app.notifications.items.is_empty());
         assert!(!app.notifications.loaded);
         assert_eq!(app.unread, 0);

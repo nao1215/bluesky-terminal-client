@@ -37,6 +37,13 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Timeline",
+        keys: &[(
+            "[ ]",
+            "previous / next feed: Following, then the feeds you pinned",
+        )],
+    },
+    Section {
         title: "Posts",
         keys: &[
             ("n", "new post"),
@@ -275,6 +282,18 @@ pub fn hints(app: &App) -> Vec<Hint> {
             v
         }
     };
+    // With feeds pinned, the Timeline tab goes through them; in a custom
+    // feed the author is often not followed, so f follows.
+    if app.tab == Tab::Timeline && app.threads.is_empty() && app.overlay.is_none() {
+        if app.feed > 0
+            && let Some(f) = v.iter_mut().find(|(k, _)| *k == "f")
+        {
+            f.1 = "follow";
+        }
+        if !app.feeds.is_empty() {
+            v.insert(1, ("[ ]", "feed"));
+        }
+    }
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
     // is the key that leads to every other one.
     v.insert(0, ("?", "help"));

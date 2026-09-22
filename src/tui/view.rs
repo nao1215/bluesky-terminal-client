@@ -264,14 +264,65 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
     let t = *t;
     match app.tab {
-        Tab::Timeline => {
-            let empty = "No posts from accounts you follow yet. Press R to refresh.";
-            draw_posts(frame, body, &mut app.timeline, images, empty, None, &t);
-        }
+        Tab::Timeline => draw_timeline(frame, body, app, images, &t),
         Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
         Tab::Notifications => draw_notifications(frame, body, app, images),
     }
+}
+
+/// The Timeline tab: the following timeline or a pinned feed, with a row
+/// naming them all when there are feeds to choose from.
+fn draw_timeline(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
+    let area = if app.feeds.is_empty() {
+        body
+    } else {
+        let [bar, rest] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(body);
+        let names: Vec<&str> = std::iter::once("Following")
+            .chain(app.feeds.iter().map(|f| f.info.name.as_str()))
+            .collect();
+        frame.render_widget(feed_bar(&names, app.feed, usize::from(bar.width), t), bar);
+        rest
+    };
+    let empty = if app.feed == 0 {
+        "No posts from accounts you follow yet. Press R to refresh."
+    } else {
+        "No posts in this feed yet. Press R to refresh."
+    };
+    draw_posts(frame, area, app.feed_list(), images, empty, None, t);
+}
+
+/// The feeds to choose from, the shown one highlighted, with `[ ] feeds`
+/// at the end. When they do not all fit, the row starts as far left as it
+/// can with the shown one in sight, and an ellipsis marks each side where
+/// feeds are left out.
+fn feed_bar(names: &[&str], shown: usize, width: usize, t: &Theme) -> Line<'static> {
+    const HINT: &str = "  [ ] feeds";
+    let room = width.saturating_sub(HINT.width() + 4);
+    // A name is cut to fit what room there is, so the shown one always does.
+    let max = room.saturating_sub(3).clamp(4, 24);
+    let labels: Vec<String> = names.iter().map(|n| truncate(n, max)).collect();
+    // " name " and the space after it.
+    let cost = |i: usize| labels[i].width() + 3;
+    let span = |from: usize, to: usize| (from..=to).map(cost).sum::<usize>();
+    let from = (0..=shown)
+        .find(|&f| span(f, shown) <= room)
+        .unwrap_or(shown);
+    let mut to = shown;
+    while to + 1 < labels.len() && span(from, to + 1) <= room {
+        to += 1;
+    }
+    let mut spans = vec![Span::raw(if from > 0 { "…" } else { " " })];
+    for (i, label) in labels.iter().enumerate().take(to + 1).skip(from) {
+        let style = if i == shown { t.selected() } else { t.dim() };
+        spans.push(Span::styled(format!(" {label} "), style));
+        spans.push(Span::raw(" "));
+    }
+    if to + 1 < labels.len() {
+        spans.push(Span::raw("…"));
+    }
+    spans.push(Span::styled(HINT, t.dim()));
+    truncate_line(Line::from(spans), width)
 }
 
 /// A thread over the current tab: a title row, then the posts, the opened
@@ -2042,6 +2093,60 @@ mod tests {
     }
 
     #[test]
+    fn the_feed_bar_names_the_feeds_and_keeps_the_shown_one_in_sight() {
+        let names = [
+            "Discover",
+            "Science 🔬",
+            "日本語👨\u{200d}👩\u{200d}👧\u{200d}👦フィード",
+            "Cats",
+            "A feed with a very long name that goes on",
+        ];
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
+        app.handle_event(Event::PinnedFeeds(Ok(names
+            .iter()
+            .map(|n| crate::api::types::FeedInfo {
+                uri: format!("at://f/{n}"),
+                name: n.to_string(),
+            })
+            .collect())));
+        let rows = cells(&mut app, 100, 12);
+        let bar = rows[1].concat();
+        assert!(
+            bar.starts_with("  Following   Discover   Science 🔬 "),
+            "{bar:?}"
+        );
+        assert!(bar.trim_end().ends_with("…  [ ] feeds"), "{bar:?}");
+        let screen = render(&mut app, 100, 12);
+        assert!(screen.contains("post number 0"), "{screen}");
+        // The last feed shown on a narrow screen: still in sight.
+        for _ in 0..5 {
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char(']'),
+            ));
+        }
+        for width in [30u16, 40, 60, 100] {
+            let rows = cells(&mut app, width, 12);
+            let bar: String = rows[1].concat();
+            assert!(bar.contains("A feed with"), "{width}: {bar:?}");
+            assert!(bar.contains("[ ] feeds"), "{width}: {bar:?}");
+            for row in &rows {
+                for c in row {
+                    assert!(!is_fragment(c), "{width}: a cut cluster {c:?} in {row:?}");
+                }
+            }
+        }
+        // Until it has loaded, the feed says so; empty, it says that.
+        assert!(render(&mut app, 100, 12).contains("loading…"));
+        app.handle_event(Event::CustomFeed {
+            uri: format!("at://f/{}", names[4]),
+            result: Ok(Vec::new().into()),
+        });
+        let screen = render(&mut app, 100, 12);
+        assert!(screen.contains("No posts in this feed yet"), "{screen}");
+    }
+
+    #[test]
     fn empty_timeline_says_why() {
         let (mut app, _) = App::new(Some(session()), "x");
         app.handle_event(Event::Timeline(Ok(vec![].into())));
@@ -2717,6 +2822,26 @@ mod state_fuzz {
         let ok = !rng.chance(15);
         Some(match job {
             Job::Login { .. } => Event::LoggedIn(Err(fail())),
+            Job::PinnedFeeds => Event::PinnedFeeds(if ok {
+                Ok(["discover", "science"]
+                    .iter()
+                    .take(rng.below(3))
+                    .map(|n| crate::api::types::FeedInfo {
+                        uri: format!("at://did:plc:f/app.bsky.feed.generator/{n}"),
+                        name: n.to_string(),
+                    })
+                    .collect())
+            } else {
+                Err(fail())
+            }),
+            Job::CustomFeed(uri) => Event::CustomFeed {
+                uri,
+                result: if ok {
+                    Ok(page(rng, next_id))
+                } else {
+                    Err(fail())
+                },
+            },
             Job::Timeline => Event::Timeline(if ok {
                 Ok(page(rng, next_id))
             } else {
@@ -2847,7 +2972,7 @@ mod state_fuzz {
     fn key(rng: &mut Rng) -> KeyEvent {
         const CHARS: &[char] = &[
             'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
-            'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍',
+            'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']',
         ];
         let codes = [
             KeyCode::Esc,

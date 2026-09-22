@@ -74,6 +74,43 @@ pub fn normalize_service(url: &str) -> Result<String> {
     }
 }
 
+/// Bluesky's Discover feed, shown when the account pinned no feed.
+pub const DISCOVER_FEED: &str =
+    "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
+
+/// The URIs of the custom feeds pinned in the saved-feeds preference, in
+/// order: `savedFeedsPrefV2` items of type `feed` that are pinned, or the
+/// `pinned` list of the older `savedFeedsPref` when there is no V2. The
+/// following timeline and lists are not feeds bsky shows here.
+pub fn pinned_feed_uris(preferences: &[Value]) -> Vec<String> {
+    let of_type = |t: &str| {
+        preferences
+            .iter()
+            .find(|p| p.get("$type").and_then(Value::as_str) == Some(t))
+    };
+    if let Some(v2) = of_type("app.bsky.actor.defs#savedFeedsPrefV2") {
+        return v2
+            .get("items")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|i| i.get("pinned").and_then(Value::as_bool) == Some(true))
+            .filter(|i| i.get("type").and_then(Value::as_str) == Some("feed"))
+            .filter_map(|i| i.get("value").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect();
+    }
+    of_type("app.bsky.actor.defs#savedFeedsPref")
+        .and_then(|v1| v1.get("pinned"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|u| u.contains("/app.bsky.feed.generator/"))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Count grapheme clusters the way the AppView limits post length.
 pub fn grapheme_len(text: &str) -> usize {
     text.graphemes(true).count()
@@ -567,6 +604,39 @@ impl Client {
         self.get("app.bsky.feed.getTimeline", &q)
     }
 
+    /// `app.bsky.feed.getFeed`: a page of the custom feed `uri`.
+    pub fn feed(&mut self, uri: &str, cursor: Option<&str>) -> Result<Timeline> {
+        let mut q = vec![("feed", uri), ("limit", "50")];
+        if let Some(c) = cursor {
+            q.push(("cursor", c));
+        }
+        self.get("app.bsky.feed.getFeed", &q)
+    }
+
+    /// The custom feeds the account pinned, in order, with their names: the
+    /// saved-feeds preference the official app keeps, and Discover when
+    /// none is pinned. The following timeline is not among them; bsky
+    /// always shows it first.
+    pub fn pinned_feeds(&mut self) -> Result<Vec<FeedInfo>> {
+        let prefs: Preferences = self.get("app.bsky.actor.getPreferences", &[])?;
+        let mut uris = pinned_feed_uris(&prefs.preferences);
+        if uris.is_empty() {
+            uris.push(DISCOVER_FEED.to_string());
+        }
+        let q: Vec<(&str, &str)> = uris.iter().map(|u| ("feeds", u.as_str())).collect();
+        let found: FeedGenerators = self.get("app.bsky.feed.getFeedGenerators", &q)?;
+        // In the order pinned; a feed the AppView no longer knows is left out.
+        Ok(uris
+            .iter()
+            .filter_map(|u| found.feeds.iter().find(|f| &f.uri == u))
+            .map(|f| FeedInfo {
+                uri: f.uri.clone(),
+                name: f.display_name.trim().to_string(),
+            })
+            .filter(|f| !f.name.is_empty())
+            .collect())
+    }
+
     /// `app.bsky.feed.getAuthorFeed` for one actor, without replies.
     pub fn author_feed(&mut self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
         let mut q = vec![
@@ -936,6 +1006,34 @@ mod tests {
     /// bytes. Emoji spend the bytes first: a family is one cluster of 25
     /// bytes, so 121 of them fit the clusters and not the bytes, and the
     /// server refused the post only after it was sent.
+    #[test]
+    fn pinned_feeds_come_from_the_saved_feeds_preference_in_order() {
+        let v2 = serde_json::json!([
+            {"$type": "app.bsky.actor.defs#adultContentPref", "enabled": false},
+            {"$type": "app.bsky.actor.defs#savedFeedsPrefV2", "items": [
+                {"type": "timeline", "value": "following", "pinned": true, "id": "1"},
+                {"type": "feed", "value": "at://a/app.bsky.feed.generator/science", "pinned": true, "id": "2"},
+                {"type": "list", "value": "at://a/app.bsky.graph.list/l", "pinned": true, "id": "3"},
+                {"type": "feed", "value": "at://a/app.bsky.feed.generator/saved-only", "pinned": false, "id": "4"},
+                {"type": "feed", "value": DISCOVER_FEED, "pinned": true, "id": "5"},
+            ]},
+        ]);
+        assert_eq!(
+            pinned_feed_uris(v2.as_array().unwrap()),
+            ["at://a/app.bsky.feed.generator/science", DISCOVER_FEED]
+        );
+        let v1 = serde_json::json!([
+            {"$type": "app.bsky.actor.defs#savedFeedsPref",
+             "pinned": ["at://a/app.bsky.feed.generator/cats", "at://a/app.bsky.graph.list/l"],
+             "saved": ["at://a/app.bsky.feed.generator/cats"]},
+        ]);
+        assert_eq!(
+            pinned_feed_uris(v1.as_array().unwrap()),
+            ["at://a/app.bsky.feed.generator/cats"]
+        );
+        assert!(pinned_feed_uris(&[]).is_empty());
+    }
+
     #[test]
     fn a_post_is_checked_against_both_limits_before_it_is_sent() {
         assert_eq!(post_length_problem(&"a".repeat(300)), None);

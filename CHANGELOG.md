@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Faster scrolling: pictures are scaled and encoded for the terminal on background threads instead of while drawing, the pictures of the next posts are prepared before they scroll into view and those of the 20 after them downloaded, lists draw Bluesky's small avatar thumbnails instead of the full-size avatars (about a tenth of the bytes), the next page is asked for 10 posts before the end, and keys pressed faster than a frame draws are applied together.
 - Notifications load in the background at the start, so their tab shows the unread count at once and opens without waiting; they are marked seen only when the tab is visited, and a failure there waits on the tab instead of interrupting the timeline. Downloaded pictures are kept on disk (`BSKY_CACHE_DIR`, 256 MB, least recently used removed first), so the next start draws them without downloading.
 - Esc on a profile opened from the search results, the timeline, or the notifications goes back there, with the results and the selection as they were.
+- Custom feeds on the Timeline tab: `[` and `]` go through Following and the feeds pinned in the account's saved feeds, in their pinned order (Discover when none are pinned). A feed shows every post it serves, loads when it is first shown, keeps its place and its next pages, and `R` refreshes the one on screen.
 
 ### Changed
 

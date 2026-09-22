@@ -32,6 +32,7 @@ A terminal that answers none of them is refused at startup (exit status 2) rathe
 ## What it does
 
 - Timeline of the accounts you follow and your own posts, without reposts. A reply comes with the posts above it; `v` opens the whole thread.
+- The feeds you pinned in the Bluesky app (Discover when none are), next to Following on the Timeline tab.
 - Post, reply, like, repost, follow, with links, mentions, and hashtags made clickable.
 - Search posts and accounts, with who you already follow marked.
 - Notifications, with an unread count on the tab from the start.
@@ -74,6 +75,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `j` `k`, `g` `G` | Move; more loads by itself near the end |
 | `n` `r` | New post, reply |
 | `l` `b` `f` | Like, repost, follow (each again undoes it) |
+| `[` `]` | Previous or next feed on the Timeline tab |
 | `v` | The post's thread |
 | `Space` `o` | View pictures or video, open the link |
 | `Enter` | The author's profile (`Esc` comes back) |

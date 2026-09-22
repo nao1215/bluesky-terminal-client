@@ -129,9 +129,10 @@ scenarios:
       - assert:
           mock: { name: api, path: /img/alice.png, count: 1 }
       # The unshown authors have no avatar URL here, and nothing else was
-      # fetched but the notifications, loaded in the background at the start.
+      # fetched but the notifications and the pinned feeds, loaded in the
+      # background at the start.
       - assert:
-          mock: { name: api, count: 5 }
+          mock: { name: api, count: 6 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
@@ -180,6 +181,99 @@ scenarios:
                 - { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
                 - { path: "$.record.subject.cid", equals: "cid-p1" }
                 - { path: "$.record.createdAt", matches: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' }
+
+  - name: "[ and ] switch between Following and the pinned feeds, where posts can be liked"
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            json:
+              preferences:
+                - $type: app.bsky.actor.defs#savedFeedsPrefV2
+                  items:
+                    - { id: "1", type: timeline, value: following, pinned: true }
+                    - { id: "2", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/science", pinned: true }
+                    - { id: "3", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/unpinned", pinned: false }
+                    - { id: "4", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/cats", pinned: true }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            json:
+              feeds:
+                - { uri: "at://did:plc:gen/app.bsky.feed.generator/cats", displayName: "Cats 🐈", did: did:web:gen.test, creator: { did: did:plc:gen, handle: gen.test }, indexedAt: "2026-09-01T00:00:00.000Z" }
+                - { uri: "at://did:plc:gen/app.bsky.feed.generator/science", displayName: Science, did: did:web:gen.test, creator: { did: did:plc:gen, handle: gen.test }, indexedAt: "2026-09-01T00:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeed
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:erin/app.bsky.feed.post/s1
+                    cid: cid-s1
+                    author: { did: did:plc:erin, handle: erin.test, displayName: Erin }
+                    record: { text: "A new comet is visible tonight", createdAt: "2026-09-20T07:00:00.000Z" }
+                    likeCount: 7
+                    indexedAt: "2026-09-20T07:00:05.000Z"
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            # The bar lists Following and the pinned feeds in the pinned order.
+            - expect_screen:
+                contains: ["Following", "Science", "Cats 🐈", "Photo from the mountains"]
+                not_contains: "comet"
+            - send: "]"
+            # A custom feed shows posts by accounts you do not follow.
+            - expect_screen:
+                contains: ["A new comet is visible tonight", "♡ 7"]
+                not_contains: "Photo from the mountains"
+            - send: l
+            - expect_screen:
+                contains: ["♥ 8", "liked"]
+            - send: "["
+            - expect_screen:
+                contains: "Photo from the mountains"
+                not_contains: "comet"
+            # Going back round to it shows the loaded feed with the like kept.
+            - send: "]"
+            - expect_screen:
+                contains: ["A new comet is visible tonight", "♥ 8"]
+            - send: q
+      - assert:
+          exit_code: 0
+      # The feed is loaded once, however often it is shown.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getFeed
+            count: 1
+            query: { name: feed, equals: "at://did:plc:gen/app.bsky.feed.generator/science" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            count: 1
+            query: { name: feeds, equals: "at://did:plc:gen/app.bsky.feed.generator/science" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.like" }
+                - { path: "$.record.subject.uri", equals: "at://did:plc:erin/app.bsky.feed.post/s1" }
+                - { path: "$.record.subject.cid", equals: "cid-s1" }
 
   - name: l on a liked post removes the like, and l again restores it
     mock_servers:
@@ -1100,6 +1194,7 @@ scenarios:
             - send: { key: pagedown }
             - expect_screen:
                 contains: ["like / remove like", "repost / remove repost"]
+            - send: { key: pagedown }
             - send: { key: pagedown }
             - send: { key: pagedown }
             - expect_screen:
