@@ -59,7 +59,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Search",
         keys: &[
-            ("type", "the search box has focus when you arrive"),
+            ("type", "an empty search box has focus when you arrive"),
             ("enter", "search, then move through the results"),
             ("/ i", "type in the search box again"),
             ("ctrl+t t", "search posts or accounts"),
@@ -188,20 +188,27 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("v", "thread"),
             ("R", "refresh"),
         ],
-        Tab::Profile if app.profile.actor.is_some() || app.profile.came_from.is_some() => vec![
+        Tab::Profile if app.profile.actor.is_some() => vec![
             ("esc", back_label(app.profile.came_from)),
             ("j k", "move"),
             ("f", "follow"),
             ("l", "like"),
             ("r", "reply"),
         ],
-        Tab::Profile => vec![
-            ("j k", "move"),
-            ("e", "edit profile"),
-            ("l", "like"),
-            ("r", "reply"),
-            ("R", "reload"),
-        ],
+        Tab::Profile => {
+            let mut v = vec![
+                ("j k", "move"),
+                ("e", "edit profile"),
+                ("l", "like"),
+                ("r", "reply"),
+                ("R", "reload"),
+            ];
+            // Your own profile, opened from a list: Esc still goes back.
+            if app.profile.came_from.is_some() {
+                v.insert(0, ("esc", back_label(app.profile.came_from)));
+            }
+            v
+        }
     };
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
     // is the key that leads to every other one.

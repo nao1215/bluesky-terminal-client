@@ -186,21 +186,42 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     }
 }
 
-/// Keep `list.selected` on screen given each item's height.
-fn scroll<T>(list: &mut List<T>, heights: &[u16], viewport: u16) {
-    if list.selected < list.offset {
-        list.offset = list.selected;
+/// The first item to draw so that `selected` is on screen: `offset` when it
+/// already is, otherwise the lowest start that still fits the selection.
+/// Only the items between the two are measured, so the cost is what one
+/// screen holds, however long the list and however far the jump.
+fn scroll_offset(
+    selected: usize,
+    offset: usize,
+    viewport: u16,
+    mut height: impl FnMut(usize) -> u16,
+) -> usize {
+    if selected <= offset {
+        return selected;
     }
-    while list.offset < list.selected {
-        let used: u32 = heights[list.offset..=list.selected]
-            .iter()
-            .map(|h| u32::from(*h))
-            .sum();
-        if used <= u32::from(viewport) {
+    let viewport = u32::from(viewport);
+    let mut used = u32::from(height(selected));
+    let mut top = selected;
+    while top > offset {
+        let h = u32::from(height(top - 1));
+        if used + h > viewport {
             break;
         }
-        list.offset += 1;
+        used += h;
+        top -= 1;
     }
+    top
+}
+
+/// What an empty list says: why it failed to load, or that it is empty.
+fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, t: &Theme) {
+    let p = match &list.error {
+        Some(e) => Paragraph::new(format!(" {e}  (R to retry)"))
+            .style(t.error())
+            .wrap(ratatui::widgets::Wrap { trim: true }),
+        None => Paragraph::new(format!(" {}", empty.trim_start())).style(t.dim()),
+    };
+    frame.render_widget(p, area);
 }
 
 /// Everything a post draws besides images, precomputed for a width.
@@ -475,25 +496,23 @@ fn draw_posts<T: PostRow>(
         return;
     }
     if list.items.is_empty() {
-        frame.render_widget(Paragraph::new(format!(" {empty}")).style(t.dim()), area);
+        empty_message(frame, area, list, empty, t);
         return;
     }
     let content = content_rect(area);
     let cell = images.cell_size();
-    // Lay out only what this frame can need: the posts between the scroll
-    // position and the selection (to keep the selection visible), then as
-    // many as fill the screen. A long, paged list costs no more than a short
-    // one.
+    // Lay out only what this frame can need: the posts above the selection
+    // that fit with it on screen, then as many as fill the screen. A long,
+    // paged list costs no more than a short one.
     let mut lines: HashMap<usize, PostLines> = HashMap::new();
-    let first = list.offset.min(list.selected);
-    let mut heights = vec![0; list.items.len()];
-    let last = list.selected.min(list.items.len() - 1);
-    for (i, item) in list.items.iter().enumerate().take(last + 1).skip(first) {
-        let pl = row_lines(item, content_width(content, item), cell, t);
-        heights[i] = pl.height();
-        lines.insert(i, pl);
-    }
-    scroll(list, &heights, area.height);
+    let selected = list.selected.min(list.items.len() - 1);
+    let items = &list.items;
+    list.offset = scroll_offset(selected, list.offset, area.height, |i| {
+        lines
+            .entry(i)
+            .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, t))
+            .height()
+    });
 
     let mut y = area.y;
     for (i, item) in list.items.iter().enumerate().skip(list.offset) {
@@ -662,12 +681,11 @@ fn draw_two_line_rows<T>(
         return;
     }
     if list.items.is_empty() {
-        frame.render_widget(Paragraph::new(empty).style(t.dim()), area);
+        empty_message(frame, area, list, empty, t);
         return;
     }
     const H: u16 = 3;
-    let heights = vec![H; list.items.len()];
-    scroll(list, &heights, area.height);
+    list.offset = scroll_offset(list.selected, list.offset, area.height, |_| H);
     let content = content_rect(area);
     let mut y = area.y;
     for (i, item) in list.items.iter().enumerate().skip(list.offset) {
@@ -1576,17 +1594,23 @@ mod tests {
 
     #[test]
     fn scroll_moves_offset_only_as_far_as_needed() {
-        let mut list: List<u8> = List {
-            items: vec![0; 5],
-            selected: 3,
-            offset: 0,
-            loaded: true,
-            ..List::default()
-        };
-        scroll(&mut list, &[3, 3, 3, 3, 3], 7);
-        assert_eq!(list.offset, 2);
-        list.selected = 1;
-        scroll(&mut list, &[3, 3, 3, 3, 3], 7);
-        assert_eq!(list.offset, 1);
+        let h = |_| 3;
+        assert_eq!(scroll_offset(3, 0, 7, h), 2);
+        assert_eq!(scroll_offset(1, 2, 7, h), 1, "up past the top");
+        assert_eq!(scroll_offset(2, 1, 7, h), 1, "already on screen");
+        assert_eq!(scroll_offset(4, 4, 7, h), 4);
+        // A post taller than the screen is drawn from its top.
+        assert_eq!(scroll_offset(2, 0, 7, |i| if i == 2 { 20 } else { 3 }), 2);
+    }
+
+    #[test]
+    fn jumping_to_the_end_measures_only_what_fits() {
+        let mut measured = Vec::new();
+        let offset = scroll_offset(9_999, 0, 10, |i| {
+            measured.push(i);
+            3
+        });
+        assert_eq!(offset, 9_997);
+        assert_eq!(measured, [9_999, 9_998, 9_997, 9_996]);
     }
 }

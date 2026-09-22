@@ -94,6 +94,11 @@ pub struct List<T> {
     pub cursor: Option<String>,
     /// A next page has been asked for and not answered yet.
     pub more_pending: bool,
+    /// A first page has been asked for and not answered yet.
+    pub loading: bool,
+    /// Why the last load failed; shown instead of "nothing here" while the
+    /// list is empty.
+    pub error: Option<String>,
 }
 
 // Not derived: a derive would demand `T: Default`, which an empty list does
@@ -107,6 +112,8 @@ impl<T> Default for List<T> {
             loaded: false,
             cursor: None,
             more_pending: false,
+            loading: false,
+            error: None,
         }
     }
 }
@@ -120,6 +127,8 @@ impl<T: Keyed> List<T> {
         self.selected = 0;
         self.offset = 0;
         self.loaded = true;
+        self.loading = false;
+        self.error = None;
     }
 
     /// The cursor to fetch from when the selection is near the end, a next
@@ -151,6 +160,20 @@ impl<T: Keyed> List<T> {
 }
 
 impl<T> List<T> {
+    /// A first page has been asked for.
+    fn begin(&mut self) {
+        self.loaded = false;
+        self.loading = true;
+        self.error = None;
+    }
+
+    /// The first page could not be loaded; what was there stays.
+    fn failed(&mut self, e: &Error) {
+        self.loaded = true;
+        self.loading = false;
+        self.error = Some(e.message().to_string());
+    }
+
     pub fn current(&self) -> Option<&T> {
         self.items.get(self.selected)
     }
@@ -178,8 +201,10 @@ pub struct Search {
     pub mode: SearchMode,
     pub posts: List<Post>,
     pub actors: List<Profile>,
-    /// The query the results are for (the box may have been edited since).
-    pub query: String,
+    /// The query each result list is for (the box may have been edited
+    /// since, and the other list may be for another query).
+    pub posts_query: String,
+    pub actors_query: String,
 }
 
 /// State of the profile tab.
@@ -194,6 +219,8 @@ pub struct ProfilePane {
     /// The tab the profile was opened from (Enter on an account or a post),
     /// which Esc goes back to with its results and selection as they were.
     pub came_from: Option<Tab>,
+    /// The profile has been asked for and not answered yet.
+    pub loading: bool,
 }
 
 /// A thread opened with `v`, shown over the current tab.
@@ -325,6 +352,9 @@ pub struct App {
     pub settings: Settings,
     /// Settings waiting to be written by the event loop.
     pub settings_to_save: Option<Settings>,
+    /// Whether the settings file may be written: not when it was there but
+    /// could not be read, since writing would lose what it holds.
+    pub settings_writable: bool,
     pub quit: bool,
 }
 
@@ -344,7 +374,8 @@ impl App {
                 mode: SearchMode::Posts,
                 posts: List::default(),
                 actors: List::default(),
-                query: String::new(),
+                posts_query: String::new(),
+                actors_query: String::new(),
             },
             profile: ProfilePane::default(),
             threads: Vec::new(),
@@ -359,6 +390,7 @@ impl App {
             color_depth: ColorDepth::TrueColor,
             settings: Settings::default(),
             settings_to_save: None,
+            settings_writable: true,
             quit: false,
         };
         let jobs = if app.session.is_some() {
@@ -379,6 +411,7 @@ impl App {
         warning: Option<String>,
     ) {
         self.color_depth = depth;
+        self.settings_writable = warning.is_none();
         let mut warning = warning;
         let index = match settings.theme.as_deref() {
             Some(name) => theme::index_of(name).unwrap_or_else(|| {
@@ -566,7 +599,15 @@ impl App {
                     KeyCode::Enter => {
                         self.overlay = None;
                         self.settings.theme = Some(THEMES[selected].name.to_string());
-                        self.settings_to_save = Some(self.settings.clone());
+                        if self.settings_writable {
+                            self.settings_to_save = Some(self.settings.clone());
+                        } else {
+                            self.error(format!(
+                                "theme: {} for this session only; settings.json could not be \
+                                 read, so it is not overwritten (fix or remove it to save)",
+                                THEMES[selected].name
+                            ));
+                        }
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
@@ -678,14 +719,15 @@ impl App {
         if q.is_empty() {
             return Vec::new();
         }
-        self.search.query = q.clone();
         match self.search.mode {
             SearchMode::Posts => {
-                self.search.posts.loaded = false;
+                self.search.posts_query = q.clone();
+                self.search.posts.begin();
                 vec![Job::SearchPosts(q)]
             }
             SearchMode::Accounts => {
-                self.search.actors.loaded = false;
+                self.search.actors_query = q.clone();
+                self.search.actors.begin();
                 vec![Job::SearchActors(q)]
             }
         }
@@ -700,17 +742,21 @@ impl App {
         // the box, not to the commands they are bound to on the result list.
         // With a query already there, the results keep the keys (/ or i types).
         self.search.editing = tab == Tab::Search && self.search.input.is_empty();
-        if tab == Tab::Profile && self.profile.profile.is_none() && self.profile.actor.is_none() {
+        if tab == Tab::Profile
+            && self.profile.profile.is_none()
+            && self.profile.actor.is_none()
+            && !self.profile.loading
+        {
             return self.open_profile(None);
         }
-        if tab == Tab::Notifications && !self.notifications.loaded {
+        if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
         Vec::new()
     }
 
     fn load_notifications(&mut self) -> Vec<Job> {
-        self.notifications.loaded = false;
+        self.notifications.begin();
         vec![Job::Notifications]
     }
 
@@ -731,6 +777,7 @@ impl App {
         self.profile = ProfilePane {
             actor: if own { None } else { actor },
             came_from,
+            loading: true,
             ..ProfilePane::default()
         };
         vec![Job::OpenProfile(target)]
@@ -795,8 +842,10 @@ impl App {
                 self.search.editing = true;
                 return jobs;
             }
-            KeyCode::Char('i') if self.tab == Tab::Search => self.search.editing = true,
-            KeyCode::Char('t') if self.tab == Tab::Search => {
+            KeyCode::Char('i') if self.tab == Tab::Search && self.threads.is_empty() => {
+                self.search.editing = true
+            }
+            KeyCode::Char('t') if self.tab == Tab::Search && self.threads.is_empty() => {
                 self.toggle_search_mode();
                 return self.run_search();
             }
@@ -866,14 +915,14 @@ impl App {
                 self.search
                     .actors
                     .want_more()
-                    .map(|c| (Feed::SearchActors(self.search.query.clone()), c))
+                    .map(|c| (Feed::SearchActors(self.search.actors_query.clone()), c))
             }
             Tab::Search => {
                 self.search.posts.step(delta);
                 self.search
                     .posts
                     .want_more()
-                    .map(|c| (Feed::SearchPosts(self.search.query.clone()), c))
+                    .map(|c| (Feed::SearchPosts(self.search.posts_query.clone()), c))
             }
             Tab::Timeline => {
                 self.timeline.step(delta);
@@ -1117,6 +1166,20 @@ impl App {
         self.error(e.message().to_string());
     }
 
+    /// Drop everything loaded for the account that was logged in, when
+    /// another one logs in: its notifications, its profile, its threads.
+    fn forget_account(&mut self) {
+        self.timeline = List::default();
+        self.search.posts = List::default();
+        self.search.actors = List::default();
+        self.profile = ProfilePane::default();
+        self.threads.clear();
+        self.notifications = List::default();
+        self.unread = 0;
+        self.in_flight.clear();
+        self.tab = Tab::Timeline;
+    }
+
     /// Whether a loaded profile is the one the Profile tab is waiting for;
     /// an answer for a profile opened earlier is dropped.
     fn wanted_profile(&self, p: &Profile) -> bool {
@@ -1133,10 +1196,12 @@ impl App {
         let own_did = self.profile.profile.as_ref().map(|p| p.did.clone());
         match (feed, result) {
             (Feed::Timeline, Ok(MorePage::Posts(page))) => self.timeline.append(cursor, page),
-            (Feed::SearchPosts(q), Ok(MorePage::Posts(page))) if q == self.search.query => {
+            (Feed::SearchPosts(q), Ok(MorePage::Posts(page))) if q == self.search.posts_query => {
                 self.search.posts.append(cursor, page)
             }
-            (Feed::SearchActors(q), Ok(MorePage::Actors(page))) if q == self.search.query => {
+            (Feed::SearchActors(q), Ok(MorePage::Actors(page)))
+                if q == self.search.actors_query =>
+            {
                 self.search.actors.append(cursor, page)
             }
             (Feed::Author(did), Ok(MorePage::Posts(page))) if Some(&did) == own_did.as_ref() => {
@@ -1176,6 +1241,9 @@ impl App {
         match event {
             Event::LoggedIn(Ok(session)) => {
                 self.info(format!("logged in as @{}", session.handle));
+                if self.session.as_ref().is_some_and(|s| s.did != session.did) {
+                    self.forget_account();
+                }
                 self.session = Some(session);
                 self.login = None;
                 return vec![Job::Timeline];
@@ -1203,6 +1271,7 @@ impl App {
                     self.profile.profile = Some(profile);
                     self.profile.posts.set(posts);
                     self.profile.error = None;
+                    self.profile.loading = false;
                 }
             }
             Event::Liked {
@@ -1268,7 +1337,7 @@ impl App {
                     }
                 }
                 Err(e) => {
-                    self.notifications.loaded = true;
+                    self.notifications.failed(&e);
                     self.fail(&e);
                 }
             },
@@ -1281,11 +1350,13 @@ impl App {
             }
             Event::Seen(Err(e)) => self.fail(&e),
             Event::Thread { uri, result } => {
-                // Only the thread on top, still waiting, takes the answer.
+                // Only a thread still waiting for it takes the answer; it
+                // need not be on top (one can be opened over a reload).
                 let Some(th) = self
                     .threads
-                    .last_mut()
-                    .filter(|t| t.uri == uri && !t.list.loaded)
+                    .iter_mut()
+                    .rev()
+                    .find(|t| t.uri == uri && !t.list.loaded)
                 else {
                     return Vec::new();
                 };
@@ -1381,19 +1452,20 @@ impl App {
             // Each failure settles the view that was waiting for it, so no
             // list is left showing "loading…" after its answer has come.
             Event::Timeline(Err(e)) => {
-                self.timeline.loaded = true;
+                self.timeline.failed(&e);
                 self.fail(&e);
             }
             Event::SearchPosts(Err(e)) => {
-                self.search.posts.loaded = true;
+                self.search.posts.failed(&e);
                 self.fail(&e);
             }
             Event::SearchActors(Err(e)) => {
-                self.search.actors.loaded = true;
+                self.search.actors.failed(&e);
                 self.fail(&e);
             }
             Event::Profile(Err(e)) => {
                 self.profile.error = Some(e.message().to_string());
+                self.profile.loading = false;
                 self.fail(&e);
             }
             Event::Liked { result: Err(e), .. }
@@ -2428,5 +2500,152 @@ mod tests {
         assert_eq!(app.timeline.selected, 0);
         app.handle_key(key('G'));
         assert_eq!(app.timeline.selected, 1);
+    }
+
+    #[test]
+    fn each_search_list_pages_with_its_own_query() {
+        let mut app = logged_in();
+        app.handle_key(key('/'));
+        type_str(&mut app, "a");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::SearchPosts(Ok(page(
+            vec![post("at://s/1", "did:plc:x", false)],
+            Some("pa"),
+        ))));
+        // Accounts for "b", then back to the posts for "a" without searching.
+        app.handle_key(key('/'));
+        app.handle_key(ctrl('t'));
+        app.handle_key(ctrl('u'));
+        type_str(&mut app, "b");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::SearchActors(Ok(Vec::new().into())));
+        app.handle_key(key('/'));
+        app.handle_key(ctrl('t'));
+        app.handle_key(code(KeyCode::Esc));
+        let jobs = app.handle_key(key('j'));
+        assert!(
+            matches!(&jobs[..], [Job::More { feed: Feed::SearchPosts(q), cursor }] if q == "a" && cursor == "pa"),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::More {
+            feed: Feed::SearchPosts("a".into()),
+            cursor: "pa".into(),
+            result: Ok(MorePage::Posts(page(
+                vec![post("at://s/2", "did:plc:x", false)],
+                None,
+            ))),
+        });
+        assert_eq!(app.search.posts.items.len(), 2);
+    }
+
+    #[test]
+    fn logging_in_as_someone_else_forgets_the_last_account() {
+        let mut app = notifications_tab();
+        app.handle_key(key('v'));
+        app.fail(&Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken",
+        ));
+        let other = Session {
+            did: "did:plc:other".into(),
+            handle: "other.test".into(),
+            ..session()
+        };
+        let jobs = app.handle_event(Event::LoggedIn(Ok(other)));
+        assert!(matches!(&jobs[..], [Job::Timeline]));
+        assert!(app.notifications.items.is_empty());
+        assert!(!app.notifications.loaded);
+        assert_eq!(app.unread, 0);
+        assert!(app.threads.is_empty());
+        assert!(app.timeline.items.is_empty());
+        assert_eq!(app.tab, Tab::Timeline);
+        // The same account again keeps what was loaded.
+        let mut app = notifications_tab();
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        assert_eq!(app.notifications.items.len(), 3);
+    }
+
+    #[test]
+    fn a_thread_reloading_under_another_still_takes_its_answer() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        });
+        app.handle_key(key('R'));
+        app.handle_key(key('j'));
+        app.handle_key(key('v'));
+        assert_eq!(app.threads.len(), 2);
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        });
+        assert!(app.threads[0].list.loaded);
+        app.handle_key(code(KeyCode::Esc));
+        assert_eq!(app.threads[0].list.items.len(), 3);
+    }
+
+    #[test]
+    fn an_unreadable_settings_file_is_never_overwritten() {
+        let mut app = logged_in();
+        app.apply_settings(
+            Settings::default(),
+            ColorDepth::TrueColor,
+            Some("settings.json is not valid and was ignored".into()),
+        );
+        app.handle_key(key('T'));
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(app.take_settings_save().is_none());
+        assert_eq!(app.theme_index, 1, "used for this session");
+        let status = app.status.as_ref().unwrap();
+        assert!(
+            status.error && status.text.contains("not overwritten"),
+            "{status:?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_first_page_is_kept_as_the_reason() {
+        let mut app = logged_in();
+        app.handle_key(key('4'));
+        app.handle_event(Event::Notifications {
+            seen_at: "t".into(),
+            result: Err(Error::api("listNotifications failed: boom")),
+        });
+        assert_eq!(
+            app.notifications.error.as_deref(),
+            Some("listNotifications failed: boom")
+        );
+        app.handle_key(key('R'));
+        assert!(app.notifications.error.is_none());
+    }
+
+    #[test]
+    fn a_tab_still_loading_is_not_asked_for_again() {
+        let mut app = logged_in();
+        assert_eq!(app.handle_key(key('4')).len(), 1);
+        app.handle_key(key('1'));
+        assert!(app.handle_key(key('4')).is_empty());
+        assert_eq!(app.handle_key(key('3')).len(), 1);
+        app.handle_key(key('1'));
+        assert!(app.handle_key(key('3')).is_empty());
+    }
+
+    #[test]
+    fn search_keys_do_not_reach_behind_a_thread() {
+        let mut app = logged_in();
+        app.handle_key(key('/'));
+        type_str(&mut app, "q");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::SearchPosts(Ok(page(
+            vec![post("at://s/1", "did:plc:x", false)],
+            None,
+        ))));
+        app.handle_key(key('v'));
+        app.handle_key(key('i'));
+        assert!(!app.search.editing);
+        assert!(app.handle_key(key('t')).is_empty());
+        assert_eq!(app.search.mode, SearchMode::Posts);
     }
 }

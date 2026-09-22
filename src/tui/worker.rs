@@ -151,7 +151,7 @@ pub enum Event {
         uri: String,
         result: Result<ThreadNode>,
     },
-    /// The first page of notifications, fetched at `seen_at`.
+    /// The first page of notifications; `seen_at` is the newest one's time.
     Notifications {
         seen_at: String,
         result: Result<Page<NotifItem>>,
@@ -232,6 +232,15 @@ impl Worker {
     }
 }
 
+/// The latest of some RFC 3339 timestamps, as it was written. Ones that do
+/// not parse are skipped.
+fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
+    times
+        .filter_map(|t| chrono::DateTime::parse_from_rfc3339(t).ok().map(|d| (d, t)))
+        .max_by_key(|(d, _)| *d)
+        .map(|(_, t)| t.to_string())
+}
+
 struct State {
     client: Option<Client>,
     store: SessionStore,
@@ -259,13 +268,16 @@ impl State {
             Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
             Job::Notifications => {
-                // Everything up to the moment of the request is what the user
-                // is about to see; later notifications stay unread.
-                let seen_at = api::now();
-                Event::Notifications {
-                    result: self.notifications(None),
-                    seen_at,
-                }
+                let result = self.notifications(None);
+                // Seen up to the newest notification shown, in the server's
+                // own time: a local clock running fast would otherwise mark
+                // notifications that arrive later as seen too.
+                let seen_at = result
+                    .as_ref()
+                    .ok()
+                    .and_then(|p| newest(p.items.iter().map(|i| i.n.indexed_at.as_str())))
+                    .unwrap_or_else(api::now);
+                Event::Notifications { result, seen_at }
             }
             Job::UpdateSeen(at) => Event::Seen(self.client().and_then(|c| c.update_seen(&at))),
             Job::Thread(uri) => Event::Thread {
@@ -512,6 +524,21 @@ fn read_avatar(path: &str) -> Result<Option<(Vec<u8>, String)>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seen_is_the_newest_time_whatever_the_order_or_offset() {
+        let times = [
+            "2026-09-22T00:30:00.000Z",
+            "2026-09-22T10:00:00+09:00",
+            "not a time",
+            "2026-09-22T00:59:59.999Z",
+        ];
+        assert_eq!(
+            newest(times.into_iter()).as_deref(),
+            Some("2026-09-22T10:00:00+09:00")
+        );
+        assert_eq!(newest(std::iter::empty()), None);
+    }
 
     #[test]
     fn empty_avatar_path_keeps_the_avatar() {

@@ -160,6 +160,16 @@ scenarios:
           session:
             - expect_screen:
                 contains: ["No posts from accounts you follow yet", "settings.json is not valid and was ignored"]
+            # A theme can still be used, but saving it would lose the file.
+            - send: T
+            - expect_screen:
+                contains: "▶ default"
+            - send: j
+            - expect_screen:
+                contains: "▶ light"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "theme: light for this session only"
             - send: q
       - assert:
           exit_code: 0

@@ -126,6 +126,8 @@ scenarios:
             path: /xrpc/app.bsky.feed.getPosts
             count: 1
             query: { name: uris, equals: "at://did:plc:ann/app.bsky.feed.post/reply1" }
+      # Seen up to the newest notification, in the server's time, not the
+      # local clock.
       - assert:
           mock:
             name: api
@@ -133,7 +135,7 @@ scenarios:
             method: POST
             count: 1
             body:
-              json: { path: "$.seenAt", matches: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' }
+              json: { path: "$.seenAt", equals: "2026-09-22T01:00:00.000Z" }
 
   - name: a reply notification can be answered, and a follow opens the profile
     skip:
@@ -229,7 +231,8 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: ["listNotifications failed: InternalServerError: try later", "No notifications yet."]
+                contains: "listNotifications failed: InternalServerError: try later  (R to retry)"
+                not_contains: "No notifications yet."
             - send: R
             - expect_screen:
                 contains: "listNotifications failed"

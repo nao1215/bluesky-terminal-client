@@ -292,11 +292,8 @@ fn to_256(c: Color) -> Color {
         LEVELS[bi as usize],
     );
     let avg = (u16::from(r) + u16::from(g) + u16::from(b)) / 3;
-    let gray_i = if avg < 8 {
-        0
-    } else {
-        ((avg - 8) / 10).min(23) as u8
-    };
+    // The ramp is 8, 18, ..., 238: the nearest step, rounded.
+    let gray_i = (avg.saturating_sub(3) / 10).min(23) as u8;
     let gray = 8 + 10 * gray_i;
     let dist = |(x, y, z): (u8, u8, u8)| {
         let d = |a: u8, b: u8| (i32::from(a) - i32::from(b)).pow(2);
@@ -400,6 +397,7 @@ mod tests {
     #[case(Color::Rgb(255, 255, 255), Color::Indexed(231))]
     #[case(Color::Rgb(255, 0, 0), Color::Indexed(196))]
     #[case(Color::Rgb(0x28, 0x28, 0x28), Color::Indexed(235))]
+    #[case(Color::Rgb(17, 17, 17), Color::Indexed(233))]
     #[case(Color::Cyan, Color::Cyan)]
     fn rgb_maps_to_the_nearest_xterm_color(#[case] c: Color, #[case] want: Color) {
         assert_eq!(to_256(c), want);
