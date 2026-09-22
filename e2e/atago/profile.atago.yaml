@@ -289,6 +289,10 @@ scenarios:
             exists: true
 
   - name: a file that is not a picture is refused as an avatar before anything is uploaded
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -388,6 +392,10 @@ scenarios:
                 - { path: "$.swapRecord", equals: null }
 
   - name: a save that lost a race with another client says so and keeps the edit
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -437,6 +445,10 @@ scenarios:
           exit_code: 0
 
   - name: someone else's profile can be followed but not edited, and Esc goes back to the timeline
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:

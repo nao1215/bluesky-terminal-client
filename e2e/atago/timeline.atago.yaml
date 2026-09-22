@@ -502,6 +502,10 @@ scenarios:
   # family, so the text sent has no half emoji and the link's byte range is
   # counted over the full sequences.
   - name: emoji are edited as whole characters and the link after them keeps its byte range
+    # Windows: characters outside the BMP (emoji) sent through atago's
+    # OpenConsole do not arrive yet (nao1215/atago, emoji input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -563,6 +567,10 @@ scenarios:
   # lines) and its emoji, and the facets after them are counted in bytes of
   # the pasted text.
   - name: a paste into the composer keeps its lines and emoji and links what it holds
+    # Windows: characters outside the BMP (emoji) sent through atago's
+    # OpenConsole do not arrive yet (nao1215/atago, emoji input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -707,6 +715,10 @@ scenarios:
               json: { path: "$.rkey", equals: "l1" }
 
   - name: an empty post is refused before anything is sent
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -788,6 +800,10 @@ scenarios:
               json: { path: "$.record.text", matches: "^あ{300}$" }
 
   - name: a post the server rejects keeps the draft and shows the reason
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -996,6 +1012,10 @@ scenarios:
             json: { path: "$.refreshJwt", equals: "ref-new" }
 
   - name: the help lists the keys by section, scrolls, and closes only on purpose
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:

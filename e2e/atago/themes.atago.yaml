@@ -66,6 +66,10 @@ scenarios:
             json: { path: "$.accessJwt", equals: "acc" }
 
   - name: previewing and cancelling writes nothing
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:

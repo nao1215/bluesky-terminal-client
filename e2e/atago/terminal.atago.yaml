@@ -135,6 +135,10 @@ scenarios:
             count: 0
 
   - name: a kitty terminal is detected from its answer alone
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
+    skip:
+      os: windows
     steps:
       - pty:
           command: bsky
