@@ -44,6 +44,7 @@ scenarios:
           cols: 100
           env: &env
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:

@@ -33,6 +33,7 @@ scenarios:
           rows: 30
           env: &env
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             COLORTERM: truecolor
             TZ: UTC
           timeout: 20s
@@ -219,6 +220,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             COLORTERM: truecolor
             NO_COLOR: "1"
           timeout: 20s
@@ -255,6 +257,7 @@ scenarios:
           command: bs logout
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           changes:

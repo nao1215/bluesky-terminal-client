@@ -10,6 +10,7 @@ bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures 
 - The timeline shows posts written by the accounts you follow, and nothing else: no reposts, no posts of your own, no one you do not follow. A reply is shown under the posts it answers, and `v` opens its whole thread with every reply expanded.
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
 - Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
+- Attach up to four pictures to a post, chosen in a folder browser that previews them, each with alt text.
 - Nine color themes, previewed live and remembered.
 - The keys for the current view are always on screen, and `?` lists all of them.
 - A terminal that cannot draw images is refused at startup instead of giving you a client that silently drops every picture.
@@ -67,6 +68,7 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 | `1` `2` `3` `4`, `Tab` `Shift+Tab` | Timeline, Search, Profile, Notifications |
 | `j` `k`, `↓` `↑` | Move the selection (`g` / `G` for top and bottom); more loads by itself near the end |
 | `n` | New post |
+| `Ctrl+O` | In the composer, choose pictures to attach; in the profile editor, choose the avatar |
 | `r` | Reply to the selected post |
 | `l` | Like, or remove your like |
 | `b` | Repost, or remove your repost |
@@ -84,6 +86,24 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 
 Links, mentions, and hashtags in posts you write become clickable: bs finds them in the text and sends the rich-text facets Bluesky needs. A mention whose handle does not resolve stays plain text. The composer counts characters the way Bluesky does and refuses to send more than 300.
 
+## Pictures
+
+`Ctrl+O` in the composer opens a browser of the folder you started bs in (or the one it showed last). It lists folders and pictures (PNG, JPEG, GIF, WebP) only, and draws the selected picture beside the list with its size.
+
+| Key | Action |
+|-----|--------|
+| `j` `k` | Move; the selected picture is previewed |
+| `Enter`, `l` | Open the folder, or choose the picture |
+| `Space` | Mark a picture; `Enter` then chooses every marked one, from any folder |
+| `h`, `Backspace` | The folder above |
+| `.` | Show or hide hidden files |
+| `~` | Your home folder |
+| `Esc` | Close without choosing |
+
+Back in the composer, each picture has a thumbnail and a line for its alt text: `Tab` moves between the post and the alt texts, and `Ctrl+X` removes the picture being described (or the last one). A post with pictures needs no text.
+
+Every picture is decoded and encoded again before it is uploaded: a photo taken sideways is turned upright, one larger than 2000 pixels on a side is scaled down, and the result is brought under Bluesky's 1 MB limit, as a PNG when a screenshot fits and as a JPEG otherwise. The camera's metadata, location included, stays on your disk. All pictures are read before any is uploaded, so one that cannot be read stops the post before anything is sent.
+
 ## Themes
 
 `T` opens the theme picker: `default`, `light`, `dracula`, `nord`, `gruvbox`, `solarized`, `catppuccin`, `tokyo-night`, and `monochrome`. Moving the selection redraws the screen in that theme; `Enter` keeps it and `Esc` goes back to the one you had. The choice is saved in `settings.json` in the config directory, which bs writes only when you apply a theme.
@@ -97,6 +117,7 @@ Links, mentions, and hashtags in posts you write become clickable: bs finds them
 | `BS_SERVICE` | PDS to log in to, like `--service` (default `https://bsky.social`) |
 | `BS_CONFIG_DIR` | Directory for `session.json` and `settings.json` (default: `bs` in the platform config directory: `~/.config/bs` on Linux, `~/Library/Application Support/bs` on macOS, `%APPDATA%\bs` on Windows) |
 | `BS_GRAPHICS` | Force an image protocol: `kitty`, `sixel`, or `iterm2` |
+| `BS_CACHE_DIR` | Directory for downloaded pictures kept between runs (default: `bs` in the platform cache directory); `off` keeps none |
 | `NO_COLOR` | Draw without color, whatever theme is chosen |
 
 A `settings.json` that cannot be read is reported and ignored; bs starts with the default theme and leaves the file as it is.

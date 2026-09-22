@@ -54,6 +54,7 @@ scenarios:
           cols: 100
           env: &env
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -125,7 +126,7 @@ scenarios:
             - send: e
             # The editor starts from the stored record, not from the view.
             - expect_screen:
-                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (PNG/JPEG path, optional)"]
+                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (path, or ctrl+o to browse; optional)"]
             # Ctrl+U clears the field; the description is left as it is.
             - send: { key: ctrl-u }
             - send: "新しい名前"
@@ -202,7 +203,7 @@ scenarios:
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
+                contains: ["New avatar (path, or ctrl+o to browse; optional)", "old bio"]
             - send: { key: tab }
             - send: { key: ctrl-u }
             - send: { key: ctrl-s }
@@ -262,7 +263,7 @@ scenarios:
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
+                contains: ["New avatar (path, or ctrl+o to browse; optional)", "old bio"]
             - send: { key: tab }
             - send: { key: tab }
             - send: "me.png"
@@ -295,7 +296,7 @@ scenarios:
             path: me.png
             exists: true
 
-  - name: an avatar that is not a PNG or JPEG is refused before anything is uploaded
+  - name: a file that is not a picture is refused as an avatar before anything is uploaded
     skip:
       os: windows
     mock_servers:
@@ -328,14 +329,14 @@ scenarios:
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
+                contains: ["New avatar (path, or ctrl+o to browse; optional)", "old bio"]
             - send: { key: tab }
             - send: { key: tab }
             - send: "notes.txt"
             - send: { key: ctrl-s }
             # The editor stays open with the input, and says why.
             - expect_screen:
-                contains: ["notes.txt is not a PNG or JPEG image", "Edit profile"]
+                contains: ["notes.txt is not a picture bs can read", "Edit profile"]
             - send: { key: esc }
             - expect_screen:
                 not_contains: "Edit profile"
@@ -378,7 +379,7 @@ scenarios:
                 contains: "this is you (e to edit)"
             - send: e
             - expect_screen:
-                contains: "New avatar (PNG/JPEG path, optional)"
+                contains: "New avatar (path, or ctrl+o to browse; optional)"
             - send: "First Name"
             - send: { key: ctrl-s }
             - expect_screen:
@@ -431,7 +432,7 @@ scenarios:
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
+                contains: ["New avatar (path, or ctrl+o to browse; optional)", "old bio"]
             - send: "!"
             - send: { key: ctrl-s }
             - expect_screen:

@@ -4,13 +4,15 @@
 //! and answers with an [`Event`]. Jobs run one at a time, in order, which
 //! keeps a like followed by an unlike from racing each other.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 use crate::api::types::{Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
-use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
+use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, ProfileEdit};
 use crate::config::{Session, SessionStore};
 use crate::error::{Error, Result};
+use crate::media;
 use crate::timeline;
 
 /// Work for the worker thread.
@@ -61,15 +63,24 @@ pub enum Job {
     Post {
         text: String,
         reply: Option<ReplyRef>,
+        images: Vec<Attachment>,
     },
     /// Load the fields the profile editor starts from.
     LoadProfileEditor,
     SaveProfile {
         display_name: String,
         description: String,
-        /// Path to a new avatar image; empty keeps the current one.
-        avatar_path: String,
+        /// A new avatar picture; `None` keeps the current one.
+        avatar: Option<PathBuf>,
     },
+}
+
+/// A picture on the user's disk to attach to a post.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    pub path: PathBuf,
+    /// Text describing it for people who cannot see it.
+    pub alt: String,
 }
 
 /// One page of a list and where the next page begins.
@@ -316,19 +327,22 @@ impl State {
                 did,
                 result: self.client().and_then(|c| c.unfollow(&follow_uri)),
             },
-            Job::Post { text, reply } => Event::Posted {
+            Job::Post {
+                text,
+                reply,
+                images,
+            } => Event::Posted {
                 reply_to: reply.as_ref().map(|r| r.parent.uri.clone()),
-                result: self
-                    .client()
-                    .and_then(|c| c.create_post(&text, reply.as_ref()))
-                    .map(|_| ()),
+                result: self.post(&text, reply.as_ref(), &images),
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
             Job::SaveProfile {
                 display_name,
                 description,
-                avatar_path,
-            } => Event::ProfileSaved(self.save_profile(display_name, description, &avatar_path)),
+                avatar,
+            } => {
+                Event::ProfileSaved(self.save_profile(display_name, description, avatar.as_deref()))
+            }
         }
     }
 
@@ -477,13 +491,35 @@ impl State {
         })
     }
 
+    /// Prepare every picture, upload them, then publish the post with them.
+    /// All are prepared before any is uploaded, so a picture that cannot be
+    /// read stops the post before anything reaches the server.
+    fn post(&mut self, text: &str, reply: Option<&ReplyRef>, images: &[Attachment]) -> Result<()> {
+        let prepared = images
+            .iter()
+            .map(|a| media::prepare(&a.path))
+            .collect::<Result<Vec<_>>>()?;
+        let mut uploaded = Vec::with_capacity(images.len());
+        for (a, p) in images.iter().zip(prepared) {
+            let blob = self.client()?.upload_blob(&p.bytes, p.mime)?;
+            uploaded.push(PostImage {
+                blob,
+                alt: a.alt.trim().to_string(),
+                width: p.width,
+                height: p.height,
+            });
+        }
+        self.client()?.create_post(text, reply, &uploaded)?;
+        Ok(())
+    }
+
     fn save_profile(
         &mut self,
         display_name: String,
         description: String,
-        avatar_path: &str,
+        avatar: Option<&std::path::Path>,
     ) -> Result<()> {
-        let avatar = read_avatar(avatar_path)?;
+        let avatar = avatar.map(read_avatar).transpose()?;
         let base = match self.editor_base.clone() {
             Some(base) => base,
             // The UI opens the editor before saving, so this is a fallback.
@@ -502,23 +538,11 @@ impl State {
     }
 }
 
-/// Read and check a new avatar file; an empty path means "keep the current one".
-fn read_avatar(path: &str) -> Result<Option<(Vec<u8>, String)>> {
-    let path = path.trim();
-    if path.is_empty() {
-        return Ok(None);
-    }
-    let bytes = std::fs::read(path).map_err(|e| Error::io(format!("cannot read {path}: {e}")))?;
-    let mime = api::sniff_image_mime(&bytes)
-        .filter(|m| *m == "image/png" || *m == "image/jpeg")
-        .ok_or_else(|| Error::io(format!("{path} is not a PNG or JPEG image")))?;
-    if bytes.len() > MAX_AVATAR_BYTES {
-        return Err(Error::io(format!(
-            "{path} is {} bytes; avatars must be at most {MAX_AVATAR_BYTES} bytes",
-            bytes.len()
-        )));
-    }
-    Ok(Some((bytes, mime.to_string())))
+/// Read a new avatar and encode it the way post pictures are: upright,
+/// scaled, under the size limit, without the camera's metadata.
+fn read_avatar(path: &std::path::Path) -> Result<(Vec<u8>, String)> {
+    let p = media::prepare_avatar(path, MAX_AVATAR_BYTES)?;
+    Ok((p.bytes, p.mime.to_string()))
 }
 
 #[cfg(test)]
@@ -541,38 +565,27 @@ mod tests {
     }
 
     #[test]
-    fn empty_avatar_path_keeps_the_avatar() {
-        assert_eq!(read_avatar("  ").unwrap(), None);
-    }
-
-    #[test]
-    fn avatar_must_be_png_or_jpeg() {
+    fn any_picture_becomes_a_png_or_jpeg_avatar_and_text_is_refused() {
         let dir = tempfile::tempdir().unwrap();
-        let gif = dir.path().join("a.gif");
-        std::fs::write(&gif, b"GIF89a....").unwrap();
-        let err = read_avatar(gif.to_str().unwrap()).unwrap_err();
-        assert!(err.message().contains("PNG or JPEG"), "{err}");
-
-        let png = dir.path().join("a.png");
-        std::fs::write(&png, b"\x89PNG\r\n\x1a\n").unwrap();
-        let (bytes, mime) = read_avatar(png.to_str().unwrap()).unwrap().unwrap();
-        assert_eq!((bytes.len(), mime.as_str()), (8, "image/png"));
-    }
-
-    #[test]
-    fn oversized_avatar_is_refused_before_upload() {
-        let dir = tempfile::tempdir().unwrap();
-        let big = dir.path().join("big.png");
-        let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
-        data.resize(MAX_AVATAR_BYTES + 1, 0);
-        std::fs::write(&big, data).unwrap();
-        let err = read_avatar(big.to_str().unwrap()).unwrap_err();
-        assert!(err.message().contains("at most"), "{err}");
+        let webp = dir.path().join("me.webp");
+        image::RgbImage::from_pixel(20, 10, image::Rgb([1, 2, 3]))
+            .save(&webp)
+            .unwrap();
+        let (bytes, mime) = read_avatar(&webp).unwrap();
+        assert!(mime == "image/png" || mime == "image/jpeg", "{mime}");
+        assert_eq!(api::sniff_image_mime(&bytes), Some(mime.as_str()));
+        let text = dir.path().join("notes.txt");
+        std::fs::write(&text, "not an image").unwrap();
+        let err = read_avatar(&text).unwrap_err();
+        assert!(
+            err.message().contains("is not a picture bs can read"),
+            "{err}"
+        );
     }
 
     #[test]
     fn missing_avatar_file_is_an_io_error() {
-        let err = read_avatar("/definitely/not/here.png").unwrap_err();
+        let err = read_avatar(std::path::Path::new("/definitely/not/here.png")).unwrap_err();
         assert_eq!(err.kind(), crate::error::Kind::Io);
     }
 }

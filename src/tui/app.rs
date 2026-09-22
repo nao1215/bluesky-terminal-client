@@ -2,6 +2,7 @@
 //! the network: keys and finished jobs go in, [`Job`]s come out.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -10,10 +11,12 @@ use crate::api::types::{Post, Profile, ReplyRef};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::config::{Session, Settings};
 use crate::error::Error;
+use crate::media::MAX_POST_IMAGES;
+use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::thread::{self as thread_rows, ThreadRow};
-use crate::tui::worker::{Event, Feed, Job, MorePage, NotifItem, Page};
+use crate::tui::worker::{Attachment, Event, Feed, Job, MorePage, NotifItem, Page};
 
 /// The three top-level views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,7 +181,7 @@ impl<T> List<T> {
         self.items.get(self.selected)
     }
 
-    fn step(&mut self, delta: isize) {
+    pub(crate) fn step(&mut self, delta: isize) {
         if self.items.is_empty() {
             return;
         }
@@ -239,6 +242,42 @@ pub struct Compose {
     /// Reply target, the handle being answered, and an excerpt of the post.
     pub reply: Option<(ReplyRef, String, String)>,
     pub sending: bool,
+    /// Pictures to attach, in order.
+    pub images: Vec<Attached>,
+    /// What typing goes to: 0 is the post's text, `i + 1` the alt text of
+    /// image `i`.
+    pub focus: usize,
+    /// The picture browser, open over the composer.
+    pub browser: Option<Browser>,
+}
+
+impl Compose {
+    fn new(reply: Option<(ReplyRef, String, String)>) -> Self {
+        Self {
+            input: TextInput::multi(""),
+            reply,
+            sending: false,
+            images: Vec::new(),
+            focus: 0,
+            browser: None,
+        }
+    }
+
+    /// The field typing goes to.
+    fn field(&mut self) -> &mut TextInput {
+        match self.focus {
+            0 => &mut self.input,
+            i => &mut self.images[i - 1].alt,
+        }
+    }
+}
+
+/// A picture attached in the composer.
+#[derive(Debug, Clone)]
+pub struct Attached {
+    pub path: PathBuf,
+    /// A description for people who cannot see it.
+    pub alt: TextInput,
 }
 
 /// The profile editor.
@@ -249,13 +288,18 @@ pub struct EditProfile {
     pub focus: usize,
     pub loading: bool,
     pub saving: bool,
+    /// The picture browser, open to choose the avatar.
+    pub browser: Option<Browser>,
+    /// The avatar chosen in the browser. The field shows its name; this keeps
+    /// the path itself, which may not be text that round-trips.
+    pub avatar_chosen: Option<PathBuf>,
 }
 
 impl EditProfile {
     pub const LABELS: [&'static str; 3] = [
         "Display name",
         "Description",
-        "New avatar (PNG/JPEG path, optional)",
+        "New avatar (path, or ctrl+o to browse; optional)",
     ];
 }
 
@@ -350,6 +394,8 @@ pub struct App {
     pub color_depth: ColorDepth,
     /// The settings as loaded, so saving keeps what bs did not change.
     pub settings: Settings,
+    /// The folder the picture browser last showed, where it opens next.
+    pub browse_from: Option<PathBuf>,
     /// Settings waiting to be written by the event loop.
     pub settings_to_save: Option<Settings>,
     /// Whether the settings file may be written: not when it was there but
@@ -389,6 +435,7 @@ impl App {
             theme_index: 0,
             color_depth: ColorDepth::TrueColor,
             settings: Settings::default(),
+            browse_from: None,
             settings_to_save: None,
             settings_writable: true,
             quit: false,
@@ -501,8 +548,11 @@ impl App {
             return;
         }
         match &mut self.overlay {
-            Some(Overlay::Compose(c)) => c.input.insert_str(text),
-            Some(Overlay::EditProfile(e)) => e.fields[e.focus].insert_str(text),
+            Some(Overlay::Compose(c)) if c.browser.is_none() => c.field().insert_str(text),
+            Some(Overlay::EditProfile(e)) if e.browser.is_none() => {
+                e.fields[e.focus].insert_str(text)
+            }
+            Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}
             Some(Overlay::Help { .. } | Overlay::Themes { .. }) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
@@ -630,12 +680,50 @@ impl App {
                 if c.sending {
                     return Vec::new();
                 }
+                if let Some(b) = &mut c.browser {
+                    match b.key(key) {
+                        Action::None => {}
+                        Action::Close => {
+                            self.browse_from = Some(b.dir.clone());
+                            c.browser = None;
+                        }
+                        Action::Choose(paths) => {
+                            self.browse_from = Some(b.dir.clone());
+                            c.browser = None;
+                            c.images.extend(paths.into_iter().map(|path| Attached {
+                                path,
+                                alt: TextInput::single(""),
+                            }));
+                            c.images.truncate(MAX_POST_IMAGES);
+                        }
+                    }
+                    return Vec::new();
+                }
+                let fields = c.images.len() + 1;
                 match key.code {
                     KeyCode::Esc => self.overlay = None,
+                    KeyCode::Tab => c.focus = (c.focus + 1) % fields,
+                    KeyCode::BackTab => c.focus = (c.focus + fields - 1) % fields,
+                    KeyCode::Char('o') if ctrl => {
+                        let room = MAX_POST_IMAGES - c.images.len();
+                        if room == 0 {
+                            self.error(format!(
+                                "a post can have at most {MAX_POST_IMAGES} pictures"
+                            ));
+                        } else {
+                            c.browser = Some(Browser::open(&browse_start(&self.browse_from), room));
+                        }
+                    }
+                    // The picture whose alt text is being typed, or the last.
+                    KeyCode::Char('x') if ctrl && !c.images.is_empty() => {
+                        let i = c.focus.checked_sub(1).unwrap_or(c.images.len() - 1);
+                        c.images.remove(i);
+                        c.focus = c.focus.min(c.images.len());
+                    }
                     KeyCode::Char('s') if ctrl => {
                         let text = c.input.text();
                         let len = grapheme_len(text.trim_end());
-                        if text.trim().is_empty() {
+                        if text.trim().is_empty() && c.images.is_empty() {
                             self.error("the post is empty");
                         } else if len > MAX_POST_GRAPHEMES {
                             self.error(format!(
@@ -644,11 +732,23 @@ impl App {
                         } else {
                             c.sending = true;
                             let reply = c.reply.as_ref().map(|(r, _, _)| r.clone());
-                            return vec![Job::Post { text, reply }];
+                            let images = c
+                                .images
+                                .iter()
+                                .map(|a| Attachment {
+                                    path: a.path.clone(),
+                                    alt: a.alt.text(),
+                                })
+                                .collect();
+                            return vec![Job::Post {
+                                text,
+                                reply,
+                                images,
+                            }];
                         }
                     }
                     _ => {
-                        c.input.handle_key(key);
+                        c.field().handle_key(key);
                     }
                 }
             }
@@ -659,18 +759,45 @@ impl App {
                     }
                     return Vec::new();
                 }
+                if let Some(b) = &mut e.browser {
+                    match b.key(key) {
+                        Action::None => {}
+                        Action::Close => {
+                            self.browse_from = Some(b.dir.clone());
+                            e.browser = None;
+                        }
+                        Action::Choose(paths) => {
+                            self.browse_from = Some(b.dir.clone());
+                            e.browser = None;
+                            if let Some(p) = paths.first() {
+                                e.fields[2] = TextInput::single(&p.display().to_string());
+                                e.avatar_chosen = Some(p.clone());
+                                e.focus = 2;
+                            }
+                        }
+                    }
+                    return Vec::new();
+                }
                 match key.code {
                     KeyCode::Esc => self.overlay = None,
                     KeyCode::Tab => e.focus = (e.focus + 1) % 3,
                     KeyCode::BackTab => e.focus = (e.focus + 2) % 3,
+                    KeyCode::Char('o') if ctrl => {
+                        e.browser = Some(Browser::open(&browse_start(&self.browse_from), 1));
+                    }
                     KeyCode::Char('s') if ctrl => {
                         e.saving = true;
-                        let [display_name, description, avatar_path] =
+                        let [display_name, description, avatar_text] =
                             e.fields.clone().map(|f| f.text());
+                        let avatar = match &e.avatar_chosen {
+                            Some(p) if avatar_text == p.display().to_string() => Some(p.clone()),
+                            _ if avatar_text.trim().is_empty() => None,
+                            _ => Some(PathBuf::from(avatar_text.trim())),
+                        };
                         return vec![Job::SaveProfile {
                             display_name,
                             description,
-                            avatar_path,
+                            avatar,
                         }];
                     }
                     _ => {
@@ -850,11 +977,7 @@ impl App {
                 return self.run_search();
             }
             KeyCode::Char('n') => {
-                self.overlay = Some(Overlay::Compose(Compose {
-                    input: TextInput::multi(""),
-                    reply: None,
-                    sending: false,
-                }));
+                self.overlay = Some(Overlay::Compose(Compose::new(None)));
             }
             KeyCode::Char('r') => return self.reply(),
             KeyCode::Char('l') => return self.toggle_like(),
@@ -991,11 +1114,11 @@ impl App {
     fn reply(&mut self) -> Vec<Job> {
         if let Some(post) = self.selected_post() {
             let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
-            self.overlay = Some(Overlay::Compose(Compose {
-                input: TextInput::multi(""),
-                reply: Some((post.reply_ref(), post.author.handle.clone(), excerpt)),
-                sending: false,
-            }));
+            self.overlay = Some(Overlay::Compose(Compose::new(Some((
+                post.reply_ref(),
+                post.author.handle.clone(),
+                excerpt,
+            )))));
         }
         Vec::new()
     }
@@ -1082,6 +1205,8 @@ impl App {
             focus: 0,
             loading: true,
             saving: false,
+            browser: None,
+            avatar_chosen: None,
         }));
         vec![Job::LoadProfileEditor]
     }
@@ -1479,6 +1604,15 @@ impl App {
     }
 }
 
+/// Where the picture browser opens: the folder it last showed, else the
+/// current directory, else the home directory.
+fn browse_start(last: &Option<PathBuf>) -> PathBuf {
+    last.clone()
+        .or_else(|| std::env::current_dir().ok())
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1622,11 +1756,13 @@ mod tests {
                 Job::Post {
                     text,
                     reply: Some(r),
+                    images,
                 },
             ] => {
                 assert_eq!(text, "hello");
                 assert_eq!(r.parent.uri, "at://b/p/2");
                 assert_eq!(r.root.uri, "at://b/p/2");
+                assert!(images.is_empty());
             }
             other => panic!("{other:?}"),
         }
@@ -1749,12 +1885,12 @@ mod tests {
                 Job::SaveProfile {
                     display_name,
                     description,
-                    avatar_path,
+                    avatar,
                 },
             ] => {
                 assert_eq!(display_name, "Me Myself");
                 assert_eq!(description, "old bio\nline2");
-                assert_eq!(avatar_path, "");
+                assert_eq!(avatar, &None);
             }
             other => panic!("{other:?}"),
         }
@@ -2647,5 +2783,155 @@ mod tests {
         assert!(!app.search.editing);
         assert!(app.handle_key(key('t')).is_empty());
         assert_eq!(app.search.mode, SearchMode::Posts);
+    }
+
+    /// A folder with two pictures and a subfolder, for the picture browser.
+    fn pictures() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        for name in ["a.png", "b.png"] {
+            image::RgbImage::from_pixel(4, 3, image::Rgb([1, 2, 3]))
+                .save(dir.path().join(name))
+                .unwrap();
+        }
+        dir
+    }
+
+    fn composer(app: &App) -> &Compose {
+        match &app.overlay {
+            Some(Overlay::Compose(c)) => c,
+            other => panic!("no composer: {other:?}"),
+        }
+    }
+
+    /// A composer with both pictures of `dir` attached.
+    fn composer_with_pictures(dir: &tempfile::TempDir) -> App {
+        let mut app = logged_in();
+        app.browse_from = Some(dir.path().to_path_buf());
+        app.handle_key(key('n'));
+        app.handle_key(ctrl('o'));
+        let b = composer(&app).browser.as_ref().expect("browser");
+        assert_eq!(b.room, MAX_POST_IMAGES);
+        assert_eq!(b.current().unwrap().name, "sub");
+        app.handle_key(key('j'));
+        app.handle_key(key(' '));
+        app.handle_key(key(' '));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(composer(&app).browser.is_none());
+        assert_eq!(composer(&app).images.len(), 2);
+        app
+    }
+
+    #[test]
+    fn pictures_are_chosen_described_and_sent_without_text() {
+        let dir = pictures();
+        let mut app = composer_with_pictures(&dir);
+        assert_eq!(app.browse_from.as_deref(), Some(dir.path()), "remembered");
+        app.handle_key(code(KeyCode::Tab));
+        type_str(&mut app, "first");
+        app.handle_key(code(KeyCode::Tab));
+        app.handle_paste("second");
+        // Tab comes back round to the text, which stays empty.
+        app.handle_key(code(KeyCode::Tab));
+        assert_eq!(composer(&app).focus, 0);
+        let jobs = app.handle_key(ctrl('s'));
+        let [Job::Post { text, images, .. }] = &jobs[..] else {
+            panic!("{jobs:?}")
+        };
+        assert_eq!(text, "");
+        assert_eq!(
+            images,
+            &[
+                Attachment {
+                    path: dir.path().join("a.png"),
+                    alt: "first".into()
+                },
+                Attachment {
+                    path: dir.path().join("b.png"),
+                    alt: "second".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn ctrl_x_removes_the_picture_being_described_or_the_last() {
+        let dir = pictures();
+        let mut app = composer_with_pictures(&dir);
+        app.handle_key(code(KeyCode::Tab));
+        app.handle_key(ctrl('x'));
+        let c = composer(&app);
+        assert_eq!(c.images.len(), 1);
+        assert!(c.images[0].path.ends_with("b.png"));
+        assert_eq!(c.focus, 1, "on the picture that moved up");
+        app.handle_key(code(KeyCode::BackTab));
+        app.handle_key(ctrl('x'));
+        assert!(composer(&app).images.is_empty());
+        assert!(
+            app.handle_key(ctrl('x')).is_empty(),
+            "nothing left to remove"
+        );
+        // Without pictures or text there is nothing to post.
+        assert!(app.handle_key(ctrl('s')).is_empty());
+        assert_eq!(app.status.as_ref().unwrap().text, "the post is empty");
+    }
+
+    #[test]
+    fn a_fifth_picture_is_refused_and_the_browser_holds_the_keys() {
+        let dir = pictures();
+        let mut app = composer_with_pictures(&dir);
+        app.handle_key(ctrl('o'));
+        assert_eq!(composer(&app).browser.as_ref().unwrap().room, 2);
+        // Typing and pasting do not reach the post behind the browser.
+        app.handle_paste("hidden");
+        app.handle_key(key('z'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(composer(&app).browser.is_none());
+        assert!(composer(&app).input.is_empty());
+        let Some(Overlay::Compose(c)) = &mut app.overlay else {
+            unreachable!()
+        };
+        let one = c.images[0].clone();
+        c.images.extend([one.clone(), one]);
+        app.handle_key(ctrl('o'));
+        assert!(composer(&app).browser.is_none());
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("at most 4 pictures")
+        );
+    }
+
+    #[test]
+    fn the_avatar_is_chosen_in_the_browser() {
+        let dir = pictures();
+        let mut app = logged_in();
+        app.browse_from = Some(dir.path().to_path_buf());
+        app.overlay = Some(Overlay::EditProfile(EditProfile {
+            fields: [
+                TextInput::single("Me"),
+                TextInput::multi(""),
+                TextInput::single(""),
+            ],
+            focus: 0,
+            loading: false,
+            saving: false,
+            browser: None,
+            avatar_chosen: None,
+        }));
+        app.handle_key(ctrl('o'));
+        app.handle_key(key('G'));
+        app.handle_key(code(KeyCode::Enter));
+        let Some(Overlay::EditProfile(e)) = &app.overlay else {
+            panic!()
+        };
+        assert!(e.browser.is_none());
+        assert_eq!(e.focus, 2);
+        assert_eq!(
+            e.fields[2].text(),
+            dir.path().join("b.png").display().to_string()
+        );
     }
 }

@@ -84,6 +84,7 @@ scenarios:
           cols: 100
           env: &env
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             TZ: UTC
           timeout: 20s
           session:
@@ -808,3 +809,90 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+
+  - name: pictures are kept on disk and the next start draws them without downloading
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                images: { count: 3 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          dir: { path: cache/images, count: 3 }
+      # Started again against the same server: the pictures come from the cache.
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+                images: { count: 3 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              count: 3
+              contains:
+                - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/alice.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/bob.png, count: 1 }
+
+  - name: BS_CACHE_DIR=off keeps no pictures on disk
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                images: { count: 3 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+          changes:
+            created: []
+            modified: []
+            deleted: []

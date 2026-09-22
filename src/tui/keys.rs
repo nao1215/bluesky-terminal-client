@@ -87,9 +87,32 @@ pub const HELP: &[Section] = &[
         title: "Composer and profile editor",
         keys: &[
             ("ctrl+s", "send the post / save the profile"),
-            ("tab", "next field (profile editor)"),
+            (
+                "ctrl+o",
+                "choose pictures for the post (up to 4) / a new avatar",
+            ),
+            (
+                "tab",
+                "next field: a picture's alt text, the next profile field",
+            ),
+            (
+                "ctrl+x",
+                "remove the picture being described, or the last one",
+            ),
             ("ctrl+u", "clear to the start of the line"),
             ("esc", "close without sending"),
+        ],
+    },
+    Section {
+        title: "Picture browser",
+        keys: &[
+            ("j k", "move; the selected picture is previewed"),
+            ("enter l", "open the folder / choose the picture"),
+            ("space", "mark pictures to choose together with enter"),
+            ("h backspace", "the folder above"),
+            (".", "show or hide hidden files"),
+            ("~", "your home folder"),
+            ("esc", "close without choosing"),
         ],
     },
     Section {
@@ -116,15 +139,24 @@ pub fn hints(app: &App) -> Vec<Hint> {
         ];
     }
     match &app.overlay {
-        Some(Overlay::Compose(_)) => {
-            return vec![
-                ("ctrl+s", "send"),
-                ("ctrl+u", "clear line"),
-                ("esc", "cancel"),
-            ];
+        Some(Overlay::Compose(c)) if c.browser.is_some() => return browser_hints(),
+        Some(Overlay::EditProfile(e)) if e.browser.is_some() => return browser_hints(),
+        Some(Overlay::Compose(c)) => {
+            let mut v = vec![("ctrl+s", "send"), ("ctrl+o", "add picture")];
+            if !c.images.is_empty() {
+                v.push(("tab", "alt text"));
+                v.push(("ctrl+x", "remove picture"));
+            }
+            v.push(("esc", "cancel"));
+            return v;
         }
         Some(Overlay::EditProfile(_)) => {
-            return vec![("tab", "next field"), ("ctrl+s", "save"), ("esc", "cancel")];
+            return vec![
+                ("tab", "next field"),
+                ("ctrl+o", "choose avatar"),
+                ("ctrl+s", "save"),
+                ("esc", "cancel"),
+            ];
         }
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
         Some(Overlay::Themes { .. }) => {
@@ -215,6 +247,16 @@ pub fn hints(app: &App) -> Vec<Hint> {
     v.insert(0, ("?", "help"));
     v.push(("q", "quit"));
     v
+}
+
+fn browser_hints() -> Vec<Hint> {
+    vec![
+        ("enter", "open / choose"),
+        ("space", "mark"),
+        ("h", "up"),
+        (".", "hidden"),
+        ("esc", "cancel"),
+    ]
 }
 
 /// What Esc on the Profile tab goes back to.

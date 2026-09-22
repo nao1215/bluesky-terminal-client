@@ -30,6 +30,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             # The service field starts filled in from --service, and focus
@@ -101,6 +102,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -136,6 +138,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -187,6 +190,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
             - expect_screen:
@@ -216,6 +220,7 @@ scenarios:
           cols: 120
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 40s
           session:
             - expect_screen:

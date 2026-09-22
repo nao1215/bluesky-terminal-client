@@ -116,6 +116,24 @@ pub fn config_dir() -> Result<PathBuf> {
     })
 }
 
+/// Environment variable naming the cache directory; `off` keeps no cache.
+pub const CACHE_DIR_ENV: &str = "BS_CACHE_DIR";
+
+/// Where downloaded pictures are kept between runs, or `None` for no cache:
+/// `BS_CACHE_DIR` when set (`off` turns the cache off), else `bs` in the
+/// platform cache directory.
+pub fn cache_dir() -> Option<PathBuf> {
+    cache_dir_from(std::env::var_os(CACHE_DIR_ENV), dirs::cache_dir())
+}
+
+fn cache_dir_from(var: Option<std::ffi::OsString>, platform: Option<PathBuf>) -> Option<PathBuf> {
+    match var {
+        Some(v) if v == "off" => None,
+        Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
+        _ => platform.map(|d| d.join("bs")),
+    }
+}
+
 /// Reads and writes the session file inside one directory.
 #[derive(Debug, Clone)]
 pub struct SessionStore {
@@ -208,6 +226,25 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cache_directory_follows_the_environment() {
+        let platform = Some(PathBuf::from("/c"));
+        assert_eq!(
+            cache_dir_from(None, platform.clone()),
+            Some(PathBuf::from("/c").join("bs"))
+        );
+        assert_eq!(
+            cache_dir_from(Some("".into()), platform.clone()),
+            Some(PathBuf::from("/c").join("bs"))
+        );
+        assert_eq!(
+            cache_dir_from(Some("/mine".into()), platform.clone()),
+            Some(PathBuf::from("/mine"))
+        );
+        assert_eq!(cache_dir_from(Some("off".into()), platform), None);
+        assert_eq!(cache_dir_from(None, None), None);
+    }
 
     fn sample() -> Session {
         Session {

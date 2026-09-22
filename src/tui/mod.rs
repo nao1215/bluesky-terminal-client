@@ -1,6 +1,7 @@
 //! The interactive client: terminal setup, the event loop, and teardown.
 
 pub mod app;
+pub mod files;
 pub mod images;
 pub mod input;
 pub mod keys;
@@ -22,11 +23,15 @@ use crate::config::{SessionStore, SettingsStore};
 use crate::error::{Error, Kind, Result};
 use crate::terminal;
 use app::App;
-use images::Images;
+use images::{DiskCache, Images};
 use worker::Worker;
 
 /// How long the loop waits for a key before checking the worker again.
 const TICK: Duration = Duration::from_millis(50);
+/// Most input events handled before the screen is drawn again. Keys that
+/// arrive faster than a frame draws (a held j) are applied together, so the
+/// selection keeps up with the key instead of trailing behind it.
+const EVENTS_PER_FRAME: usize = 64;
 
 /// Run the client until the user quits.
 pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Result<()> {
@@ -61,7 +66,9 @@ fn event_loop(
     depth: theme::ColorDepth,
     service: &str,
 ) -> Result<()> {
-    let mut images = Images::new(picker);
+    let cache =
+        crate::config::cache_dir().map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
+    let mut images = Images::new(picker, cache);
     let worker = Worker::spawn(session.clone(), store);
     let (mut app, jobs) = App::new(session, service);
     let (loaded, warning) = settings.load();
@@ -76,7 +83,11 @@ fn event_loop(
                 .map_err(io_err)?;
             dirty = false;
         }
-        if event::poll(TICK).map_err(io_err)? {
+        let mut wait = TICK;
+        for _ in 0..EVENTS_PER_FRAME {
+            if app.quit || !event::poll(wait).map_err(io_err)? {
+                break;
+            }
             match event::read().map_err(io_err)? {
                 TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
                     app.handle_key(k).into_iter().for_each(|j| worker.send(j));
@@ -85,6 +96,8 @@ fn event_loop(
                 _ => {}
             }
             dirty = true;
+            // Only what is already waiting; the next frame is not held back.
+            wait = Duration::ZERO;
         }
         // Saved here rather than on the worker, which runs jobs in order: a
         // theme applied just before q must not wait behind a network call.

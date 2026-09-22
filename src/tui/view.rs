@@ -16,6 +16,7 @@ use crate::terminal::protocol_name;
 use crate::tui::app::{
     App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab, ThreadView,
 };
+use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
@@ -37,6 +38,11 @@ const IMAGE_ROWS_MAX: u16 = 12;
 const IMAGE_MAX_W: u16 = 36;
 /// Avatar size on the profile tab, in cells.
 const BIG_AVATAR: (u16, u16) = (12, 6);
+/// Posts below the screen whose pictures are fetched and encoded ahead, so
+/// they are ready when scrolled to.
+const PREFETCH: usize = 4;
+/// Size of a picture's thumbnail in the composer, in cells.
+const THUMB: (u16, u16) = (14, 5);
 
 /// Draw the whole UI.
 pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
@@ -66,8 +72,18 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_hints(frame, hint_row, app);
     draw_status(frame, status_row, app, images);
     match &mut app.overlay {
-        Some(Overlay::Compose(c)) => draw_compose(frame, area, c, &t),
-        Some(Overlay::EditProfile(e)) => draw_edit_profile(frame, area, e, &t),
+        Some(Overlay::Compose(c)) => {
+            draw_compose(frame, area, c, images, &t);
+            if let Some(b) = &mut c.browser {
+                draw_browser(frame, area, b, images, &t);
+            }
+        }
+        Some(Overlay::EditProfile(e)) => {
+            draw_edit_profile(frame, area, e, &t);
+            if let Some(b) = &mut e.browser {
+                draw_browser(frame, area, b, images, &t);
+            }
+        }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, &t),
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         None => {}
@@ -515,6 +531,7 @@ fn draw_posts<T: PostRow>(
     });
 
     let mut y = area.y;
+    let mut below = list.offset;
     for (i, item) in list.items.iter().enumerate().skip(list.offset) {
         if y >= area.bottom() {
             break;
@@ -530,6 +547,9 @@ fn draw_posts<T: PostRow>(
             ..area
         };
         let whole = visible == h;
+        // A post cut off at the bottom draws no pictures, so it is the first
+        // one to get ready.
+        below = if whole { i + 1 } else { i };
         draw_marker(frame, row, h, i == list.selected, t);
 
         // Replies are indented, with a guide line for each level.
@@ -599,6 +619,20 @@ fn draw_posts<T: PostRow>(
             );
         }
         y += h;
+    }
+    for (i, item) in list.items.iter().enumerate().skip(below).take(PREFETCH) {
+        let pl = lines
+            .entry(i)
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, t));
+        if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref()) {
+            images.prefetch(url, AVATAR.0, AVATAR.1);
+        }
+        // The same box sizes draw_image_row gives them.
+        let width = content.width.saturating_sub(item.indent() * 2);
+        let each = image_box_width(width, pl.images.len() as u16);
+        for url in &pl.images {
+            images.prefetch(url, each, pl.image_rows);
+        }
     }
 }
 
@@ -1064,15 +1098,19 @@ fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
     );
 }
 
-fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, t: &Theme) {
+fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images, t: &Theme) {
     let title = match &c.reply {
         Some((_, handle, _)) => format!("Reply to @{handle}"),
         None => "New post".to_string(),
     };
-    let inner = popup(frame, area, 72, 14, &title, t);
-    let [quote, text, foot] = Layout::vertical([
+    let n = c.images.len() as u16;
+    // A row of thumbnails, then a line per picture for its alt text.
+    let pics_h = if n > 0 { THUMB.1 + n } else { 0 };
+    let inner = popup(frame, area, 72, 14 + pics_h, &title, t);
+    let [quote, text, pics, foot] = Layout::vertical([
         Constraint::Length(if c.reply.is_some() { 2 } else { 0 }),
         Constraint::Min(1),
+        Constraint::Length(pics_h),
         Constraint::Length(1),
     ])
     .areas(inner);
@@ -1083,30 +1121,267 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, t: &Theme) {
             quote,
         );
     }
+    let typing = !c.sending && c.browser.is_none();
     let text_area = Rect {
         x: text.x + 1,
         width: text.width.saturating_sub(2),
         ..text
     };
-    draw_multi_input(frame, text_area, &c.input, !c.sending);
-    let n = grapheme_len(c.input.text().trim_end());
-    let count_style = if n > MAX_POST_GRAPHEMES {
+    draw_multi_input(frame, text_area, &c.input, typing && c.focus == 0);
+    if n > 0 {
+        draw_attachments(frame, pics, c, images, typing, t);
+    }
+    let len = grapheme_len(c.input.text().trim_end());
+    let count_style = if len > MAX_POST_GRAPHEMES {
         t.error()
     } else {
         t.dim()
     };
     let action = if c.sending {
         "sending…"
+    } else if n > 0 {
+        "ctrl+s send  ctrl+o add picture  tab alt text  ctrl+x remove  esc cancel"
     } else {
-        "ctrl+s send  esc cancel"
+        "ctrl+s send  ctrl+o add picture  esc cancel"
     };
     frame.render_widget(
-        Line::from(vec![
-            Span::styled(format!(" {n}/{MAX_POST_GRAPHEMES}  "), count_style),
-            Span::styled(action, t.dim()),
-        ]),
+        truncate_line(
+            Line::from(vec![
+                Span::styled(format!(" {len}/{MAX_POST_GRAPHEMES}  "), count_style),
+                Span::styled(action, t.dim()),
+            ]),
+            usize::from(foot.width),
+        ),
         foot,
     );
+}
+
+/// The composer's pictures: thumbnails in a row, then each one's number,
+/// file name, and alt text.
+fn draw_attachments(
+    frame: &mut Frame,
+    area: Rect,
+    c: &Compose,
+    images: &mut Images,
+    typing: bool,
+    t: &Theme,
+) {
+    // No thumbnails behind the browser (they would only cost encodes), nor
+    // when the terminal is too low to give them their rows.
+    let thumbs = c.browser.is_none() && area.height >= THUMB.1 + c.images.len() as u16;
+    for (i, a) in c.images.iter().enumerate() {
+        let i16 = i as u16;
+        let x = area.x + 1 + i16 * (THUMB.0 + 1);
+        if thumbs && x + THUMB.0 <= area.right() {
+            let r = Rect {
+                x,
+                y: area.y,
+                width: THUMB.0,
+                height: THUMB.1,
+            };
+            images.draw_file(frame, r, &a.path);
+        }
+        let row = Rect {
+            y: area.y + THUMB.1 + i16,
+            height: 1,
+            ..area
+        };
+        if row.y >= area.bottom() {
+            break;
+        }
+        let focused = typing && c.focus == i + 1;
+        let name = a
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let label = format!(" {} {}  alt: ", i + 1, truncate(&name, 20));
+        let label_w = label.width() as u16;
+        let style = if focused { t.accent().bold() } else { t.dim() };
+        frame.render_widget(Paragraph::new(label).style(style), row);
+        let field = Rect {
+            x: row.x + label_w.min(row.width),
+            width: row.width.saturating_sub(label_w + 1),
+            ..row
+        };
+        if a.alt.is_empty() && !focused {
+            frame.render_widget(
+                Paragraph::new("(none; tab to describe it)").style(t.dim()),
+                field,
+            );
+        } else {
+            draw_single_input(frame, field, &a.alt, focused);
+        }
+    }
+}
+
+/// A byte count the way a person reads it.
+fn human_bytes(n: u64) -> String {
+    match n {
+        n if n >= 1024 * 1024 => format!("{:.1} MB", n as f64 / (1024.0 * 1024.0)),
+        n if n >= 1024 => format!("{} KB", n / 1024),
+        n => format!("{n} B"),
+    }
+}
+
+/// Keep the end of `s` within `width` columns: the end of a path is the part
+/// that tells where it is.
+fn truncate_start(s: &str, width: usize) -> String {
+    if s.width() <= width {
+        return s.to_string();
+    }
+    let mut out: Vec<char> = Vec::new();
+    let mut used = 1;
+    for ch in s.chars().rev() {
+        let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + w > width {
+            break;
+        }
+        used += w;
+        out.push(ch);
+    }
+    out.push('…');
+    out.into_iter().rev().collect()
+}
+
+/// The picture browser: the folder on top, its folders and pictures on the
+/// left, the selected picture previewed on the right.
+fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Images, t: &Theme) {
+    let title = if b.room == 1 {
+        "Choose a picture".to_string()
+    } else {
+        format!("Choose pictures (up to {})", b.room)
+    };
+    let w = area.width.saturating_sub(4).min(110);
+    let h = area.height.saturating_sub(2).min(34);
+    let inner = popup(frame, area, w, h, &title, t);
+    let [path_row, body, foot] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(inner);
+    let dir = b.dir.display().to_string();
+    frame.render_widget(
+        Paragraph::new(format!(
+            " {}",
+            truncate_start(&dir, usize::from(path_row.width.saturating_sub(1)))
+        ))
+        .style(t.accent()),
+        path_row,
+    );
+    let [left, right] =
+        Layout::horizontal([Constraint::Percentage(45), Constraint::Min(10)]).areas(body);
+    let mut rows = left;
+    if let Some(e) = &b.error {
+        frame.render_widget(
+            Paragraph::new(format!(" {e}")).style(t.error()),
+            Rect { height: 1, ..left },
+        );
+        rows.y += 1;
+        rows.height = rows.height.saturating_sub(1);
+    }
+    if !b.list.items.is_empty() {
+        let selected = b.list.selected.min(b.list.items.len() - 1);
+        b.list.offset = scroll_offset(selected, b.list.offset, rows.height, |_| 1);
+    }
+    let width = usize::from(rows.width);
+    for (row, (i, e)) in b
+        .list
+        .items
+        .iter()
+        .enumerate()
+        .skip(b.list.offset)
+        .take(usize::from(rows.height))
+        .enumerate()
+    {
+        let mark = if b.marked.contains(&e.path) {
+            "✓ "
+        } else {
+            "  "
+        };
+        let (name, size) = match e.kind {
+            EntryKind::Parent => ("../".to_string(), String::new()),
+            EntryKind::Dir => (format!("{}/", e.name), String::new()),
+            EntryKind::Image => (e.name.clone(), human_bytes(e.bytes)),
+        };
+        let size_w = size.width();
+        let name = truncate(&name, width.saturating_sub(size_w + 4));
+        let pad = width.saturating_sub(2 + name.width() + size_w + 1);
+        let line = format!("{mark}{name}{}{size} ", " ".repeat(pad));
+        let style = if i == b.list.selected {
+            t.selected()
+        } else if e.kind == EntryKind::Image {
+            Style::new()
+        } else {
+            t.accent()
+        };
+        frame.render_widget(
+            Paragraph::new(line).style(style),
+            Rect {
+                y: rows.y + row as u16,
+                height: 1,
+                ..rows
+            },
+        );
+    }
+    let preview = Rect {
+        x: right.x + 1,
+        width: right.width.saturating_sub(2),
+        ..right
+    };
+    match b.current() {
+        Some(e) if e.kind == EntryKind::Image => {
+            let info = match b.current_dims() {
+                Some((w, h)) => format!("{w}×{h} · {}", human_bytes(e.bytes)),
+                None => human_bytes(e.bytes),
+            };
+            let pic = Rect {
+                height: preview.height.saturating_sub(3),
+                ..preview
+            };
+            images.draw_file(frame, pic, &e.path);
+            frame.render_widget(
+                Paragraph::new(vec![
+                    Line::styled(
+                        truncate(&e.name, usize::from(preview.width)),
+                        Style::new().bold(),
+                    ),
+                    Line::styled(info, t.dim()),
+                ]),
+                Rect {
+                    y: pic.bottom() + 1,
+                    height: 2,
+                    ..preview
+                },
+            );
+        }
+        Some(_) => frame.render_widget(
+            Paragraph::new("enter opens the folder").style(t.dim()),
+            preview,
+        ),
+        None => frame.render_widget(
+            Paragraph::new("no folders or pictures here").style(t.dim()),
+            preview,
+        ),
+    }
+    let foot_line = match &b.note {
+        Some(n) => Line::styled(format!(" {n}"), t.error()),
+        None => {
+            let marked = if b.marked.is_empty() {
+                String::new()
+            } else {
+                format!("{} marked  ", b.marked.len())
+            };
+            Line::styled(
+                format!(
+                    " {marked}enter open/choose  space mark  h up  . hidden  ~ home  esc cancel"
+                ),
+                t.dim(),
+            )
+        }
+    };
+    frame.render_widget(truncate_line(foot_line, usize::from(foot.width)), foot);
 }
 
 fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, t: &Theme) {
@@ -1153,7 +1428,7 @@ fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, t: &Theme) 
     let action = if e.saving {
         " saving…"
     } else {
-        " tab next field  ctrl+s save  esc cancel"
+        " tab next field  ctrl+o choose avatar  ctrl+s save  esc cancel"
     };
     frame.render_widget(
         Paragraph::new(action).style(t.dim()),
@@ -1234,7 +1509,7 @@ mod tests {
     use serde_json::json;
 
     fn render(app: &mut App, w: u16, h: u16) -> String {
-        let mut images = Images::new(Picker::halfblocks());
+        let mut images = Images::new(Picker::halfblocks(), None);
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| draw(f, app, &mut images)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -1384,7 +1659,7 @@ mod tests {
     }
 
     fn render_buffer(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
-        let mut images = Images::new(Picker::halfblocks());
+        let mut images = Images::new(Picker::halfblocks(), None);
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| draw(f, app, &mut images)).unwrap();
         term.backend().buffer().clone()
@@ -1612,5 +1887,80 @@ mod tests {
         });
         assert_eq!(offset, 9_997);
         assert_eq!(measured, [9_999, 9_998, 9_997, 9_996]);
+    }
+
+    #[test]
+    fn the_composer_lists_its_pictures_with_their_alt_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+        app.browse_from = Some(dir.path().to_path_buf());
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('n'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        let Some(Overlay::Compose(c)) = &mut app.overlay else {
+            panic!()
+        };
+        c.images.push(crate::tui::app::Attached {
+            path: dir.path().join("cat.png"),
+            alt: TextInput::single(""),
+        });
+        let screen = render(&mut app, 100, 40);
+        assert!(
+            screen.contains("1 cat.png  alt: (none; tab to describe it)"),
+            "{screen}"
+        );
+        assert!(screen.contains("tab alt text"), "{screen}");
+    }
+
+    #[test]
+    fn the_browser_shows_the_folder_its_entries_and_the_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("trips")).unwrap();
+        image::RgbImage::from_pixel(30, 20, image::Rgb([5, 5, 5]))
+            .save(dir.path().join("snow.png"))
+            .unwrap();
+        let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+        app.browse_from = Some(dir.path().to_path_buf());
+        for (c, m) in [
+            ('n', crossterm::event::KeyModifiers::NONE),
+            ('o', crossterm::event::KeyModifiers::CONTROL),
+        ] {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char(c),
+                m,
+            ));
+        }
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("Choose pictures (up to 4)"), "{screen}");
+        assert!(screen.contains("trips/"), "{screen}");
+        assert!(screen.contains("enter opens the folder"), "{screen}");
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('j'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("30×20 ·"), "{screen}");
+        assert!(screen.contains("space mark"), "{screen}");
+    }
+
+    #[rstest::rstest]
+    #[case(0, "0 B")]
+    #[case(1023, "1023 B")]
+    #[case(2048, "2 KB")]
+    #[case(3 * 1024 * 1024 / 2, "1.5 MB")]
+    fn byte_counts_read_like_a_person_would_say_them(#[case] n: u64, #[case] want: &str) {
+        assert_eq!(human_bytes(n), want);
+    }
+
+    #[test]
+    fn a_long_path_keeps_its_end() {
+        assert_eq!(truncate_start("/home/me/pics", 20), "/home/me/pics");
+        assert_eq!(truncate_start("/home/me/pictures/trips", 10), "…res/trips");
+        // Wide characters count as two columns.
+        assert_eq!(truncate_start("/ホーム/写真", 6), "…/写真");
+        assert_eq!(truncate_start("/ホーム/写真", 5), "…写真");
     }
 }

@@ -88,6 +88,7 @@ scenarios:
           command: bs
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 2
           stdout:
@@ -120,6 +121,7 @@ scenarios:
           cols: 200
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 15s
       - assert:
           exit_code: 2
@@ -143,6 +145,7 @@ scenarios:
           graphics: kitty
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 15s
           session:
             - expect_screen:
@@ -163,6 +166,7 @@ scenarios:
           command: bs
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             BS_GRAPHICS: kitty
           timeout: 15s
           session:
@@ -182,6 +186,7 @@ scenarios:
           cols: 200
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
             BS_GRAPHICS: halfblocks
           timeout: 15s
       - assert:
@@ -204,6 +209,7 @@ scenarios:
           cols: 200
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
           timeout: 15s
       - assert:
           exit_code: 3
@@ -230,6 +236,7 @@ scenarios:
           command: bs logout
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           stdout:
@@ -244,6 +251,7 @@ scenarios:
           command: bs logout
           env:
             BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
       - assert:
           exit_code: 0
           stdout:

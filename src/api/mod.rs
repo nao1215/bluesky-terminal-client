@@ -356,11 +356,26 @@ impl Client {
         Ok(())
     }
 
-    /// Publish a post, optionally as a reply, with link/mention/tag facets.
-    pub fn create_post(&mut self, text: &str, reply: Option<&ReplyRef>) -> Result<CreatedRecord> {
+    /// Publish a post, optionally as a reply, with link/mention/tag facets
+    /// and uploaded images. A post with images may have no text.
+    pub fn create_post(
+        &mut self,
+        text: &str,
+        reply: Option<&ReplyRef>,
+        images: &[PostImage],
+    ) -> Result<CreatedRecord> {
         let text = text.trim_end();
-        if text.trim().is_empty() {
+        if text.trim().is_empty() && images.is_empty() {
             return Err(Error::new(Kind::Usage, "the post is empty"));
+        }
+        if images.len() > crate::media::MAX_POST_IMAGES {
+            return Err(Error::new(
+                Kind::Usage,
+                format!(
+                    "a post can have at most {} images",
+                    crate::media::MAX_POST_IMAGES
+                ),
+            ));
         }
         let len = grapheme_len(text);
         if len > MAX_POST_GRAPHEMES {
@@ -390,6 +405,9 @@ impl Client {
         }
         if let Some(reply) = reply {
             record["reply"] = serde_json::to_value(reply).expect("reply serializes");
+        }
+        if !images.is_empty() {
+            record["embed"] = images_embed(images);
         }
         self.create_record("app.bsky.feed.post", record)
     }
@@ -529,7 +547,34 @@ fn split_record_uri(uri: &str) -> Result<(&str, &str)> {
     }
 }
 
+/// An uploaded image to attach to a post.
+#[derive(Debug, Clone)]
+pub struct PostImage {
+    /// The blob reference `uploadBlob` returned.
+    pub blob: Value,
+    pub alt: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The `app.bsky.embed.images` embed for `images`, each with its alt text and
+/// its shape, so clients lay it out before it downloads.
+fn images_embed(images: &[PostImage]) -> Value {
+    let images: Vec<Value> = images
+        .iter()
+        .map(|i| {
+            json!({
+                "image": i.blob,
+                "alt": i.alt,
+                "aspectRatio": {"width": i.width, "height": i.height},
+            })
+        })
+        .collect();
+    json!({"$type": "app.bsky.embed.images", "images": images})
+}
+
 /// Guess an image MIME type from its first bytes.
+#[cfg(test)]
 pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     match bytes {
         [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
@@ -621,6 +666,28 @@ mod tests {
         assert_eq!(
             v,
             json!({"$type": "app.bsky.actor.profile", "description": "hello", "banner": {"x": 1}})
+        );
+    }
+
+    #[test]
+    fn images_embed_carries_alt_text_and_shape_in_order() {
+        let img = |cid: &str, alt: &str| PostImage {
+            blob: json!({"$type": "blob", "ref": {"$link": cid}}),
+            alt: alt.into(),
+            width: 4,
+            height: 3,
+        };
+        let v = images_embed(&[img("b1", "a cat"), img("b2", "")]);
+        assert_eq!(v["$type"], "app.bsky.embed.images");
+        assert_eq!(v["images"][0]["image"]["ref"]["$link"], "b1");
+        assert_eq!(v["images"][0]["alt"], "a cat");
+        assert_eq!(
+            v["images"][1]["alt"], "",
+            "alt is required, even when empty"
+        );
+        assert_eq!(
+            v["images"][1]["aspectRatio"],
+            json!({"width": 4, "height": 3})
         );
     }
 
