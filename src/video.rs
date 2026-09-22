@@ -28,13 +28,73 @@ pub fn is_video_name(name: &str) -> bool {
 
 /// Whether the file is a GIF with more than one frame.
 pub fn is_animated_gif(path: &Path) -> bool {
-    use image::AnimationDecoder;
     let Ok(file) = File::open(path) else {
         return false;
     };
-    match image::codecs::gif::GifDecoder::new(BufReader::new(file)) {
-        Ok(d) => d.into_frames().take(2).filter(|f| f.is_ok()).count() > 1,
-        Err(_) => false,
+    gif_has_two_frames(BufReader::new(file)).unwrap_or(false)
+}
+
+/// Whether a GIF holds a second frame, read from its block structure alone.
+/// No frame is decoded: a decoder draws every frame on a canvas of the size
+/// the header claims, up to 65535 x 65535, so a tiny file could take seconds
+/// and gigabytes. `None` when the file ends or breaks before the answer.
+fn gif_has_two_frames<R: Read>(mut r: R) -> Option<bool> {
+    fn byte<R: Read>(r: &mut R) -> Option<u8> {
+        let mut b = [0u8; 1];
+        r.read_exact(&mut b).ok()?;
+        Some(b[0])
+    }
+    fn skip<R: Read>(r: &mut R, n: u64) -> Option<()> {
+        (std::io::copy(&mut r.by_ref().take(n), &mut std::io::sink()).ok()? == n).then_some(())
+    }
+    /// Data sub-blocks: a length byte, that many bytes, until a zero length.
+    fn skip_sub_blocks<R: Read>(r: &mut R) -> Option<()> {
+        loop {
+            match byte(r)? {
+                0 => return Some(()),
+                n => skip(r, u64::from(n))?,
+            }
+        }
+    }
+    /// A color table of `2^(n+1)` RGB entries, present when bit 7 is set.
+    fn color_table_len(flags: u8) -> u64 {
+        if flags & 0x80 == 0 {
+            0
+        } else {
+            3 << ((flags & 7) + 1)
+        }
+    }
+
+    let mut header = [0u8; 13];
+    r.read_exact(&mut header).ok()?;
+    if &header[..3] != b"GIF" {
+        return Some(false);
+    }
+    skip(&mut r, color_table_len(header[10]))?;
+    let mut frames = 0;
+    loop {
+        match byte(&mut r)? {
+            // An extension: its label, then its data.
+            0x21 => {
+                byte(&mut r)?;
+                skip_sub_blocks(&mut r)?;
+            }
+            // An image: its descriptor, a local color table, the LZW code
+            // size, then the compressed pixels, skipped.
+            0x2c => {
+                frames += 1;
+                if frames == 2 {
+                    return Some(true);
+                }
+                let mut descriptor = [0u8; 9];
+                r.read_exact(&mut descriptor).ok()?;
+                skip(&mut r, color_table_len(descriptor[8]))?;
+                byte(&mut r)?;
+                skip_sub_blocks(&mut r)?;
+            }
+            // The trailer, or something a GIF does not hold.
+            _ => return Some(false),
+        }
     }
 }
 
@@ -384,6 +444,161 @@ mod tests {
         assert!(!is_animated_gif(&write("still.gif", 1)));
         assert!(is_animated_gif(&write("moving.gif", 2)));
         assert!(!is_animated_gif(&dir.path().join("missing.gif")));
+    }
+
+    /// A GIF by hand: a logical screen of `w` x `h`, then `frames` frames of
+    /// one pixel, each after a graphic control extension.
+    fn gif(w: u16, h: u16, frames: usize) -> Vec<u8> {
+        let mut b = b"GIF89a".to_vec();
+        b.extend_from_slice(&w.to_le_bytes());
+        b.extend_from_slice(&h.to_le_bytes());
+        b.extend_from_slice(&[0, 0, 0]);
+        for _ in 0..frames {
+            b.extend_from_slice(&[0x21, 0xf9, 4, 0, 10, 0, 0, 0]);
+            b.extend_from_slice(&[0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0]);
+            b.extend_from_slice(&[2, 2, 0x4c, 0x01, 0]);
+        }
+        b.push(0x3b);
+        b
+    }
+
+    /// A header may claim a canvas of up to 65535 x 65535. Deciding whether
+    /// a GIF is animated must not build that canvas: the file browser asks
+    /// on the UI thread, where a 17-byte file found by fuzzing froze the
+    /// screen for two seconds and asked for gigabytes.
+    #[test]
+    fn a_gif_claiming_a_huge_canvas_is_judged_from_its_blocks_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let cases = [
+            (
+                "fuzzed.gif",
+                b"GIF89a(\xc6\x00\xf6\x1e\x00\x00\x00\x07\x00@".to_vec(),
+                false,
+            ),
+            ("huge-still.gif", gif(65535, 65535, 1), false),
+            ("huge-moving.gif", gif(65535, 65535, 3), true),
+            ("small-moving.gif", gif(4, 4, 2), true),
+            ("not-a-gif.gif", b"PNG and something".to_vec(), false),
+        ];
+        for (name, bytes, animated) in cases {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            let start = std::time::Instant::now();
+            assert_eq!(is_animated_gif(&path), animated, "{name}");
+            let took = start.elapsed();
+            assert!(
+                took < std::time::Duration::from_millis(200),
+                "{name} took {took:?}"
+            );
+        }
+    }
+
+    /// Real media files from the E2E fixtures, damaged at random (bits
+    /// flipped, bytes inserted and removed, cut short, length fields set to
+    /// 0, 1, or the largest values), through every reader bsky points at a
+    /// file of unknown origin: none may panic or stall.
+    /// `BSKY_FUZZ_INPUTS=100000` (in a release build) for a long run.
+    #[test]
+    fn damaged_media_files_neither_panic_nor_stall() {
+        struct Rng(u64);
+        impl Rng {
+            fn next(&mut self) -> u64 {
+                self.0 ^= self.0 >> 12;
+                self.0 ^= self.0 << 25;
+                self.0 ^= self.0 >> 27;
+                self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+            }
+            fn below(&mut self, n: usize) -> usize {
+                (self.next() % n.max(1) as u64) as usize
+            }
+        }
+        fn damage(rng: &mut Rng, seed: &[u8]) -> Vec<u8> {
+            let mut b = seed.to_vec();
+            for _ in 0..1 + rng.below(8) {
+                match rng.below(6) {
+                    0 if !b.is_empty() => {
+                        let i = rng.below(b.len());
+                        b[i] ^= 1 << rng.below(8);
+                    }
+                    1 if !b.is_empty() => {
+                        let i = rng.below(b.len());
+                        b[i] = rng.next() as u8;
+                    }
+                    2 => {
+                        let i = rng.below(b.len() + 1);
+                        b.insert(i, rng.next() as u8);
+                    }
+                    3 if !b.is_empty() => {
+                        let i = rng.below(b.len());
+                        b.remove(i);
+                    }
+                    4 => {
+                        let n = rng.below(b.len() + 1);
+                        b.truncate(n);
+                    }
+                    _ if b.len() >= 4 => {
+                        let i = rng.below(b.len() - 3);
+                        let v: u32 = [0, 1, 7, 8, 0x7fff_ffff, u32::MAX][rng.below(6)];
+                        b[i..i + 4].copy_from_slice(&v.to_be_bytes());
+                    }
+                    _ => {}
+                }
+            }
+            b
+        }
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata");
+        let seeds: Vec<(&str, Vec<u8>)> = [
+            ("ts", "hls/v/seg0.ts"),
+            ("mp4", "clip.mp4"),
+            ("gif", "moving.gif"),
+            ("png", "photo.png"),
+            ("m3u8", "hls/playlist.m3u8"),
+        ]
+        .into_iter()
+        .map(|(kind, file)| (kind, std::fs::read(root.join(file)).unwrap()))
+        .collect();
+        let inputs: usize = std::env::var("BSKY_FUZZ_INPUTS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1_000);
+        let dir = tempfile::tempdir().unwrap();
+        let mut rng = Rng(0x1234_5678_9abc_def1);
+        for i in 0..inputs {
+            let (kind, seed) = &seeds[i % seeds.len()];
+            let data = damage(&mut rng, seed);
+            let path = dir.path().join(format!("f.{kind}"));
+            std::fs::write(&path, &data).unwrap();
+            // Timed from here: writing the file is not the readers' cost.
+            let start = std::time::Instant::now();
+            match *kind {
+                "ts" => {
+                    let mut d = crate::hls::Demuxer::new();
+                    d.feed(&data[..data.len() / 2]);
+                    d.feed(&data[data.len() / 2..]);
+                    let _ = d.finish();
+                }
+                "m3u8" => {
+                    let text = String::from_utf8_lossy(&data);
+                    let _ = crate::hls::pick_variant(&text, "https://v.test/a/playlist.m3u8");
+                    let _ = crate::hls::segments(&text, "https://v.test/a/v/video.m3u8");
+                }
+                _ => {
+                    let _ = probe(&path);
+                    let _ = sniff_mime(&data);
+                    let _ = is_animated_gif(&path);
+                    let _ = crate::api::sniff_image_mime(&data);
+                    let _ = crate::media::inspect(&path);
+                }
+            }
+            let took = start.elapsed();
+            // Generous for a debug build on a busy CI runner; the stall this
+            // guards against took 48 s there.
+            assert!(
+                took < std::time::Duration::from_secs(5),
+                "damaged {kind} #{i} took {took:?}: {data:?}"
+            );
+        }
     }
 
     #[test]
