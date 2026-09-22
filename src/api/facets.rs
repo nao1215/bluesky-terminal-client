@@ -58,7 +58,7 @@ pub fn detect(text: &str) -> Vec<Span> {
                     target: Target::Mention(handle.to_string()),
                 });
             }
-        } else if let Some(tag) = token.trim_end_matches(TRAILING).strip_prefix('#')
+        } else if let Some(tag) = token.trim_end_matches(is_punctuation).strip_prefix('#')
             && is_tag(tag)
         {
             spans.push(Span {
@@ -124,11 +124,29 @@ fn is_handle(s: &str) -> bool {
         && !labels.last().unwrap().starts_with(|c: char| c.is_ascii_digit())
 }
 
+/// Bluesky's app takes a tag to be a run with at least one character that
+/// is neither an ASCII digit nor punctuation, so `#1.5` and `#--` are text.
 fn is_tag(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars().count() <= 64
-        && !s.chars().all(|c| c.is_ascii_digit())
+    s.chars().count() <= 64
+        && s.chars().any(|c| !c.is_ascii_digit() && !is_punctuation(c))
         && !s.contains('#')
+}
+
+/// Whether `c` is Unicode punctuation (general category P) in the blocks
+/// people type it from: ASCII, Latin-1, General Punctuation, CJK, and the
+/// full-width forms. Bluesky's app strips these from the end of a tag, so
+/// `#Rust！` tags `Rust` there and must here too.
+fn is_punctuation(c: char) -> bool {
+    matches!(c,
+        '!'..='#' | '%'..='*' | ','..='/' | ':' | ';' | '?' | '@' | '['..=']' | '_' | '{' | '}'
+        | '\u{A1}' | '\u{A7}' | '\u{AB}' | '\u{B6}' | '\u{B7}' | '\u{BB}' | '\u{BF}'
+        | '\u{2010}'..='\u{2027}' | '\u{2030}'..='\u{2043}' | '\u{2045}'..='\u{2051}'
+        | '\u{2053}'..='\u{205E}'
+        | '\u{3001}'..='\u{3003}' | '\u{3008}'..='\u{3011}' | '\u{3014}'..='\u{301F}'
+        | '\u{30FB}'
+        | '\u{FF01}'..='\u{FF03}' | '\u{FF05}'..='\u{FF0A}' | '\u{FF0C}'..='\u{FF0F}'
+        | '\u{FF1A}' | '\u{FF1B}' | '\u{FF1F}' | '\u{FF20}' | '\u{FF3B}'..='\u{FF3D}'
+        | '\u{FF3F}' | '\u{FF5B}' | '\u{FF5D}' | '\u{FF5F}'..='\u{FF65}')
 }
 
 /// The facet JSON for one span. A mention needs its resolved DID; spans of
@@ -230,6 +248,34 @@ mod tests {
         let spans = detect(text);
         assert_eq!(spans.len(), 1, "{text}");
         assert_eq!(&text[spans[0].start..spans[0].end], want);
+    }
+
+    // Bluesky's own detector strips any trailing Unicode punctuation from a
+    // tag, not only ASCII, so "#Rust！" tags "Rust" in the official app.
+    #[rstest]
+    #[case("#Rust！", "#Rust", "Rust")]
+    #[case("#rust？ yes", "#rust", "rust")]
+    #[case("#日本語。", "#日本語", "日本語")]
+    #[case("#タグ』", "#タグ", "タグ")]
+    #[case("#tag…", "#tag", "tag")]
+    #[case("#tag）", "#tag", "tag")]
+    #[case("#tag】", "#tag", "tag")]
+    fn a_tag_ends_before_any_trailing_punctuation(
+        #[case] text: &str,
+        #[case] range: &str,
+        #[case] tag: &str,
+    ) {
+        assert_eq!(targets(text), vec![(range.into(), Target::Tag(tag.into()))]);
+    }
+
+    // A tag needs a character that is neither a digit nor punctuation.
+    #[rstest]
+    #[case("#1.5")]
+    #[case("#--")]
+    #[case("#3-2")]
+    #[case("#！？")]
+    fn rejects_a_tag_of_digits_and_punctuation(#[case] text: &str) {
+        assert!(detect(text).is_empty(), "{text}");
     }
 
     #[test]
