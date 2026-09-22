@@ -20,7 +20,7 @@ path = "src/main.rs"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.29"
-dirs = "6"
+dirs = "7"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 ratatui = "0.30"
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
