@@ -50,6 +50,8 @@ pub struct Images {
     protocols: HashMap<(String, u16, u16), Protocol>,
     frame: u64,
     frame_size: Size,
+    /// Style of the "…" / "×" drawn where an image is not ready.
+    placeholder: Style,
     tx: Sender<String>,
     rx: Receiver<Loaded>,
 }
@@ -83,6 +85,7 @@ impl Images {
             protocols: HashMap::new(),
             frame: 0,
             frame_size: Size::default(),
+            placeholder: Style::new(),
             tx: url_tx,
             rx: img_rx,
         }
@@ -122,8 +125,9 @@ impl Images {
     /// Start a frame of `size` cells. Encoded images are per size, so a
     /// resize drops them all; and the cache is trimmed to what was drawn in
     /// the last frames, so a long session does not keep every image it saw.
-    pub fn begin_frame(&mut self, size: Size) {
+    pub fn begin_frame(&mut self, size: Size, placeholder: Style) {
         self.frame += 1;
+        self.placeholder = placeholder;
         if size != self.frame_size {
             self.frame_size = size;
             self.protocols.clear();
@@ -158,8 +162,8 @@ impl Images {
         }
         let img = match slot {
             Slot::Ready(img) => img,
-            Slot::Loading => return placeholder(frame, area, "…"),
-            Slot::Failed(_) => return placeholder(frame, area, "×"),
+            Slot::Loading => return placeholder(frame, area, "…", self.placeholder),
+            Slot::Failed(_) => return placeholder(frame, area, "×", self.placeholder),
         };
         let key = (url.to_string(), area.width, area.height);
         if !self.protocols.contains_key(&key) {
@@ -171,15 +175,15 @@ impl Images {
                 Ok(p) => {
                     self.protocols.insert(key.clone(), p);
                 }
-                Err(_) => return placeholder(frame, area, "×"),
+                Err(_) => return placeholder(frame, area, "×", self.placeholder),
             }
         }
         frame.render_widget(Image::new(&self.protocols[&key]), area);
     }
 }
 
-fn placeholder(frame: &mut Frame, area: Rect, mark: &str) {
-    frame.render_widget(Paragraph::new(mark).style(Style::new().dark_gray()), area);
+fn placeholder(frame: &mut Frame, area: Rect, mark: &str, style: Style) {
+    frame.render_widget(Paragraph::new(mark).style(style), area);
 }
 
 fn fetch(agent: &ureq::Agent, url: &str) -> Result<DynamicImage, String> {

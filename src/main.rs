@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use crate::config::SessionStore;
+use crate::config::{SessionStore, SettingsStore};
 use crate::error::{Error, Kind, Result};
 
 /// Command line: `bs` opens the client, `bs logout` forgets the session.
@@ -44,7 +44,8 @@ do not end it.";
 
 fn run(cli: Cli) -> Result<()> {
     let service = api::normalize_service(&cli.service)?;
-    let store = SessionStore::new(config::config_dir()?);
+    let dir = config::config_dir()?;
+    let store = SessionStore::new(&dir);
     match cli.command {
         Some(Command::Logout) => {
             if store.clear()? {
@@ -54,7 +55,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        None => tui::run(store, &service),
+        None => tui::run(store, SettingsStore::new(&dir), &service),
     }
 }
 

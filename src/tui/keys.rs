@@ -20,6 +20,7 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("1 2 3", "Timeline, Search, Profile"),
             ("tab shift+tab", "next / previous tab"),
+            ("T", "choose a color theme"),
             ("?", "this help"),
             ("q ctrl+c", "quit"),
         ],
@@ -71,6 +72,14 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Theme picker",
+        keys: &[
+            ("j k", "preview the next / previous theme"),
+            ("enter", "use it and remember it"),
+            ("esc", "go back to the theme you had"),
+        ],
+    },
+    Section {
         title: "Help",
         keys: &[("j k pgdn pgup", "scroll"), ("esc q ?", "close")],
     },
@@ -97,6 +106,9 @@ pub fn hints(app: &App) -> Vec<Hint> {
             return vec![("tab", "next field"), ("ctrl+s", "save"), ("esc", "cancel")];
         }
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Themes { .. }) => {
+            return vec![("j k", "preview"), ("enter", "apply"), ("esc", "cancel")];
+        }
         None => {}
     }
     let mut v: Vec<Hint> = match app.tab {

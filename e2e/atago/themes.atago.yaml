@@ -1,0 +1,253 @@
+# Color themes: the picker (T), what is saved in settings.json, and what is
+# never written.
+#
+# settings.json is written only when a theme is applied with Enter. Opening
+# the picker, previewing, cancelling, a broken settings file, and `bs logout`
+# must leave it alone. COLORTERM is set so the colors are the theme's own
+# 24-bit ones rather than their 256-color approximation.
+version: "1"
+
+suite:
+  name: bs themes
+
+scenarios:
+  - name: applying a theme saves it in settings.json
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            COLORTERM: truecolor
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: T
+            - expect_screen:
+                contains: ["Theme", "▶ default", "light", "dracula", "nord", "gruvbox", "solarized", "catppuccin", "tokyo-night", "monochrome", "enter apply"]
+            # Two down is dracula; the screen is already drawn in it.
+            - send: j
+            - send: j
+            - expect_screen:
+                contains: "▶ dracula"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "theme: dracula"
+                not_contains: "enter apply"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.theme", equals: "dracula" }
+      # The session file is untouched by a theme change.
+      - assert:
+          file:
+            path: cfg/session.json
+            json: { path: "$.accessJwt", equals: "acc" }
+
+  - name: previewing and cancelling writes nothing
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: T
+            - expect_screen:
+                contains: "▶ default"
+            - send: j
+            - expect_screen:
+                contains: "▶ light"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "enter apply"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            exists: false
+
+  - name: a saved theme is back on the next start
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"theme": "nord", "keep": {"written by": "a newer bs"}}'
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: T
+            - expect_screen:
+                contains: "▶ nord"
+            # Applying another theme keeps what this bs does not know about.
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "theme: gruvbox"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.theme", equals: "gruvbox" }
+              - { path: "$.keep['written by']", equals: "a newer bs" }
+
+  - name: a broken settings file is reported, ignored, and left alone
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: "{broken"
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 160
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["No posts from accounts you follow yet", "settings.json is not valid and was ignored"]
+            - send: q
+      - assert:
+          exit_code: 0
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: an unknown theme name falls back to default and says so
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"theme": "neon"}'
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: 'unknown theme "neon"; using default'
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: NO_COLOR draws without color and keeps the picker closed
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"theme": "dracula"}'
+      - pty:
+          command: bs
+          graphics: kitty
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+            COLORTERM: truecolor
+            NO_COLOR: "1"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+                attrs:
+                  # The saved dracula colors are not used: text keeps the
+                  # terminal's own colors, and the active tab is marked by
+                  # reverse video instead.
+                  - { text: "No posts from accounts you follow yet", fg: default, bg: default }
+                  - { text: "1 Timeline", reverse: true, fg: default }
+            - send: T
+            - expect_screen:
+                contains: "colors are off because NO_COLOR is set"
+                not_contains: "enter apply"
+            - send: q
+      - assert:
+          exit_code: 0
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: logout leaves the settings alone
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: '{"service": "https://pds.example", "did": "did:plc:me", "handle": "me.test", "accessJwt": "a", "refreshJwt": "r"}'
+      - fixture:
+          file: cfg/settings.json
+          content: '{"theme": "nord"}'
+      - run:
+          command: bs logout
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 0
+          changes:
+            created: []
+            modified: []
+            deleted: [cfg/session.json]

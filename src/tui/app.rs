@@ -8,9 +8,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::api::types::{Post, Profile, ReplyRef};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
-use crate::config::Session;
+use crate::config::{Session, Settings};
 use crate::error::Error;
 use crate::tui::input::TextInput;
+use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::worker::{Event, Job};
 
 /// The three top-level views.
@@ -172,6 +173,12 @@ pub enum Overlay {
     Help {
         scroll: u16,
     },
+    /// The theme picker: `selected` is previewed live, `previous` is what Esc
+    /// goes back to.
+    Themes {
+        selected: usize,
+        previous: usize,
+    },
 }
 
 /// A one-line message in the status row. It is transient: it clears after
@@ -207,6 +214,16 @@ pub struct App {
     /// `follow:<did>`. A second press on the same target is refused until the
     /// first is answered, or two presses would create two records.
     pub in_flight: HashSet<String>,
+    /// The colors everything is drawn with: the chosen theme, adapted to what
+    /// the terminal can show.
+    pub theme: Theme,
+    /// Index into [`THEMES`] of the chosen theme.
+    pub theme_index: usize,
+    pub color_depth: ColorDepth,
+    /// The settings as loaded, so saving keeps what bs did not change.
+    pub settings: Settings,
+    /// Settings waiting to be written by the event loop.
+    pub settings_to_save: Option<Settings>,
     pub quit: bool,
 }
 
@@ -232,6 +249,11 @@ impl App {
             status: None,
             pending: 0,
             in_flight: HashSet::new(),
+            theme: THEMES[0],
+            theme_index: 0,
+            color_depth: ColorDepth::TrueColor,
+            settings: Settings::default(),
+            settings_to_save: None,
             quit: false,
         };
         let jobs = if app.session.is_some() {
@@ -241,6 +263,59 @@ impl App {
         };
         app.pending += jobs.len();
         (app, jobs)
+    }
+
+    /// Take the saved settings and the terminal's color depth into account.
+    /// A warning (a settings file that could not be used) is shown.
+    pub fn apply_settings(
+        &mut self,
+        settings: Settings,
+        depth: ColorDepth,
+        warning: Option<String>,
+    ) {
+        self.color_depth = depth;
+        let mut warning = warning;
+        let index = match settings.theme.as_deref() {
+            Some(name) => theme::index_of(name).unwrap_or_else(|| {
+                warning = Some(format!("unknown theme {name:?}; using default"));
+                0
+            }),
+            None => 0,
+        };
+        self.settings = settings;
+        self.set_theme(index);
+        if let Some(w) = warning {
+            self.error(w);
+        }
+    }
+
+    fn set_theme(&mut self, index: usize) {
+        self.theme_index = index;
+        self.theme = THEMES[index].for_depth(self.color_depth);
+    }
+
+    /// Settings the user asked to save, for the event loop to write.
+    pub fn take_settings_save(&mut self) -> Option<Settings> {
+        self.settings_to_save.take()
+    }
+
+    /// The outcome of writing the settings.
+    pub fn settings_saved(&mut self, result: crate::error::Result<()>) {
+        match result {
+            Ok(()) => self.info(format!("theme: {}", THEMES[self.theme_index].name)),
+            Err(e) => self.error(e.message().to_string()),
+        }
+    }
+
+    fn open_theme_picker(&mut self) {
+        if self.color_depth == ColorDepth::None {
+            self.error("colors are off because NO_COLOR is set");
+            return;
+        }
+        self.overlay = Some(Overlay::Themes {
+            selected: self.theme_index,
+            previous: self.theme_index,
+        });
     }
 
     fn info(&mut self, text: impl Into<String>) {
@@ -290,7 +365,7 @@ impl App {
         match &mut self.overlay {
             Some(Overlay::Compose(c)) => c.input.insert_str(text),
             Some(Overlay::EditProfile(e)) => e.fields[e.focus].insert_str(text),
-            Some(Overlay::Help { .. }) => {}
+            Some(Overlay::Help { .. } | Overlay::Themes { .. }) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
             }
@@ -377,6 +452,34 @@ impl App {
                 // reference the user opened on purpose.
                 _ => {}
             },
+            Overlay::Themes { selected, previous } => {
+                let (selected, previous) = (*selected, *previous);
+                let n = THEMES.len();
+                let pick = match key.code {
+                    KeyCode::Char('j') | KeyCode::Down => Some((selected + 1) % n),
+                    KeyCode::Char('k') | KeyCode::Up => Some((selected + n - 1) % n),
+                    KeyCode::Enter => {
+                        self.overlay = None;
+                        self.settings.theme = Some(THEMES[selected].name.to_string());
+                        self.settings_to_save = Some(self.settings.clone());
+                        None
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        self.overlay = None;
+                        self.set_theme(previous);
+                        None
+                    }
+                    _ => None,
+                };
+                if let Some(i) = pick {
+                    // Moving previews: the whole screen redraws in the theme.
+                    self.set_theme(i);
+                    self.overlay = Some(Overlay::Themes {
+                        selected: i,
+                        previous,
+                    });
+                }
+            }
             Overlay::Compose(c) => {
                 if c.sending {
                     return Vec::new();
@@ -537,6 +640,7 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
+            KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
             KeyCode::Char('3') => return self.switch_tab(Tab::Profile),
@@ -1420,6 +1524,76 @@ mod tests {
         app.handle_key(key('?'));
         app.handle_key(key('?'));
         assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn the_theme_picker_previews_and_esc_goes_back() {
+        let mut app = logged_in();
+        app.handle_key(key('T'));
+        app.handle_key(key('j'));
+        app.handle_key(key('j'));
+        assert_eq!(app.theme.name, THEMES[2].name, "moving previews the theme");
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none());
+        assert_eq!(app.theme_index, 0);
+        assert!(
+            app.take_settings_save().is_none(),
+            "cancelling saves nothing"
+        );
+    }
+
+    #[test]
+    fn enter_in_the_picker_saves_the_theme_and_keeps_other_settings() {
+        let mut app = logged_in();
+        let mut settings = Settings::default();
+        settings.other.insert("future".into(), json!(1));
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        app.handle_key(key('T'));
+        app.handle_key(key('k')); // wraps to the last theme
+        app.handle_key(code(KeyCode::Enter));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.theme.as_deref(), Some(THEMES[THEMES.len() - 1].name));
+        assert_eq!(saved.other.get("future"), Some(&json!(1)));
+        app.settings_saved(Ok(()));
+        assert!(app.status.as_ref().unwrap().text.contains("monochrome"));
+    }
+
+    #[test]
+    fn a_saved_theme_is_used_and_an_unknown_one_warns() {
+        let mut app = logged_in();
+        let settings = Settings {
+            theme: Some("Nord".into()),
+            ..Settings::default()
+        };
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        assert_eq!(app.theme.name, "nord");
+        let settings = Settings {
+            theme: Some("neon".into()),
+            ..Settings::default()
+        };
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        assert_eq!(app.theme.name, "default");
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("unknown theme \"neon\"")
+        );
+    }
+
+    #[test]
+    fn no_color_keeps_monochrome_and_refuses_the_picker() {
+        let mut app = logged_in();
+        let settings = Settings {
+            theme: Some("dracula".into()),
+            ..Settings::default()
+        };
+        app.apply_settings(settings, ColorDepth::None, None);
+        assert!(app.theme.mono);
+        app.handle_key(key('T'));
+        assert!(app.overlay.is_none());
+        assert!(app.status.as_ref().unwrap().text.contains("NO_COLOR"));
     }
 
     #[test]

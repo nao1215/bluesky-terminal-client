@@ -5,6 +5,7 @@ pub mod images;
 pub mod input;
 pub mod keys;
 pub mod text;
+pub mod theme;
 pub mod view;
 pub mod worker;
 
@@ -16,7 +17,7 @@ use crossterm::event::{
 };
 use crossterm::execute;
 
-use crate::config::SessionStore;
+use crate::config::{SessionStore, SettingsStore};
 use crate::error::{Error, Kind, Result};
 use crate::terminal;
 use app::App;
@@ -27,11 +28,12 @@ use worker::Worker;
 const TICK: Duration = Duration::from_millis(50);
 
 /// Run the client until the user quits.
-pub fn run(store: SessionStore, service: &str) -> Result<()> {
+pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Result<()> {
     terminal::ensure_interactive()?;
     // Read the session before touching the terminal so a broken file is
     // reported on a normal screen.
     let session = store.load()?;
+    let depth = theme::color_depth(|k| std::env::var(k).ok());
 
     let mut term = ratatui::try_init()
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot set up the terminal: {e}")))?;
@@ -43,7 +45,7 @@ pub fn run(store: SessionStore, service: &str) -> Result<()> {
         }
     };
     let _ = execute!(io::stdout(), EnableBracketedPaste);
-    let result = event_loop(&mut term, picker, session, store, service);
+    let result = event_loop(&mut term, picker, session, store, settings, depth, service);
     let _ = execute!(io::stdout(), DisableBracketedPaste);
     ratatui::restore();
     result
@@ -54,11 +56,15 @@ fn event_loop(
     picker: ratatui_image::picker::Picker,
     session: Option<crate::config::Session>,
     store: SessionStore,
+    settings: SettingsStore,
+    depth: theme::ColorDepth,
     service: &str,
 ) -> Result<()> {
     let mut images = Images::new(picker);
     let worker = Worker::spawn(session.clone(), store);
     let (mut app, jobs) = App::new(session, service);
+    let (loaded, warning) = settings.load();
+    app.apply_settings(loaded, depth, warning);
     jobs.into_iter().for_each(|j| worker.send(j));
 
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
@@ -77,6 +83,12 @@ fn event_loop(
                 TermEvent::Paste(text) => app.handle_paste(&text),
                 _ => {}
             }
+            dirty = true;
+        }
+        // Saved here rather than on the worker, which runs jobs in order: a
+        // theme applied just before q must not wait behind a network call.
+        if let Some(s) = app.take_settings_save() {
+            app.settings_saved(settings.save(&s));
             dirty = true;
         }
         while let Some(ev) = worker.try_recv() {

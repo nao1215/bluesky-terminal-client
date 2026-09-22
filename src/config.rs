@@ -1,9 +1,15 @@
-//! Where bs keeps its state on disk, and the saved login session.
+//! Where bs keeps its state on disk: the login session and the settings.
 //!
-//! The only persistent state is `session.json` in the config directory:
-//! `$BS_CONFIG_DIR` when set, otherwise `<platform config dir>/bs`
-//! (`$XDG_CONFIG_HOME/bs` on Linux). It holds the tokens of an app-password
-//! login, so it is written with owner-only permissions on Unix.
+//! Both files live in the config directory: `$BS_CONFIG_DIR` when set,
+//! otherwise `<platform config dir>/bs` (`$XDG_CONFIG_HOME/bs` or
+//! `~/.config/bs` on Linux, `~/Library/Application Support/bs` on macOS,
+//! `%APPDATA%\bs` on Windows).
+//!
+//! - `session.json` holds the tokens of an app-password login, so it is
+//!   written with owner-only permissions on Unix. `bs logout` removes it.
+//! - `settings.json` holds preferences (the color theme). It is written only
+//!   when a preference is changed, and a broken one is ignored with a
+//!   warning rather than stopping bs.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +22,72 @@ use crate::error::{Error, Result};
 pub const CONFIG_DIR_ENV: &str = "BS_CONFIG_DIR";
 
 const SESSION_FILE: &str = "session.json";
+const SETTINGS_FILE: &str = "settings.json";
+
+/// User preferences.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Settings {
+    /// Name of the color theme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Keys this version of bs does not know, kept so that saving does not
+    /// drop what a newer version wrote.
+    #[serde(flatten)]
+    pub other: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Reads and writes `settings.json` inside one directory.
+#[derive(Debug, Clone)]
+pub struct SettingsStore {
+    dir: PathBuf,
+}
+
+impl SettingsStore {
+    /// A store rooted at `dir`; nothing is touched until a read or write.
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+
+    /// Path of the settings file.
+    pub fn path(&self) -> PathBuf {
+        self.dir.join(SETTINGS_FILE)
+    }
+
+    /// Load the settings. A missing file is the defaults; a file that cannot
+    /// be read or parsed is the defaults too, with a warning to show, because
+    /// a preference is not worth refusing to start over.
+    pub fn load(&self) -> (Settings, Option<String>) {
+        let path = self.path();
+        match fs::read(&path) {
+            Ok(data) => match serde_json::from_slice(&data) {
+                Ok(settings) => (settings, None),
+                Err(e) => (
+                    Settings::default(),
+                    Some(format!(
+                        "{} is not valid and was ignored: {e}",
+                        path.display()
+                    )),
+                ),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Settings::default(), None),
+            Err(e) => (
+                Settings::default(),
+                Some(format!("cannot read {}: {e}", path.display())),
+            ),
+        }
+    }
+
+    /// Save the settings, creating the directory when needed.
+    pub fn save(&self, settings: &Settings) -> Result<()> {
+        fs::create_dir_all(&self.dir)
+            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        let path = self.path();
+        let mut json = serde_json::to_vec_pretty(settings).expect("settings serialize");
+        json.push(b'\n');
+        write_private(&path, &json)
+            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+    }
+}
 
 /// An authenticated session against one PDS.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,7 +176,9 @@ impl SessionStore {
 /// refresh, and losing the new one means logging in again.
 fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let tmp = path.with_extension("json.tmp");
+    // The process id keeps two running copies of bs from writing the same
+    // temporary file, which on Windows would make one of the renames fail.
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let mut file = open_private(&tmp)?;
     file.write_all(data)?;
     file.sync_all()?;
@@ -177,6 +251,44 @@ mod tests {
         let err = store.load().unwrap_err();
         assert_eq!(err.kind(), crate::error::Kind::Io);
         assert!(err.to_string().contains("\nhint: run `bs logout`"), "{err}");
+    }
+
+    #[test]
+    fn missing_settings_are_the_defaults_without_a_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let (settings, warning) = SettingsStore::new(dir.path()).load();
+        assert_eq!(settings, Settings::default());
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn corrupt_settings_are_the_defaults_with_a_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path());
+        fs::write(store.path(), b"{bad").unwrap();
+        let (settings, warning) = store.load();
+        assert_eq!(settings, Settings::default());
+        assert!(warning.unwrap().contains("settings.json is not valid"));
+        // Loading never rewrites the file.
+        assert_eq!(fs::read(store.path()).unwrap(), b"{bad");
+    }
+
+    #[test]
+    fn saving_settings_keeps_keys_bs_does_not_know() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path().join("new"));
+        fs::create_dir_all(dir.path().join("new")).unwrap();
+        fs::write(store.path(), br#"{"theme":"nord","future":{"x":1}}"#).unwrap();
+        let (mut settings, _) = store.load();
+        assert_eq!(settings.theme.as_deref(), Some("nord"));
+        settings.theme = Some("dracula".into());
+        store.save(&settings).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.path()).unwrap()).unwrap();
+        assert_eq!(
+            saved,
+            serde_json::json!({"theme": "dracula", "future": {"x": 1}})
+        );
     }
 
     #[test]
