@@ -1,4 +1,5 @@
-# Logging in with an app password, and the session file it leaves behind.
+# Logging in (with the account's password or an app password), and the
+# session file it leaves behind.
 #
 # The Bluesky PDS is an atago mock server, reached through --service, so the
 # suite needs no account and no network. The password below is a throwaway
@@ -36,7 +37,7 @@ scenarios:
             # The service field starts filled in from --service, and focus
             # starts on the identifier.
             - expect_screen:
-                contains: ["Log in to Bluesky", "${api.url}", "Use an app password"]
+                contains: ["Log in to Bluesky", "${api.url}", "an app password is safer", "unofficial client"]
             - send: "me.test"
             - send: { key: enter }
             - send: "app-pass-1234"
@@ -77,7 +78,7 @@ scenarios:
               - { path: "$.handle", equals: "me.test" }
               - { path: "$.accessJwt", equals: "acc-1" }
               - { path: "$.refreshJwt", equals: "ref-1" }
-      # The app password itself is never stored, only the tokens.
+      # The password itself is never stored, only the tokens.
       - assert:
           file:
             path: cfg/session.json

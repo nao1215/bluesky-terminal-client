@@ -1272,9 +1272,9 @@ fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: b
 }
 
 fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
-    let inner = popup(frame, area, 64, 16, "Log in to Bluesky", t);
+    let inner = popup(frame, area, 64, 17, "Log in to Bluesky", t);
     let rows = Layout::vertical([
-        Constraint::Length(2),
+        Constraint::Length(3),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
@@ -1289,8 +1289,9 @@ fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
     .split(inner);
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(" Use an app password, not your account password."),
+            Line::from(" Your Bluesky password works; an app password is safer."),
             Line::styled(" Settings → Privacy and security → App passwords", t.dim()),
+            Line::styled(" bs is an unofficial client, not made by Bluesky.", t.dim()),
         ]),
         rows[0],
     );
@@ -1880,7 +1881,9 @@ mod tests {
         let (mut app, _) = App::new(None, "https://bsky.social");
         let screen = render(&mut app, 80, 24);
         assert!(screen.contains("Log in to Bluesky"), "{screen}");
-        assert!(screen.contains("App password"));
+        assert!(screen.contains("an app password is safer"), "{screen}");
+        assert!(screen.contains("unofficial client"), "{screen}");
+        assert!(screen.contains("Password"));
         assert!(screen.contains("https://bsky.social"));
     }
 

@@ -136,7 +136,7 @@ impl XrpcFailure {
         };
         let err = Error::api(format!("{nsid} failed: {detail}"));
         if self.status == 401 {
-            err.with_hint("log in again with an app password")
+            err.with_hint("log in again")
         } else {
             err
         }
@@ -525,8 +525,8 @@ impl Client {
             )
             .send_empty()
             .map_err(|e| transport(nsid, e))?;
-        let tokens: SessionTokens = decode(nsid, resp)
-            .map_err(|e| e.with_hint("the session expired; log in again with an app password"))?;
+        let tokens: SessionTokens =
+            decode(nsid, resp).map_err(|e| e.with_hint("the session expired; log in again"))?;
         self.session.access_jwt = tokens.access_jwt;
         self.session.refresh_jwt = tokens.refresh_jwt;
         self.session.handle = tokens.handle;

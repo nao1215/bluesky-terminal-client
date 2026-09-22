@@ -337,7 +337,7 @@ impl EditProfile {
 /// The login screen.
 #[derive(Debug, Clone)]
 pub struct LoginForm {
-    /// Service URL, identifier, app password.
+    /// Service URL, identifier, password (an app password or the account's).
     pub fields: [TextInput; 3],
     pub focus: usize,
     pub pending: bool,
@@ -345,7 +345,7 @@ pub struct LoginForm {
 }
 
 impl LoginForm {
-    pub const LABELS: [&'static str; 3] = ["Service", "Handle or email", "App password"];
+    pub const LABELS: [&'static str; 3] = ["Service", "Handle or email", "Password"];
 
     fn new(service: &str) -> Self {
         Self {

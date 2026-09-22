@@ -5,7 +5,7 @@
 
 # bs
 
-bs is a [Bluesky](https://bsky.app) client for the terminal that shows pictures and videos right in the terminal: avatars and photos inline next to their posts, full screen on `Space`, and videos played in place. It draws with the terminal's own image protocol (kitty graphics, sixel, or iTerm2 inline images), and needs nothing else installed.
+bs is an unofficial [Bluesky](https://bsky.app) client for the terminal that shows pictures and videos right in the terminal: avatars and photos inline next to their posts, full screen on `Space`, and videos played in place. It draws with the terminal's own image protocol (kitty graphics, sixel, or iTerm2 inline images), and needs nothing else installed.
 
 ![bs in kitty: the timeline scrolled, then a search for "github"](doc/img/demo.gif)
 
@@ -16,7 +16,7 @@ cargo install --locked --git https://github.com/nao1215/bluesky-terminal-client
 bs
 ```
 
-Log in with your handle and an [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords). bs keeps only the session tokens, never the password; `bs logout` forgets them. Rust 1.90 or later builds it; the command is `bs`.
+Log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bs keeps only the session tokens, never the password; `bs logout` forgets them. Rust 1.90 or later builds it; the command is `bs`.
 
 You need a terminal that can draw images:
 
@@ -109,4 +109,4 @@ The end-to-end tests in [e2e/atago](e2e/atago) run the real binary with [atago](
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). bs is not made by, affiliated with, or endorsed by Bluesky Social PBC.
