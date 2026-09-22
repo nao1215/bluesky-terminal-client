@@ -25,7 +25,11 @@ if ! command -v atago >/dev/null 2>&1; then
 fi
 
 # Every cargo command below builds with -C instrument-coverage and writes
-# its profiles under target/.
+# its profiles under target/coverage. A directory of its own: the wrapper
+# that instruments the build is invisible to cargo's change detection, so a
+# plain `cargo test` in target/ would otherwise reuse instrumented builds
+# made with cfg(coverage).
+export CARGO_TARGET_DIR="$REPO_ROOT/target/coverage"
 eval "$(cargo llvm-cov show-env --sh)"
 cargo llvm-cov clean --workspace
 
@@ -34,7 +38,7 @@ cargo test --locked --all-targets
 
 echo "coverage: end-to-end suite"
 cargo build --locked
-PATH="$REPO_ROOT/target/debug:$PATH" atago run e2e/atago
+PATH="$CARGO_TARGET_DIR/debug:$PATH" atago run e2e/atago
 
 cargo llvm-cov report --lcov --output-path "$OUT"
 cargo llvm-cov report --summary-only
