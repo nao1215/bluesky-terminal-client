@@ -27,7 +27,7 @@ The suite lives in `e2e/atago/*.atago.yaml` and runs with `e2e/run.sh`, which bu
 - The terminal is an atago pseudo-terminal. `graphics: kitty` makes it answer like a terminal that draws images, and `screen.images` asserts what bsky drew, down to the pixels. Leaving `graphics` out is how a terminal without image support is tested.
 - The session file is written with a `fixture:` step, and `changes:` and `file:` assert what bsky wrote to disk.
 
-The suite runs on Linux, macOS, and Windows. On Windows the pty is a ConPTY, which does not pass kitty graphics through (nao1215/atago#676), so the scenarios that need `graphics: kitty` skip Windows with a comment saying so; the terminal checks and the rest run there. Add a Windows skip only for that reason, with the same comment.
+The suite runs on Linux, macOS, and Windows (on Windows atago draws `graphics: kitty` through the OpenConsole it ships). Skip a platform only for a reason written in a comment on the scenario: bsky behaves differently there, or the harness cannot yet deliver the input (on Windows today: Esc, `q`, and emoji typed through OpenConsole).
 
 Write a scenario for every behavior you add or change, including how it fails. Wait for the screen with `expect_screen` before sending the next key, and send a key after `Esc` only once the screen has changed, or the terminal reads the pair as `Alt` plus the key.
 

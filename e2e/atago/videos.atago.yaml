@@ -20,9 +20,6 @@ suite:
 
 scenarios:
   - name: a video is posted alone, with its alt text and shape
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -153,9 +150,6 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.height", equals: 36 }
 
   - name: an animated GIF goes to the video service as it is
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -217,7 +211,8 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.height", equals: 30 }
 
   - name: a video the service cannot process is reported and nothing is posted
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
     skip:
       os: windows
     mock_servers:
@@ -277,7 +272,8 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: an account Bluesky will not take videos from says why before anything is sent
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
     skip:
       os: windows
     mock_servers:
@@ -340,7 +336,8 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: pictures and a video do not go on one post
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
+    # keys yet (nao1215/atago, Esc input under OpenConsole).
     skip:
       os: windows
     mock_servers:
@@ -403,9 +400,6 @@ scenarios:
           exit_code: 0
 
   - name: a video on the timeline is shown by its thumbnail
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
