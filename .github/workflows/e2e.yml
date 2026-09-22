@@ -31,8 +31,8 @@ env:
 jobs:
   # The suite drives bsky in a pseudo-terminal that answers like a
   # kitty-graphics terminal: a pty on Linux and macOS, a ConPTY on Windows.
-  # A ConPTY does not pass kitty graphics through (nao1215/atago#676), so the
-  # scenarios that need them skip Windows; the rest run on all three.
+  # On Windows atago runs `graphics: kitty` steps under the OpenConsole it
+  # ships, which passes kitty graphics through (nao1215/atago#676).
   atago:
     strategy:
       fail-fast: false
@@ -63,7 +63,7 @@ jobs:
       - name: Install atago
         shell: bash
         env:
-          ATAGO_REF: e7a21227e604a116be00477f8ca2719304e59ae3
+          ATAGO_REF: a49bce64aa19345e4a62f05d8c233823b84681c0
         run: |
           go install "github.com/nao1215/atago@${ATAGO_REF}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

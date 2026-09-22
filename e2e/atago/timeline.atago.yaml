@@ -19,9 +19,6 @@ suite:
 
 scenarios:
   - name: only posts by followed accounts are shown, with their avatars and photo
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -139,9 +136,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
   - name: liking a post records the like and updates the count
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -188,9 +182,6 @@ scenarios:
                 - { path: "$.record.createdAt", matches: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' }
 
   - name: l on a liked post removes the like, and l again restores it
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -245,9 +236,6 @@ scenarios:
               json: { path: "$.record.subject.uri", equals: "at://did:plc:bob/app.bsky.feed.post/p2" }
 
   - name: b reposts a post, and b again removes the repost
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -303,9 +291,6 @@ scenarios:
                 - { path: "$.rkey", equals: "rp1" }
 
   - name: nearing the end fetches the next page once, and a repeated page ends the list
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -352,9 +337,6 @@ scenarios:
             query: { name: cursor, equals: "next-page" }
 
   - name: a reply to a reply keeps the thread root and names the parent
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -404,9 +386,6 @@ scenarios:
                 - { path: "$.record.reply.parent.cid", equals: "cid-p2" }
 
   - name: a new post carries link, tag and mention facets at UTF-8 byte offsets
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -472,9 +451,6 @@ scenarios:
                 - { path: "$.record.facets[2].features[0].uri", equals: "https://example.com/a" }
 
   - name: a tag ends before full-width punctuation, and digits with punctuation are no tag
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -526,9 +502,6 @@ scenarios:
   # family, so the text sent has no half emoji and the link's byte range is
   # counted over the full sequences.
   - name: emoji are edited as whole characters and the link after them keeps its byte range
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -590,9 +563,6 @@ scenarios:
   # lines) and its emoji, and the facets after them are counted in bytes of
   # the pasted text.
   - name: a paste into the composer keeps its lines and emoji and links what it holds
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -646,9 +616,6 @@ scenarios:
   # G and g move the selection to the last and first post, and what the next
   # key acts on is the post selected there.
   - name: G and g jump to the last and first post, and l likes the one selected
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -694,9 +661,6 @@ scenarios:
   # A terminal made smaller and larger again is drawn at each size, and the
   # selection is where it was.
   - name: a resized terminal is redrawn at its new size and keeps the selection
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -743,9 +707,6 @@ scenarios:
               json: { path: "$.rkey", equals: "l1" }
 
   - name: an empty post is refused before anything is sent
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -781,9 +742,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: 300 characters is the limit, 301 is refused
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -830,9 +788,6 @@ scenarios:
               json: { path: "$.record.text", matches: "^あ{300}$" }
 
   - name: a post the server rejects keeps the draft and shows the reason
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -874,9 +829,6 @@ scenarios:
           exit_code: 0
 
   - name: unfollowing an author removes their posts from the timeline
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -915,9 +867,6 @@ scenarios:
                 - { path: "$.rkey", equals: "fa" }
 
   - name: a failing timeline is reported and the client keeps running
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -952,9 +901,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 4 }
 
   - name: an expired access token is refreshed once and the new tokens are saved
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -1003,9 +949,6 @@ scenarios:
               - { path: "$.service", equals: "${api.url}" }
 
   - name: a refresh token the server refuses brings back the login form
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -1053,9 +996,6 @@ scenarios:
             json: { path: "$.refreshJwt", equals: "ref-new" }
 
   - name: the help lists the keys by section, scrolls, and closes only on purpose
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -1102,9 +1042,6 @@ scenarios:
           exit_code: 0
 
   - name: pictures are kept on disk and the next start draws them without downloading
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -1157,9 +1094,6 @@ scenarios:
           mock: { name: api, path: /img/bob.png, count: 1 }
 
   - name: BSKY_CACHE_DIR=off keeps no pictures on disk
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

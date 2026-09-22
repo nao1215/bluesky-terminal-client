@@ -13,9 +13,6 @@ suite:
 
 scenarios:
   - name: space shows a post's pictures full screen, one after another, and esc goes back
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -102,9 +99,6 @@ scenarios:
           image: { path: downloads/full2.png, width: 100, height: 100 }
 
   - name: space plays a post's video, r plays it again, and esc stops it
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -173,9 +167,6 @@ scenarios:
           mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
 
   - name: a video bsky cannot play is a warning, not an error, and its thumbnail stays
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -226,9 +217,6 @@ scenarios:
           exit_code: 0
 
   - name: space on a post with only a link opens it in the browser, and o opens a link anywhere
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -313,9 +301,6 @@ scenarios:
             contains: "https://example.com/article?a=1&b=2\nhttps://example.com/photo-page\n"
 
   - name: without a program to open links, it says what to set
-    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
