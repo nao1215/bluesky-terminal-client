@@ -269,7 +269,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "4"
             - expect_screen:
                 contains: "this is you (e to edit)"
             - send: e

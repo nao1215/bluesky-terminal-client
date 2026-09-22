@@ -1,4 +1,4 @@
-# The Notifications tab (4): what each notification says, the posts it is
+# The Notifications tab (3): what each notification says, the posts it is
 # about, marking them seen, and acting on them.
 #
 # The list has a reply and a like (both unread), a follow, a like of a repost
@@ -95,7 +95,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "4"
+            - send: "3"
             - expect_screen:
                 contains:
                   - "● Ann @ann.test replied to you"
@@ -108,7 +108,7 @@ scenarios:
                 not_contains: ["● Cat", "unexpected response"]
             # Once seen, the tab stops counting them.
             - expect_screen:
-                contains: "4 Notifications "
+                contains: "3 Notifications "
                 not_contains: "Notifications (2)"
                 stable_for: 300ms
             - send: q
@@ -169,7 +169,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "4"
+            - send: "3"
             - expect_screen:
                 contains: "Ann answers your post"
             - send: r
@@ -230,7 +230,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "4"
+            - send: "3"
             - expect_screen:
                 contains: "listNotifications failed: InternalServerError: try later  (R to retry)"
                 not_contains: "No notifications yet."

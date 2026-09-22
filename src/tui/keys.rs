@@ -18,7 +18,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            ("1 2 3 4", "Timeline, Search, Profile, Notifications"),
+            ("1 2 3 4", "Timeline, Search, Notifications, Profile"),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
             ("?", "this help"),

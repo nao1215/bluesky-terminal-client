@@ -28,7 +28,7 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Profile, Tab::Notifications];
+    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Notifications, Tab::Profile];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -987,8 +987,8 @@ impl App {
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
-            KeyCode::Char('3') => return self.switch_tab(Tab::Profile),
-            KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
+            KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
+            KeyCode::Char('4') => return self.switch_tab(Tab::Profile),
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
             KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
             KeyCode::Char('j') | KeyCode::Down => return self.step(1),
@@ -1887,7 +1887,7 @@ mod tests {
     #[test]
     fn following_yourself_is_refused() {
         let mut app = logged_in();
-        let jobs = app.handle_key(key('3'));
+        let jobs = app.handle_key(key('4'));
         assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
         let me: Profile =
             serde_json::from_value(json!({"did": "did:plc:me", "handle": "me.test"})).unwrap();
@@ -1899,7 +1899,7 @@ mod tests {
     #[test]
     fn profile_editor_loads_then_saves_the_fields() {
         let mut app = logged_in();
-        app.handle_key(key('3'));
+        app.handle_key(key('4'));
         let jobs = app.handle_key(key('e'));
         assert!(matches!(jobs[..], [Job::LoadProfileEditor]));
         app.handle_event(Event::ProfileEditor(Ok(
@@ -1975,7 +1975,7 @@ mod tests {
         );
         assert!(!app.search.editing, "back to the results, not to typing");
         // The Profile tab shows the user's own profile next time.
-        let jobs = app.handle_key(key('3'));
+        let jobs = app.handle_key(key('4'));
         assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
     }
 
@@ -1994,7 +1994,7 @@ mod tests {
         let mut app = logged_in();
         app.handle_key(code(KeyCode::Enter)); // alice, from the timeline
         app.handle_key(key('1'));
-        app.handle_key(key('3'));
+        app.handle_key(key('4'));
         assert_eq!(app.profile.came_from, None);
         // Esc on someone else's profile with nowhere to go back to: your own.
         let jobs = app.handle_key(code(KeyCode::Esc));
@@ -2046,7 +2046,7 @@ mod tests {
     #[test]
     fn a_late_editor_answer_does_not_overwrite_typing() {
         let mut app = logged_in();
-        app.handle_key(key('3'));
+        app.handle_key(key('4'));
         app.handle_key(key('e'));
         let fields = || crate::tui::worker::ProfileFields {
             display_name: "Server".into(),
@@ -2164,7 +2164,7 @@ mod tests {
         app.handle_key(key('2'));
         type_str(&mut app, "abc");
         app.handle_key(code(KeyCode::Tab));
-        assert_eq!(app.tab, Tab::Profile);
+        assert_eq!(app.tab, Tab::Notifications);
         assert!(!app.search.editing);
         assert_eq!(app.search.input.text(), "abc");
     }
@@ -2559,7 +2559,7 @@ mod tests {
 
     fn notifications_tab() -> App {
         let mut app = logged_in();
-        let jobs = app.handle_key(key('4'));
+        let jobs = app.handle_key(key('3'));
         assert!(matches!(&jobs[..], [Job::Notifications]));
         let reply = post("at://reply/1", "did:plc:reply", false);
         let mine = post("at://me/post", "did:plc:me", false);
@@ -2590,7 +2590,7 @@ mod tests {
         assert!(app.notifications.items[0].fresh);
         // Coming back does not fetch again; R does.
         app.handle_key(key('1'));
-        assert!(app.handle_key(key('4')).is_empty());
+        assert!(app.handle_key(key('3')).is_empty());
         assert!(matches!(
             &app.handle_key(key('R'))[..],
             [Job::Notifications]
@@ -2600,7 +2600,7 @@ mod tests {
     #[test]
     fn nothing_unread_sends_no_update_seen() {
         let mut app = logged_in();
-        app.handle_key(key('4'));
+        app.handle_key(key('3'));
         let jobs = app.handle_event(Event::Notifications {
             seen_at: "t".into(),
             result: Ok(vec![notif("follow", "at://f", true, None, None)].into()),
@@ -2777,7 +2777,7 @@ mod tests {
     #[test]
     fn a_failed_first_page_is_kept_as_the_reason() {
         let mut app = logged_in();
-        app.handle_key(key('4'));
+        app.handle_key(key('3'));
         app.handle_event(Event::Notifications {
             seen_at: "t".into(),
             result: Err(Error::api("listNotifications failed: boom")),
@@ -2793,12 +2793,12 @@ mod tests {
     #[test]
     fn a_tab_still_loading_is_not_asked_for_again() {
         let mut app = logged_in();
-        assert_eq!(app.handle_key(key('4')).len(), 1);
-        app.handle_key(key('1'));
-        assert!(app.handle_key(key('4')).is_empty());
         assert_eq!(app.handle_key(key('3')).len(), 1);
         app.handle_key(key('1'));
         assert!(app.handle_key(key('3')).is_empty());
+        assert_eq!(app.handle_key(key('4')).len(), 1);
+        app.handle_key(key('1'));
+        assert!(app.handle_key(key('4')).is_empty());
     }
 
     #[test]

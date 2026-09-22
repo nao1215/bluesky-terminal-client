@@ -65,7 +65,7 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 
 | Key | Action |
 |-----|--------|
-| `1` `2` `3` `4`, `Tab` `Shift+Tab` | Timeline, Search, Profile, Notifications |
+| `1` `2` `3` `4`, `Tab` `Shift+Tab` | Timeline, Search, Notifications, Profile |
 | `j` `k`, `↓` `↑` | Move the selection (`g` / `G` for top and bottom); more loads by itself near the end |
 | `n` | New post |
 | `Ctrl+O` | In the composer, choose pictures or a video to attach; in the profile editor, choose the avatar |
