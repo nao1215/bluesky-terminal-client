@@ -10,7 +10,8 @@ use serde_json::{Value, json};
 /// What a detected range points at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// An `http://` or `https://` URL.
+    /// An `http://` or `https://` URL. A bare domain in the text
+    /// (`example.com/a`) links to it with `https://` put in front.
     Link(String),
     /// A handle, without the leading `@`.
     Mention(String),
@@ -123,6 +124,18 @@ fn span_at(start: usize, token: &str) -> Option<Span> {
             end: start + 1 + handle.len(),
             target: Target::Mention(handle.to_string()),
         })
+    } else if let Some(domain) = bare_domain(token) {
+        // The rest of the token belongs to the link too (`example.com/a`),
+        // cut and trimmed as a URL written out in full is.
+        let token = &token[..token[domain..]
+            .find(URL_BREAK)
+            .map_or(token.len(), |i| domain + i)];
+        let url = trim_url(token);
+        Some(Span {
+            start,
+            end: start + url.len(),
+            target: Target::Link(format!("https://{url}")),
+        })
     } else {
         let (hash, tag) = tag_of(token)?;
         Some(Span {
@@ -131,6 +144,40 @@ fn span_at(start: usize, token: &str) -> Option<Span> {
             target: Target::Tag(tag.to_string()),
         })
     }
+}
+
+/// The top-level domains a bare domain may end with: Bluesky's app's list.
+const TLDS: &str = include_str!("tlds.txt");
+
+/// The byte length of the bare domain `token` starts with (`example.com`
+/// in `example.com/a`), read the way Bluesky's app reads one: an ASCII
+/// letter, then letters and digits, then one or more dot-separated labels of
+/// letters and digits, the last of them a real top-level domain in lower
+/// case. So `file.txt`, `v1.2`, and `my-site.com` stay text there and here.
+fn bare_domain(token: &str) -> Option<usize> {
+    if !token.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let mut end = token
+        .find(|c: char| !c.is_ascii_alphanumeric())
+        .unwrap_or(token.len());
+    let mut last = None;
+    while token[end..].starts_with('.') {
+        let label = &token[end + 1..];
+        let len = label
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .unwrap_or(label.len());
+        if len == 0 {
+            break;
+        }
+        last = Some(&label[..len]);
+        end += 1 + len;
+    }
+    let tld = last?;
+    TLDS.lines()
+        .filter(|l| !l.starts_with('#'))
+        .any(|l| l == tld)
+        .then_some(end)
 }
 
 /// Strip sentence punctuation from the end of a URL, except a closing
@@ -482,6 +529,69 @@ mod tests {
             .map(|s| &text[s.start..s.end])
             .collect();
         assert_eq!(links, [want], "{text:?}");
+    }
+
+    #[rstest]
+    #[case("example.com", "example.com", "https://example.com")]
+    #[case(
+        "see docs.bsky.app/blog.",
+        "docs.bsky.app/blog",
+        "https://docs.bsky.app/blog"
+    )]
+    #[case("Example.com/A?b=1", "Example.com/A?b=1", "https://Example.com/A?b=1")]
+    #[case("(example.com)", "example.com", "https://example.com")]
+    #[case("説明はこちら(example.jp)", "example.jp", "https://example.jp")]
+    #[case("見て example.com、あと", "example.com", "https://example.com")]
+    #[case("「example.co.jp」を見て", "example.co.jp", "https://example.co.jp")]
+    #[case("😀 example.dev 🎉", "example.dev", "https://example.dev")]
+    #[case("main.rs", "main.rs", "https://main.rs")] // .rs is Serbia's
+    fn a_bare_domain_links_with_https_in_front(
+        #[case] text: &str,
+        #[case] covered: &str,
+        #[case] uri: &str,
+    ) {
+        assert_eq!(
+            targets(text),
+            [(covered.to_string(), Target::Link(uri.to_string()))],
+            "{text:?}"
+        );
+    }
+
+    #[rstest]
+    #[case("file.txt")] // not a top-level domain
+    #[case("v1.2")]
+    #[case("1password.com")] // starts with a digit
+    #[case("my-site.com")] // Bluesky's app reads no hyphen in a bare domain
+    #[case("EXAMPLE.COM")] // its list is in lower case
+    #[case("example.")]
+    #[case("example")]
+    #[case("me@example.com")]
+    #[case("日本語example.com")] // glued inside a word
+    #[case("example.コム")]
+    fn text_that_is_not_a_bare_domain_stays_text(#[case] text: &str) {
+        assert_eq!(targets(text), [], "{text:?}");
+    }
+
+    #[test]
+    fn a_bare_domain_link_counts_bytes_after_multibyte_text() {
+        let text = "日本語 example.com";
+        let span = &detect(text)[0];
+        let json = to_json(span, None).unwrap();
+        assert_eq!(json["index"]["byteStart"], 10);
+        assert_eq!(json["index"]["byteEnd"], 21);
+        assert_eq!(json["features"][0]["uri"], "https://example.com");
+    }
+
+    #[test]
+    fn the_tld_list_is_sorted_lower_case_ascii() {
+        let names: Vec<&str> = TLDS.lines().filter(|l| !l.starts_with('#')).collect();
+        assert!(names.len() > 1000);
+        assert!(names.contains(&"com") && names.contains(&"jp") && !names.contains(&"txt"));
+        assert!(names.windows(2).all(|w| w[0] < w[1]));
+        assert!(names.iter().all(|n| {
+            n.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        }));
     }
 
     #[test]

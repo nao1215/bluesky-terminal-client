@@ -601,6 +601,53 @@ scenarios:
                 - { path: "$.record.facets[0].index.byteEnd", equals: 20 }
                 - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
 
+  - name: a bare domain links with https in front, and a file name stays text
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "見て example.com/a. と file.txt"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "見て example.com/a. と file.txt" }
+                # As in Bluesky's app: "com" is a top-level domain and "txt"
+                # is not, and the period ends the sentence.
+                - { path: "$.record.facets", length: 1 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 7 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 20 }
+                - { path: "$.record.facets[0].features[0].uri", equals: "https://example.com/a" }
+
   # Emoji made of several code points are edited as one character: Backspace
   # takes the whole thumbs-up with its skin tone, and Left steps over the whole
   # family, so the text sent has no half emoji and the link's byte range is
