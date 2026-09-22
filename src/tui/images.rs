@@ -38,13 +38,19 @@ const LOADERS: usize = 8;
 /// Parallel encoders.
 const ENCODERS: usize = 2;
 
-/// Longest side a local picture is kept at once decoded. The largest box bsky
-/// draws (the browser's preview) is well under this on any screen, and
-/// scaling from a smaller source makes each encode cheaper.
-const MAX_LOCAL_SIDE: u32 = 1600;
-/// The same for a downloaded picture: lists draw them at most 36 cells
-/// wide, but the viewer draws one across the whole screen.
-const MAX_REMOTE_SIDE: u32 = 1600;
+/// A decoded picture whose longest side is above this is shrunk to
+/// [`SHRUNK_SIDE`] before it is kept. Shrinking costs about as much as
+/// decoding again (35 ms for a 2000 x 1500 photo), and every encode scales
+/// the picture to its box anyway, so a picture that is not much larger than
+/// any box is kept as it is: Bluesky's full-size pictures are at most 2000
+/// pixels, and keeping them unshrunk made a screen of twelve ready in 66 ms
+/// instead of 109. A camera photo (4000 x 3000) is still shrunk, because
+/// scaling it down once is cheaper than scaling from it for every box.
+const SHRINK_ABOVE: u32 = 2048;
+/// The longest side a picture larger than [`SHRINK_ABOVE`] is kept at. The
+/// largest box bsky draws (the viewer across the whole screen) is under this
+/// on common screens.
+const SHRUNK_SIDE: u32 = 1600;
 
 /// Decoded pictures kept in memory; past this, the ones not drawn in the
 /// last frames are dropped, least recently drawn first.
@@ -533,25 +539,23 @@ impl Drop for Images {
 /// Read a picture: a local one from the user's disk, a downloaded one from
 /// the cache or the network. Only a body that decodes is cached, and a cached
 /// one that no longer decodes is removed, so a bad answer (an error page
-/// served as 200) is not kept. The picture is shrunk to what it is drawn at.
+/// served as 200) is not kept. A picture much larger than any box is shrunk
+/// ([`shrink`]).
 fn load(
     agent: &ureq::Agent,
     cache: Option<&DiskCache>,
     source: &Source,
 ) -> Result<DynamicImage, String> {
-    let (img, max_side) = match source {
-        Source::Local(path) => (
-            crate::media::load(path)
-                .map(|(img, _)| img)
-                .map_err(|e| e.message().to_string())?,
-            MAX_LOCAL_SIDE,
-        ),
+    let img = match source {
+        Source::Local(path) => crate::media::load(path)
+            .map(|(img, _)| img)
+            .map_err(|e| e.message().to_string())?,
         Source::Remote(url) => {
             if !(url.starts_with("https://") || url.starts_with("http://")) {
                 return Err(format!("not a web address: {url}"));
             }
             let cached = cache.and_then(|c| c.get(url).map(|b| (c, b)));
-            let img = match cached {
+            match cached {
                 Some((c, bytes)) => match image::load_from_memory(&bytes) {
                     Ok(img) => img,
                     Err(_) => {
@@ -560,15 +564,20 @@ fn load(
                     }
                 },
                 None => download(agent, cache, url)?,
-            };
-            (img, MAX_REMOTE_SIDE)
+            }
         }
     };
-    Ok(if img.width().max(img.height()) > max_side {
-        img.thumbnail(max_side, max_side)
+    Ok(shrink(img))
+}
+
+/// The picture as it is kept decoded: unchanged up to [`SHRINK_ABOVE`],
+/// else scaled to [`SHRUNK_SIDE`].
+fn shrink(img: DynamicImage) -> DynamicImage {
+    if img.width().max(img.height()) > SHRINK_ABOVE {
+        img.thumbnail(SHRUNK_SIDE, SHRUNK_SIDE)
     } else {
         img
-    })
+    }
 }
 
 fn download(
@@ -723,6 +732,91 @@ impl DiskCache {
 mod tests {
     use super::*;
 
+    #[rstest::rstest]
+    #[case(2000, 1500, (2000, 1500))]
+    #[case(2048, 1024, (2048, 1024))]
+    #[case(4000, 3000, (1600, 1200))]
+    #[case(1000, 4000, (400, 1600))]
+    fn only_a_picture_much_larger_than_any_box_is_shrunk(
+        #[case] w: u32,
+        #[case] h: u32,
+        #[case] want: (u32, u32),
+    ) {
+        let img = shrink(DynamicImage::new_rgb8(w, h));
+        assert_eq!((img.width(), img.height()), want);
+    }
+
+    /// Prints how long a screen of twelve 2000 x 1500 photos takes to be
+    /// ready through the real loader and encoder threads, for comparing a
+    /// change to the picture pipeline before and after:
+    /// `cargo test --release screen_of_photos -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "measurement"]
+    fn a_screen_of_photos_until_ready() {
+        use ratatui::{Terminal, backend::TestBackend};
+        use ratatui_image::picker::ProtocolType;
+        let dir = tempfile::tempdir().unwrap();
+        let mut seed = 7u32;
+        let photo = image::RgbImage::from_fn(2000, 1500, |x, y| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            let n = (seed >> 24) as u8 / 8;
+            image::Rgb([(x / 8) as u8 ^ n, (y / 6) as u8, ((x + y) % 256) as u8 ^ n])
+        });
+        let mut jpeg = Vec::new();
+        DynamicImage::ImageRgb8(photo)
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpeg),
+                image::ImageFormat::Jpeg,
+            )
+            .unwrap();
+        let paths: Vec<PathBuf> = (0..12u8)
+            .map(|i| {
+                let p = dir.path().join(format!("p{i}.jpg"));
+                let mut b = jpeg.clone();
+                let n = b.len();
+                b[n - 3] ^= i;
+                fs::write(&p, b).unwrap();
+                p
+            })
+            .collect();
+        for proto in [
+            ProtocolType::Kitty,
+            ProtocolType::Sixel,
+            ProtocolType::Iterm2,
+        ] {
+            let mut samples = Vec::new();
+            for _ in 0..5 {
+                #[allow(deprecated)]
+                let mut picker = Picker::from_fontsize((10, 20).into());
+                picker.set_protocol_type(proto);
+                let mut images = Images::new(picker, None);
+                let mut term = Terminal::new(TestBackend::new(160, 50)).unwrap();
+                let start = Instant::now();
+                loop {
+                    term.draw(|f| {
+                        images.begin_frame(f.area().as_size(), Style::new());
+                        for (i, p) in paths.iter().enumerate() {
+                            let (x, y) = ((i % 4) as u16 * 40, (i / 4) as u16 * 14);
+                            images.draw_file(f, Rect::new(x, y, 36, 12), p);
+                        }
+                    })
+                    .unwrap();
+                    images.poll();
+                    if !images.loading() {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(2));
+                }
+                samples.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+            samples.sort_by(f64::total_cmp);
+            println!(
+                "{proto:?}: 12 photos ready in {:.0} ms (median of 5, {:.0} to {:.0})",
+                samples[2], samples[0], samples[4]
+            );
+        }
+    }
+
     #[test]
     fn the_newest_job_is_taken_first() {
         let q = Queue::new();
@@ -841,7 +935,7 @@ mod tests {
             .unwrap();
         let agent = crate::api::agent();
         let img = load(&agent, None, &Source::Local(path.clone())).unwrap();
-        assert_eq!((img.width(), img.height()), (MAX_LOCAL_SIDE, 50));
+        assert_eq!((img.width(), img.height()), (SHRUNK_SIDE, 50));
         let missing = load(&agent, None, &Source::Local(dir.path().join("gone.png")));
         assert!(missing.unwrap_err().contains("gone.png"));
         // A server's URL is never read from disk, whatever it looks like.
