@@ -52,6 +52,12 @@ pub fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(Duration::from_secs(30)))
+        // A connection is kept for two minutes rather than ureq's 15 s: a
+        // new one costs a TCP and a TLS handshake, which on a slow link took
+        // longer than the pictures it carried, and a post is often read for
+        // more than 15 s before the next ones are wanted. One the server has
+        // closed is noticed before it is used.
+        .max_idle_age(Duration::from_secs(120))
         .user_agent(USER_AGENT)
         .build()
         .into()

@@ -67,6 +67,9 @@ fn file_key(path: &Path) -> String {
 enum Source {
     Remote(String),
     Local(PathBuf),
+    /// Open a connection to this server and keep it for the pictures to
+    /// come; nothing is loaded.
+    Connect(String),
 }
 
 /// A work queue whose workers take the newest job first: when the user
@@ -204,6 +207,10 @@ impl Images {
                     let Some((key, source)) = fetch.pop() else {
                         return;
                     };
+                    if let Source::Connect(url) = &source {
+                        let _ = agent.head(url).call();
+                        continue;
+                    }
                     let result = load(&agent, cache.as_deref(), &source);
                     if img_tx.send((key, result)).is_err() {
                         return;
@@ -269,6 +276,18 @@ impl Images {
     /// The protocol images are drawn with.
     pub fn protocol_type(&self) -> ratatui_image::picker::ProtocolType {
         self.protocol_type
+    }
+
+    /// Have every loader open its connection to the picture server at
+    /// `url` now, while the first list is still loading. Each connection
+    /// costs a TCP and a TLS handshake, several round trips that can take
+    /// a second or more; paid here, the first pictures only wait for their
+    /// own download.
+    pub fn connect(&self, url: &str) {
+        for _ in 0..LOADERS {
+            self.fetch
+                .push_background((String::new(), Source::Connect(url.to_string())));
+        }
     }
 
     /// Pixel size of one terminal cell, as the terminal reported it.
@@ -581,6 +600,7 @@ fn load(
         Source::Local(path) => crate::media::load(path)
             .map(|(img, _)| img)
             .map_err(|e| e.message().to_string())?,
+        Source::Connect(url) => return Err(format!("{url} is a connection, not a picture")),
         Source::Remote(url) => {
             if !(url.starts_with("https://") || url.starts_with("http://")) {
                 return Err(format!("not a web address: {url}"));
@@ -625,7 +645,12 @@ fn download(
 }
 
 fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
-    let mut resp = agent.get(url).call().map_err(|e| e.to_string())?;
+    // A connection kept from before can be closed by the server just as it
+    // is used again; a GET is safe to send once more on a new one.
+    let mut resp = match agent.get(url).call() {
+        Ok(r) => r,
+        Err(_) => agent.get(url).call().map_err(|e| e.to_string())?,
+    };
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status().as_u16()));
     }
@@ -1100,5 +1125,87 @@ mod tests {
         // A server's URL is never read from disk, whatever it looks like.
         let remote = load(&agent, None, &Source::Remote(file_key(&path)));
         assert!(remote.unwrap_err().starts_with("not a web address"));
+    }
+}
+
+#[cfg(test)]
+mod latency {
+    use super::*;
+
+    /// How long the pictures of a first screen take after a list that took
+    /// 1.5 s to load, with and without the connections opened meanwhile:
+    /// `BSKY_PICTURES=... cargo test --release first_screen -- --ignored --nocapture`.
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn first_screen() {
+        let Ok(list) = std::env::var("BSKY_PICTURES") else {
+            return;
+        };
+        let urls: Vec<&str> = list.lines().filter(|l| !l.is_empty()).collect();
+        for warm in [false, true, false, true] {
+            let mut images = Images::new(Picker::halfblocks(), None);
+            if warm {
+                images.connect("https://cdn.bsky.app/");
+            }
+            thread::sleep(Duration::from_millis(1500));
+            let start = Instant::now();
+            while !urls.iter().all(|u| {
+                matches!(
+                    images.slots.get(*u),
+                    Some((Slot::Ready(_) | Slot::Failed(_), _))
+                )
+            }) {
+                for u in &urls {
+                    let _ = images.decoded(u, true);
+                }
+                images.poll();
+                thread::sleep(Duration::from_millis(5));
+            }
+            println!(
+                "warm {warm}: {} pictures in {:?}",
+                urls.len(),
+                start.elapsed()
+            );
+        }
+    }
+
+    /// Where the time to a picture on screen goes, for the URLs in
+    /// $BSKY_PICTURES (one per line), one agent as a loader thread has:
+    /// `BSKY_PICTURES=... cargo test --release picture_stages -- --ignored --nocapture`.
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn picture_stages() {
+        let Ok(list) = std::env::var("BSKY_PICTURES") else {
+            return;
+        };
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize((10, 20).into());
+        picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
+        let agent = crate::api::agent();
+        for url in list.lines().filter(|l| !l.is_empty()) {
+            let t0 = Instant::now();
+            let bytes = fetch(&agent, url).unwrap();
+            let t_fetch = t0.elapsed();
+            let img = image::load_from_memory(&bytes).unwrap();
+            let t_decode = t0.elapsed() - t_fetch;
+            let (w, h) = (img.width(), img.height());
+            let area = Size::new(40, 12);
+            let t1 = Instant::now();
+            let cell = (10, 20);
+            let _ = picker
+                .new_protocol(
+                    crate::tui::scale::to_box(&img, area, cell),
+                    area,
+                    Resize::Scale(Some(FilterType::Triangle)),
+                )
+                .unwrap();
+            let t_encode = t1.elapsed();
+            println!(
+                "{:>5} KB {w}x{h}: fetch {t_fetch:?} decode {t_decode:?} encode {t_encode:?}",
+                bytes.len() / 1024
+            );
+        }
     }
 }

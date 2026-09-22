@@ -74,6 +74,9 @@ fn event_loop(
     let cache =
         crate::config::cache_dir().map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
     let mut images = Images::new(picker, cache);
+    if let Some(cdn) = picture_server(service) {
+        images.connect(cdn);
+    }
     let worker = Worker::spawn(session.clone(), store);
     let (mut app, jobs) = App::new(session, service);
     let (loaded, warning) = settings.load();
@@ -135,4 +138,35 @@ fn event_loop(
         }
     }
     Ok(())
+}
+
+/// Bluesky's picture server, to connect to at the start, for a service
+/// reached over the internet. A local one (a test's stand-in server) gets
+/// its pictures elsewhere, and a run against it must not reach out at all.
+fn picture_server(service: &str) -> Option<&'static str> {
+    let host = service.strip_prefix("https://")?;
+    let host = host.split(['/', ':']).next().unwrap_or("");
+    let local = host == "localhost" || host.starts_with("127.") || host.starts_with('[');
+    (!local && !host.is_empty()).then_some("https://cdn.bsky.app/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::picture_server;
+
+    #[test]
+    fn the_picture_server_is_warmed_only_for_a_service_on_the_internet() {
+        assert_eq!(
+            picture_server("https://bsky.social"),
+            Some("https://cdn.bsky.app/")
+        );
+        assert_eq!(
+            picture_server("https://pds.example.com:2583"),
+            Some("https://cdn.bsky.app/")
+        );
+        assert_eq!(picture_server("http://127.0.0.1:4000"), None);
+        assert_eq!(picture_server("https://127.0.0.1:4000"), None);
+        assert_eq!(picture_server("https://localhost"), None);
+        assert_eq!(picture_server("https://[::1]:8080"), None);
+    }
 }
