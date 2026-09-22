@@ -496,7 +496,7 @@ mod tests {
     /// Real media files from the E2E fixtures, damaged at random (bits
     /// flipped, bytes inserted and removed, cut short, length fields set to
     /// 0, 1, or the largest values), through every reader bsky points at a
-    /// file of unknown origin: none may panic or take a noticeable time.
+    /// file of unknown origin: none may panic or stall.
     /// `BSKY_FUZZ_INPUTS=100000` (in a release build) for a long run.
     #[test]
     fn damaged_media_files_neither_panic_nor_stall() {
@@ -567,6 +567,9 @@ mod tests {
         for i in 0..inputs {
             let (kind, seed) = &seeds[i % seeds.len()];
             let data = damage(&mut rng, seed);
+            let path = dir.path().join(format!("f.{kind}"));
+            std::fs::write(&path, &data).unwrap();
+            // Timed from here: writing the file is not the readers' cost.
             let start = std::time::Instant::now();
             match *kind {
                 "ts" => {
@@ -581,8 +584,6 @@ mod tests {
                     let _ = crate::hls::segments(&text, "https://v.test/a/v/video.m3u8");
                 }
                 _ => {
-                    let path = dir.path().join(format!("f.{kind}"));
-                    std::fs::write(&path, &data).unwrap();
                     let _ = probe(&path);
                     let _ = sniff_mime(&data);
                     let _ = is_animated_gif(&path);
@@ -591,8 +592,10 @@ mod tests {
                 }
             }
             let took = start.elapsed();
+            // Generous for a debug build on a busy CI runner; the stall this
+            // guards against took 48 s there.
             assert!(
-                took < std::time::Duration::from_secs(1),
+                took < std::time::Duration::from_secs(5),
                 "damaged {kind} #{i} took {took:?}: {data:?}"
             );
         }
