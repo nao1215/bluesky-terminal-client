@@ -9,7 +9,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 use crate::api::types::{
-    Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
+    FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
 };
 use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, PostMedia, PostVideo, ProfileEdit};
 use crate::config::{Session, SessionStore};
@@ -27,6 +27,10 @@ pub enum Job {
         password: String,
     },
     Timeline,
+    /// The custom feeds the account pinned, with their names.
+    PinnedFeeds,
+    /// The first page of the custom feed at this URI.
+    CustomFeed(String),
     SearchPosts(String),
     SearchActors(String),
     /// Load an actor's profile and recent posts.
@@ -112,6 +116,8 @@ impl<T> From<Vec<T>> for Page<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Feed {
     Timeline,
+    /// A custom feed, by the URI of its generator.
+    Custom(String),
     SearchPosts(String),
     SearchActors(String),
     /// An account's own posts, by DID.
@@ -157,6 +163,12 @@ pub struct ProfileFields {
 pub enum Event {
     LoggedIn(Result<Session>),
     Timeline(Result<Page<Post>>),
+    PinnedFeeds(Result<Vec<FeedInfo>>),
+    /// The first page of the custom feed `uri`.
+    CustomFeed {
+        uri: String,
+        result: Result<Page<Post>>,
+    },
     SearchPosts(Result<Page<Post>>),
     SearchActors(Result<Page<Profile>>),
     Profile(Result<(Profile, Page<Post>)>),
@@ -289,6 +301,11 @@ impl State {
                 password,
             } => Event::LoggedIn(self.login(&service, &identifier, &password)),
             Job::Timeline => Event::Timeline(self.timeline(None)),
+            Job::PinnedFeeds => Event::PinnedFeeds(self.client().and_then(Client::pinned_feeds)),
+            Job::CustomFeed(uri) => Event::CustomFeed {
+                result: self.custom_feed(&uri, None),
+                uri,
+            },
             Job::SearchPosts(q) => Event::SearchPosts(self.search_posts(&q, None)),
             Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
@@ -391,6 +408,16 @@ impl State {
         Ok(Page { items, cursor })
     }
 
+    /// A page of a custom feed, as the feed chose it: reposts and posts by
+    /// accounts you do not follow included, replies with their context.
+    fn custom_feed(&mut self, uri: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+        let raw = self.client()?.feed(uri, cursor)?;
+        Ok(Page {
+            items: timeline::feed_posts(raw.feed),
+            cursor: raw.cursor,
+        })
+    }
+
     fn search_posts(&mut self, q: &str, cursor: Option<&str>) -> Result<Page<Post>> {
         let r = self.client()?.search_posts(q, cursor)?;
         Ok(Page {
@@ -482,6 +509,7 @@ impl State {
         let c = Some(cursor);
         Ok(match feed {
             Feed::Timeline => MorePage::Posts(self.timeline(c)?),
+            Feed::Custom(uri) => MorePage::Posts(self.custom_feed(uri, c)?),
             Feed::SearchPosts(q) => MorePage::Posts(self.search_posts(q, c)?),
             Feed::SearchActors(q) => MorePage::Actors(self.search_actors(q, c)?),
             Feed::Author(did) => MorePage::Posts(self.author_feed(did, c)?),

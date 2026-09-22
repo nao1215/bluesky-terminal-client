@@ -12,6 +12,21 @@ use crate::api::types::{FeedItem, Post, ReplyContext};
 /// A reply keeps the thread above it ([`Post::context`]), whoever wrote those
 /// posts: the rule is about who wrote the item, and the context is what makes
 /// a followed account's reply readable.
+/// Every post of a custom feed's page, in its order, each reply with the
+/// thread it belongs under. A feed decides what it shows, so nothing is
+/// filtered out; a post the feed lists twice is kept once.
+pub fn feed_posts(feed: Vec<FeedItem>) -> Vec<Post> {
+    let mut seen = std::collections::HashSet::new();
+    feed.into_iter()
+        .filter(|item| seen.insert(item.post.uri.clone()))
+        .map(|item| {
+            let mut post = item.post;
+            post.context = item.reply.map(|r| Box::new(ReplyContext::from_reply(r)));
+            post
+        })
+        .collect()
+}
+
 pub fn followed_posts(feed: Vec<FeedItem>, viewer_did: &str) -> Vec<Post> {
     feed.into_iter()
         .filter(|item| item.reason.is_none())
