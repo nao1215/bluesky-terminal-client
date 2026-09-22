@@ -365,7 +365,8 @@ fn draw_thread(
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme.clone();
-    let mut spans = vec![Span::styled(" bsky ", t.badge()), Span::raw(" ")];
+    // No name of the app: the tabs start at the edge, and the room is theirs.
+    let mut spans = Vec::new();
     for (i, tab) in Tab::ALL.iter().enumerate() {
         let label = match (tab, app.unread) {
             (Tab::Notifications, n) if n > 0 => format!(" {} {} ({n}) ", i + 1, tab.title()),

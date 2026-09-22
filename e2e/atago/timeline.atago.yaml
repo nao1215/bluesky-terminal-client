@@ -98,6 +98,9 @@ scenarios:
                 not_contains:
                   - "Reposted content by dave"
                   - "Eve is not followed"
+            # The tabs start the top row; no name of the app before them.
+            - expect_screen:
+                matches: '^ 1 Timeline  +2 Search'
             - expect_screen:
                 images: { count: 3 }
                 stable_for: 300ms

@@ -480,16 +480,6 @@ impl Theme {
             .add_modifier(Modifier::BOLD | Modifier::REVERSED)
     }
 
-    /// The " bsky " badge.
-    pub fn badge(&self) -> Style {
-        let s = Style::new().add_modifier(Modifier::BOLD);
-        if self.mono {
-            s.add_modifier(Modifier::REVERSED)
-        } else {
-            s.fg(self.on_accent).bg(self.accent)
-        }
-    }
-
     pub fn error(&self) -> Style {
         Style::new().fg(self.error).add_modifier(Modifier::BOLD)
     }
