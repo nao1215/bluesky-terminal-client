@@ -24,6 +24,7 @@ use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Resize};
 
 use crate::hls::{self, Demuxer};
+use crate::tui::scale;
 
 /// Most pictures a second sent to the terminal; each is a whole image.
 const MAX_FPS: f64 = 15.0;
@@ -271,7 +272,7 @@ struct Pacer<'a> {
     picker: &'a Picker,
     size: &'a Mutex<(u16, u16)>,
     tx: &'a Sender<Msg>,
-    cell: (u32, u32),
+    cell: (u16, u16),
     /// The stream's clock against the wall clock: set by the first picture,
     /// and set again after a wait for the network, so a slow download
     /// pauses the video instead of skipping it.
@@ -288,7 +289,7 @@ impl<'a> Pacer<'a> {
             picker,
             size,
             tx,
-            cell: (u32::from(f.width.max(1)), u32::from(f.height.max(1))),
+            cell: (f.width.max(1), f.height.max(1)),
             clock: None,
             last_due: None,
             shown: 0,
@@ -334,17 +335,14 @@ impl<'a> Pacer<'a> {
         if cols == 0 || rows == 0 {
             return Ok(true);
         }
-        // Scaled here, off the UI thread, to the pixels of its box.
-        let img = DynamicImage::ImageRgb8(picture).resize(
-            u32::from(cols) * self.cell.0,
-            u32::from(rows) * self.cell.1,
-            image::imageops::FilterType::Triangle,
-        );
-        let Ok(p) = self.picker.new_protocol(
-            img,
-            Size::new(cols, rows),
-            Resize::Scale(Some(FilterType::Triangle)),
-        ) else {
+        // Scaled here, off the UI thread, to the pixels of its box, so the
+        // protocol only has to encode it.
+        let area = Size::new(cols, rows);
+        let img = scale::to_box(&DynamicImage::ImageRgb8(picture), area, self.cell);
+        let Ok(p) = self
+            .picker
+            .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
+        else {
             return Ok(true);
         };
         if self.tx.send(Msg::Frame(Box::new(p))).is_err() {
@@ -614,6 +612,50 @@ mod tests {
             State::Warning("cannot load the video: HTTP 404".into())
         );
         assert!(broken.frame().is_none());
+    }
+
+    /// Prints how long a 1280 x 720 video picture takes to be scaled and
+    /// encoded for its box, the work behind every frame shown:
+    /// `cargo test --release video_picture -- --ignored --nocapture`.
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn a_video_picture_until_encoded() {
+        use ratatui_image::picker::ProtocolType;
+        let picture = RgbImage::from_fn(1280, 720, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x ^ y) % 256) as u8])
+        });
+        for proto in [
+            ProtocolType::Kitty,
+            ProtocolType::Sixel,
+            ProtocolType::Iterm2,
+        ] {
+            #[allow(deprecated)]
+            let mut picker = Picker::from_fontsize((10, 20).into());
+            picker.set_protocol_type(proto);
+            for (cols, rows) in [(160u16, 45u16), (80, 24)] {
+                let area = Size::new(cols, rows);
+                let mut samples: Vec<f64> = (0..11)
+                    .map(|_| {
+                        let start = Instant::now();
+                        let img = scale::to_box(
+                            &DynamicImage::ImageRgb8(picture.clone()),
+                            area,
+                            (10, 20),
+                        );
+                        let _ = picker
+                            .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
+                            .unwrap();
+                        start.elapsed().as_secs_f64() * 1000.0
+                    })
+                    .collect();
+                samples.sort_by(f64::total_cmp);
+                println!(
+                    "{proto:?} {cols}x{rows} cells: {:.1} ms a picture (median of 11)",
+                    samples[5]
+                );
+            }
+        }
     }
 
     #[test]

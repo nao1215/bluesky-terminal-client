@@ -223,9 +223,12 @@ impl Images {
                     let resize = Resize::Scale(Some(FilterType::Triangle));
                     // A picture the encoder chokes on is marked failed; it
                     // must not take the thread, and every later picture, with it.
+                    // Scaled to its box first, fast and without copying the
+                    // whole picture, so the protocol only has to encode it.
                     let p = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let cell = (picker.font_size().width, picker.font_size().height);
                         picker
-                            .new_protocol(DynamicImage::clone(&img), size, resize)
+                            .new_protocol(crate::tui::scale::to_box(&img, size, cell), size, resize)
                             .ok()
                     }))
                     .ok()

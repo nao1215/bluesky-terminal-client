@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - The command is `bsky`, not `bs`, and so are its folders (`~/.config/bsky`, the cache, `Downloads/bsky`) and the prefix of its environment variables (`BSKY_CONFIG_DIR`, `BSKY_GRAPHICS`, and the rest). A config folder left by `bs` is moved to the new name on the first start, so the login is kept.
 - Pictures up to 2048 pixels (every full-size Bluesky picture, and most screenshots) are no longer scaled down after decoding, a step that cost as much as decoding them. A screen of twelve such pictures is ready about 40% sooner; larger photos from a camera are still scaled down once.
+- Pictures and video frames are scaled to their box with a faster scaler before they are encoded for the terminal. A full-screen 720p video frame is ready in 5 ms instead of 20 with kitty (43 instead of 63 with sixel, which now keeps up with 15 frames a second), and a screen of twelve photos in 26 ms instead of 63.
 
 ### Fixed
 

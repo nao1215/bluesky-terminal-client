@@ -21,6 +21,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.29"
 dirs = "7"
+fast_image_resize = { version = "6.1.0", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 openh264 = "0.9"
 ratatui = "0.30"
