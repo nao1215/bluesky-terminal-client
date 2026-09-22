@@ -1,0 +1,7 @@
+[
+  { "target": "x86_64-unknown-linux-gnu", "os": "ubuntu-latest", "archive": "tar.gz", "exec": true },
+  { "target": "aarch64-unknown-linux-gnu", "os": "ubuntu-24.04-arm", "archive": "tar.gz", "exec": true },
+  { "target": "x86_64-apple-darwin", "os": "macos-latest", "archive": "tar.gz", "exec": false },
+  { "target": "aarch64-apple-darwin", "os": "macos-latest", "archive": "tar.gz", "exec": true },
+  { "target": "x86_64-pc-windows-msvc", "os": "windows-latest", "archive": "zip", "exec": true }
+]
