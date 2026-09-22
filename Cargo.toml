@@ -31,7 +31,7 @@ unicode-width = "0.2"
 ureq = "3"
 
 [dev-dependencies]
-rstest = "0.26"
+rstest = "0.27"
 tempfile = "3"
 
 [profile.release]
