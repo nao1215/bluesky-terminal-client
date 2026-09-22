@@ -192,6 +192,45 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, count: 0 }
 
+  # A paste arrives as one bracketed block. The search box is one line, so
+  # the line breaks of a pasted snippet are dropped rather than sending the
+  # search half-typed, and emoji arrive whole.
+  - name: a paste into the search box drops its line breaks and keeps emoji whole
+    # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *no_posts
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: { paste: "rust\n👨‍👩‍👧‍👦 tui\r\n" }
+            - expect_screen:
+                contains: "rust👨‍👩‍👧‍👦 tui"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No posts found."
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            count: 1
+            query: { name: q, equals: "rust👨‍👩‍👧‍👦 tui" }
+
   - name: account search follows and unfollows from the result list
     # A ConPTY does not pass kitty graphics through (nao1215/atago#676).
     skip:

@@ -398,16 +398,37 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
 fn scroll_offset(
     selected: usize,
     offset: usize,
+    len: usize,
     viewport: u16,
     mut height: impl FnMut(usize) -> u16,
 ) -> usize {
-    if selected <= offset {
-        return selected;
-    }
     let viewport = u32::from(viewport);
-    let mut used = u32::from(height(selected));
-    let mut top = selected;
-    while top > offset {
+    let mut top = if selected <= offset {
+        selected
+    } else {
+        let mut used = u32::from(height(selected));
+        let mut top = selected;
+        while top > offset {
+            let h = u32::from(height(top - 1));
+            if used + h > viewport {
+                break;
+            }
+            used += h;
+            top -= 1;
+        }
+        top
+    };
+    // When the list ends on screen with room to spare (the terminal grew, or
+    // the selection is near the end), the room goes to the posts above
+    // rather than staying empty. Only the rows that fit are measured.
+    let mut used = 0;
+    for i in top..len {
+        used += u32::from(height(i));
+        if used >= viewport {
+            return top;
+        }
+    }
+    while top > 0 {
         let h = u32::from(height(top - 1));
         if used + h > viewport {
             break;
@@ -732,7 +753,7 @@ fn draw_posts<T: PostRow>(
     let mut lines: HashMap<usize, PostLines> = HashMap::new();
     let selected = list.selected.min(list.items.len() - 1);
     let items = &list.items;
-    list.offset = scroll_offset(selected, list.offset, area.height, |i| {
+    list.offset = scroll_offset(selected, list.offset, list.items.len(), area.height, |i| {
         lines
             .entry(i)
             .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, me, t))
@@ -940,7 +961,13 @@ fn draw_two_line_rows<T>(
         return;
     }
     const H: u16 = 3;
-    list.offset = scroll_offset(list.selected, list.offset, area.height, |_| H);
+    list.offset = scroll_offset(
+        list.selected,
+        list.offset,
+        list.items.len(),
+        area.height,
+        |_| H,
+    );
     let content = content_rect(area);
     let mut y = area.y;
     for (i, item) in list.items.iter().enumerate().skip(list.offset) {
@@ -1584,7 +1611,13 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
     }
     if !b.list.items.is_empty() {
         let selected = b.list.selected.min(b.list.items.len() - 1);
-        b.list.offset = scroll_offset(selected, b.list.offset, rows.height, |_| 1);
+        b.list.offset = scroll_offset(
+            selected,
+            b.list.offset,
+            b.list.items.len(),
+            rows.height,
+            |_| 1,
+        );
     }
     let width = usize::from(rows.width);
     for (row, (i, e)) in b
@@ -2345,23 +2378,46 @@ mod tests {
     #[test]
     fn scroll_moves_offset_only_as_far_as_needed() {
         let h = |_| 3;
-        assert_eq!(scroll_offset(3, 0, 7, h), 2);
-        assert_eq!(scroll_offset(1, 2, 7, h), 1, "up past the top");
-        assert_eq!(scroll_offset(2, 1, 7, h), 1, "already on screen");
-        assert_eq!(scroll_offset(4, 4, 7, h), 4);
+        assert_eq!(scroll_offset(3, 0, 100, 7, h), 2);
+        assert_eq!(scroll_offset(1, 2, 100, 7, h), 1, "up past the top");
+        assert_eq!(scroll_offset(2, 1, 100, 7, h), 1, "already on screen");
+        assert_eq!(scroll_offset(4, 4, 100, 7, h), 4);
         // A post taller than the screen is drawn from its top.
-        assert_eq!(scroll_offset(2, 0, 7, |i| if i == 2 { 20 } else { 3 }), 2);
+        assert_eq!(
+            scroll_offset(2, 0, 100, 7, |i| if i == 2 { 20 } else { 3 }),
+            2
+        );
+    }
+
+    /// Room left below the last post is used for the posts above: after the
+    /// terminal grows, or near the end of a list, the screen is filled from
+    /// the bottom instead of leaving the first posts hidden.
+    #[test]
+    fn a_list_that_ends_on_screen_fills_it_from_above() {
+        let h = |_| 3;
+        // Five posts of 3 rows; the last three were on a 9-row screen.
+        assert_eq!(scroll_offset(3, 2, 5, 9, h), 2, "the end just fills it");
+        assert_eq!(scroll_offset(3, 2, 5, 15, h), 0, "grown: all five fit");
+        assert_eq!(scroll_offset(4, 3, 5, 12, h), 1, "grown: four fit");
+        // Not past what keeps the selection on screen, and not for a list
+        // that goes on below the screen.
+        assert_eq!(scroll_offset(1, 1, 50, 9, h), 1);
+        assert_eq!(scroll_offset(0, 0, 5, 30, h), 0);
     }
 
     #[test]
     fn jumping_to_the_end_measures_only_what_fits() {
         let mut measured = Vec::new();
-        let offset = scroll_offset(9_999, 0, 10, |i| {
+        let offset = scroll_offset(9_999, 0, 10_000, 10, |i| {
             measured.push(i);
             3
         });
         assert_eq!(offset, 9_997);
-        assert_eq!(measured, [9_999, 9_998, 9_997, 9_996]);
+        // Only the posts near the end are measured (the caller caches the
+        // heights, so asking for one again costs nothing).
+        measured.sort_unstable();
+        measured.dedup();
+        assert_eq!(measured, [9_996, 9_997, 9_998, 9_999]);
     }
 
     #[test]
