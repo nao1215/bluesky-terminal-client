@@ -10,6 +10,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
+      - "scripts/release/**"
+      - ".github/release-targets.json"
+      - ".github/workflows/release.yml"
       - ".github/workflows/rust.yml"
   pull_request:
     paths:
@@ -17,6 +20,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
+      - "scripts/release/**"
+      - ".github/release-targets.json"
+      - ".github/workflows/release.yml"
       - ".github/workflows/rust.yml"
 
 concurrency:
@@ -149,3 +155,34 @@ jobs:
         uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The release scripts run only on a tag, so they are tested here on every
+  # platform that packs an archive, and the compiler the release pins is
+  # checked against rust-version, before a release depends on them.
+  release-scripts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test the release scripts
+        shell: bash
+        run: ./scripts/release/test.sh
+
+      - name: Check the release toolchain pin against rust-version
+        if: runner.os == 'Linux'
+        run: |
+          pin="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release.yml)"
+          msrv="$(grep -oP '^rust-version\s*=\s*"\K[^"]+' Cargo.toml)"
+          lowest="$(printf '%s\n%s\n' "${msrv}" "${pin}" | sort -V | head -1)"
+          if ! [[ "${pin}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || [ "${lowest}" != "${msrv}" ]; then
+            echo "::error title=Release toolchain::release.yml pins '${pin}', which must be an explicit version at or above rust-version ${msrv}"
+            exit 1
+          fi
+          echo "release toolchain ${pin}, rust-version ${msrv}"

@@ -55,6 +55,10 @@ build-release:
 coverage:
     ./scripts/coverage.sh
 
+# Test the release scripts (packing, checks, notes, Homebrew formula) without a tag
+release-test:
+    ./scripts/release/test.sh
+
 # Remove build artifacts
 clean:
     cargo clean

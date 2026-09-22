@@ -1,29 +1,74 @@
 name: Release
 
-# A pushed version tag builds bsky for every target below and attaches the
-# archives, with a SHA-256 checksum file, to a GitHub release for that tag.
+# A pushed version tag (vX.Y.Z) publishes bsky: it checks the tag against
+# Cargo.toml and CHANGELOG.md, builds every target in release-targets.json with
+# a pinned compiler, packs reproducible archives, writes their checksums and an
+# SBOM, publishes the crate, creates the GitHub release with the CHANGELOG
+# section as its text, and updates the Homebrew formula. The steps are the
+# ones nao1215/truss uses, without its npm, Wasm, and container parts.
+#
+# Cutting a release is described in CONTRIBUTING.md.
 on:
   push:
     tags:
       - "v*"
+
+# One release per tag at a time, never cancelled midway: a half-run release
+# leaves crates.io, the GitHub release, and Homebrew out of step.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  # The compiler the binaries are built with, rather than whatever stable is
+  # on the day of the tag. check-version.sh keeps it at or above rust-version.
+  RUST_TOOLCHAIN: "1.98.0"
 
 jobs:
-  build:
+  # The build matrix, read from one file so the targets are listed once.
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: read
+        run: echo "matrix=$(jq -c . .github/release-targets.json)" >> "$GITHUB_OUTPUT"
+
+  # The tag, the compiler pin, the release notes, and a dry-run publish.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag, the toolchain pin, and the CHANGELOG section
+        run: ./scripts/release/check-version.sh "${GITHUB_REF_NAME}" "${RUST_TOOLCHAIN}"
+
+      - name: Verify the crate packages and builds
+        run: cargo publish --locked --dry-run
+
+  build-binaries:
+    needs: [verify, targets]
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
-          - { target: x86_64-apple-darwin, os: macos-latest }
-          - { target: aarch64-apple-darwin, os: macos-latest }
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+        include: ${{ fromJSON(needs.targets.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -32,58 +77,231 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Package
+      - name: Pack
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          ARCHIVE_EXT: ${{ matrix.archive }}
         run: |
-          name="bsky-${GITHUB_REF_NAME}-${TARGET}"
-          mkdir -p "dist/${name}"
-          cp README.md LICENSE CHANGELOG.md "dist/${name}/"
-          if [[ "${TARGET}" == *windows* ]]; then
-            cp "target/${TARGET}/release/bsky.exe" "dist/${name}/"
-            (cd dist && 7z a "${name}.zip" "${name}" > /dev/null)
-          else
-            cp "target/${TARGET}/release/bsky" "dist/${name}/"
-            tar -C dist -czf "dist/${name}.tar.gz" "${name}"
-          fi
+          bin="target/${TARGET}/release/bsky"
+          [ -f "${bin}.exe" ] && bin="${bin}.exe"
+          archive="bsky-${GITHUB_REF_NAME}-${TARGET}.${ARCHIVE_EXT}"
+          ./scripts/release/pack-archive.sh "${bin}" "${archive}"
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+
+      # Layout, mode, and owner on every target, and `bsky --version` on the
+      # ones this runner can execute.
+      - name: Check the archive
+        shell: bash
+        env:
+          EXEC: ${{ matrix.exec }}
+        run: |
+          args=("${ARCHIVE}" "${GITHUB_REF_NAME}")
+          [ "${EXEC}" = "true" ] && args+=(--exec)
+          ./scripts/release/check-archive.sh "${args[@]}"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: bsky-${{ matrix.target }}
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
           if-no-files-found: error
 
-  release:
-    needs: build
+  # Every SHA-256 of the release is computed here, once.
+  checksums:
+    needs: build-binaries
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Write checksums.txt
+        working-directory: release-assets
+        run: |
+          count="$(find . -maxdepth 1 -type f | wc -l)"
+          targets="$(jq length "${GITHUB_WORKSPACE}/.github/release-targets.json")"
+          if [ "${count}" -ne "${targets}" ]; then
+            echo "::error title=Missing archives::${count} archives for ${targets} targets"
+            exit 1
+          fi
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: checksums
+          path: release-assets/checksums.txt
+
+  sbom:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Install cargo-cyclonedx
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+
+      - name: Generate the CycloneDX SBOM
+        run: |
+          cargo cyclonedx --format json --override-filename "bsky-${GITHUB_REF_NAME}.cdx"
+          test -s "bsky-${GITHUB_REF_NAME}.cdx.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: bsky-*.cdx.json
+
+  create-release:
+    needs: [checksums, sbom]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: release-assets
           merge-multiple: true
 
-      - name: Write checksums
-        working-directory: dist
-        run: sha256sum -- * > checksums.txt
+      - name: Write the release notes from CHANGELOG.md
+        run: ./scripts/release/release-notes.sh "${GITHUB_REF_NAME#v}" > release-notes.md
 
-      - name: Publish the release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ contains(github.ref_name, '-') }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          args=(--repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file release-notes.md)
+          [ "${PRERELEASE}" = "true" ] && args+=(--prerelease)
+          gh release create "${GITHUB_REF_NAME}" release-assets/* "${args[@]}"
+
+  # crates.io with CARGO_REGISTRY_TOKEN when it is set, else trusted publishing
+  # (which needs the crate to exist on crates.io first). The crate is published
+  # after the release so a failed build never leaves a version on crates.io
+  # without binaries.
+  publish-crate:
+    needs: create-release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      HAS_CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to crates.io with trusted publishing
+        if: env.HAS_CARGO_REGISTRY_TOKEN == 'false'
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Publish the crate
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ env.HAS_CARGO_REGISTRY_TOKEN == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.crates-auth.outputs.token }}
+
+  publish-homebrew-formula:
+    needs: create-release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN_CONFIGURED: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+    steps:
+      - name: Skip without a tap token
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED != 'true'
+        run: echo "::warning title=Homebrew formula not updated::Set HOMEBREW_TAP_GITHUB_TOKEN to update nao1215/homebrew-tap."
+
+      - uses: actions/checkout@v7
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        with:
+          name: checksums
+          path: homebrew-assets
+
+      # The formula takes its hashes from the checksums the release publishes.
+      - name: Render the formula
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        run: |
+          ./scripts/release/render-formula.sh "${GITHUB_REF_NAME}" homebrew-assets/checksums.txt "${GITHUB_REPOSITORY}" > bsky.rb
+          ruby -c bsky.rb
+
+      - uses: actions/checkout@v7
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        with:
+          repository: nao1215/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Commit and push the formula
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        run: |
+          mv bsky.rb homebrew-tap/bsky.rb
+          cd homebrew-tap
+          if [ -z "$(git status --short -- bsky.rb)" ]; then
+            echo "The formula is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bsky.rb
+          git commit -m "Update bsky formula for ${GITHUB_REF_NAME}"
+          git push
+
+  verify-homebrew-install:
+    needs: publish-homebrew-formula
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: macos-latest
+    env:
+      HOMEBREW_TAP_TOKEN_CONFIGURED: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+    steps:
+      - name: Install bsky from the tap and check its version
+        if: env.HOMEBREW_TAP_TOKEN_CONFIGURED == 'true'
+        run: |
+          brew install nao1215/tap/bsky
+          bsky --version
+          brew test nao1215/tap/bsky

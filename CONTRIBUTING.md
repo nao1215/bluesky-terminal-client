@@ -40,3 +40,12 @@ Write a scenario for every behavior you add or change, including how it fails. W
 ## Commits and pull requests
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). Pull requests describe the change and how it was tested.
+
+## Releasing
+
+A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`, the same flow as nao1215/truss: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN`, packs reproducible archives, writes `checksums.txt` and a CycloneDX SBOM, creates the GitHub release with the CHANGELOG section as its text, publishes the crate, and updates the formula in nao1215/homebrew-tap.
+
+1. In a pull request, set `version` in `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
+2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
+
+The workflow stops before building if the tag is not `v` plus the `Cargo.toml` version, the pinned compiler is older than `rust-version`, or the CHANGELOG has no section for the version. A tag with a hyphen (`v0.2.0-rc.1`) makes a pre-release and skips crates.io and Homebrew. Publishing to crates.io uses `CARGO_REGISTRY_TOKEN` when it is set, else trusted publishing (the first publish needs the token). The formula is updated only when `HOMEBREW_TAP_GITHUB_TOKEN` is set.
