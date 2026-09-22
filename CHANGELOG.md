@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Pictures up to 2048 pixels (every full-size Bluesky picture, and most screenshots) are no longer scaled down after decoding, a step that cost as much as decoding them. A screen of twelve such pictures is ready about 40% sooner; larger photos from a camera are still scaled down once.
 - Pictures and video frames are scaled to their box with a faster scaler before they are encoded for the terminal. A full-screen 720p video frame is ready in 5 ms instead of 20 with kitty (43 instead of 63 with sixel, which now keeps up with 15 frames a second), and a screen of twelve photos in 26 ms instead of 63.
 - The top row starts with the tabs: the ` bsky ` label before them is gone.
+- A video starts from the first part of its first segment instead of after the whole segment has downloaded, which on a slow link was most of the wait, and the next video reuses the connections the last one opened.
 
 ### Fixed
 
