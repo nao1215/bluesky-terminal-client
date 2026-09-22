@@ -81,8 +81,9 @@ impl Keyed for NotifItem {
     }
 }
 
-/// How close to the end the selection gets before the next page is fetched.
-const MORE_AHEAD: usize = 3;
+/// How close to the end the selection gets before the next page is fetched:
+/// far enough that the page has usually arrived before the end is reached.
+const MORE_AHEAD: usize = 10;
 
 /// A scrollable list with a selection.
 #[derive(Debug, Clone)]
@@ -408,6 +409,8 @@ pub struct App {
     /// Notifications that were unread when the list was loaded and have not
     /// been marked seen yet; shown on the tab.
     pub unread: usize,
+    /// The time to mark notifications seen up to, once their tab is visited.
+    pub seen_pending: Option<String>,
     pub overlay: Option<Overlay>,
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
@@ -457,6 +460,7 @@ impl App {
             threads: Vec::new(),
             notifications: List::default(),
             unread: 0,
+            seen_pending: None,
             overlay: None,
             status: None,
             pending: 0,
@@ -471,12 +475,20 @@ impl App {
             quit: false,
         };
         let jobs = if app.session.is_some() {
-            vec![Job::Timeline]
+            app.startup_jobs()
         } else {
             Vec::new()
         };
         app.pending += jobs.len();
         (app, jobs)
+    }
+
+    /// What a logged-in start loads: the timeline, then the notifications in
+    /// the background, so their tab shows the unread count at once and opens
+    /// without waiting. They are marked seen only when the tab is visited.
+    fn startup_jobs(&mut self) -> Vec<Job> {
+        self.notifications.begin();
+        vec![Job::Timeline, Job::Notifications]
     }
 
     /// Take the saved settings and the terminal's color depth into account.
@@ -912,6 +924,11 @@ impl App {
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
+        if tab == Tab::Notifications
+            && let Some(at) = self.seen_pending.take()
+        {
+            return vec![Job::UpdateSeen(at)];
+        }
         Vec::new()
     }
 
@@ -1334,6 +1351,7 @@ impl App {
         self.threads.clear();
         self.notifications = List::default();
         self.unread = 0;
+        self.seen_pending = None;
         self.in_flight.clear();
         self.tab = Tab::Timeline;
     }
@@ -1404,7 +1422,7 @@ impl App {
                 }
                 self.session = Some(session);
                 self.login = None;
-                return vec![Job::Timeline];
+                return self.startup_jobs();
             }
             Event::LoggedIn(Err(e)) => {
                 if let Some(form) = &mut self.login {
@@ -1491,12 +1509,22 @@ impl App {
                         .filter(|i| !i.n.is_read)
                         .count();
                     if self.unread > 0 {
-                        return vec![Job::UpdateSeen(seen_at)];
+                        if self.tab == Tab::Notifications {
+                            return vec![Job::UpdateSeen(seen_at)];
+                        }
+                        // Loaded in the background: seen when looked at.
+                        self.seen_pending = Some(seen_at);
                     }
                 }
                 Err(e) => {
                     self.notifications.failed(&e);
-                    self.fail(&e);
+                    // A background load that fails says so on its tab, not
+                    // over the timeline (an expired session still says so).
+                    if self.tab == Tab::Notifications
+                        || e.message().starts_with("com.atproto.server.refreshSession")
+                    {
+                        self.fail(&e);
+                    }
                 }
             },
             Event::Seen(Ok(())) => {
@@ -1690,7 +1718,7 @@ mod tests {
 
     fn logged_in() -> App {
         let (mut app, jobs) = App::new(Some(session()), "https://bsky.social");
-        assert!(matches!(jobs[..], [Job::Timeline]));
+        assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
         app.handle_event(Event::Timeline(Ok(vec![
             post("at://a/p/1", "did:plc:alice", true),
             post("at://b/p/2", "did:plc:bob", true),
@@ -1730,7 +1758,7 @@ mod tests {
         }
         let jobs = app.handle_event(Event::LoggedIn(Ok(session())));
         assert!(app.login.is_none());
-        assert!(matches!(jobs[..], [Job::Timeline]));
+        assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
     }
 
     #[test]
@@ -2004,14 +2032,15 @@ mod tests {
     #[test]
     fn pending_counts_jobs_in_flight() {
         let mut app = logged_in();
-        assert_eq!(app.pending, 0);
-        app.handle_key(key('l'));
+        // The notifications loading in the background since the start.
         assert_eq!(app.pending, 1);
+        app.handle_key(key('l'));
+        assert_eq!(app.pending, 2);
         app.handle_event(Event::Liked {
             post_uri: "at://a/p/1".into(),
             result: Err(Error::api("x")),
         });
-        assert_eq!(app.pending, 0);
+        assert_eq!(app.pending, 1);
     }
 
     #[test]
@@ -2305,17 +2334,17 @@ mod tests {
 
     #[test]
     fn nothing_more_is_fetched_on_load_or_far_from_the_end() {
-        let mut app = timeline_with(10, Some("c1"));
-        assert_eq!(app.pending, 0);
+        let mut app = timeline_with(MORE_AHEAD + 3, Some("c1"));
+        assert_eq!(app.pending, 1, "only the notifications, in the background");
         assert!(app.handle_key(key('j')).is_empty());
         assert!(app.handle_key(key('j')).is_empty());
     }
 
     #[test]
     fn nearing_the_end_fetches_the_next_page_once() {
-        let mut app = timeline_with(5, Some("c1"));
+        let mut app = timeline_with(MORE_AHEAD + 2, Some("c1"));
         assert!(app.handle_key(key('j')).is_empty());
-        let jobs = app.handle_key(key('j')); // 3 from the end
+        let jobs = app.handle_key(key('j')); // MORE_AHEAD from the end
         assert!(
             matches!(&jobs[..], [Job::More { feed: Feed::Timeline, cursor }] if cursor == "c1")
         );
@@ -2326,14 +2355,14 @@ mod tests {
             cursor: "c1".into(),
             result: Ok(MorePage::Posts(page(
                 vec![
-                    post("at://p/4", "did:plc:a", true),
-                    post("at://p/5", "did:plc:a", true),
+                    post(&format!("at://p/{}", MORE_AHEAD + 1), "did:plc:a", true),
+                    post("at://p/new", "did:plc:a", true),
                 ],
                 Some("c2"),
             ))),
         });
-        // p/4 was already there: only p/5 is new; the selection did not move.
-        assert_eq!(app.timeline.items.len(), 6);
+        // The first was already there: only one is new; the selection did not move.
+        assert_eq!(app.timeline.items.len(), MORE_AHEAD + 3);
         assert_eq!(app.timeline.selected, 3);
         assert_eq!(app.timeline.cursor.as_deref(), Some("c2"));
     }
@@ -2559,8 +2588,8 @@ mod tests {
 
     fn notifications_tab() -> App {
         let mut app = logged_in();
-        let jobs = app.handle_key(key('3'));
-        assert!(matches!(&jobs[..], [Job::Notifications]));
+        // Loading since the start: arriving asks for nothing more.
+        assert!(app.handle_key(key('3')).is_empty());
         let reply = post("at://reply/1", "did:plc:reply", false);
         let mine = post("at://me/post", "did:plc:me", false);
         let jobs = app.handle_event(Event::Notifications {
@@ -2720,7 +2749,7 @@ mod tests {
             ..session()
         };
         let jobs = app.handle_event(Event::LoggedIn(Ok(other)));
-        assert!(matches!(&jobs[..], [Job::Timeline]));
+        assert!(matches!(&jobs[..], [Job::Timeline, Job::Notifications]));
         assert!(app.notifications.items.is_empty());
         assert!(!app.notifications.loaded);
         assert_eq!(app.unread, 0);
@@ -2793,7 +2822,8 @@ mod tests {
     #[test]
     fn a_tab_still_loading_is_not_asked_for_again() {
         let mut app = logged_in();
-        assert_eq!(app.handle_key(key('3')).len(), 1);
+        // The notifications are on their way since the start.
+        assert!(app.handle_key(key('3')).is_empty());
         app.handle_key(key('1'));
         assert!(app.handle_key(key('3')).is_empty());
         assert_eq!(app.handle_key(key('4')).len(), 1);
@@ -3013,5 +3043,39 @@ mod tests {
         assert!(media_problem(&[clip.clone(), gif]).is_some());
         let five = vec![photo; 5];
         assert!(media_problem(&five).unwrap().contains("at most 4 pictures"));
+    }
+
+    #[test]
+    fn notifications_loaded_at_start_are_seen_only_when_their_tab_is() {
+        let mut app = logged_in();
+        let jobs = app.handle_event(Event::Notifications {
+            seen_at: "2026-09-22T01:00:00.000Z".into(),
+            result: Ok(vec![notif("reply", "at://r", false, None, None)].into()),
+        });
+        assert!(jobs.is_empty(), "not seen from the timeline: {jobs:?}");
+        assert_eq!(app.unread, 1, "but counted on the tab");
+        let jobs = app.handle_key(key('3'));
+        assert!(matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-22T01:00:00.000Z"));
+        app.handle_key(key('1'));
+        assert!(app.handle_key(key('3')).is_empty(), "marked once");
+    }
+
+    #[test]
+    fn a_background_failure_waits_on_its_tab() {
+        let mut app = logged_in();
+        app.handle_event(Event::Notifications {
+            seen_at: "t".into(),
+            result: Err(Error::api("listNotifications failed: boom")),
+        });
+        assert!(app.status.is_none(), "the timeline is not interrupted");
+        assert!(app.notifications.error.is_some());
+        // An expired session is still reported at once.
+        app.handle_event(Event::Notifications {
+            seen_at: "t".into(),
+            result: Err(Error::api(
+                "com.atproto.server.refreshSession failed: ExpiredToken",
+            )),
+        });
+        assert!(app.login.is_some());
     }
 }

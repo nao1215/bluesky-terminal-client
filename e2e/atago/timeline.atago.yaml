@@ -130,9 +130,12 @@ scenarios:
           mock: { name: api, path: /img/photo.png, count: 1 }
       - assert:
           mock: { name: api, path: /img/alice.png, count: 1 }
-      # The unshown authors have no avatar URL here, and nothing else was fetched.
+      # The unshown authors have no avatar URL here, and nothing else was
+      # fetched but the notifications, loaded in the background at the start.
       - assert:
-          mock: { name: api, count: 4 }
+          mock: { name: api, count: 5 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
   - name: liking a post records the like and updates the count
     skip:

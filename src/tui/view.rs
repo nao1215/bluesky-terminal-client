@@ -43,6 +43,19 @@ const BIG_AVATAR: (u16, u16) = (12, 6);
 /// Posts below the screen whose pictures are fetched and encoded ahead, so
 /// they are ready when scrolled to.
 const PREFETCH: usize = 4;
+/// Posts (or rows) further on whose pictures are only downloaded ahead.
+const WARM: usize = 20;
+
+/// The small version of a Bluesky avatar: a list draws avatars 4 cells
+/// wide, and the full-size one is many times the bytes. Other URLs are kept.
+fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
+    if url.contains("/img/avatar/") {
+        url.replacen("/img/avatar/", "/img/avatar_thumbnail/", 1)
+            .into()
+    } else {
+        url.into()
+    }
+}
 /// Size of a picture's thumbnail in the composer, in cells.
 const THUMB: (u16, u16) = (14, 5);
 
@@ -580,7 +593,7 @@ fn draw_posts<T: PostRow>(
                 width: AVATAR.0,
                 height: AVATAR.1,
             };
-            images.draw(frame, avatar, url);
+            images.draw(frame, avatar, &small_avatar(url));
         }
         let content = Rect {
             x: content.x + indent.min(content.width),
@@ -627,13 +640,25 @@ fn draw_posts<T: PostRow>(
             .entry(i)
             .or_insert_with(|| row_lines(item, content_width(content, item), cell, t));
         if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref()) {
-            images.prefetch(url, AVATAR.0, AVATAR.1);
+            images.prefetch(&small_avatar(url), AVATAR.0, AVATAR.1);
         }
         // The same box sizes draw_image_row gives them.
         let width = content.width.saturating_sub(item.indent() * 2);
         let each = image_box_width(width, pl.images.len() as u16);
         for url in &pl.images {
             images.prefetch(url, each, pl.image_rows);
+        }
+    }
+    // Further on, only the downloads: the layout is not needed for them.
+    for item in list.items.iter().skip(below + PREFETCH).take(WARM) {
+        let Some(post) = item.post() else { continue };
+        if let Some(url) = &post.author.avatar {
+            images.warm(&small_avatar(url));
+        }
+        if let Some(embed) = &post.embed {
+            for i in embed.images().into_iter().take(4) {
+                images.warm(i.url);
+            }
         }
     }
 }
@@ -741,7 +766,7 @@ fn draw_two_line_rows<T>(
                 width: AVATAR.0,
                 height: AVATAR.1,
             };
-            images.draw(frame, r, url);
+            images.draw(frame, r, &small_avatar(url));
         }
         frame.render_widget(
             Paragraph::new(lines(item, content.width)),
@@ -752,6 +777,24 @@ fn draw_two_line_rows<T>(
             },
         );
         y += H;
+    }
+    // The rows below the screen: their avatars are ready when scrolled to.
+    let shown = usize::from(area.height / H);
+    for (n, item) in list
+        .items
+        .iter()
+        .skip(list.offset + shown)
+        .take(WARM)
+        .enumerate()
+    {
+        if let Some(url) = avatar(item) {
+            let url = small_avatar(url);
+            if n < PREFETCH * 2 {
+                images.prefetch(&url, AVATAR.0, AVATAR.1);
+            } else {
+                images.warm(&url);
+            }
+        }
     }
 }
 
@@ -2009,6 +2052,19 @@ mod tests {
     #[case(3 * 1024 * 1024 / 2, "1.5 MB")]
     fn byte_counts_read_like_a_person_would_say_them(#[case] n: u64, #[case] want: &str) {
         assert_eq!(human_bytes(n), want);
+    }
+
+    #[test]
+    fn list_avatars_use_the_small_bluesky_version() {
+        let full = "https://cdn.bsky.app/img/avatar/plain/did:plc:x/bafy@jpeg";
+        assert_eq!(
+            small_avatar(full),
+            "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:x/bafy@jpeg"
+        );
+        assert_eq!(
+            small_avatar("http://127.0.0.1/img/a.png"),
+            "http://127.0.0.1/img/a.png"
+        );
     }
 
     #[test]

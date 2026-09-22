@@ -30,8 +30,9 @@ use ratatui_image::{FilterType, Image, Resize};
 /// Largest image body bs downloads.
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 
-/// Parallel downloads.
-const LOADERS: usize = 4;
+/// Parallel downloads. Pictures are small and most of their time is spent
+/// waiting on the network, so more at once than there are cores.
+const LOADERS: usize = 8;
 /// Parallel encoders.
 const ENCODERS: usize = 2;
 
@@ -321,8 +322,18 @@ impl Images {
         }
     }
 
-    /// The encoded picture, or the mark to show until it is ready.
-    fn request(&mut self, url: &str, width: u16, height: u16) -> Result<&Protocol, &'static str> {
+    /// Start downloading `url` without encoding it, for pictures further
+    /// ahead than [`Images::prefetch`] prepares: when the reader gets there
+    /// only the (fast) encode is left.
+    pub fn warm(&mut self, url: &str) {
+        if !url.is_empty() {
+            let _ = self.decoded(url);
+        }
+    }
+
+    /// The decoded picture, starting its download when needed; or the mark
+    /// to show until it is there.
+    fn decoded(&mut self, url: &str) -> Result<Arc<DynamicImage>, &'static str> {
         let frame_no = self.frame;
         let source = match self.local.get(url) {
             Some(path) => Source::Local(path.clone()),
@@ -340,15 +351,20 @@ impl Images {
             fetch.push((url.to_string(), source));
             *slot = Slot::Loading;
         }
-        let img = match slot {
-            Slot::Ready(img) => img,
-            Slot::Loading => return Err("…"),
-            Slot::Failed(_) => return Err("×"),
-        };
+        match slot {
+            Slot::Ready(img) => Ok(Arc::clone(img)),
+            Slot::Loading => Err("…"),
+            Slot::Failed(_) => Err("×"),
+        }
+    }
+
+    /// The encoded picture, or the mark to show until it is ready.
+    fn request(&mut self, url: &str, width: u16, height: u16) -> Result<&Protocol, &'static str> {
+        let img = self.decoded(url)?;
         let key = (url.to_string(), width, height);
         let encode = &self.encode;
         let encoded = self.protocols.entry(key.clone()).or_insert_with(|| {
-            encode.push((key, Arc::clone(img)));
+            encode.push((key, img));
             Encoded::Pending
         });
         match encoded {

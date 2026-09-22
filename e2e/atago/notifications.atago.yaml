@@ -138,6 +138,39 @@ scenarios:
             body:
               json: { path: "$.seenAt", equals: "2026-09-22T01:00:00.000Z" }
 
+  - name: notifications load at the start, but are seen only when their tab is
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *notifications
+          - *get_posts
+          - *update_seen
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            # The unread count is on the tab without opening it.
+            - expect_screen:
+                contains: ["No posts from accounts you follow yet", "3 Notifications (2)"]
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
+      # Not looked at, so not marked seen.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
+
   - name: a reply notification can be answered, and a follow opens the profile
     skip:
       os: windows
