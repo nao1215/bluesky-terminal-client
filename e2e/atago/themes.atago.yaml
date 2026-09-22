@@ -160,7 +160,12 @@ scenarios:
             - expect_screen:
                 # The message names the file by its full path, which the error
                 # box wraps where it likes (macOS temporary paths are long).
-                contains: ["No posts from accounts you follow yet", " Error ", "is not valid and was ignored"]
+                # The box is up from the first frame and closes by itself after
+                # ten seconds, so it is looked for before the timeline, whose
+                # load a slow runner may take long over.
+                contains: [" Error ", "is not valid and was ignored"]
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
             # A theme can still be used, but saving it would lose the file.
             - send: T
             - expect_screen:
