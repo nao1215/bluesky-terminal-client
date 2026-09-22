@@ -167,6 +167,9 @@ pub struct ProfilePane {
     pub posts: List<Post>,
     /// Why the profile could not be loaded, shown instead of "loading…".
     pub error: Option<String>,
+    /// The tab the profile was opened from (Enter on an account or a post),
+    /// which Esc goes back to with its results and selection as they were.
+    pub came_from: Option<Tab>,
 }
 
 /// The post composer.
@@ -648,6 +651,8 @@ impl App {
 
     fn switch_tab(&mut self, tab: Tab) -> Vec<Job> {
         self.tab = tab;
+        // Choosing a tab is a new place to be, not a detour to return from.
+        self.profile.came_from = None;
         // Arriving at an empty Search tab means wanting to type: letters go to
         // the box, not to the commands they are bound to on the result list.
         // With a query already there, the results keep the keys (/ or i types).
@@ -664,9 +669,17 @@ impl App {
         };
         let target = actor.clone().unwrap_or_else(|| session.did.clone());
         let own = target == session.did || target == session.handle;
+        // Opened from another tab: remember it. Reloaded on the Profile tab
+        // itself: keep what it was opened from.
+        let came_from = if self.tab == Tab::Profile {
+            self.profile.came_from
+        } else {
+            Some(self.tab)
+        };
         self.tab = Tab::Profile;
         self.profile = ProfilePane {
             actor: if own { None } else { actor },
+            came_from,
             ..ProfilePane::default()
         };
         vec![Job::OpenProfile(target)]
@@ -742,9 +755,7 @@ impl App {
                     return self.open_profile(Some(account.did));
                 }
             }
-            KeyCode::Esc if self.tab == Tab::Profile && self.profile.actor.is_some() => {
-                return self.open_profile(None);
-            }
+            KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             _ => {}
         }
@@ -752,6 +763,23 @@ impl App {
     }
 
     /// Move the selection, and ask for the next page when it nears the end.
+    /// Esc on the Profile tab: back to the tab the profile was opened from,
+    /// untouched; failing that, from someone else's profile to your own.
+    fn go_back(&mut self) -> Vec<Job> {
+        if let Some(tab) = self.profile.came_from.take() {
+            self.tab = tab;
+            // Back to the results, not to typing a new query.
+            self.search.editing = false;
+            // The next visit to the Profile tab shows your own profile.
+            self.profile = ProfilePane::default();
+            return Vec::new();
+        }
+        if self.profile.actor.is_some() {
+            return self.open_profile(None);
+        }
+        Vec::new()
+    }
+
     fn step(&mut self, delta: isize) -> Vec<Job> {
         let more = match self.tab {
             Tab::Search if self.search.mode == SearchMode::Accounts => {
@@ -1480,9 +1508,67 @@ mod tests {
         app.handle_key(code(KeyCode::Enter));
         assert_eq!(app.profile.actor.as_deref(), Some("did:plc:alice"));
         assert!(app.handle_key(key('e')).is_empty());
+        assert!(app.status.as_ref().unwrap().error);
+    }
+
+    #[test]
+    fn esc_goes_back_to_the_search_the_profile_was_opened_from() {
+        let mut app = logged_in();
+        app.handle_key(key('2'));
+        app.handle_key(ctrl('t'));
+        type_str(&mut app, "carol");
+        app.handle_key(code(KeyCode::Enter));
+        let actors: Vec<Profile> = ["carol", "dave"]
+            .iter()
+            .map(|n| {
+                serde_json::from_value(
+                    json!({"did": format!("did:plc:{n}"), "handle": format!("{n}.test")}),
+                )
+                .unwrap()
+            })
+            .collect();
+        app.handle_event(Event::SearchActors(Ok(actors.into())));
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:dave"));
+        assert_eq!(app.tab, Tab::Profile);
+        // R reloads the profile and still remembers where it came from.
+        app.handle_key(key('R'));
+        assert_eq!(app.profile.came_from, Some(Tab::Search));
+        let jobs = app.handle_key(code(KeyCode::Esc));
+        assert!(jobs.is_empty(), "going back fetches nothing: {jobs:?}");
+        assert_eq!(app.tab, Tab::Search);
+        assert_eq!(app.search.input.text(), "carol");
+        assert_eq!(
+            app.search.actors.selected, 1,
+            "the selection is where it was"
+        );
+        assert!(!app.search.editing, "back to the results, not to typing");
+        // The Profile tab shows the user's own profile next time.
+        let jobs = app.handle_key(key('3'));
+        assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
+    }
+
+    #[test]
+    fn esc_goes_back_to_the_timeline_too() {
+        let mut app = logged_in();
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+        assert_eq!(app.tab, Tab::Timeline);
+        assert_eq!(app.timeline.selected, 1);
+    }
+
+    #[test]
+    fn choosing_a_tab_forgets_the_way_back() {
+        let mut app = logged_in();
+        app.handle_key(code(KeyCode::Enter)); // alice, from the timeline
+        app.handle_key(key('1'));
+        app.handle_key(key('3'));
+        assert_eq!(app.profile.came_from, None);
+        // Esc on someone else's profile with nowhere to go back to: your own.
         let jobs = app.handle_key(code(KeyCode::Esc));
         assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
-        assert!(app.profile.actor.is_none());
     }
 
     #[test]

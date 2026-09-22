@@ -407,7 +407,12 @@ scenarios:
                 images: { min_count: 1 }
             - send: f
             - expect_screen:
-                contains: ["✓ following  · follows you", "followed"]
+                contains: ["✓ following  · follows you", "followed", "esc back to search"]
+            # Esc goes back to the search results, query and selection intact.
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["search:", "alps", "Carol @carol.test  ✓ following", "Dave @dave.test"]
+                not_contains: "Sunrise over the ridge"
             - send: q
       - assert:
           exit_code: 0
@@ -418,6 +423,9 @@ scenarios:
                 - { width: 120, height: 120, similar_to: testdata/expected/alice-avatar-120.png, max_diff: 0.01 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1, query: { name: actor, equals: "did:plc:carol" } }
+      # Going back ran no second search.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.searchActors, count: 1 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 1, query: { name: actor, equals: "did:plc:carol" } }
       - assert:

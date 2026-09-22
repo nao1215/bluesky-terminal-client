@@ -447,7 +447,7 @@ scenarios:
       - assert:
           exit_code: 0
 
-  - name: someone else's profile can be followed but not edited, and Esc returns home
+  - name: someone else's profile can be followed but not edited, and Esc goes back to the timeline
     skip:
       os: windows
     mock_servers:
@@ -505,13 +505,16 @@ scenarios:
             - send: f
             - expect_screen:
                 contains: ["✓ following", "followed"]
-            # Esc asks for the account's own profile. This stub answers every
-            # getProfile with Alice, and bs drops an answer for someone other
-            # than the profile it asked for, so Alice's page must be gone.
+            # Esc goes back to the timeline the profile was opened from;
+            # nothing is fetched to get there. Alice's post left it when she
+            # was unfollowed, and following again does not put it back until
+            # the timeline is refreshed.
+            - expect_screen:
+                contains: "esc back to timeline"
             - send: { key: esc }
             - expect_screen:
-                not_contains: ["(f to toggle)", "✓ following"]
-                stable_for: 300ms
+                contains: ["1 Timeline", "No posts from accounts you follow yet"]
+                not_contains: ["(f to toggle)", "esc back to timeline"]
             - send: q
       - assert:
           exit_code: 0
@@ -531,6 +534,7 @@ scenarios:
               json: { path: "$.record.subject", equals: "did:plc:alice" }
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.getRecord, count: 0 }
-      # Esc went back to the account's own profile.
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 2, query: { name: actor, equals: "did:plc:me" } }
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }

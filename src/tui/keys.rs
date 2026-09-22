@@ -61,7 +61,7 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("e", "edit your profile"),
             ("f", "follow / unfollow the account shown"),
-            ("esc", "back to your own profile"),
+            ("esc", "back to the search or timeline it was opened from"),
         ],
     },
     Section {
@@ -148,12 +148,12 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("enter", "profile"),
             ("R", "refresh"),
         ],
-        Tab::Profile if app.profile.actor.is_some() => vec![
+        Tab::Profile if app.profile.actor.is_some() || app.profile.came_from.is_some() => vec![
+            ("esc", back_label(app.profile.came_from)),
             ("j k", "move"),
             ("f", "follow"),
             ("l", "like"),
             ("r", "reply"),
-            ("esc", "my profile"),
         ],
         Tab::Profile => vec![
             ("j k", "move"),
@@ -168,4 +168,13 @@ pub fn hints(app: &App) -> Vec<Hint> {
     v.insert(0, ("?", "help"));
     v.push(("q", "quit"));
     v
+}
+
+/// What Esc on the Profile tab goes back to.
+fn back_label(from: Option<Tab>) -> &'static str {
+    match from {
+        Some(Tab::Search) => "back to search",
+        Some(Tab::Timeline) => "back to timeline",
+        _ => "my profile",
+    }
 }
