@@ -365,8 +365,18 @@ scenarios:
             - expect_screen:
                 contains: "10/300"
             - send: { key: ctrl-s }
+            # Sent, the timeline is loaded again so your reply shows. The
+            # composer is closed and Bob's count is the server's again (the
+            # mock still says 0) only once that reload is in, and the
+            # selection is still on Bob's post: r replies to him again.
             - expect_screen:
-                contains: ["reply sent", "♥ 5   ⟳ 0   ↩ 1"]
+                contains: "♥ 5   ⟳ 0   ↩ 0"
+                not_contains: "Reply to @bob.test"
+            - send: r
+            - expect_screen:
+                contains: "Reply to @bob.test"
+            - send: { key: esc }
+            - expect_screen:
                 not_contains: "Reply to @bob.test"
             - send: q
       - assert:

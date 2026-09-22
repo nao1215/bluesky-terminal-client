@@ -123,13 +123,19 @@ impl<T> Default for List<T> {
 }
 
 impl<T: Keyed> List<T> {
-    /// Replace the list with a first page.
+    /// Replace the list with a first page. The selection stays on the item
+    /// it was on when that item is in the page (a reload after replying, or
+    /// R, keeps the reader's place); otherwise it goes to the top.
     fn set(&mut self, page: Page<T>) {
+        let kept = self
+            .current()
+            .and_then(|old| page.items.iter().position(|i| i.key() == old.key()));
         self.items = page.items;
         self.cursor = page.cursor;
         self.more_pending = false;
-        self.selected = 0;
-        self.offset = 0;
+        self.selected = kept.unwrap_or(0);
+        // The view scrolls the selection into sight from here.
+        self.offset = self.offset.min(self.selected);
         self.loaded = true;
         self.loading = false;
         self.error = None;
@@ -1952,6 +1958,39 @@ mod tests {
         // One fewer fits both limits and is sent.
         app.handle_key(KeyEvent::from(KeyCode::Backspace));
         assert!(matches!(app.handle_key(ctrl('s'))[..], [Job::Post { .. }]));
+    }
+
+    /// Replying reloads the timeline so your own post shows up; the
+    /// selection stays on the post it was on, wherever that post now is,
+    /// instead of jumping back to the first post.
+    #[test]
+    fn a_reload_after_replying_keeps_the_selected_post() {
+        let mut app = logged_in();
+        app.handle_key(key('j'));
+        assert_eq!(app.timeline.current().unwrap().uri, "at://b/p/2");
+        app.handle_key(key('r'));
+        type_str(&mut app, "Good point");
+        let jobs = app.handle_event(Event::Posted {
+            reply_to: Some("at://b/p/2".into()),
+            result: Ok(()),
+        });
+        assert!(matches!(jobs[..], [Job::Timeline]));
+        // The reload has your reply on top and Bob's post one further down.
+        app.handle_event(Event::Timeline(Ok(vec![
+            post("at://me/p/3", "did:plc:me", false),
+            post("at://a/p/1", "did:plc:alice", true),
+            post("at://b/p/2", "did:plc:bob", true),
+        ]
+        .into())));
+        assert_eq!(app.timeline.current().unwrap().uri, "at://b/p/2");
+        // A post that is gone leaves the selection at the top.
+        app.handle_event(Event::Timeline(Ok(vec![post(
+            "at://a/p/1",
+            "did:plc:alice",
+            true,
+        )]
+        .into())));
+        assert_eq!(app.timeline.selected, 0);
     }
 
     #[test]
