@@ -656,7 +656,7 @@ scenarios:
             path: cfg/session.json
             json: { path: "$.refreshJwt", equals: "ref-new" }
 
-  - name: the help overlay lists the keys and any key closes it
+  - name: the help lists the keys by section, scrolls, and closes only on purpose
     skip:
       os: windows
     mock_servers:
@@ -670,17 +670,33 @@ scenarios:
       - pty:
           command: bs
           graphics: kitty
+          rows: 20
           env: *env
           timeout: 20s
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
+            # The hint row names the keys of the current view at all times.
+            - expect_screen:
+                contains: ["? help", "j k move", "l like"]
             - send: "?"
             - expect_screen:
-                contains: ["Keys", "like / remove like", "follow / unfollow the selected account", "edit your profile"]
+                contains: ["Keys", "Global", "like / remove like", "j/pgdn more"]
+                not_contains: "edit your profile"
+            # A stray key does not close it.
             - send: x
             - expect_screen:
-                not_contains: "like / remove like"
+                contains: "Keys"
+                stable_for: 200ms
+            - send: { key: pagedown }
+            - send: { key: pagedown }
+            - expect_screen:
+                contains: ["Profile", "edit your profile"]
+            # Wait for the window itself to go before the next key, or Esc
+            # followed by q reads as Alt+q.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: ["Keys", "edit your profile"]
             - send: q
       - assert:
           exit_code: 0

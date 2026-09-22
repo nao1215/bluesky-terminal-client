@@ -3,6 +3,7 @@
 pub mod app;
 pub mod images;
 pub mod input;
+pub mod keys;
 pub mod text;
 pub mod view;
 pub mod worker;
@@ -85,6 +86,9 @@ fn event_loop(
             dirty = true;
         }
         if images.poll() {
+            dirty = true;
+        }
+        if app.expire_status(std::time::Instant::now()) {
             dirty = true;
         }
     }

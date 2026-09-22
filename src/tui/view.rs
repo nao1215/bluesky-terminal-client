@@ -14,6 +14,7 @@ use crate::terminal::protocol_name;
 use crate::tui::app::{App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
+use crate::tui::keys;
 use crate::tui::text::{format_time, truncate, wrap};
 
 const ACCENT: Color = Color::Cyan;
@@ -39,9 +40,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         draw_login(frame, area, form);
         return;
     }
-    let [top, body, bottom] = Layout::vertical([
+    let [top, body, hint_row, status_row] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
+        Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(area);
@@ -54,11 +56,12 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
     }
-    draw_status(frame, bottom, app, images);
-    match &app.overlay {
+    draw_hints(frame, hint_row, app);
+    draw_status(frame, status_row, app, images);
+    match &mut app.overlay {
         Some(Overlay::Compose(c)) => draw_compose(frame, area, c),
         Some(Overlay::EditProfile(e)) => draw_edit_profile(frame, area, e),
-        Some(Overlay::Help) => draw_help(frame, area),
+        Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll),
         None => {}
     }
 }
@@ -95,24 +98,40 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// The keys that work in the current view, always visible.
+fn draw_hints(frame: &mut Frame, area: Rect, app: &App) {
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (key, what)) in keys::hints(app).into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("  "));
+        }
+        spans.push(Span::styled(key, Style::new().fg(ACCENT).bold()));
+        spans.push(Span::styled(format!(" {what}"), Style::new().dark_gray()));
+    }
+    frame.render_widget(
+        truncate_line(Line::from(spans), usize::from(area.width)),
+        area,
+    );
+}
+
+/// The last message on the left; activity or the image protocol on the right.
 fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     let right = if app.pending > 0 || images.loading() {
         "loading… ".to_string()
     } else {
         format!("{} ", protocol_name(images.protocol_type()))
     };
-    let left = match &app.status {
-        Some(s) if s.error => Line::from(Span::styled(
-            format!(" {}", s.text),
-            Style::new().red().bold(),
-        )),
-        Some(s) => Line::from(Span::styled(format!(" {}", s.text), Style::new().green())),
-        None => Line::from(Span::styled(
-            format!(" {}", hints(app)),
-            Style::new().dark_gray(),
-        )),
-    };
-    frame.render_widget(left, area);
+    if let Some(s) = &app.status {
+        let style = if s.error {
+            Style::new().red().bold()
+        } else {
+            Style::new().green()
+        };
+        frame.render_widget(
+            Line::from(Span::styled(format!(" {}", s.text), style)),
+            area,
+        );
+    }
     let w = right.width() as u16;
     if w < area.width {
         frame.render_widget(
@@ -123,23 +142,6 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
                 ..area
             },
         );
-    }
-}
-
-fn hints(app: &App) -> &'static str {
-    match app.tab {
-        Tab::Timeline => {
-            "j/k move  l like  r reply  n post  f unfollow  enter profile  R refresh  ? help  q quit"
-        }
-        Tab::Search if app.search.editing => "enter search  ctrl+t posts/accounts  esc done",
-        Tab::Search if app.search.mode == SearchMode::Accounts => {
-            "/ edit query  t posts/accounts  f follow/unfollow  enter profile  ? help"
-        }
-        Tab::Search => "/ edit query  t posts/accounts  l like  r reply  enter profile  ? help",
-        Tab::Profile if app.profile.actor.is_some() => {
-            "f follow/unfollow  l like  r reply  esc my profile  ? help"
-        }
-        Tab::Profile => "e edit profile  l like  r reply  R reload  ? help",
     }
 }
 
@@ -548,11 +550,25 @@ fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images
         width: input.width.saturating_sub(prompt.width() as u16 + 1),
         ..input
     };
-    frame.render_widget(Paragraph::new(prompt).fg(ACCENT), input);
-    if app.search.input.is_empty() && !app.search.editing {
-        frame.render_widget(Paragraph::new("press / to type").dark_gray(), field);
+    // A focused box looks different from one that is only showing the last
+    // query: reversed prompt and a cursor, against a dim prompt and a hint.
+    let prompt_style = if app.search.editing {
+        Style::new()
+            .fg(ACCENT)
+            .add_modifier(Modifier::REVERSED | Modifier::BOLD)
     } else {
-        draw_single_input(frame, field, &app.search.input, app.search.editing);
+        Style::new().dark_gray()
+    };
+    frame.render_widget(Paragraph::new(prompt).style(prompt_style), input);
+    match (app.search.input.is_empty(), app.search.editing) {
+        (true, false) => {
+            frame.render_widget(Paragraph::new("press / or i to type").dark_gray(), field)
+        }
+        (true, true) => {
+            frame.render_widget(Paragraph::new("type, then enter").dark_gray(), field);
+            frame.set_cursor_position(Position::new(field.x, field.y));
+        }
+        _ => draw_single_input(frame, field, &app.search.input, app.search.editing),
     }
     let _ = gap;
     match mode {
@@ -878,38 +894,35 @@ fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile) {
     );
 }
 
-fn draw_help(frame: &mut Frame, area: Rect) {
-    let rows: &[(&str, &str)] = &[
-        ("1 2 3 tab", "switch Timeline, Search, Profile"),
-        ("j k ↑ ↓", "move the selection (g/G top/bottom)"),
-        ("n", "new post"),
-        ("r", "reply to the selected post"),
-        ("l", "like / remove like"),
-        ("f", "follow / unfollow the selected account"),
-        ("enter", "open the selected account's profile"),
-        ("/", "search (ctrl+t or t: posts or accounts)"),
-        ("e", "edit your profile (Profile tab)"),
-        ("R F5", "refresh the current view"),
-        ("ctrl+s", "send the post / save the profile"),
-        ("esc", "close a window, back to your profile"),
-        ("q ctrl+c", "quit"),
-    ];
-    let inner = popup(frame, area, 60, rows.len() as u16 + 4, "Keys");
-    let mut lines: Vec<Line> = rows
-        .iter()
-        .map(|(k, d)| {
-            Line::from(vec![
-                Span::styled(format!(" {k:<12}"), Style::new().fg(ACCENT).bold()),
+fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16) {
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, section) in keys::HELP.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::raw(""));
+        }
+        lines.push(Line::styled(
+            format!(" {}", section.title),
+            Style::new().bold(),
+        ));
+        for (k, d) in section.keys {
+            lines.push(Line::from(vec![
+                Span::styled(format!("   {k:<15}"), Style::new().fg(ACCENT).bold()),
                 Span::raw(*d),
-            ])
-        })
-        .collect();
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        " press any key to close",
-        Style::new().dark_gray(),
-    ));
-    frame.render_widget(Paragraph::new(lines), inner);
+            ]));
+        }
+    }
+    let inner = popup(frame, area, 64, lines.len() as u16 + 3, "Keys");
+    let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    // Clamp here, where the viewport is known, and write it back so scrolling
+    // up after overshooting starts at once.
+    let max = (lines.len() as u16).saturating_sub(body.height);
+    *scroll = (*scroll).min(max);
+    frame.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), body);
+    let more = if *scroll < max { "  j/pgdn more" } else { "" };
+    frame.render_widget(
+        Paragraph::new(format!(" esc/q/? close{more}")).dark_gray(),
+        foot,
+    );
 }
 
 #[cfg(test)]
@@ -1017,7 +1030,7 @@ mod tests {
         for (w, h) in [(1, 1), (5, 3), (10, 2), (20, 5)] {
             render(&mut app, w, h);
         }
-        app.overlay = Some(Overlay::Help);
+        app.overlay = Some(Overlay::Help { scroll: 0 });
         render(&mut app, 8, 4);
         let (mut login, _) = App::new(None, "x");
         render(&mut login, 3, 3);
@@ -1043,6 +1056,33 @@ mod tests {
         assert_eq!(image_box_width(61, 4), 14);
         assert_eq!(image_box_width(3, 4), 0);
         assert_eq!(image_box_width(80, 0), 0);
+    }
+
+    #[test]
+    fn hints_stay_visible_while_a_status_message_shows() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(2))));
+        app.handle_event(Event::Liked {
+            post_uri: "at://p/0".into(),
+            result: Ok("at://l".into()),
+        });
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains("liked"), "{screen}");
+        assert!(screen.contains("? help"), "{screen}");
+    }
+
+    #[test]
+    fn help_is_clamped_to_its_last_page() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.overlay = Some(Overlay::Help { scroll: u16::MAX });
+        let screen = render(&mut app, 80, 16);
+        assert!(screen.contains("close"), "{screen}");
+        let Some(Overlay::Help { scroll }) = app.overlay else {
+            panic!()
+        };
+        assert!(scroll < 100, "scroll was not clamped: {scroll}");
+        // The last section is on screen after scrolling to the end.
+        assert!(screen.contains("scroll"), "{screen}");
     }
 
     #[test]

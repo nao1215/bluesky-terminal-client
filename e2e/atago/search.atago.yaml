@@ -76,6 +76,49 @@ scenarios:
             query: { name: q, equals: "snow mountains" }
             header: { name: Authorization, equals: "Bearer acc" }
 
+  - name: arriving at the Search tab with 2 puts the cursor in the box
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - { method: GET, path: /xrpc/app.bsky.feed.searchPosts, json: { posts: [] } }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "2"
+            - expect_screen:
+                contains: ["type, then enter", "enter search"]
+            # Letters bound to commands on a result list go into the box.
+            - send: "quit like"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No posts found."
+            # With a query in the box, coming back leaves the keys to the
+            # results, and q quits as usual.
+            - send: "1"
+            - send: "2"
+            - expect_screen:
+                contains: ["quit like", "/ edit query"]
+                not_contains: "type, then enter"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            count: 1
+            query: { name: q, equals: "quit like" }
+
   - name: letters typed into the search box are text, not commands
     skip:
       os: windows

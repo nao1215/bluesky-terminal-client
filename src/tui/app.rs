@@ -2,6 +2,7 @@
 //! the network: keys and finished jobs go in, [`Job`]s come out.
 
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -33,6 +34,12 @@ impl Tab {
 
     fn index(self) -> usize {
         Self::ALL.iter().position(|t| *t == self).unwrap()
+    }
+
+    /// The tab `delta` places away, wrapping around.
+    pub fn next(self, delta: isize) -> Tab {
+        let n = Self::ALL.len() as isize;
+        Self::ALL[(self.index() as isize + delta).rem_euclid(n) as usize]
     }
 }
 
@@ -161,15 +168,27 @@ impl LoginForm {
 pub enum Overlay {
     Compose(Compose),
     EditProfile(EditProfile),
-    Help,
+    /// The key reference, scrolled `scroll` lines down (the view clamps it).
+    Help {
+        scroll: u16,
+    },
 }
 
-/// A one-line message in the status bar.
+/// A one-line message in the status row. It is transient: it clears after
+/// [`STATUS_TTL`] ([`ERROR_TTL`] for an error), and the key hints have a row
+/// of their own, so a message never hides them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
     pub text: String,
     pub error: bool,
+    pub at: Instant,
 }
+
+/// How long a status message stays on screen.
+pub const STATUS_TTL: Duration = Duration::from_secs(5);
+/// How long an error stays on screen; longer, since it may explain a failure
+/// the user did not see happen.
+pub const ERROR_TTL: Duration = Duration::from_secs(10);
 
 /// All UI state.
 #[derive(Debug, Clone)]
@@ -228,6 +247,7 @@ impl App {
         self.status = Some(Status {
             text: text.into(),
             error: false,
+            at: Instant::now(),
         });
     }
 
@@ -235,7 +255,23 @@ impl App {
         self.status = Some(Status {
             text: text.into(),
             error: true,
+            at: Instant::now(),
         });
+    }
+
+    /// Clear a status message older than [`STATUS_TTL`]. Returns whether the
+    /// screen changed.
+    pub fn expire_status(&mut self, now: Instant) -> bool {
+        match &self.status {
+            Some(s)
+                if now.saturating_duration_since(s.at)
+                    >= if s.error { ERROR_TTL } else { STATUS_TTL } =>
+            {
+                self.status = None;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Handle a key press.
@@ -254,7 +290,7 @@ impl App {
         match &mut self.overlay {
             Some(Overlay::Compose(c)) => c.input.insert_str(text),
             Some(Overlay::EditProfile(e)) => e.fields[e.focus].insert_str(text),
-            Some(Overlay::Help) => {}
+            Some(Overlay::Help { .. }) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
             }
@@ -329,9 +365,18 @@ impl App {
     fn overlay_key(&mut self, key: KeyEvent) -> Vec<Job> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match self.overlay.as_mut().unwrap() {
-            Overlay::Help => {
-                self.overlay = None;
-            }
+            Overlay::Help { scroll } => match key.code {
+                KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
+                KeyCode::Char('j') | KeyCode::Down => *scroll = scroll.saturating_add(1),
+                KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
+                KeyCode::PageDown | KeyCode::Char(' ') => *scroll = scroll.saturating_add(10),
+                KeyCode::PageUp => *scroll = scroll.saturating_sub(10),
+                KeyCode::Char('g') | KeyCode::Home => *scroll = 0,
+                KeyCode::Char('G') | KeyCode::End => *scroll = u16::MAX,
+                // Anything else is ignored: a stray key must not close the
+                // reference the user opened on purpose.
+                _ => {}
+            },
             Overlay::Compose(c) => {
                 if c.sending {
                     return Vec::new();
@@ -392,6 +437,15 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => self.search.editing = false,
+            // Tabs switch even while typing, so the box never traps the user.
+            KeyCode::Tab => {
+                self.search.editing = false;
+                return self.switch_tab(self.tab.next(1));
+            }
+            KeyCode::BackTab => {
+                self.search.editing = false;
+                return self.switch_tab(self.tab.next(-1));
+            }
             KeyCode::Char('t') if ctrl => self.toggle_search_mode(),
             KeyCode::Enter => {
                 self.search.editing = false;
@@ -430,6 +484,10 @@ impl App {
 
     fn switch_tab(&mut self, tab: Tab) -> Vec<Job> {
         self.tab = tab;
+        // Arriving at an empty Search tab means wanting to type: letters go to
+        // the box, not to the commands they are bound to on the result list.
+        // With a query already there, the results keep the keys (/ or i types).
+        self.search.editing = tab == Tab::Search && self.search.input.is_empty();
         if tab == Tab::Profile && self.profile.profile.is_none() && self.profile.actor.is_none() {
             return self.open_profile(None);
         }
@@ -478,12 +536,12 @@ impl App {
     fn main_key(&mut self, key: KeyEvent) -> Vec<Job> {
         match key.code {
             KeyCode::Char('q') => self.quit = true,
-            KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
+            KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
             KeyCode::Char('3') => return self.switch_tab(Tab::Profile),
-            KeyCode::Tab => return self.switch_tab(Tab::ALL[(self.tab.index() + 1) % 3]),
-            KeyCode::BackTab => return self.switch_tab(Tab::ALL[(self.tab.index() + 2) % 3]),
+            KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
+            KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
             KeyCode::Char('j') | KeyCode::Down => self.step(1),
             KeyCode::Char('k') | KeyCode::Up => self.step(-1),
             KeyCode::PageDown => self.step(5),
@@ -491,9 +549,11 @@ impl App {
             KeyCode::Char('g') | KeyCode::Home => self.step(isize::MIN / 2),
             KeyCode::Char('G') | KeyCode::End => self.step(isize::MAX / 2),
             KeyCode::Char('/') => {
-                self.tab = Tab::Search;
+                let jobs = self.switch_tab(Tab::Search);
                 self.search.editing = true;
+                return jobs;
             }
+            KeyCode::Char('i') if self.tab == Tab::Search => self.search.editing = true,
             KeyCode::Char('t') if self.tab == Tab::Search => {
                 self.toggle_search_mode();
                 return self.run_search();
@@ -1252,6 +1312,114 @@ mod tests {
         app.handle_event(Event::Profile(Ok((alice, vec![]))));
         assert_eq!(app.profile.profile.as_ref().unwrap().did, "did:plc:alice");
         assert!(app.profile.error.is_none());
+    }
+
+    #[rstest::rstest]
+    #[case::digit(KeyEvent::from(KeyCode::Char('2')))]
+    #[case::tab(KeyEvent::from(KeyCode::Tab))]
+    #[case::slash(KeyEvent::from(KeyCode::Char('/')))]
+    fn arriving_at_an_empty_search_tab_types_into_the_box(#[case] arrive: KeyEvent) {
+        let mut app = logged_in();
+        app.handle_key(arrive);
+        assert_eq!(app.tab, Tab::Search);
+        // q, l and f would quit, like and follow on a result list.
+        type_str(&mut app, "q l f");
+        assert!(!app.quit);
+        assert_eq!(app.search.input.text(), "q l f");
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(&jobs[..], [Job::SearchPosts(q)] if q == "q l f"));
+        // After Enter the results have the keys: j moves, it is not typed.
+        app.handle_event(Event::SearchPosts(Ok(vec![
+            post("at://s/1", "did:plc:x", false),
+            post("at://s/2", "did:plc:y", false),
+        ])));
+        app.handle_key(key('j'));
+        assert_eq!(app.search.posts.selected, 1);
+        assert_eq!(app.search.input.text(), "q l f");
+    }
+
+    #[test]
+    fn backtab_arrives_at_search_focused_too() {
+        let mut app = logged_in();
+        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Profile
+        app.handle_key(code(KeyCode::BackTab)); // Profile -> Search
+        assert_eq!(app.tab, Tab::Search);
+        assert!(app.search.editing);
+    }
+
+    #[test]
+    fn coming_back_to_a_search_with_results_leaves_the_keys_to_the_results() {
+        let mut app = logged_in();
+        app.handle_key(key('2'));
+        type_str(&mut app, "rust");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(key('1'));
+        app.handle_key(key('2'));
+        assert!(!app.search.editing, "j/k must move through the results");
+        // i (or /) goes back to typing.
+        app.handle_key(key('i'));
+        assert!(app.search.editing);
+        type_str(&mut app, "!");
+        assert_eq!(app.search.input.text(), "rust!");
+    }
+
+    #[test]
+    fn tab_leaves_the_search_box_for_the_next_tab() {
+        let mut app = logged_in();
+        app.handle_key(key('2'));
+        type_str(&mut app, "abc");
+        app.handle_key(code(KeyCode::Tab));
+        assert_eq!(app.tab, Tab::Profile);
+        assert!(!app.search.editing);
+        assert_eq!(app.search.input.text(), "abc");
+    }
+
+    #[test]
+    fn paste_reaches_the_focused_search_box() {
+        let mut app = logged_in();
+        app.handle_key(key('2'));
+        app.handle_paste("pasted words");
+        assert_eq!(app.search.input.text(), "pasted words");
+    }
+
+    #[test]
+    fn tabs_wrap_in_both_directions() {
+        assert_eq!(Tab::Timeline.next(-1), *Tab::ALL.last().unwrap());
+        assert_eq!(Tab::ALL.last().unwrap().next(1), Tab::Timeline);
+    }
+
+    #[test]
+    fn status_messages_expire_errors_later() {
+        let mut app = logged_in();
+        app.info("liked");
+        let at = app.status.as_ref().unwrap().at;
+        assert!(!app.expire_status(at + STATUS_TTL - Duration::from_millis(1)));
+        assert!(app.expire_status(at + STATUS_TTL));
+        assert!(app.status.is_none());
+        app.error("boom");
+        let at = app.status.as_ref().unwrap().at;
+        assert!(!app.expire_status(at + STATUS_TTL));
+        assert!(app.expire_status(at + ERROR_TTL));
+        // Nothing to expire: the screen does not change.
+        assert!(!app.expire_status(at + ERROR_TTL));
+    }
+
+    #[test]
+    fn help_scrolls_and_only_closes_on_purpose() {
+        let mut app = logged_in();
+        app.handle_key(key('?'));
+        app.handle_key(key('j'));
+        app.handle_key(key('j'));
+        app.handle_key(key('k'));
+        assert!(matches!(app.overlay, Some(Overlay::Help { scroll: 1 })));
+        // A stray key is not a request to close.
+        app.handle_key(key('x'));
+        assert!(app.overlay.is_some());
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none());
+        app.handle_key(key('?'));
+        app.handle_key(key('?'));
+        assert!(app.overlay.is_none());
     }
 
     #[test]

@@ -125,7 +125,7 @@ scenarios:
             - send: e
             # The editor starts from the stored record, not from the view.
             - expect_screen:
-                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (PNG/JPEG path, optional)", "tab next field  ctrl+s save"]
+                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (PNG/JPEG path, optional)"]
             # Ctrl+U clears the field; the description is left as it is.
             - send: { key: ctrl-u }
             - send: "新しい名前"
@@ -199,10 +199,10 @@ scenarios:
             - expect_screen:
                 contains: "this is you (e to edit)"
             - send: e
-            # The key hint appears once the stored record has loaded; "old bio"
-            # alone would also match the profile behind the editor.
+            # The avatar field appears once the stored record has loaded; "old
+            # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["tab next field  ctrl+s save", "old bio"]
+                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
             - send: { key: tab }
             - send: { key: ctrl-u }
             - send: { key: ctrl-s }
@@ -259,10 +259,10 @@ scenarios:
             - expect_screen:
                 contains: "this is you (e to edit)"
             - send: e
-            # The key hint appears once the stored record has loaded; "old bio"
-            # alone would also match the profile behind the editor.
+            # The avatar field appears once the stored record has loaded; "old
+            # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["tab next field  ctrl+s save", "old bio"]
+                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
             - send: { key: tab }
             - send: { key: tab }
             - send: "me.png"
@@ -325,10 +325,10 @@ scenarios:
             - expect_screen:
                 contains: "this is you (e to edit)"
             - send: e
-            # The key hint appears once the stored record has loaded; "old bio"
-            # alone would also match the profile behind the editor.
+            # The avatar field appears once the stored record has loaded; "old
+            # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["tab next field  ctrl+s save", "old bio"]
+                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
             - send: { key: tab }
             - send: { key: tab }
             - send: "notes.txt"
@@ -378,7 +378,7 @@ scenarios:
                 contains: "this is you (e to edit)"
             - send: e
             - expect_screen:
-                contains: "tab next field  ctrl+s save"
+                contains: "New avatar (PNG/JPEG path, optional)"
             - send: "First Name"
             - send: { key: ctrl-s }
             - expect_screen:
@@ -428,10 +428,10 @@ scenarios:
             - expect_screen:
                 contains: "this is you (e to edit)"
             - send: e
-            # The key hint appears once the stored record has loaded; "old bio"
-            # alone would also match the profile behind the editor.
+            # The avatar field appears once the stored record has loaded; "old
+            # bio" alone would also match the profile behind the editor.
             - expect_screen:
-                contains: ["tab next field  ctrl+s save", "old bio"]
+                contains: ["New avatar (PNG/JPEG path, optional)", "old bio"]
             - send: "!"
             - send: { key: ctrl-s }
             - expect_screen:
