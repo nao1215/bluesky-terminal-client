@@ -7,6 +7,8 @@
 
 bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures inline, in the terminal's own graphics protocol, next to the posts they belong to.
 
+![bs in kitty: the timeline scrolled, then a search for "github" scrolled](doc/demo.gif)
+
 - The timeline shows posts written by the accounts you follow and by you, and nothing else: no reposts, no one you do not follow. A reply is shown under the posts it answers, and `v` opens its whole thread with every reply expanded.
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
 - Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
