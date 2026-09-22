@@ -79,6 +79,28 @@ pub fn grapheme_len(text: &str) -> usize {
     text.graphemes(true).count()
 }
 
+/// Longest post the lexicon accepts, in UTF-8 bytes. Plain text reaches
+/// [`MAX_POST_GRAPHEMES`] first; emoji, up to 25 bytes a character, reach
+/// this.
+pub const MAX_POST_BYTES: usize = 3000;
+
+/// Why `text` is too long to post, by either limit of the post lexicon, or
+/// `None` when it fits.
+pub fn post_length_problem(text: &str) -> Option<String> {
+    let len = grapheme_len(text);
+    if len > MAX_POST_GRAPHEMES {
+        return Some(format!(
+            "the post is {len} characters; the limit is {MAX_POST_GRAPHEMES}"
+        ));
+    }
+    (text.len() > MAX_POST_BYTES).then(|| {
+        format!(
+            "the post is {} bytes; the limit is {MAX_POST_BYTES} (emoji take up to 25 bytes each)",
+            text.len()
+        )
+    })
+}
+
 /// The current time as the AT Protocol writes it.
 pub fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -655,12 +677,8 @@ impl Client {
                 ),
             ));
         }
-        let len = grapheme_len(text);
-        if len > MAX_POST_GRAPHEMES {
-            return Err(Error::new(
-                Kind::Usage,
-                format!("the post is {len} characters; the limit is {MAX_POST_GRAPHEMES}"),
-            ));
+        if let Some(why) = post_length_problem(text) {
+            return Err(Error::new(Kind::Usage, why));
         }
         let mut facet_json = Vec::new();
         for span in facets::detect(text) {
@@ -913,6 +931,27 @@ pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    /// The post lexicon limits text to 300 grapheme clusters and 3000 UTF-8
+    /// bytes. Emoji spend the bytes first: a family is one cluster of 25
+    /// bytes, so 121 of them fit the clusters and not the bytes, and the
+    /// server refused the post only after it was sent.
+    #[test]
+    fn a_post_is_checked_against_both_limits_before_it_is_sent() {
+        assert_eq!(post_length_problem(&"a".repeat(300)), None);
+        assert_eq!(
+            post_length_problem(&"a".repeat(301)).as_deref(),
+            Some("the post is 301 characters; the limit is 300")
+        );
+        let family = "👨\u{200d}👩\u{200d}👧\u{200d}👦";
+        assert_eq!(family.len(), 25);
+        assert_eq!(post_length_problem(&family.repeat(120)), None);
+        assert_eq!(
+            post_length_problem(&family.repeat(121)).as_deref(),
+            Some("the post is 3025 bytes; the limit is 3000 (emoji take up to 25 bytes each)")
+        );
+        assert_eq!(post_length_problem(&"日".repeat(300)), None, "900 bytes");
+    }
 
     #[rstest]
     #[case("https://bsky.social/", "https://bsky.social")]

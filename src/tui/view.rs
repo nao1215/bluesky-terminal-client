@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
-use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
+use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_problem};
 use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
@@ -1404,11 +1404,19 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
     if n > 0 {
         draw_attachments(frame, pics, c, images, typing, t);
     }
-    let len = grapheme_len(c.input.text().trim_end());
-    let count_style = if len > MAX_POST_GRAPHEMES {
+    let text = c.input.text();
+    let text = text.trim_end();
+    let len = grapheme_len(text);
+    let count_style = if post_length_problem(text).is_some() {
         t.error()
     } else {
         t.dim()
+    };
+    // Bytes are shown only once they are what limits the post.
+    let bytes = if text.len() > MAX_POST_BYTES - 500 {
+        format!(" {}/{MAX_POST_BYTES} bytes", text.len())
+    } else {
+        String::new()
     };
     let action = if c.sending {
         "sending…"
@@ -1420,7 +1428,7 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
     frame.render_widget(
         truncate_line(
             Line::from(vec![
-                Span::styled(format!(" {len}/{MAX_POST_GRAPHEMES}  "), count_style),
+                Span::styled(format!(" {len}/{MAX_POST_GRAPHEMES}{bytes}  "), count_style),
                 Span::styled(action, t.dim()),
             ]),
             usize::from(foot.width),
