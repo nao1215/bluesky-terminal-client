@@ -7,6 +7,8 @@
 //! UI draws the newest picture it has been handed. A video bs cannot play is
 //! not an error: the viewer shows its thumbnail and says why.
 
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -14,7 +16,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use image::{DynamicImage, RgbImage};
-use openh264::decoder::Decoder;
+use openh264::decoder::{DecodedYUV, Decoder};
 use openh264::formats::YUVSource;
 use ratatui::layout::Size;
 use ratatui_image::picker::Picker;
@@ -171,27 +173,19 @@ fn play(
     }
     let mut decoder = Decoder::new().map_err(|e| format!("cannot start the video decoder: {e}"))?;
     let mut demux = Demuxer::new();
-    // The stream's clock against the wall clock: set by the first picture,
-    // and set again after a wait for the network, so a slow download pauses
-    // the video instead of skipping it.
-    let mut clock: Option<(Instant, u64)> = None;
-    let mut last_shown: Option<Instant> = None;
-    let mut shown = 0usize;
-    let (cw, ch) = {
-        let f = picker.font_size();
-        (u32::from(f.width.max(1)), u32::from(f.height.max(1)))
-    };
+    let mut pacer = Pacer::new(picker, size, tx);
+    // Pictures come out of the decoder in the order they are shown, which
+    // with B-frames is not the order they go in; each takes the earliest
+    // presentation time not yet used.
+    let mut pending: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
     for (n, url) in segments.iter().enumerate() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
         }
+        let last = n + 1 == segments.len();
         let bytes = fetch(&agent, url)?;
         demux.feed(&bytes);
-        let units = if n + 1 == segments.len() {
-            demux.finish()
-        } else {
-            demux.take()
-        };
+        let units = if last { demux.finish() } else { demux.take() };
         if let Some(kind) = demux.unsupported {
             return Err(format!(
                 "this video is not H.264 (stream type 0x{kind:02x}), which bs cannot decode"
@@ -201,74 +195,135 @@ fn play(
             if stop.load(Ordering::Relaxed) {
                 return Ok(());
             }
+            if let Some(p) = unit.pts {
+                pending.push(Reverse(p));
+            }
             let Ok(Some(yuv)) = decoder.decode(&unit.data) else {
                 continue;
             };
-            // When this picture is due, by the stream's clock.
-            let now = Instant::now();
-            let due = match (unit.pts, clock) {
-                (Some(p), Some((at, first))) => {
-                    let due =
-                        at + Duration::from_secs_f64(p.saturating_sub(first) as f64 / 90_000.0);
-                    if now > due + Duration::from_secs(1) {
-                        clock = Some((now, p));
-                        now
-                    } else {
-                        due
-                    }
-                }
-                (Some(p), None) => {
-                    clock = Some((now, p));
-                    now
-                }
-                (None, _) => now,
-            };
-            // Late, or too soon after the last one: decoded, not shown.
-            // Measured from when this one is due, not from now: a picture
-            // decoded early is still shown when its time comes.
-            let too_soon = last_shown.is_some_and(|l| {
-                due.saturating_duration_since(l) < Duration::from_secs_f64(1.0 / MAX_FPS)
-            });
-            if (now > due + Duration::from_millis(250) || too_soon) && shown > 0 {
-                continue;
-            }
-            if due > now {
-                thread::sleep(due - now);
-            }
-            let (w, h) = yuv.dimensions();
-            let mut rgb = vec![0u8; w * h * 3];
-            yuv.write_rgb8(&mut rgb);
-            let Some(img) = RgbImage::from_raw(w as u32, h as u32, rgb) else {
-                continue;
-            };
-            let (cols, rows) = *size.lock().map_err(|_| "the player stopped")?;
-            if cols == 0 || rows == 0 {
-                continue;
-            }
-            // Scaled here, off the UI thread, to the pixels of its box.
-            let img = DynamicImage::ImageRgb8(img).resize(
-                u32::from(cols) * cw,
-                u32::from(rows) * ch,
-                image::imageops::FilterType::Triangle,
-            );
-            let Ok(p) = picker.new_protocol(
-                img,
-                Size::new(cols, rows),
-                Resize::Scale(Some(FilterType::Triangle)),
-            ) else {
-                continue;
-            };
-            if tx.send(Msg::Frame(Box::new(p))).is_err() {
+            let picture = to_rgb(&yuv);
+            let pts = pending.pop().map(|Reverse(p)| p);
+            if !pacer.show(picture, pts)? {
                 return Ok(());
             }
-            last_shown = Some(Instant::now());
-            shown += 1;
+        }
+        if last {
+            let rest: Vec<Option<RgbImage>> = decoder
+                .flush_remaining()
+                .unwrap_or_default()
+                .iter()
+                .map(to_rgb)
+                .collect();
+            for picture in rest {
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                let pts = pending.pop().map(|Reverse(p)| p);
+                if !pacer.show(picture, pts)? {
+                    return Ok(());
+                }
+            }
         }
     }
-    if shown == 0 {
+    if pacer.shown == 0 {
         return Err("no picture of the video could be decoded".into());
     }
     Ok(())
+}
+
+fn to_rgb(yuv: &DecodedYUV<'_>) -> Option<RgbImage> {
+    let (w, h) = yuv.dimensions();
+    let mut rgb = vec![0u8; w * h * 3];
+    yuv.write_rgb8(&mut rgb);
+    RgbImage::from_raw(w as u32, h as u32, rgb)
+}
+
+/// Shows pictures at their time: waits for early ones, drops late ones.
+struct Pacer<'a> {
+    picker: &'a Picker,
+    size: &'a Mutex<(u16, u16)>,
+    tx: &'a Sender<Msg>,
+    cell: (u32, u32),
+    /// The stream's clock against the wall clock: set by the first picture,
+    /// and set again after a wait for the network, so a slow download
+    /// pauses the video instead of skipping it.
+    clock: Option<(Instant, u64)>,
+    last_shown: Option<Instant>,
+    shown: usize,
+}
+
+impl<'a> Pacer<'a> {
+    fn new(picker: &'a Picker, size: &'a Mutex<(u16, u16)>, tx: &'a Sender<Msg>) -> Self {
+        let f = picker.font_size();
+        Self {
+            picker,
+            size,
+            tx,
+            cell: (u32::from(f.width.max(1)), u32::from(f.height.max(1))),
+            clock: None,
+            last_shown: None,
+            shown: 0,
+        }
+    }
+
+    /// Show `picture` (presented at `pts`) when it is due. Returns false once
+    /// nobody is watching.
+    fn show(&mut self, picture: Option<RgbImage>, pts: Option<u64>) -> Result<bool, String> {
+        let Some(picture) = picture else {
+            return Ok(true);
+        };
+        let now = Instant::now();
+        let due = match (pts, self.clock) {
+            (Some(p), Some((at, first))) => {
+                let due = at + Duration::from_secs_f64(p.saturating_sub(first) as f64 / 90_000.0);
+                if now > due + Duration::from_secs(1) {
+                    self.clock = Some((now, p));
+                    now
+                } else {
+                    due
+                }
+            }
+            (Some(p), None) => {
+                self.clock = Some((now, p));
+                now
+            }
+            (None, _) => now,
+        };
+        // Late, or too soon after the last one shown (measured from when
+        // this one is due): decoded, not shown.
+        let too_soon = self.last_shown.is_some_and(|l| {
+            due.saturating_duration_since(l) < Duration::from_secs_f64(1.0 / MAX_FPS)
+        });
+        if (now > due + Duration::from_millis(250) || too_soon) && self.shown > 0 {
+            return Ok(true);
+        }
+        if due > now {
+            thread::sleep(due - now);
+        }
+        let (cols, rows) = *self.size.lock().map_err(|_| "the player stopped")?;
+        if cols == 0 || rows == 0 {
+            return Ok(true);
+        }
+        // Scaled here, off the UI thread, to the pixels of its box.
+        let img = DynamicImage::ImageRgb8(picture).resize(
+            u32::from(cols) * self.cell.0,
+            u32::from(rows) * self.cell.1,
+            image::imageops::FilterType::Triangle,
+        );
+        let Ok(p) = self.picker.new_protocol(
+            img,
+            Size::new(cols, rows),
+            Resize::Scale(Some(FilterType::Triangle)),
+        ) else {
+            return Ok(true);
+        };
+        if self.tx.send(Msg::Frame(Box::new(p))).is_err() {
+            return Ok(false);
+        }
+        self.last_shown = Some(Instant::now());
+        self.shown += 1;
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -330,6 +385,30 @@ mod tests {
         assert!(frames >= 8, "{frames} frames");
         let took = started.elapsed();
         assert!(took >= Duration::from_millis(700), "paced: {took:?}");
+    }
+
+    /// Against Bluesky itself; run with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "needs the network"]
+    fn a_real_bluesky_video_plays() {
+        let url = "https://video.bsky.app/watch/did%3Aplc%3Az72i7hdynmk6r22z27h6tvur/bafkreifhuv36ji7vcq3tmdjltceyrfaat6vdccn2pklxf7j7dgsobdlgbm/playlist.m3u8";
+        let (tx, rx) = channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let size = Arc::new(Mutex::new((20, 40)));
+        let (s2, z2) = (Arc::clone(&stop), Arc::clone(&size));
+        let t = thread::spawn(move || play(&Picker::halfblocks(), url, &s2, &z2, &tx));
+        let begin = Instant::now();
+        let mut times = Vec::new();
+        while begin.elapsed() < Duration::from_secs(4) {
+            if let Ok(Msg::Frame(_)) = rx.recv_timeout(Duration::from_millis(50)) {
+                times.push(begin.elapsed().as_millis());
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        assert_eq!(t.join().unwrap(), Ok(()));
+        let frames = times.len();
+        eprintln!("frame times (ms): {times:?}");
+        assert!(frames >= 10, "{frames} frames in 4 seconds");
     }
 
     #[test]
