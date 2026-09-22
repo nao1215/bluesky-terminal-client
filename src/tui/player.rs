@@ -793,3 +793,65 @@ mod tests {
         assert_eq!(frames, 0);
     }
 }
+
+#[cfg(test)]
+mod latency {
+    use super::*;
+
+    /// Where the time to a video's first picture goes, for the playlists in
+    /// $BSKY_VIDEOS (one per line):
+    /// `BSKY_VIDEOS=... cargo test --release first_picture -- --ignored --nocapture`.
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn first_picture() {
+        let Ok(list) = std::env::var("BSKY_VIDEOS") else {
+            return;
+        };
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize((10, 20).into());
+        picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
+        for playlist in list.lines().filter(|l| !l.is_empty()) {
+            let agent = crate::api::agent();
+            let t0 = Instant::now();
+            let master = text(&agent, playlist).unwrap();
+            let t_master = t0.elapsed();
+            let url = hls::pick_variant(&master, playlist).unwrap();
+            let media = text(&agent, &url).unwrap();
+            let t_media = t0.elapsed();
+            let segs = hls::segments(&media, &url);
+            let seg = fetch(&agent, &segs[0]).unwrap();
+            let t_seg = t0.elapsed();
+            let mut demux = Demuxer::new();
+            demux.feed(&seg);
+            let units = demux.take();
+            let mut decoder = decoder().unwrap();
+            let mut first = None;
+            for u in &units {
+                if let Ok(Some(yuv)) = decoder.decode(&u.data) {
+                    first = to_rgb(&yuv);
+                    break;
+                }
+            }
+            let t_dec = t0.elapsed();
+            let pic = first.unwrap();
+            let area = Size::new(100, 30);
+            let img = scale::to_box(&DynamicImage::ImageRgb8(pic), area, (10, 20));
+            let _ = picker
+                .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
+                .unwrap();
+            let t_enc = t0.elapsed();
+            println!(
+                "{} segs, first {} KB, {} units: master {:?} media {:?} segment {:?} decoded {:?} encoded {:?}",
+                segs.len(),
+                seg.len() / 1024,
+                units.len(),
+                t_master,
+                t_media,
+                t_seg,
+                t_dec,
+                t_enc
+            );
+        }
+    }
+}

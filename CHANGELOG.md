@@ -43,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Pictures and video frames are scaled to their box with a faster scaler before they are encoded for the terminal. A full-screen 720p video frame is ready in 5 ms instead of 20 with kitty (43 instead of 63 with sixel, which now keeps up with 15 frames a second), and a screen of twelve photos in 26 ms instead of 63.
 - The top row starts with the tabs: the ` bsky ` label before them is gone.
 - A video starts from the first part of its first segment instead of after the whole segment has downloaded, which on a slow link was most of the wait, and the next video reuses the connections the last one opened.
+- Pictures arrive sooner, most of all on a slow link. The connections to Bluesky's picture server are opened while the first list loads, and kept for two minutes instead of 15 seconds, so a post read for a while does not make the next pictures wait for new TCP and TLS handshakes; a download that fails on a connection the server had just closed is tried once more. With a 0.4 s round trip, the first screen's twelve pictures took 1.9 to 2.3 s instead of 3.5 to 4.4 s.
 
 ### Fixed
 
