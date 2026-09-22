@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::api::post_length_problem;
 use crate::api::types::{Media, Post, Profile, ReplyRef};
-use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::config::{Session, Settings};
 use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
@@ -804,13 +804,10 @@ impl App {
                     }
                     KeyCode::Char('s') if ctrl => {
                         let text = c.input.text();
-                        let len = grapheme_len(text.trim_end());
                         if text.trim().is_empty() && c.media.is_empty() {
                             self.error("the post is empty");
-                        } else if len > MAX_POST_GRAPHEMES {
-                            self.error(format!(
-                                "the post is {len} characters; the limit is {MAX_POST_GRAPHEMES}"
-                            ));
+                        } else if let Some(why) = post_length_problem(text.trim_end()) {
+                            self.error(why);
                         } else {
                             c.sending = true;
                             let reply = c.reply.as_ref().map(|(r, _, _)| r.clone());
@@ -1934,9 +1931,27 @@ mod tests {
         app.handle_key(key('n'));
         assert!(app.handle_key(ctrl('s')).is_empty());
         assert!(app.status.as_ref().unwrap().error);
-        type_str(&mut app, &"あ".repeat(MAX_POST_GRAPHEMES + 1));
+        type_str(&mut app, &"あ".repeat(crate::api::MAX_POST_GRAPHEMES + 1));
         assert!(app.handle_key(ctrl('s')).is_empty());
         assert!(app.status.as_ref().unwrap().text.contains("301"));
+    }
+
+    #[test]
+    fn composer_refuses_a_post_of_emoji_over_the_byte_limit() {
+        let mut app = logged_in();
+        app.handle_key(key('n'));
+        // 121 families: 121 characters, 3025 bytes.
+        app.handle_paste(&"👨\u{200d}👩\u{200d}👧\u{200d}👦".repeat(121));
+        assert!(app.handle_key(ctrl('s')).is_empty());
+        let status = app.status.as_ref().unwrap();
+        assert!(
+            status.error && status.text.contains("3025 bytes"),
+            "{}",
+            status.text
+        );
+        // One fewer fits both limits and is sent.
+        app.handle_key(KeyEvent::from(KeyCode::Backspace));
+        assert!(matches!(app.handle_key(ctrl('s'))[..], [Job::Post { .. }]));
     }
 
     #[test]
