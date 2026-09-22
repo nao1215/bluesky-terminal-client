@@ -59,6 +59,7 @@ jobs:
           go-version: stable
 
       - name: Install atago
+        shell: bash
         env:
           ATAGO_REF: e7a21227e604a116be00477f8ca2719304e59ae3
         run: |
