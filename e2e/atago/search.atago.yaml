@@ -184,10 +184,6 @@ scenarios:
   # the line breaks of a pasted snippet are dropped rather than sending the
   # search half-typed, and emoji arrive whole.
   - name: a paste into the search box drops its line breaks and keeps emoji whole
-    # Windows: characters outside the BMP (emoji) sent through atago's
-    # OpenConsole do not arrive yet (nao1215/atago, emoji input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -365,10 +361,6 @@ scenarios:
           exit_code: 0
 
   - name: enter on an account opens its profile, where f follows it
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

@@ -141,10 +141,6 @@ scenarios:
                 - { path: "$.record.embed.images[1].aspectRatio.width", equals: 100 }
 
   - name: four pictures at most, and one that cannot be read stops the post before any upload
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -230,10 +226,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: the avatar is chosen in the browser, hidden files on request, esc changes nothing
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

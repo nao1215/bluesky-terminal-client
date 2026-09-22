@@ -13,10 +13,6 @@ suite:
 
 scenarios:
   - name: space shows a post's pictures full screen, one after another, and esc goes back
-    # Windows: the expected paths and the link opener are written for Unix
-    # here; they get Windows forms of their own.
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -78,7 +74,9 @@ scenarios:
             # d saves the one shown, full size, in the download folder.
             - send: d
             - expect_screen:
-                contains: "saved ${workdir}/downloads/full2.png"
+                # The folder and the file are joined with the platform's
+                # separator.
+                matches: 'saved .+downloads[/\\]full2\.png'
             # Esc goes back to the timeline, where it was.
             - send: { key: esc }
             - expect_screen:
@@ -103,10 +101,6 @@ scenarios:
           image: { path: downloads/full2.png, width: 100, height: 100 }
 
   - name: space plays a post's video, r plays it again, and esc stops it
-    # Windows: the expected paths and the link opener are written for Unix
-    # here; they get Windows forms of their own.
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -156,7 +150,7 @@ scenarios:
             # d saves the video: its segments joined in one .ts file.
             - send: d
             - expect_screen:
-                contains: "saved ${workdir}/downloads/v1.ts"
+                matches: 'saved .+downloads[/\\]v1\.ts'
             - send: { key: esc }
             - expect_screen:
                 contains: "Watch this"
@@ -175,10 +169,6 @@ scenarios:
           mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
 
   - name: a video bsky cannot play is a warning, not an error, and its thumbnail stays
-    # Windows: not understood yet (the thread's root, a broken video's
-    # warning); investigated separately.
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -229,8 +219,8 @@ scenarios:
           exit_code: 0
 
   - name: space on a post with only a link opens it in the browser, and o opens a link anywhere
-    # Windows: the expected paths and the link opener are written for Unix
-    # here; they get Windows forms of their own.
+    # A shell script stands in for the browser; Windows has its own
+    # scenario with a batch file, next.
     skip:
       os: windows
     mock_servers:
@@ -315,6 +305,94 @@ scenarios:
           file:
             path: opened.txt
             contains: "https://example.com/article?a=1&b=2\nhttps://example.com/photo-page\n"
+
+  - name: on Windows, space and o open links with the program BSKY_BROWSER names
+    only:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/l1
+                    cid: cid-l1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record:
+                      text: "Read this article"
+                      createdAt: "2026-09-20T10:00:00.000Z"
+                      facets:
+                        - index: { byteStart: 0, byteEnd: 4 }
+                          features: [ { $type: app.bsky.richtext.facet#link, uri: "https://example.com/in-text" } ]
+                    embed:
+                      $type: app.bsky.embed.external#view
+                      external: { uri: "https://example.com/article?a=1&b=2", title: "An article", description: "" }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/l2
+                    cid: cid-l2
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record:
+                      text: "A photo and a link"
+                      createdAt: "2026-09-20T09:00:00.000Z"
+                      facets:
+                        - index: { byteStart: 0, byteEnd: 1 }
+                          features: [ { $type: app.bsky.richtext.facet#link, uri: "https://example.com/photo-page" } ]
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images: [ { thumb: "${api.url}/img/t.png", fullsize: "${api.url}/img/t.png", alt: "" } ]
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/l3
+                    cid: cid-l3
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Nothing to open", createdAt: "2026-09-20T08:00:00.000Z" }
+          - { method: GET, path: /img/t.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - *session
+      # Stands in for the browser: it writes down every URL it is given.
+      - fixture:
+          file: opener.cmd
+          content: |
+            @echo off
+            setlocal enabledelayedexpansion
+            rem Delayed expansion keeps cmd from reading the & in a URL.
+            set "url=%~1"
+            >>"%~dp0opened.txt" echo(!url!
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_BROWSER: ${workdir}/opener.cmd
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Read this article"
+            # No pictures: space opens the link card's URL.
+            - send: " "
+            - expect_screen:
+                contains: "opened https://example.com/article?a=1&b=2"
+            # Pictures: space shows them, and o opens the link instead.
+            - send: j
+            - send: o
+            - expect_screen:
+                contains: "opened https://example.com/photo-page"
+            - send: j
+            - send: " "
+            - expect_screen:
+                contains: "this post has no pictures, video, or link"
+            - send: q
+      - assert:
+          exit_code: 0
+      # Each URL whole (cmd ends its lines with CRLF).
+      - assert:
+          file:
+            path: opened.txt
+            contains: "https://example.com/article?a=1&b=2\r\nhttps://example.com/photo-page\r\n"
 
   - name: without a program to open links, it says what to set
     mock_servers:

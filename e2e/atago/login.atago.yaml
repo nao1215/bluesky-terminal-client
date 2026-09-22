@@ -117,10 +117,6 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc-9" }
 
   - name: rejected credentials keep the form open and save nothing
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -175,10 +171,6 @@ scenarios:
             exists: false
 
   - name: an empty field is caught before anything is sent
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -211,10 +203,6 @@ scenarios:
             count: 0
 
   - name: an unreachable server is reported on the form
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     steps:
       - pty:
           # Port 9 (discard) on loopback: nothing listens there.

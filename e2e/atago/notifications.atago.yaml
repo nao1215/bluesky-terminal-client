@@ -168,10 +168,6 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
 
   - name: a reply notification can be answered, and a follow opens the profile
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:

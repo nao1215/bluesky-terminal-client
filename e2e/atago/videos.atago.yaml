@@ -211,10 +211,6 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.height", equals: 30 }
 
   - name: a video the service cannot process is reported and nothing is posted
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -272,10 +268,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: an account Bluesky will not take videos from says why before anything is sent
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
@@ -336,10 +328,6 @@ scenarios:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
 
   - name: pictures and a video do not go on one post
-    # Windows: Esc and q typed through atago's OpenConsole do not arrive as
-    # keys yet (nao1215/atago, Esc input under OpenConsole).
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
