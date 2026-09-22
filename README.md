@@ -8,7 +8,7 @@
 
 bsky is an unofficial [Bluesky](https://bsky.app) client for the terminal that shows pictures and videos right in the terminal: avatars and photos inline next to their posts, full screen on `Space`, and videos played in place. It draws with the terminal's own image protocol (kitty graphics, sixel, or iTerm2 inline images), and needs nothing else installed.
 
-![bsky in kitty: the timeline scrolled, then a search for "github"](doc/img/demo.gif)
+![bsky in kitty: the timeline scrolled, the Discover feed, then a search for "github"](doc/img/demo.gif)
 
 ## Try it
 
