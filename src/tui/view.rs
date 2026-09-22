@@ -2728,6 +2728,67 @@ mod tests {
         assert_eq!(truncate_start("/pics/👨‍👩‍👧", 3), "…👨‍👩‍👧");
         assert_eq!(truncate_start("/pics/🇯🇵🇯🇵", 3), "…🇯🇵");
     }
+
+    /// Timeline posts the size real ones are: a few lines of mixed text, a
+    /// reply's context, pictures, and an avatar.
+    fn heavy_posts(n: usize) -> Vec<Post> {
+        let text = "今日は山に登りました 🏔️ The view from the top was worth every step, \
+                    and the clouds rolled in just as we left 👨‍👩‍👧 #hiking https://example.com/trip \
+                    また行きたい！ @bob.test ";
+        (0..n)
+            .map(|i| {
+                serde_json::from_value(json!({
+                    "uri": format!("at://did:plc:a/app.bsky.feed.post/{i}"), "cid": "c",
+                    "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice 🌸",
+                               "avatar": "http://127.0.0.1:9/avatar.jpg"},
+                    "record": {"text": text.repeat(1 + i % 3), "createdAt": "2026-09-22T00:00:00Z",
+                               "reply": if i % 4 == 0 { json!({
+                                   "root": {"uri": "at://did:plc:b/app.bsky.feed.post/r", "cid": "c"},
+                                   "parent": {"uri": "at://did:plc:b/app.bsky.feed.post/r", "cid": "c"}
+                               }) } else { json!(null) }},
+                    "embed": if i % 2 == 0 { json!({"$type": "app.bsky.embed.images#view", "images": [
+                        {"thumb": format!("http://127.0.0.1:9/{i}a.jpg"), "fullsize": "x", "alt": "", "aspectRatio": {"width": 4, "height": 3}},
+                        {"thumb": format!("http://127.0.0.1:9/{i}b.jpg"), "fullsize": "x", "alt": "", "aspectRatio": {"width": 3, "height": 4}}
+                    ]}) } else { json!(null) },
+                    "likeCount": i, "repostCount": 1, "replyCount": 2,
+                }))
+                .unwrap()
+            })
+            .collect()
+    }
+
+    /// Time to draw one frame of the timeline while `j` walks down 200 posts,
+    /// the cost a held key pays per step. Prints the median and the slowest.
+    #[test]
+    #[ignore = "measurement"]
+    #[cfg(not(coverage))]
+    fn frame_time() {
+        let mut runs = Vec::new();
+        for _ in 0..5 {
+            let (mut app, _) = App::new(Some(session()), "x");
+            app.handle_event(Event::Timeline(Ok(heavy_posts(200).into())));
+            let mut images = Images::new(Picker::halfblocks(), None);
+            let mut term = Terminal::new(TestBackend::new(120, 50)).unwrap();
+            let mut times = Vec::new();
+            for _ in 0..500 {
+                app.handle_key(crossterm::event::KeyEvent::from(
+                    crossterm::event::KeyCode::Char(if times.len() % 250 < 199 {
+                        'j'
+                    } else {
+                        'k'
+                    }),
+                ));
+                let start = std::time::Instant::now();
+                term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+                times.push(start.elapsed());
+            }
+            times.sort();
+            runs.push((times[times.len() / 2], times[times.len() - 1]));
+        }
+        for (median, max) in runs {
+            println!("frame: median {median:?}, max {max:?}");
+        }
+    }
 }
 
 /// Random keys and random, late, reordered answers from a stand-in worker,
@@ -2848,16 +2909,22 @@ mod state_fuzz {
             } else {
                 Err(fail())
             }),
-            Job::SearchPosts(_) => Event::SearchPosts(if ok {
-                Ok(page(rng, next_id))
-            } else {
-                Err(fail())
-            }),
-            Job::SearchActors(_) => Event::SearchActors(if ok {
-                Ok(vec![profile("did:plc:alice"), profile("did:plc:bob")].into())
-            } else {
-                Err(fail())
-            }),
+            Job::SearchPosts(query) => Event::SearchPosts {
+                query,
+                result: if ok {
+                    Ok(page(rng, next_id))
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::SearchActors(query) => Event::SearchActors {
+                query,
+                result: if ok {
+                    Ok(vec![profile("did:plc:alice"), profile("did:plc:bob")].into())
+                } else {
+                    Err(fail())
+                },
+            },
             Job::OpenProfile(a) => Event::Profile(if ok {
                 Ok((profile(&a), page(rng, next_id)))
             } else {

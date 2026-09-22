@@ -7,6 +7,7 @@
 pub mod facets;
 pub mod types;
 
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use chrono::{SecondsFormat, Utc};
@@ -236,13 +237,17 @@ pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session>
 /// GIFs) and prepares them for playback.
 pub const DEFAULT_VIDEO_SERVICE: &str = "https://video.bsky.app";
 
-/// An authenticated client bound to one session.
+/// An authenticated client bound to one session. Clones share the tokens,
+/// so requests can run on several threads and one refresh serves them all.
+#[derive(Clone)]
 pub struct Client {
     agent: ureq::Agent,
-    session: Session,
+    did: String,
+    service: String,
+    session: Arc<Mutex<Session>>,
     store: Option<SessionStore>,
     /// `did:web` of the PDS the account lives on, once looked up.
-    pds_did: Option<String>,
+    pds_did: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Deserialize)]
@@ -359,30 +364,43 @@ impl Client {
     pub fn new(session: Session, store: Option<SessionStore>) -> Self {
         Self {
             agent: agent(),
-            session,
+            did: session.did.clone(),
+            service: session.service.clone(),
+            session: Arc::new(Mutex::new(session)),
             store,
-            pds_did: None,
+            pds_did: Arc::default(),
         }
+    }
+
+    /// The tokens. A thread that panicked holding them left them whole: they
+    /// are only replaced together.
+    fn tokens(&self) -> MutexGuard<'_, Session> {
+        self.session.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The `did:web` of the account's PDS: from its DID document, which
     /// names the host the account really lives on (not the entryway it
     /// logged in through), else the service logged in to.
-    fn pds_did(&mut self) -> String {
-        if let Some(d) = &self.pds_did {
-            return d.clone();
+    fn pds_did(&self) -> String {
+        if let Some(d) = self
+            .pds_did
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+        {
+            return d;
         }
         let endpoint = self
             .get::<Value>("com.atproto.server.getSession", &[])
             .ok()
             .and_then(|s| s.get("didDoc").and_then(pds_endpoint));
-        let did = did_web(endpoint.as_deref().unwrap_or(&self.session.service));
-        self.pds_did = Some(did.clone());
+        let did = did_web(endpoint.as_deref().unwrap_or(&self.service));
+        *self.pds_did.lock().unwrap_or_else(PoisonError::into_inner) = Some(did.clone());
         did
     }
 
     /// Whether the video service will take a video of `len` bytes now.
-    fn check_upload_limits(&mut self, video_service: &str, len: usize) -> Result<()> {
+    fn check_upload_limits(&self, video_service: &str, len: usize) -> Result<()> {
         let exp = (Utc::now().timestamp() + 30 * 60).to_string();
         let lxm = "app.bsky.video.getUploadLimits";
         let auth: ServiceAuth = self.get(
@@ -418,7 +436,7 @@ impl Client {
     /// wait until it is processed; returns the blob to embed. The service
     /// is authorized with a short-lived token the PDS issues for it.
     pub fn upload_video(
-        &mut self,
+        &self,
         video_service: &str,
         bytes: &[u8],
         mime: &str,
@@ -446,7 +464,7 @@ impl Client {
             .config()
             .timeout_global(Some(UPLOAD_TIMEOUT))
             .build()
-            .query("did", &self.session.did)
+            .query("did", &self.did)
             .query("name", name)
             .header("Authorization", &format!("Bearer {}", auth.token))
             .header("Content-Type", mime)
@@ -501,9 +519,9 @@ impl Client {
         }
     }
 
-    /// The session in use (tokens may have been refreshed since login).
-    pub fn session(&self) -> &Session {
-        &self.session
+    /// The DID of the account.
+    pub fn did(&self) -> &str {
+        &self.did
     }
 
     fn send(
@@ -513,7 +531,7 @@ impl Client {
         payload: &Payload<'_>,
         token: &str,
     ) -> Result<ureq::http::Response<ureq::Body>> {
-        let url = xrpc_url(&self.session.service, nsid);
+        let url = xrpc_url(&self.service, nsid);
         let auth = format!("Bearer {token}");
         let result = match payload {
             Payload::None => self
@@ -545,16 +563,17 @@ impl Client {
     }
 
     fn call<T: DeserializeOwned>(
-        &mut self,
+        &self,
         nsid: &str,
         query: &[(&str, &str)],
         payload: Payload<'_>,
     ) -> Result<T> {
-        let resp = self.send(nsid, query, &payload, &self.session.access_jwt)?;
+        let token = self.tokens().access_jwt.clone();
+        let resp = self.send(nsid, query, &payload, &token)?;
         match decode(nsid, resp) {
             Err(err) if err.message().contains("ExpiredToken") => {
-                self.refresh()?;
-                let resp = self.send(nsid, query, &payload, &self.session.access_jwt)?;
+                let token = self.refresh(&token)?;
+                let resp = self.send(nsid, query, &payload, &token)?;
                 decode(nsid, resp)
             }
             other => other,
@@ -564,7 +583,7 @@ impl Client {
     /// A read. One that fails the way a busy server fails (a gateway error,
     /// Bluesky's `UpstreamFailure`) is tried once more after a moment, as it
     /// usually works the second time; a write is never repeated.
-    fn get<T: DeserializeOwned>(&mut self, nsid: &str, query: &[(&str, &str)]) -> Result<T> {
+    fn get<T: DeserializeOwned>(&self, nsid: &str, query: &[(&str, &str)]) -> Result<T> {
         match self.call(nsid, query, Payload::None) {
             Err(e) if is_transient(&e) => {
                 std::thread::sleep(RETRY_AFTER);
@@ -574,35 +593,40 @@ impl Client {
         }
     }
 
-    fn post<B: Serialize, T: DeserializeOwned>(&mut self, nsid: &str, body: &B) -> Result<T> {
+    fn post<B: Serialize, T: DeserializeOwned>(&self, nsid: &str, body: &B) -> Result<T> {
         let body = serde_json::to_string(body).expect("request body serializes");
         self.call(nsid, &[], Payload::Json(body))
     }
 
-    fn refresh(&mut self) -> Result<()> {
+    /// A new access token in place of `expired`. The tokens stay locked
+    /// meanwhile: a refresh token works once, so a request on another thread
+    /// that finds its token expired too waits and takes the new one instead
+    /// of refreshing again with the spent one.
+    fn refresh(&self, expired: &str) -> Result<String> {
+        let mut session = self.tokens();
+        if session.access_jwt != expired {
+            return Ok(session.access_jwt.clone());
+        }
         let nsid = "com.atproto.server.refreshSession";
         let resp = self
             .agent
-            .post(xrpc_url(&self.session.service, nsid))
-            .header(
-                "Authorization",
-                &format!("Bearer {}", self.session.refresh_jwt),
-            )
+            .post(xrpc_url(&self.service, nsid))
+            .header("Authorization", &format!("Bearer {}", session.refresh_jwt))
             .send_empty()
             .map_err(|e| transport(nsid, e))?;
         let tokens: SessionTokens =
             decode(nsid, resp).map_err(|e| e.with_hint("the session expired; log in again"))?;
-        self.session.access_jwt = tokens.access_jwt;
-        self.session.refresh_jwt = tokens.refresh_jwt;
-        self.session.handle = tokens.handle;
+        session.access_jwt = tokens.access_jwt;
+        session.refresh_jwt = tokens.refresh_jwt;
+        session.handle = tokens.handle;
         if let Some(store) = &self.store {
-            store.save(&self.session)?;
+            store.save(&session)?;
         }
-        Ok(())
+        Ok(session.access_jwt.clone())
     }
 
     /// `app.bsky.feed.getTimeline`.
-    pub fn timeline(&mut self, cursor: Option<&str>) -> Result<Timeline> {
+    pub fn timeline(&self, cursor: Option<&str>) -> Result<Timeline> {
         let mut q = vec![("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -611,7 +635,7 @@ impl Client {
     }
 
     /// `app.bsky.feed.getFeed`: a page of the custom feed `uri`.
-    pub fn feed(&mut self, uri: &str, cursor: Option<&str>) -> Result<Timeline> {
+    pub fn feed(&self, uri: &str, cursor: Option<&str>) -> Result<Timeline> {
         let mut q = vec![("feed", uri), ("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -623,7 +647,7 @@ impl Client {
     /// saved-feeds preference the official app keeps, and Discover when
     /// none is pinned. The following timeline is not among them; bsky
     /// always shows it first.
-    pub fn pinned_feeds(&mut self) -> Result<Vec<FeedInfo>> {
+    pub fn pinned_feeds(&self) -> Result<Vec<FeedInfo>> {
         let prefs: Preferences = self.get("app.bsky.actor.getPreferences", &[])?;
         let mut uris = pinned_feed_uris(&prefs.preferences);
         if uris.is_empty() {
@@ -644,7 +668,7 @@ impl Client {
     }
 
     /// `app.bsky.feed.getAuthorFeed` for one actor, without replies.
-    pub fn author_feed(&mut self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
+    pub fn author_feed(&self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
         let mut q = vec![
             ("actor", actor),
             ("limit", "30"),
@@ -656,7 +680,7 @@ impl Client {
 
     /// `app.bsky.feed.getPostThread`: the post, the posts above it, and its
     /// replies ten levels deep.
-    pub fn post_thread(&mut self, uri: &str) -> Result<ThreadNode> {
+    pub fn post_thread(&self, uri: &str) -> Result<ThreadNode> {
         let r: PostThread = self.get(
             "app.bsky.feed.getPostThread",
             &[("uri", uri), ("depth", "10"), ("parentHeight", "20")],
@@ -665,14 +689,14 @@ impl Client {
     }
 
     /// `app.bsky.notification.listNotifications`.
-    pub fn notifications(&mut self, cursor: Option<&str>) -> Result<Notifications> {
+    pub fn notifications(&self, cursor: Option<&str>) -> Result<Notifications> {
         let mut q = vec![("limit", "30")];
         q.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.notification.listNotifications", &q)
     }
 
     /// `app.bsky.feed.getPosts`, in batches of the 25 the endpoint allows.
-    pub fn posts(&mut self, uris: &[String]) -> Result<Vec<Post>> {
+    pub fn posts(&self, uris: &[String]) -> Result<Vec<Post>> {
         let mut out = Vec::new();
         for chunk in uris.chunks(25) {
             let q: Vec<(&str, &str)> = chunk.iter().map(|u| ("uris", u.as_str())).collect();
@@ -684,7 +708,7 @@ impl Client {
 
     /// `app.bsky.notification.updateSeen`: notifications up to `seen_at`
     /// have been seen.
-    pub fn update_seen(&mut self, seen_at: &str) -> Result<()> {
+    pub fn update_seen(&self, seen_at: &str) -> Result<()> {
         let _: Value = self.post(
             "app.bsky.notification.updateSeen",
             &json!({"seenAt": seen_at}),
@@ -693,39 +717,39 @@ impl Client {
     }
 
     /// `app.bsky.actor.getProfile`.
-    pub fn profile(&mut self, actor: &str) -> Result<Profile> {
+    pub fn profile(&self, actor: &str) -> Result<Profile> {
         self.get("app.bsky.actor.getProfile", &[("actor", actor)])
     }
 
     /// `app.bsky.feed.searchPosts`.
-    pub fn search_posts(&mut self, q: &str, cursor: Option<&str>) -> Result<SearchPosts> {
+    pub fn search_posts(&self, q: &str, cursor: Option<&str>) -> Result<SearchPosts> {
         let mut query = vec![("q", q), ("limit", "30")];
         query.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.feed.searchPosts", &query)
     }
 
     /// `app.bsky.actor.searchActors`.
-    pub fn search_actors(&mut self, q: &str, cursor: Option<&str>) -> Result<SearchActors> {
+    pub fn search_actors(&self, q: &str, cursor: Option<&str>) -> Result<SearchActors> {
         let mut query = vec![("q", q), ("limit", "30")];
         query.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.actor.searchActors", &query)
     }
 
     /// `com.atproto.identity.resolveHandle`.
-    pub fn resolve_handle(&mut self, handle: &str) -> Result<String> {
+    pub fn resolve_handle(&self, handle: &str) -> Result<String> {
         let r: ResolvedHandle =
             self.get("com.atproto.identity.resolveHandle", &[("handle", handle)])?;
         Ok(r.did)
     }
 
-    fn create_record(&mut self, collection: &str, record: Value) -> Result<CreatedRecord> {
-        let body = json!({"repo": self.session.did, "collection": collection, "record": record});
+    fn create_record(&self, collection: &str, record: Value) -> Result<CreatedRecord> {
+        let body = json!({"repo": self.did, "collection": collection, "record": record});
         self.post("com.atproto.repo.createRecord", &body)
     }
 
-    fn delete_record(&mut self, collection: &str, uri: &str) -> Result<()> {
-        let rkey = own_rkey(uri, &self.session.did, collection)?;
-        let body = json!({"repo": self.session.did, "collection": collection, "rkey": rkey});
+    fn delete_record(&self, collection: &str, uri: &str) -> Result<()> {
+        let rkey = own_rkey(uri, &self.did, collection)?;
+        let body = json!({"repo": self.did, "collection": collection, "rkey": rkey});
         let _: Value = self.post("com.atproto.repo.deleteRecord", &body)?;
         Ok(())
     }
@@ -733,7 +757,7 @@ impl Client {
     /// Publish a post, optionally as a reply, with link/mention/tag facets
     /// and uploaded pictures or a video. A post with media may have no text.
     pub fn create_post(
-        &mut self,
+        &self,
         text: &str,
         reply: Option<&ReplyRef>,
         media: &PostMedia,
@@ -787,43 +811,43 @@ impl Client {
     }
 
     /// Like a post; returns the like record's URI.
-    pub fn like(&mut self, subject: &StrongRef) -> Result<String> {
+    pub fn like(&self, subject: &StrongRef) -> Result<String> {
         let record = json!({"$type": "app.bsky.feed.like", "subject": subject, "createdAt": now()});
         Ok(self.create_record("app.bsky.feed.like", record)?.uri)
     }
 
     /// Remove a like by its record URI.
-    pub fn unlike(&mut self, like_uri: &str) -> Result<()> {
+    pub fn unlike(&self, like_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.feed.like", like_uri)
     }
 
     /// Repost a post; returns the repost record's URI.
-    pub fn repost(&mut self, subject: &StrongRef) -> Result<String> {
+    pub fn repost(&self, subject: &StrongRef) -> Result<String> {
         let record =
             json!({"$type": "app.bsky.feed.repost", "subject": subject, "createdAt": now()});
         Ok(self.create_record("app.bsky.feed.repost", record)?.uri)
     }
 
     /// Remove a repost by its record URI.
-    pub fn unrepost(&mut self, repost_uri: &str) -> Result<()> {
+    pub fn unrepost(&self, repost_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.feed.repost", repost_uri)
     }
 
     /// Follow an account; returns the follow record's URI.
-    pub fn follow(&mut self, did: &str) -> Result<String> {
+    pub fn follow(&self, did: &str) -> Result<String> {
         let record = json!({"$type": "app.bsky.graph.follow", "subject": did, "createdAt": now()});
         Ok(self.create_record("app.bsky.graph.follow", record)?.uri)
     }
 
     /// Remove a follow by its record URI.
-    pub fn unfollow(&mut self, follow_uri: &str) -> Result<()> {
+    pub fn unfollow(&self, follow_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.graph.follow", follow_uri)
     }
 
     /// The account's own `app.bsky.actor.profile` record, or `None` when the
     /// account has never saved one.
-    pub fn own_profile_record(&mut self) -> Result<Option<Record>> {
-        let did = self.session.did.clone();
+    pub fn own_profile_record(&self) -> Result<Option<Record>> {
+        let did = self.did.clone();
         let result = self.get(
             "com.atproto.repo.getRecord",
             &[
@@ -840,7 +864,7 @@ impl Client {
     }
 
     /// Upload an image blob.
-    pub fn upload_blob(&mut self, bytes: &[u8], mime: &str) -> Result<Value> {
+    pub fn upload_blob(&self, bytes: &[u8], mime: &str) -> Result<Value> {
         let r: UploadedBlob = self.call(
             "com.atproto.repo.uploadBlob",
             &[],
@@ -856,7 +880,7 @@ impl Client {
     /// The write is guarded by `base`'s CID: if another client changed the
     /// profile after the editor read it, the PDS refuses the write instead of
     /// the edit silently discarding that change.
-    pub fn update_profile(&mut self, base: Option<&Record>, edit: &ProfileEdit) -> Result<()> {
+    pub fn update_profile(&self, base: Option<&Record>, edit: &ProfileEdit) -> Result<()> {
         let (mut value, swap) = match base {
             Some(r) => (r.value.clone(), r.cid.clone()),
             None => (json!({"$type": "app.bsky.actor.profile"}), None),
@@ -869,7 +893,7 @@ impl Client {
         if let Some((bytes, mime)) = &edit.avatar {
             value["avatar"] = self.upload_blob(bytes, mime)?;
         }
-        let did = self.session.did.clone();
+        let did = self.did.clone();
         let mut body = json!({
             "repo": did,
             "collection": "app.bsky.actor.profile",

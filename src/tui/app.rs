@@ -1672,8 +1672,16 @@ impl App {
                     }
                 }
             }
-            Event::SearchPosts(Ok(posts)) => self.search.posts.set(posts),
-            Event::SearchActors(Ok(actors)) => self.search.actors.set(actors),
+            // Searches run beside each other: an answer for a query that
+            // has since been replaced is dropped.
+            Event::SearchPosts { query, .. } if query != self.search.posts_query => {}
+            Event::SearchActors { query, .. } if query != self.search.actors_query => {}
+            Event::SearchPosts {
+                result: Ok(posts), ..
+            } => self.search.posts.set(posts),
+            Event::SearchActors {
+                result: Ok(actors), ..
+            } => self.search.actors.set(actors),
             Event::Profile(Ok((profile, posts))) => {
                 if self.wanted_profile(&profile) {
                     self.profile.profile = Some(profile);
@@ -1686,9 +1694,12 @@ impl App {
                 post_uri,
                 result: Ok(like),
             } => {
+                // A reload that ran beside the like may show it already.
                 self.each_post(&post_uri, |p| {
-                    p.viewer.get_or_insert_with(Default::default).like = Some(like.clone());
-                    p.like_count += 1;
+                    let v = p.viewer.get_or_insert_with(Default::default);
+                    if v.like.replace(like.clone()).is_none() {
+                        p.like_count += 1;
+                    }
                 });
                 self.info("liked");
             }
@@ -1697,10 +1708,9 @@ impl App {
                 result: Ok(()),
             } => {
                 self.each_post(&post_uri, |p| {
-                    if let Some(v) = &mut p.viewer {
-                        v.like = None;
+                    if p.viewer.as_mut().and_then(|v| v.like.take()).is_some() {
+                        p.like_count = p.like_count.saturating_sub(1);
                     }
-                    p.like_count = p.like_count.saturating_sub(1);
                 });
                 self.info("like removed");
             }
@@ -1709,8 +1719,10 @@ impl App {
                 result: Ok(repost),
             } => {
                 self.each_post(&post_uri, |p| {
-                    p.viewer.get_or_insert_with(Default::default).repost = Some(repost.clone());
-                    p.repost_count += 1;
+                    let v = p.viewer.get_or_insert_with(Default::default);
+                    if v.repost.replace(repost.clone()).is_none() {
+                        p.repost_count += 1;
+                    }
                 });
                 self.info("reposted");
             }
@@ -1719,10 +1731,9 @@ impl App {
                 result: Ok(()),
             } => {
                 self.each_post(&post_uri, |p| {
-                    if let Some(v) = &mut p.viewer {
-                        v.repost = None;
+                    if p.viewer.as_mut().and_then(|v| v.repost.take()).is_some() {
+                        p.repost_count = p.repost_count.saturating_sub(1);
                     }
-                    p.repost_count = p.repost_count.saturating_sub(1);
                 });
                 self.info("repost removed");
             }
@@ -1883,11 +1894,11 @@ impl App {
                 self.timeline.failed(&e);
                 self.fail(&e);
             }
-            Event::SearchPosts(Err(e)) => {
+            Event::SearchPosts { result: Err(e), .. } => {
                 self.search.posts.failed(&e);
                 self.fail(&e);
             }
-            Event::SearchActors(Err(e)) => {
+            Event::SearchActors { result: Err(e), .. } => {
                 self.search.actors.failed(&e);
                 self.fail(&e);
             }
@@ -2051,6 +2062,91 @@ mod tests {
         });
         assert_eq!(app.timeline.items[0].like_count, 2);
         assert!(app.timeline.items[0].like_uri().is_none());
+    }
+
+    /// The post as a reload fetched after the server took the like or repost.
+    fn reloaded(liked: bool, reposted: bool) -> Post {
+        let mut p = post("at://a/p/1", "did:plc:alice", true);
+        p.viewer = Some(crate::api::types::PostViewer {
+            like: liked.then(|| "at://did:plc:me/app.bsky.feed.like/x".into()),
+            repost: reposted.then(|| "at://did:plc:me/app.bsky.feed.repost/y".into()),
+        });
+        p.like_count = if liked { 3 } else { 2 };
+        p.repost_count = u64::from(reposted);
+        p
+    }
+
+    // Reads run beside writes, so a reload can show a like or repost before
+    // its own answer arrives; the answer must not count it a second time.
+    #[test]
+    fn a_like_or_repost_a_reload_already_shows_is_counted_once() {
+        let mut app = logged_in();
+        app.handle_key(key('l'));
+        app.handle_key(key('b'));
+        app.handle_event(Event::Timeline(Ok(vec![reloaded(true, true)].into())));
+        app.handle_event(Event::Liked {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/x".into()),
+        });
+        app.handle_event(Event::Reposted {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.repost/y".into()),
+        });
+        let p = &app.timeline.items[0];
+        assert_eq!((p.like_count, p.repost_count), (3, 1));
+
+        app.handle_key(key('l'));
+        app.handle_key(key('b'));
+        app.handle_event(Event::Timeline(Ok(vec![reloaded(false, false)].into())));
+        app.handle_event(Event::Unliked {
+            post_uri: "at://a/p/1".into(),
+            result: Ok(()),
+        });
+        app.handle_event(Event::Unreposted {
+            post_uri: "at://a/p/1".into(),
+            result: Ok(()),
+        });
+        let p = &app.timeline.items[0];
+        assert_eq!((p.like_count, p.repost_count), (2, 0));
+        assert!(p.like_uri().is_none());
+    }
+
+    #[test]
+    fn results_for_an_earlier_search_are_dropped() {
+        let mut app = logged_in();
+        app.handle_key(key('/'));
+        type_str(&mut app, "cats");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(key('/'));
+        for _ in 0..4 {
+            app.handle_key(code(KeyCode::Backspace));
+        }
+        type_str(&mut app, "dogs");
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(
+            matches!(&jobs[..], [Job::SearchPosts(q)] if q == "dogs"),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::SearchPosts {
+            query: "cats".into(),
+            result: Ok(vec![post("at://c/p/1", "did:plc:cat", false)].into()),
+        });
+        assert!(!app.search.posts.loaded);
+        app.handle_event(Event::SearchPosts {
+            query: "dogs".into(),
+            result: Ok(vec![post("at://d/p/1", "did:plc:dog", false)].into()),
+        });
+        assert_eq!(app.search.posts.items[0].uri, "at://d/p/1");
+
+        app.search.mode = SearchMode::Accounts;
+        app.search.actors_query = "dogs".into();
+        app.search.actors.begin();
+        app.handle_event(Event::SearchActors {
+            query: "cats".into(),
+            result: Err(Error::api("late failure")),
+        });
+        assert!(!app.search.actors.loaded);
+        assert!(app.status.is_none(), "{:?}", app.status);
     }
 
     #[test]
@@ -2295,7 +2391,10 @@ mod tests {
         let carol: Profile =
             serde_json::from_value(json!({"did": "did:plc:carol", "handle": "carol.test"}))
                 .unwrap();
-        app.handle_event(Event::SearchActors(Ok(vec![carol].into())));
+        app.handle_event(Event::SearchActors {
+            query: "carol".into(),
+            result: Ok(vec![carol].into()),
+        });
         let jobs = app.handle_key(key('f'));
         assert!(matches!(&jobs[..], [Job::Follow { did }] if did == "did:plc:carol"));
         app.handle_event(Event::Followed {
@@ -2390,7 +2489,10 @@ mod tests {
                 .unwrap()
             })
             .collect();
-        app.handle_event(Event::SearchActors(Ok(actors.into())));
+        app.handle_event(Event::SearchActors {
+            query: "carol".into(),
+            result: Ok(actors.into()),
+        });
         app.handle_key(key('j'));
         let jobs = app.handle_key(code(KeyCode::Enter));
         assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:dave"));
@@ -2519,7 +2621,10 @@ mod tests {
         app.handle_key(code(KeyCode::Enter));
         assert!(!app.search.posts.loaded);
         app.handle_key(key('1'));
-        app.handle_event(Event::SearchPosts(Err(Error::api("boom"))));
+        app.handle_event(Event::SearchPosts {
+            query: "x".into(),
+            result: Err(Error::api("boom")),
+        });
         assert!(app.search.posts.loaded);
     }
 
@@ -2557,11 +2662,14 @@ mod tests {
         let jobs = app.handle_key(code(KeyCode::Enter));
         assert!(matches!(&jobs[..], [Job::SearchPosts(q)] if q == "q l f"));
         // After Enter the results have the keys: j moves, it is not typed.
-        app.handle_event(Event::SearchPosts(Ok(vec![
-            post("at://s/1", "did:plc:x", false),
-            post("at://s/2", "did:plc:y", false),
-        ]
-        .into())));
+        app.handle_event(Event::SearchPosts {
+            query: "q l f".into(),
+            result: Ok(vec![
+                post("at://s/1", "did:plc:x", false),
+                post("at://s/2", "did:plc:y", false),
+            ]
+            .into()),
+        });
         app.handle_key(key('j'));
         assert_eq!(app.search.posts.selected, 1);
         assert_eq!(app.search.input.text(), "q l f");
@@ -2834,10 +2942,10 @@ mod tests {
         app.handle_key(key('/'));
         type_str(&mut app, "old");
         app.handle_key(code(KeyCode::Enter));
-        app.handle_event(Event::SearchPosts(Ok(page(
-            vec![post("at://s/1", "did:plc:x", false)],
-            Some("c1"),
-        ))));
+        app.handle_event(Event::SearchPosts {
+            query: "old".into(),
+            result: Ok(page(vec![post("at://s/1", "did:plc:x", false)], Some("c1"))),
+        });
         assert_eq!(app.handle_key(key('j')).len(), 1);
         // A new search starts before the page arrives.
         app.handle_key(key('/'));
@@ -3115,17 +3223,20 @@ mod tests {
         app.handle_key(key('/'));
         type_str(&mut app, "a");
         app.handle_key(code(KeyCode::Enter));
-        app.handle_event(Event::SearchPosts(Ok(page(
-            vec![post("at://s/1", "did:plc:x", false)],
-            Some("pa"),
-        ))));
+        app.handle_event(Event::SearchPosts {
+            query: "a".into(),
+            result: Ok(page(vec![post("at://s/1", "did:plc:x", false)], Some("pa"))),
+        });
         // Accounts for "b", then back to the posts for "a" without searching.
         app.handle_key(key('/'));
         app.handle_key(ctrl('t'));
         app.handle_key(ctrl('u'));
         type_str(&mut app, "b");
         app.handle_key(code(KeyCode::Enter));
-        app.handle_event(Event::SearchActors(Ok(Vec::new().into())));
+        app.handle_event(Event::SearchActors {
+            query: "b".into(),
+            result: Ok(Vec::new().into()),
+        });
         app.handle_key(key('/'));
         app.handle_key(ctrl('t'));
         app.handle_key(code(KeyCode::Esc));
@@ -3249,10 +3360,10 @@ mod tests {
         app.handle_key(key('/'));
         type_str(&mut app, "q");
         app.handle_key(code(KeyCode::Enter));
-        app.handle_event(Event::SearchPosts(Ok(page(
-            vec![post("at://s/1", "did:plc:x", false)],
-            None,
-        ))));
+        app.handle_event(Event::SearchPosts {
+            query: "q".into(),
+            result: Ok(page(vec![post("at://s/1", "did:plc:x", false)], None)),
+        });
         app.handle_key(key('v'));
         app.handle_key(key('i'));
         assert!(!app.search.editing);

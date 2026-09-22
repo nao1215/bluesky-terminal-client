@@ -1316,6 +1316,69 @@ scenarios:
               - { path: "$.refreshJwt", equals: "ref-2" }
               - { path: "$.service", equals: "${api.url}" }
 
+  # The loads at the start run at once and all find the token expired. A
+  # refresh token works only once, so one of them refreshes and the others
+  # take the new token instead of refreshing with the spent one.
+  - name: loads that find the token expired together refresh it once
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            status: 400
+            delay: 300ms
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            status: 400
+            delay: 300ms
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            status: 400
+            delay: 300ms
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-2", refreshJwt: "ref-2" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "ExpiredToken: Token has expired"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.refreshSession
+            count: 1
+            header: { name: Authorization, equals: "Bearer ref" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.notification.listNotifications
+            count: 2
+            header: { name: Authorization, equals: "Bearer acc-2" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.actor.getPreferences
+            count: 2
+            header: { name: Authorization, equals: "Bearer acc-2" }
+      - assert:
+          file:
+            path: cfg/session.json
+            json: { path: "$.refreshJwt", equals: "ref-2" }
+
   - name: a refresh token the server refuses brings back the login form
     mock_servers:
       - name: api
