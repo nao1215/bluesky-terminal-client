@@ -142,7 +142,9 @@ scenarios:
             # One second of video: it plays, then ends on its last picture.
             - expect_screen:
                 contains: ["1/1", "A test pattern", "■ ended  r plays it again", "r replay"]
-                images: { min_count: 6 }
+                # Several pictures of it, however many a slow machine draws
+                # (a late one is skipped for the newest).
+                images: { min_count: 3 }
             - send: r
             - expect_screen:
                 contains: "■ ended"

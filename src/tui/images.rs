@@ -68,33 +68,54 @@ enum Source {
 /// already gone by. Jobs for what is on screen come before the background
 /// ones (pictures downloaded ahead), however many of those are waiting.
 struct Queue<T> {
-    jobs: Mutex<(Vec<T>, Vec<T>)>,
+    jobs: Mutex<Jobs<T>>,
     ready: Condvar,
+}
+
+struct Jobs<T> {
+    urgent: Vec<T>,
+    background: Vec<T>,
+    /// No more jobs are coming: the workers stop.
+    closed: bool,
 }
 
 impl<T> Queue<T> {
     fn new() -> Arc<Self> {
         Arc::new(Self {
-            jobs: Mutex::new((Vec::new(), Vec::new())),
+            jobs: Mutex::new(Jobs {
+                urgent: Vec::new(),
+                background: Vec::new(),
+                closed: false,
+            }),
             ready: Condvar::new(),
         })
     }
 
+    /// Let every worker waiting on the queue return.
+    fn close(&self) {
+        self.jobs.lock().expect("queue").closed = true;
+        self.ready.notify_all();
+    }
+
     fn push(&self, job: T) {
-        self.jobs.lock().expect("queue").0.push(job);
+        self.jobs.lock().expect("queue").urgent.push(job);
         self.ready.notify_one();
     }
 
     fn push_background(&self, job: T) {
-        self.jobs.lock().expect("queue").1.push(job);
+        self.jobs.lock().expect("queue").background.push(job);
         self.ready.notify_one();
     }
 
-    fn pop(&self) -> T {
+    /// The next job; `None` once the queue is closed.
+    fn pop(&self) -> Option<T> {
         let mut jobs = self.jobs.lock().expect("queue");
         loop {
-            if let Some(job) = jobs.0.pop().or_else(|| jobs.1.pop()) {
-                return job;
+            if jobs.closed {
+                return None;
+            }
+            if let Some(job) = jobs.urgent.pop().or_else(|| jobs.background.pop()) {
+                return Some(job);
             }
             jobs = self.ready.wait(jobs).expect("queue");
         }
@@ -169,7 +190,9 @@ impl Images {
             thread::spawn(move || {
                 let agent = crate::api::agent();
                 loop {
-                    let (key, source) = fetch.pop();
+                    let Some((key, source)) = fetch.pop() else {
+                        return;
+                    };
                     let result = load(&agent, cache.as_deref(), &source);
                     if img_tx.send((key, result)).is_err() {
                         return;
@@ -185,7 +208,9 @@ impl Images {
             let picker = picker.clone();
             thread::spawn(move || {
                 loop {
-                    let (key, img): (Key, Arc<DynamicImage>) = encode.pop();
+                    let Some((key, img)): Option<(Key, Arc<DynamicImage>)> = encode.pop() else {
+                        return;
+                    };
                     let size = Size::new(key.1, key.2);
                     // Scale rather than Fit: a thumbnail smaller than its box
                     // is enlarged to fill it, keeping its proportions.
@@ -497,6 +522,14 @@ impl Images {
     }
 }
 
+impl Drop for Images {
+    /// The loader and encoder threads end with the images they serve.
+    fn drop(&mut self) {
+        self.fetch.close();
+        self.encode.close();
+    }
+}
+
 /// Read a picture: a local one from the user's disk, a downloaded one from
 /// the cache or the network. Only a body that decodes is cached, and a cached
 /// one that no longer decodes is removed, so a bad answer (an error page
@@ -696,7 +729,27 @@ mod tests {
         q.push(1);
         q.push(2);
         q.push(3);
-        assert_eq!([q.pop(), q.pop(), q.pop()], [3, 2, 1]);
+        assert_eq!([q.pop(), q.pop(), q.pop()], [Some(3), Some(2), Some(1)]);
+    }
+
+    #[test]
+    fn a_closed_queue_lets_its_workers_go() {
+        let q: Arc<Queue<u8>> = Queue::new();
+        let worker = {
+            let q = Arc::clone(&q);
+            thread::spawn(move || q.pop())
+        };
+        thread::sleep(Duration::from_millis(50));
+        q.close();
+        assert_eq!(worker.join().unwrap(), None);
+    }
+
+    #[test]
+    fn dropping_images_ends_their_threads() {
+        // Many in a row would run out of threads if each left ten behind.
+        for _ in 0..300 {
+            drop(Images::new(Picker::halfblocks(), None));
+        }
     }
 
     #[test]
@@ -707,10 +760,8 @@ mod tests {
         q.push(3);
         q.push_background(4);
         q.push(5);
-        assert_eq!(
-            [q.pop(), q.pop(), q.pop(), q.pop(), q.pop()],
-            [5, 3, 4, 2, 1]
-        );
+        let order: Vec<_> = (0..5).map(|_| q.pop().unwrap()).collect();
+        assert_eq!(order, [5, 3, 4, 2, 1]);
     }
 
     #[test]

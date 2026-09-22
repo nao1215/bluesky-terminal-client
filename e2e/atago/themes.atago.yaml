@@ -162,7 +162,9 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["No posts from accounts you follow yet", "settings.json is not valid and was ignored"]
+                # The message names the file by its full path, which the error
+                # box wraps where it likes (macOS temporary paths are long).
+                contains: ["No posts from accounts you follow yet", " Error ", "is not valid and was ignored"]
             # A theme can still be used, but saving it would lose the file.
             - send: T
             - expect_screen:
