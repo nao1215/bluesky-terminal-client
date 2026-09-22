@@ -148,6 +148,57 @@ fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("cannot load the video: {e}"))
 }
 
+/// Bytes of a segment handed on at a time: the demuxer and the decoder start
+/// on a segment as soon as its first part has arrived.
+const CHUNK: usize = 32 * 1024;
+
+/// What the download thread hands on: part of the segment under way, or
+/// its end.
+enum Piece {
+    Data(Vec<u8>),
+    End,
+}
+
+/// Download `url`, handing it on in pieces as they arrive. Returns false
+/// once nobody takes them.
+fn stream(
+    agent: &ureq::Agent,
+    url: &str,
+    tx: &std::sync::mpsc::SyncSender<Result<Piece, String>>,
+) -> Result<bool, String> {
+    use std::io::Read;
+    let mut resp = agent
+        .get(url)
+        .call()
+        .map_err(|e| format!("cannot load the video: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "cannot load the video: HTTP {}",
+            resp.status().as_u16()
+        ));
+    }
+    let mut body = resp.body_mut().with_config().limit(MAX_BYTES).reader();
+    loop {
+        let mut buf = vec![0u8; CHUNK];
+        let mut len = 0;
+        // Fill the piece, unless the body ends first.
+        while len < CHUNK {
+            match body.read(&mut buf[len..]) {
+                Ok(0) => break,
+                Ok(n) => len += n,
+                Err(e) => return Err(format!("cannot load the video: {e}")),
+            }
+        }
+        if len == 0 {
+            return Ok(tx.send(Ok(Piece::End)).is_ok());
+        }
+        buf.truncate(len);
+        if tx.send(Ok(Piece::Data(buf))).is_err() {
+            return Ok(false);
+        }
+    }
+}
+
 fn text(agent: &ureq::Agent, url: &str) -> Result<String, String> {
     String::from_utf8(fetch(agent, url)?).map_err(|_| "the video's playlist is not text".into())
 }
@@ -160,11 +211,14 @@ fn play(
     size: &Mutex<(u16, u16)>,
     tx: &Sender<Msg>,
 ) -> Result<(), String> {
-    let agent = crate::api::agent();
-    let master = text(&agent, playlist)?;
+    // One agent for every video played, so the next one reuses the
+    // connections this one opened instead of paying for new handshakes.
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    let agent = AGENT.get_or_init(crate::api::agent);
+    let master = text(agent, playlist)?;
     let (media_url, media) = match hls::pick_variant(&master, playlist) {
         Some(url) => {
-            let media = text(&agent, &url)?;
+            let media = text(agent, &url)?;
             (url, media)
         }
         None => (playlist.to_string(), master),
@@ -180,31 +234,47 @@ fn play(
     // with B-frames is not the order they go in; each takes the earliest
     // presentation time not yet used.
     let mut pending: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
-    // The segments download ahead on a thread of their own, a couple at a
-    // time, so the next one is there when this one has played.
-    let (seg_tx, seg_rx) = std::sync::mpsc::sync_channel::<Result<Vec<u8>, String>>(2);
+    // The segments download ahead on a thread of their own, a couple of
+    // segments' worth at most, in pieces, so the first picture is decoded
+    // from the first piece of the first segment instead of after all of it:
+    // on a slow link that was most of the wait before a video started.
+    let (seg_tx, seg_rx) = std::sync::mpsc::sync_channel::<Result<Piece, String>>(64);
     {
         let (segments, agent) = (segments.clone(), agent.clone());
         thread::spawn(move || {
             for url in segments {
-                let got = fetch(&agent, &url);
-                let failed = got.is_err();
-                if seg_tx.send(got).is_err() || failed {
-                    return;
+                match stream(&agent, &url, &seg_tx) {
+                    Ok(true) => {}
+                    Ok(false) => return,
+                    Err(why) => {
+                        let _ = seg_tx.send(Err(why));
+                        return;
+                    }
                 }
             }
         });
     }
-    for n in 0..segments.len() {
+    let mut ended = 0;
+    while ended < segments.len() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
         }
-        let last = n + 1 == segments.len();
-        let bytes = seg_rx
+        let piece = seg_rx
             .recv()
             .map_err(|_| "the video download stopped".to_string())??;
-        demux.feed(&bytes);
-        let units = if last { demux.finish() } else { demux.take() };
+        let units = match piece {
+            Piece::Data(bytes) => {
+                demux.feed(&bytes);
+                demux.take()
+            }
+            Piece::End => {
+                ended += 1;
+                if ended < segments.len() {
+                    continue;
+                }
+                demux.finish()
+            }
+        };
         if let Some(kind) = demux.unsupported {
             return Err(format!(
                 "this video is not H.264 (stream type 0x{kind:02x}), which bsky cannot decode"
@@ -226,22 +296,20 @@ fn play(
                 return Ok(());
             }
         }
-        if last {
-            let rest: Vec<Option<RgbImage>> = decoder
-                .flush_remaining()
-                .unwrap_or_default()
-                .iter()
-                .map(to_rgb)
-                .collect();
-            for picture in rest {
-                if stop.load(Ordering::Relaxed) {
-                    return Ok(());
-                }
-                let pts = pending.pop().map(|Reverse(p)| p);
-                if !pacer.show(picture, pts)? {
-                    return Ok(());
-                }
-            }
+    }
+    let rest: Vec<Option<RgbImage>> = decoder
+        .flush_remaining()
+        .unwrap_or_default()
+        .iter()
+        .map(to_rgb)
+        .collect();
+    for picture in rest {
+        if stop.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        let pts = pending.pop().map(|Reverse(p)| p);
+        if !pacer.show(picture, pts)? {
+            return Ok(());
         }
     }
     if pacer.shown == 0 {
