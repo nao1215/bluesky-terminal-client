@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Local};
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 /// Wrap `text` into lines at most `width` columns wide.
 ///
@@ -95,19 +95,21 @@ impl Class {
 }
 
 /// Cut `s` to at most `width` columns, ending with `…` when shortened.
+/// The cut falls between grapheme clusters, so a family emoji, a flag, or a
+/// letter with a combining mark is kept whole or dropped whole.
 pub fn truncate(s: &str, width: usize) -> String {
     if s.width() <= width {
         return s.to_string();
     }
     let mut out = String::new();
     let mut col = 0;
-    for c in s.chars() {
-        let cw = c.width().unwrap_or(0);
-        if col + cw + 1 > width {
+    for g in s.graphemes(true) {
+        let gw = g.width();
+        if col + gw + 1 > width {
             break;
         }
-        out.push(c);
-        col += cw;
+        out.push_str(g);
+        col += gw;
     }
     if width > 0 {
         out.push('…');
@@ -168,6 +170,45 @@ mod tests {
     #[case("日本語テキスト", 7, "日本語…")]
     fn truncates_with_an_ellipsis(#[case] s: &str, #[case] w: usize, #[case] want: &str) {
         assert_eq!(truncate(s, w), want);
+    }
+
+    #[rstest]
+    #[case(
+        "👨\u{200d}👩\u{200d}👧👨\u{200d}👩\u{200d}👧",
+        3,
+        "👨\u{200d}👩\u{200d}👧…"
+    )]
+    #[case("👍🏽👍🏽", 3, "👍🏽…")]
+    #[case("a🇯🇵b", 3, "a…")]
+    #[case("か\u{3099}き\u{3099}く\u{3099}", 5, "か\u{3099}き\u{3099}…")]
+    fn truncation_never_splits_a_grapheme_cluster(
+        #[case] s: &str,
+        #[case] w: usize,
+        #[case] want: &str,
+    ) {
+        assert_eq!(truncate(s, w), want);
+    }
+
+    #[test]
+    fn truncation_is_a_grapheme_prefix_within_the_width() {
+        let texts = [
+            "👨\u{200d}👩\u{200d}👧 family 🇯🇵 flag 👍🏽 か\u{3099}",
+            "Bluesky は分散型の SNS です 👍",
+        ];
+        for s in texts {
+            let bounds: Vec<usize> = s
+                .grapheme_indices(true)
+                .map(|(i, _)| i)
+                .chain([s.len()])
+                .collect();
+            for width in 0..=s.width() + 1 {
+                let out = truncate(s, width);
+                assert!(out.width() <= width, "{width}: {out:?}");
+                let kept = out.strip_suffix('…').unwrap_or(&out);
+                assert!(s.starts_with(kept), "{width}: {out:?}");
+                assert!(bounds.contains(&kept.len()), "{width}: {out:?}");
+            }
+        }
     }
 
     #[test]

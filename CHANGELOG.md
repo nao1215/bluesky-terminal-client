@@ -39,3 +39,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Typing on the Search tab ran the letters as commands (`q` quit, `l` liked a result) unless `/` was pressed first. Arriving at an empty Search tab now puts the cursor in the box, and `Tab` leaves it.
 - A status message such as "liked" replaced the key hints until the next message. Messages now have their own row and clear after a few seconds.
 - A hashtag followed by full-width or other non-ASCII punctuation, such as `#Rust！` or `#タグ』`, was sent with the punctuation in the tag, so it linked to a different tag than the official app makes. The tag now ends before the punctuation, and a run of only digits and punctuation such as `#1.5` stays plain text, as in the official app.
+- A shortened line (a link title, a quoted post, a name) could end in the middle of an emoji or a flag, leaving half of it on screen. Lines are now cut between whole characters.
