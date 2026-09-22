@@ -2554,3 +2554,366 @@ mod tests {
         assert_eq!(truncate_start("/pics/🇯🇵🇯🇵", 3), "…🇯🇵");
     }
 }
+
+/// Random keys and random, late, reordered answers from a stand-in worker,
+/// thousands of steps per seed: the client must not panic, must keep every
+/// selection inside its list, must never send more than one write for one
+/// key, and must draw at any terminal size.
+#[cfg(test)]
+mod state_fuzz {
+    use super::*;
+    use crate::api::types::{Profile, ThreadNode};
+    use crate::config::Session;
+    use crate::error::Error;
+    use crate::tui::worker::{Event, Feed, Job, MorePage, Page};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui_image::picker::Picker;
+    use serde_json::json;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            // xorshift64*: a failing seed can be replayed.
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+        fn chance(&mut self, percent: u64) -> bool {
+            self.next() % 100 < percent
+        }
+    }
+
+    const TEXTS: &[&str] = &[
+        "hello",
+        "👨‍👩‍👧‍👦 family 🇯🇵",
+        "日本語の投稿 #タグ https://example.com",
+        "e\u{301}t\u{e9} 1️⃣ ❤️ 👍🏽",
+        "",
+        "a very long line that keeps going and going so that it has to wrap over several rows of the screen",
+    ];
+    const AUTHORS: &[&str] = &["did:plc:me", "did:plc:alice", "did:plc:bob"];
+
+    fn post(rng: &mut Rng, n: u64) -> Post {
+        let author = AUTHORS[rng.below(AUTHORS.len())];
+        let mut v = json!({
+            "uri": format!("at://{author}/app.bsky.feed.post/p{n}"),
+            "cid": format!("c{n}"),
+            "author": {"did": author, "handle": format!("{}.test", &author[8..]), "displayName": TEXTS[rng.below(TEXTS.len())]},
+            "record": {"text": TEXTS[rng.below(TEXTS.len())], "createdAt": "2026-09-22T00:00:00Z"},
+            "likeCount": rng.below(5),
+            "indexedAt": "2026-09-22T00:00:00Z",
+        });
+        if rng.chance(50) {
+            v["author"]["viewer"] =
+                json!({"following": format!("at://did:plc:me/app.bsky.graph.follow/{n}")});
+        }
+        if rng.chance(30) {
+            v["viewer"] = json!({"like": format!("at://did:plc:me/app.bsky.feed.like/{n}")});
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    fn page(rng: &mut Rng, next_id: &mut u64) -> Page<Post> {
+        let items = (0..rng.below(8))
+            .map(|_| {
+                *next_id += 1;
+                post(rng, *next_id)
+            })
+            .collect();
+        Page {
+            items,
+            cursor: rng.chance(60).then(|| format!("c{}", rng.below(1000))),
+        }
+    }
+
+    fn profile(did: &str) -> Profile {
+        serde_json::from_value(
+            json!({"did": did, "handle": "someone.test", "displayName": "Some 👍🏽 one"}),
+        )
+        .unwrap()
+    }
+
+    fn fail() -> Error {
+        Error::api("the server said no")
+    }
+
+    /// What the worker would answer to `job`, sometimes with an error.
+    fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
+        let ok = !rng.chance(15);
+        Some(match job {
+            Job::Login { .. } => Event::LoggedIn(Err(fail())),
+            Job::Timeline => Event::Timeline(if ok {
+                Ok(page(rng, next_id))
+            } else {
+                Err(fail())
+            }),
+            Job::SearchPosts(_) => Event::SearchPosts(if ok {
+                Ok(page(rng, next_id))
+            } else {
+                Err(fail())
+            }),
+            Job::SearchActors(_) => Event::SearchActors(if ok {
+                Ok(vec![profile("did:plc:alice"), profile("did:plc:bob")].into())
+            } else {
+                Err(fail())
+            }),
+            Job::OpenProfile(a) => Event::Profile(if ok {
+                Ok((profile(&a), page(rng, next_id)))
+            } else {
+                Err(fail())
+            }),
+            Job::Thread(uri) => {
+                let node: ThreadNode = serde_json::from_value(json!({
+                    "$type": "app.bsky.feed.defs#threadViewPost",
+                    "post": {
+                        "uri": uri.clone(), "cid": "c",
+                        "author": {"did": "did:plc:bob", "handle": "bob.test"},
+                        "record": {"text": TEXTS[rng.below(TEXTS.len())], "createdAt": "2026-09-22T00:00:00Z"},
+                    },
+                    "replies": [],
+                }))
+                .unwrap();
+                Event::Thread {
+                    uri,
+                    result: if ok { Ok(node) } else { Err(fail()) },
+                }
+            }
+            Job::Notifications => Event::Notifications {
+                seen_at: "2026-09-22T00:00:00Z".into(),
+                result: if ok {
+                    Ok(Vec::new().into())
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::UpdateSeen(_) => Event::Seen(Ok(())),
+            Job::More { feed, cursor } => {
+                let result = if !ok {
+                    Err(fail())
+                } else {
+                    Ok(match &feed {
+                        Feed::SearchActors(_) => {
+                            MorePage::Actors(vec![profile("did:plc:x")].into())
+                        }
+                        Feed::Notifications => MorePage::Notifications(Vec::new().into()),
+                        _ => MorePage::Posts(page(rng, next_id)),
+                    })
+                };
+                Event::More {
+                    feed,
+                    cursor,
+                    result,
+                }
+            }
+            Job::Like { subject } => Event::Liked {
+                post_uri: subject.uri,
+                result: if ok {
+                    Ok("at://did:plc:me/app.bsky.feed.like/new".into())
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::Unlike { post_uri, .. } => Event::Unliked {
+                post_uri,
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
+            Job::Repost { subject } => Event::Reposted {
+                post_uri: subject.uri,
+                result: if ok {
+                    Ok("at://did:plc:me/app.bsky.feed.repost/new".into())
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::Unrepost { post_uri, .. } => Event::Unreposted {
+                post_uri,
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
+            Job::Follow { did } => Event::Followed {
+                did,
+                result: if ok {
+                    Ok("at://did:plc:me/app.bsky.graph.follow/new".into())
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::Unfollow { did, .. } => Event::Unfollowed {
+                did,
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
+            Job::Post { reply, .. } => Event::Posted {
+                reply_to: reply.map(|r| r.parent.uri),
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
+            Job::LoadProfileEditor => Event::ProfileEditor(Err(fail())),
+            Job::SaveProfile { .. } => Event::ProfileSaved(if ok { Ok(()) } else { Err(fail()) }),
+            Job::Download(_) => Event::Downloaded(Err(fail())),
+            Job::OpenLink(url) => Event::Opened {
+                url,
+                result: Err(fail()),
+            },
+        })
+    }
+
+    fn is_write(job: &Job) -> bool {
+        matches!(
+            job,
+            Job::Like { .. }
+                | Job::Unlike { .. }
+                | Job::Repost { .. }
+                | Job::Unrepost { .. }
+                | Job::Follow { .. }
+                | Job::Unfollow { .. }
+                | Job::Post { .. }
+                | Job::SaveProfile { .. }
+        )
+    }
+
+    fn key(rng: &mut Rng) -> KeyEvent {
+        const CHARS: &[char] = &[
+            'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
+            'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍',
+        ];
+        let codes = [
+            KeyCode::Esc,
+            KeyCode::Enter,
+            KeyCode::Tab,
+            KeyCode::BackTab,
+            KeyCode::Backspace,
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::PageDown,
+            KeyCode::PageUp,
+            KeyCode::Home,
+            KeyCode::End,
+        ];
+        match rng.below(10) {
+            0..=5 => KeyEvent::from(KeyCode::Char(CHARS[rng.below(CHARS.len())])),
+            6..=8 => KeyEvent::from(codes[rng.below(codes.len())]),
+            _ => KeyEvent::new(
+                KeyCode::Char(['s', 'o', 'x', 'u', 't'][rng.below(5)]),
+                KeyModifiers::CONTROL,
+            ),
+        }
+    }
+
+    fn check_lists(app: &App, seed: u64, step: usize) {
+        let bounded = |name: &str, len: usize, selected: usize| {
+            assert!(
+                len == 0 || selected < len,
+                "seed {seed} step {step}: {name} selected {selected} of {len}"
+            );
+        };
+        bounded("timeline", app.timeline.items.len(), app.timeline.selected);
+        bounded(
+            "search posts",
+            app.search.posts.items.len(),
+            app.search.posts.selected,
+        );
+        bounded(
+            "search actors",
+            app.search.actors.items.len(),
+            app.search.actors.selected,
+        );
+        bounded(
+            "profile posts",
+            app.profile.posts.items.len(),
+            app.profile.posts.selected,
+        );
+        bounded(
+            "notifications",
+            app.notifications.items.len(),
+            app.notifications.selected,
+        );
+    }
+
+    #[test]
+    fn random_keys_and_late_answers_keep_the_client_sound() {
+        let dir = tempfile::tempdir().unwrap();
+        // A short run in every `cargo test`; BSKY_FUZZ_SEEDS=2000 (in a
+        // release build) for a long one.
+        let seeds: u64 = std::env::var("BSKY_FUZZ_SEEDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(12);
+        for seed in 1..=seeds {
+            let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+            let session = Session {
+                service: "https://pds.test".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            };
+            let (mut app, jobs) = App::new(Some(session), "https://pds.test");
+            app.browse_from = Some(dir.path().to_path_buf());
+            let mut next_id = 0u64;
+            let mut pending: Vec<Event> = Vec::new();
+            for job in jobs {
+                pending.extend(answer(&mut rng, job, &mut next_id));
+            }
+            let mut images = Images::new(Picker::halfblocks(), None);
+            for step in 0..800 {
+                if rng.chance(35) && !pending.is_empty() {
+                    // Any waiting answer, not only the oldest: answers arrive
+                    // late and out of order.
+                    let ev = pending.swap_remove(rng.below(pending.len()));
+                    for job in app.handle_event(ev) {
+                        pending.extend(answer(&mut rng, job, &mut next_id));
+                    }
+                } else {
+                    let k = key(&mut rng);
+                    // What a like or repost must act on: the post selected
+                    // when the key is pressed, whatever arrives later.
+                    let target = app
+                        .overlay
+                        .is_none()
+                        .then(|| app.selected_post().map(|p| p.uri))
+                        .flatten();
+                    let jobs = app.handle_key(k);
+                    let writes = jobs.iter().filter(|j| is_write(j)).count();
+                    assert!(
+                        writes <= 1,
+                        "seed {seed} step {step}: {k:?} sent {writes} writes: {jobs:?}"
+                    );
+                    for job in &jobs {
+                        let acted_on = match job {
+                            Job::Like { subject } | Job::Repost { subject } => Some(&subject.uri),
+                            Job::Unlike { post_uri, .. } | Job::Unrepost { post_uri, .. } => {
+                                Some(post_uri)
+                            }
+                            _ => None,
+                        };
+                        if let Some(uri) = acted_on {
+                            assert_eq!(
+                                Some(uri),
+                                target.as_ref(),
+                                "seed {seed} step {step}: {k:?} acted on another post than the selected one"
+                            );
+                        }
+                    }
+                    for job in jobs {
+                        pending.extend(answer(&mut rng, job, &mut next_id));
+                    }
+                }
+                if app.quit {
+                    break;
+                }
+                check_lists(&app, seed, step);
+                if step % 7 == 0 {
+                    let (w, h) = (1 + rng.below(120) as u16, 1 + rng.below(50) as u16);
+                    let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+                    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+                }
+            }
+        }
+    }
+}
