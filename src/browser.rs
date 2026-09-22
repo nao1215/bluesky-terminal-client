@@ -90,6 +90,48 @@ mod tests {
         assert!(e.to_string().contains(BROWSER_ENV));
     }
 
+    /// An opener that exists but cannot be run says what went wrong, not
+    /// that it is missing.
+    #[cfg(unix)]
+    #[test]
+    fn an_opener_that_cannot_run_says_why() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("browser");
+        std::fs::write(&program, "not a program").unwrap();
+        let program = program.to_string_lossy().into_owned();
+        let e = spawn(&program, &["https://a.test".into()]).unwrap_err();
+        assert!(
+            e.message()
+                .starts_with(&format!("cannot open the link with {program}: ")),
+            "{e}"
+        );
+        assert!(!e.message().contains("was not found"), "{e}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_working_opener_is_started_with_the_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("opened");
+        let program = dir.path().join("browser");
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\nprintf '%s' \"$1\" > '{}'\n", out.display()),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&program).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&program, perms).unwrap();
+        let url = "https://a.test/x?y=1&z=2";
+        spawn(&program.to_string_lossy(), &[url.into()]).unwrap();
+        let begin = std::time::Instant::now();
+        while !out.exists() && begin.elapsed() < std::time::Duration::from_secs(5) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), url);
+    }
+
     #[test]
     fn the_system_opener_takes_the_url_as_one_argument() {
         let url = "https://a.test/x?y=1&z=2";

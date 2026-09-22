@@ -35,6 +35,10 @@ ureq = "3"
 rstest = "0.27"
 tempfile = "3"
 
+# cargo-llvm-cov sets cfg(coverage); tests that never run under it opt out.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
