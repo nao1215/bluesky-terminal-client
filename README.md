@@ -7,9 +7,11 @@
 
 bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures inline, in the terminal's own graphics protocol, next to the posts they belong to.
 
-- The timeline shows posts written by the accounts you follow, and nothing else: no reposts, no posts of your own, no one you do not follow.
+- The timeline shows posts written by the accounts you follow, and nothing else: no reposts, no posts of your own, no one you do not follow. A reply is shown under the posts it answers, and `v` opens its whole thread with every reply expanded.
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
-- Post, reply, and like; search posts and accounts; follow and unfollow; edit your display name, description, and avatar.
+- Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
+- Nine color themes, previewed live and remembered.
+- The keys for the current view are always on screen, and `?` lists all of them.
 - A terminal that cannot draw images is refused at startup instead of giving you a client that silently drops every picture.
 
 ## Requirements
@@ -58,32 +60,46 @@ bs --service https://pds.example.com
 
 ## Keys
 
+The bottom row always shows the keys that work where you are; `?` opens the full list.
+
 | Key | Action |
 |-----|--------|
-| `1` `2` `3`, `Tab` `Shift+Tab` | Timeline, Search, Profile |
-| `j` `k`, `↓` `↑` | Move the selection (`g` / `G` for top and bottom) |
+| `1` `2` `3` `4`, `Tab` `Shift+Tab` | Timeline, Search, Profile, Notifications |
+| `j` `k`, `↓` `↑` | Move the selection (`g` / `G` for top and bottom); more loads by itself near the end |
 | `n` | New post |
 | `r` | Reply to the selected post |
 | `l` | Like, or remove your like |
+| `b` | Repost, or remove your repost |
 | `f` | Follow or unfollow the selected account (the author of the selected post, or the profile shown) |
+| `v` | Open the thread of the selected post: the posts above it and every reply |
 | `Enter` | Open the profile of the selected account or post author |
-| `/` | Search; `Ctrl+T` in the box, or `t` on the Search tab, switches between posts and accounts |
+| `/` | Search. Arriving at an empty Search tab puts the cursor in the box; `/` or `i` types again later. `Ctrl+T` in the box, or `t` outside it, switches between posts and accounts |
 | `e` | Edit your profile (Profile tab) |
+| `T` | Choose a color theme |
 | `R`, `F5` | Refresh the current view |
-| `Esc` | Leave the search box, close a window, return to your own profile |
+| `Esc` | Close a thread or a window, leave the search box, go back from a profile to the search, timeline, or notifications it was opened from |
 | `Ctrl+S` | Send the post, save the profile |
 | `?` | Help |
 | `q`, `Ctrl+C` | Quit |
 
 Links, mentions, and hashtags in posts you write become clickable: bs finds them in the text and sends the rich-text facets Bluesky needs. A mention whose handle does not resolve stays plain text. The composer counts characters the way Bluesky does and refuses to send more than 300.
 
+## Themes
+
+`T` opens the theme picker: `default`, `light`, `dracula`, `nord`, `gruvbox`, `solarized`, `catppuccin`, `tokyo-night`, and `monochrome`. Moving the selection redraws the screen in that theme; `Enter` keeps it and `Esc` goes back to the one you had. The choice is saved in `settings.json` in the config directory, which bs writes only when you apply a theme.
+
+`default` uses your terminal's own sixteen colors. The others are 24-bit palettes; on a terminal that does not set `COLORTERM=truecolor` they are drawn with the nearest of the 256 standard colors. With `NO_COLOR` set, bs draws without color.
+
 ## Configuration
 
 | Variable | Meaning |
 |----------|---------|
 | `BS_SERVICE` | PDS to log in to, like `--service` (default `https://bsky.social`) |
-| `BS_CONFIG_DIR` | Directory for `session.json` (default: `bs` in the platform config directory, `$XDG_CONFIG_HOME/bs` on Linux) |
+| `BS_CONFIG_DIR` | Directory for `session.json` and `settings.json` (default: `bs` in the platform config directory: `~/.config/bs` on Linux, `~/Library/Application Support/bs` on macOS, `%APPDATA%\bs` on Windows) |
 | `BS_GRAPHICS` | Force an image protocol: `kitty`, `sixel`, or `iterm2` |
+| `NO_COLOR` | Draw without color, whatever theme is chosen |
+
+A `settings.json` that cannot be read is reported and ignored; bs starts with the default theme and leaves the file as it is.
 
 ## Exit status
 

@@ -80,7 +80,7 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("e", "edit your profile"),
             ("f", "follow / unfollow the account shown"),
-            ("esc", "back to the search or timeline it was opened from"),
+            ("esc", "back to the list it was opened from"),
         ],
     },
     Section {
