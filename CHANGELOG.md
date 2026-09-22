@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Notifications load in the background at the start, so their tab shows the unread count at once and opens without waiting; they are marked seen only when the tab is visited, and a failure there waits on the tab instead of interrupting the timeline. Downloaded pictures are kept on disk (`BSKY_CACHE_DIR`, 256 MB, least recently used removed first), so the next start draws them without downloading.
 - Esc on a profile opened from the search results, the timeline, or the notifications goes back there, with the results and the selection as they were.
 - Custom feeds on the Timeline tab: `[` and `]` go through Following and the feeds pinned in the account's saved feeds, in their pinned order (Discover when none are pinned). A feed shows every post it serves, loads when it is first shown, keeps its place and its next pages, and `R` refreshes the one on screen.
+- A bare domain in a new post, such as `example.com` or `docs.bsky.app/blog`, is linked with `https://` in front, as Bluesky's app links it: only when its last label is a top-level domain on the list the app uses, so `file.txt` and `v1.2` stay text.
 
 ### Changed
 
