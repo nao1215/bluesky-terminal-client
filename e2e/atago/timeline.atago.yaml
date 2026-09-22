@@ -663,8 +663,10 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+      # A gateway error is tried once more by itself, so two loads (the
+      # start and R) make four requests.
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2 }
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 4 }
 
   - name: an expired access token is refreshed once and the new tokens are saved
     skip:

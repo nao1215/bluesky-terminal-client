@@ -32,6 +32,19 @@ const USER_AGENT: &str = concat!("bs/", env!("CARGO_PKG_VERSION"));
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
+/// How long a read that hit a busy server waits before trying once more.
+const RETRY_AFTER: Duration = Duration::from_secs(1);
+
+/// Whether `e` is a server being briefly unavailable rather than a real
+/// answer.
+fn is_transient(e: &Error) -> bool {
+    let m = e.message();
+    m.contains("failed: UpstreamFailure")
+        || ["HTTP 502", "HTTP 503", "HTTP 504"]
+            .iter()
+            .any(|code| m.ends_with(code))
+}
+
 /// How long an upload may take.
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
@@ -483,8 +496,17 @@ impl Client {
         }
     }
 
+    /// A read. One that fails the way a busy server fails (a gateway error,
+    /// Bluesky's `UpstreamFailure`) is tried once more after a moment, as it
+    /// usually works the second time; a write is never repeated.
     fn get<T: DeserializeOwned>(&mut self, nsid: &str, query: &[(&str, &str)]) -> Result<T> {
-        self.call(nsid, query, Payload::None)
+        match self.call(nsid, query, Payload::None) {
+            Err(e) if is_transient(&e) => {
+                std::thread::sleep(RETRY_AFTER);
+                self.call(nsid, query, Payload::None)
+            }
+            other => other,
+        }
     }
 
     fn post<B: Serialize, T: DeserializeOwned>(&mut self, nsid: &str, body: &B) -> Result<T> {
@@ -955,6 +977,20 @@ mod tests {
             v,
             json!({"$type": "app.bsky.actor.profile", "description": "hello", "banner": {"x": 1}})
         );
+    }
+
+    #[rstest]
+    #[case(
+        "app.bsky.feed.getTimeline failed: UpstreamFailure: Upstream Failure",
+        true
+    )]
+    #[case("app.bsky.feed.getTimeline failed: HTTP 502", true)]
+    #[case("app.bsky.feed.getTimeline failed: HTTP 504", true)]
+    #[case("app.bsky.feed.getTimeline failed: InternalServerError: boom", false)]
+    #[case("app.bsky.feed.getTimeline failed: HTTP 500", false)]
+    #[case("app.bsky.feed.getTimeline failed: InvalidRequest: bad cursor", false)]
+    fn only_a_busy_server_is_tried_again(#[case] message: &str, #[case] want: bool) {
+        assert_eq!(is_transient(&Error::api(message)), want);
     }
 
     #[test]

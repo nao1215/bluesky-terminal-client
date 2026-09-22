@@ -172,7 +172,9 @@ fn draw_viewer(
     };
     let [pic, caption] = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(area);
     let (url, alt, aspect) = match item {
-        Media::Image { url, alt, aspect } => (Some(url.as_str()), alt, *aspect),
+        Media::Image {
+            url, alt, aspect, ..
+        } => (Some(url.as_str()), alt, *aspect),
         Media::Video {
             thumbnail,
             alt,
@@ -207,10 +209,9 @@ fn draw_viewer(
             };
             head.push(Span::styled(text, style));
         }
-        Media::Image { .. } => {
-            if let Some(url) = url {
-                images.draw(frame, r, url);
-            }
+        Media::Image { url, thumb, .. } => {
+            // The thumbnail at once, the full size as soon as it is here.
+            images.draw_first(frame, r, &[url.as_str(), thumb.as_str()]);
         }
     }
     let alt = if alt.is_empty() {

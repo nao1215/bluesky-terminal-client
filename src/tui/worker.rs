@@ -760,6 +760,7 @@ mod tests {
     fn downloads_are_named_after_the_media() {
         let img = |url: &str| Media::Image {
             url: url.into(),
+            thumb: String::new(),
             alt: String::new(),
             aspect: None,
         };

@@ -65,29 +65,35 @@ enum Source {
 
 /// A work queue whose workers take the newest job first: when the user
 /// scrolls past pictures, the ones on screen now are loaded before the ones
-/// already gone by.
+/// already gone by. Jobs for what is on screen come before the background
+/// ones (pictures downloaded ahead), however many of those are waiting.
 struct Queue<T> {
-    jobs: Mutex<Vec<T>>,
+    jobs: Mutex<(Vec<T>, Vec<T>)>,
     ready: Condvar,
 }
 
 impl<T> Queue<T> {
     fn new() -> Arc<Self> {
         Arc::new(Self {
-            jobs: Mutex::new(Vec::new()),
+            jobs: Mutex::new((Vec::new(), Vec::new())),
             ready: Condvar::new(),
         })
     }
 
     fn push(&self, job: T) {
-        self.jobs.lock().expect("queue").push(job);
+        self.jobs.lock().expect("queue").0.push(job);
+        self.ready.notify_one();
+    }
+
+    fn push_background(&self, job: T) {
+        self.jobs.lock().expect("queue").1.push(job);
         self.ready.notify_one();
     }
 
     fn pop(&self) -> T {
         let mut jobs = self.jobs.lock().expect("queue");
         loop {
-            if let Some(job) = jobs.pop() {
+            if let Some(job) = jobs.0.pop().or_else(|| jobs.1.pop()) {
                 return job;
             }
             jobs = self.ready.wait(jobs).expect("queue");
@@ -96,7 +102,10 @@ impl<T> Queue<T> {
 }
 
 enum Slot {
-    Loading,
+    /// Asked for; `urgent` once it is wanted on screen, not only ahead.
+    Loading {
+        urgent: bool,
+    },
     Ready(Arc<DynamicImage>),
     /// The download or decode failed at this time; it is tried again after
     /// [`RETRY_AFTER`], so a network blip does not leave a mark for good.
@@ -258,7 +267,10 @@ impl Images {
         self.video
             .as_ref()
             .is_some_and(|v| v.state == State::Loading)
-            || self.slots.values().any(|(s, _)| matches!(s, Slot::Loading))
+            || self
+                .slots
+                .values()
+                .any(|(s, _)| matches!(s, Slot::Loading { .. }))
             || self
                 .protocols
                 .values()
@@ -286,7 +298,7 @@ impl Images {
             let mut old: Vec<(u64, String)> = self
                 .slots
                 .iter()
-                .filter(|(_, (s, last))| !matches!(s, Slot::Loading) && *last < keep_after)
+                .filter(|(_, (s, last))| !matches!(s, Slot::Loading { .. }) && *last < keep_after)
                 .map(|(k, (_, last))| (*last, k.clone()))
                 .collect();
             old.sort();
@@ -354,6 +366,35 @@ impl Images {
         self.video.as_ref().is_some_and(|v| v.frame().is_some())
     }
 
+    /// Draw the first of `urls` that is ready in `area`, asking for all of
+    /// them: a full-size picture over its thumbnail as soon as it arrives.
+    pub fn draw_first(&mut self, frame: &mut Frame, area: Rect, urls: &[&str]) {
+        let area = area.intersection(frame.area());
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+        let urls: Vec<&str> = urls.iter().copied().filter(|u| !u.is_empty()).collect();
+        let mut mark = "…";
+        for (i, url) in urls.iter().enumerate() {
+            match self.request(url, area.width, area.height) {
+                Ok(_) => {
+                    // Everything after this one is still asked for, so it is
+                    // ready when it is the best there is.
+                    for rest in &urls[i + 1..] {
+                        let _ = self.request(rest, area.width, area.height);
+                    }
+                    let p = self.request(url, area.width, area.height).expect("ready");
+                    frame.render_widget(Image::new(p), area);
+                    return;
+                }
+                Err(m) if i == 0 => mark = m,
+                Err(_) => {}
+            }
+        }
+        let style = self.placeholder;
+        frame.render_widget(Paragraph::new(mark).style(style), area);
+    }
+
     /// Draw the picture at `path` on the user's disk fitted inside `area`.
     pub fn draw_file(&mut self, frame: &mut Frame, area: Rect, path: &Path) {
         let key = file_key(path);
@@ -396,40 +437,52 @@ impl Images {
     /// only the (fast) encode is left.
     pub fn warm(&mut self, url: &str) {
         if !url.is_empty() {
-            let _ = self.decoded(url);
+            let _ = self.decoded(url, false);
         }
     }
 
     /// The decoded picture, starting its download when needed; or the mark
     /// to show until it is there.
-    fn decoded(&mut self, url: &str) -> Result<Arc<DynamicImage>, &'static str> {
+    fn decoded(&mut self, url: &str, urgent: bool) -> Result<Arc<DynamicImage>, &'static str> {
         let frame_no = self.frame;
         let source = match self.local.get(url) {
             Some(path) => Source::Local(path.clone()),
             None => Source::Remote(url.to_string()),
         };
         let fetch = &self.fetch;
+        let job = (url.to_string(), source);
         let (slot, last) = self.slots.entry(url.to_string()).or_insert_with(|| {
-            fetch.push((url.to_string(), source.clone()));
-            (Slot::Loading, frame_no)
+            if urgent {
+                fetch.push(job.clone());
+            } else {
+                fetch.push_background(job.clone());
+            }
+            (Slot::Loading { urgent }, frame_no)
         });
         *last = frame_no;
-        if let Slot::Failed(at) = slot
-            && at.elapsed() >= RETRY_AFTER
-        {
-            fetch.push((url.to_string(), source));
-            *slot = Slot::Loading;
+        match slot {
+            Slot::Failed(at) if at.elapsed() >= RETRY_AFTER => {
+                fetch.push(job);
+                *slot = Slot::Loading { urgent: true };
+            }
+            // Downloaded ahead and not there yet, and now it is on screen:
+            // ahead of the queue it goes.
+            Slot::Loading { urgent: false } if urgent => {
+                fetch.push(job);
+                *slot = Slot::Loading { urgent: true };
+            }
+            _ => {}
         }
         match slot {
             Slot::Ready(img) => Ok(Arc::clone(img)),
-            Slot::Loading => Err("…"),
+            Slot::Loading { .. } => Err("…"),
             Slot::Failed(_) => Err("×"),
         }
     }
 
     /// The encoded picture, or the mark to show until it is ready.
     fn request(&mut self, url: &str, width: u16, height: u16) -> Result<&Protocol, &'static str> {
-        let img = self.decoded(url)?;
+        let img = self.decoded(url, true)?;
         let key = (url.to_string(), width, height);
         let encode = &self.encode;
         let encoded = self.protocols.entry(key.clone()).or_insert_with(|| {
@@ -644,6 +697,20 @@ mod tests {
         q.push(2);
         q.push(3);
         assert_eq!([q.pop(), q.pop(), q.pop()], [3, 2, 1]);
+    }
+
+    #[test]
+    fn what_is_on_screen_comes_before_what_is_ahead() {
+        let q = Queue::new();
+        q.push_background(1);
+        q.push_background(2);
+        q.push(3);
+        q.push_background(4);
+        q.push(5);
+        assert_eq!(
+            [q.pop(), q.pop(), q.pop(), q.pop(), q.pop()],
+            [5, 3, 4, 2, 1]
+        );
     }
 
     #[test]

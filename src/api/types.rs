@@ -195,6 +195,9 @@ pub enum Media {
     Image {
         /// The full-size picture.
         url: String,
+        /// Its small version, already on screen in the list, shown while
+        /// the full size downloads.
+        thumb: String,
         alt: String,
         aspect: Option<(u32, u32)>,
     },
@@ -220,6 +223,7 @@ impl Embed {
                     } else {
                         i.fullsize.clone()
                     },
+                    thumb: i.thumb.clone(),
                     alt: i.alt.clone(),
                     aspect: aspect(i.aspect_ratio),
                 })
