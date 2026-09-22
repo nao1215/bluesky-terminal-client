@@ -1004,7 +1004,7 @@ impl App {
         }
     }
 
-    fn selected_post(&mut self) -> Option<Post> {
+    pub(crate) fn selected_post(&mut self) -> Option<Post> {
         if let Some(th) = self.threads.last() {
             return th.list.current().and_then(ThreadRow::post).cloned();
         }
