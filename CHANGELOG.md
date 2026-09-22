@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-22
+
 ### Added
 
 - `bsky`, a Bluesky client for the terminal. The timeline shows posts written by accounts you follow and by you, and nothing else: reposts and posts by accounts you do not follow are left out, and a post you send appears on it right away. Avatars and attached photos are drawn inline with kitty graphics, sixel, or iTerm2 inline images, each at its own aspect ratio.
