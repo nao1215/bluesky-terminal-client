@@ -22,6 +22,7 @@ use crate::tui::keys;
 use crate::tui::text::{format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
+use crate::tui::worker::NotifItem;
 
 /// Width of the selection marker column.
 const MARK_W: u16 = 2;
@@ -82,6 +83,7 @@ fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t
         }
         Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
+        Tab::Notifications => draw_notifications(frame, body, app, images),
     }
 }
 
@@ -112,7 +114,10 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme.clone();
     let mut spans = vec![Span::styled(" bs ", t.badge()), Span::raw(" ")];
     for (i, tab) in Tab::ALL.iter().enumerate() {
-        let label = format!(" {} {} ", i + 1, tab.title());
+        let label = match (tab, app.unread) {
+            (Tab::Notifications, n) if n > 0 => format!(" {} {} ({n}) ", i + 1, tab.title()),
+            _ => format!(" {} {} ", i + 1, tab.title()),
+        };
         let style = if *tab == app.tab {
             t.selected()
         } else {
@@ -627,12 +632,37 @@ fn draw_accounts(
     images: &mut Images,
     t: &Theme,
 ) {
+    let messages = (" searching…", " No accounts found.");
+    draw_two_line_rows(
+        frame,
+        area,
+        list,
+        images,
+        messages,
+        t,
+        |p| p.avatar.as_deref(),
+        |p, w| account_lines(p, w, t),
+    );
+}
+
+/// A list whose entries are an avatar beside two lines of text.
+#[allow(clippy::too_many_arguments)]
+fn draw_two_line_rows<T>(
+    frame: &mut Frame,
+    area: Rect,
+    list: &mut List<T>,
+    images: &mut Images,
+    (loading, empty): (&str, &str),
+    t: &Theme,
+    avatar: impl Fn(&T) -> Option<&str>,
+    lines: impl Fn(&T, u16) -> Vec<Line<'static>>,
+) {
     if !list.loaded {
-        frame.render_widget(Paragraph::new(" searching…").style(t.dim()), area);
+        frame.render_widget(Paragraph::new(loading).style(t.dim()), area);
         return;
     }
     if list.items.is_empty() {
-        frame.render_widget(Paragraph::new(" No accounts found.").style(t.dim()), area);
+        frame.render_widget(Paragraph::new(empty).style(t.dim()), area);
         return;
     }
     const H: u16 = 3;
@@ -640,35 +670,27 @@ fn draw_accounts(
     scroll(list, &heights, area.height);
     let content = content_rect(area);
     let mut y = area.y;
-    for (i, p) in list.items.iter().enumerate().skip(list.offset) {
+    for (i, item) in list.items.iter().enumerate().skip(list.offset) {
         if y + H > area.bottom() {
             break;
         }
-        draw_marker(
-            frame,
-            Rect {
+        let row = Rect {
+            y,
+            height: H,
+            ..area
+        };
+        draw_marker(frame, row, H, i == list.selected, t);
+        if let Some(url) = avatar(item) {
+            let r = Rect {
+                x: area.x + MARK_W,
                 y,
-                height: H,
-                ..area
-            },
-            H,
-            i == list.selected,
-            t,
-        );
-        if let Some(url) = &p.avatar {
-            images.draw(
-                frame,
-                Rect {
-                    x: area.x + MARK_W,
-                    y,
-                    width: AVATAR.0,
-                    height: AVATAR.1,
-                },
-                url,
-            );
+                width: AVATAR.0,
+                height: AVATAR.1,
+            };
+            images.draw(frame, r, url);
         }
         frame.render_widget(
-            Paragraph::new(account_lines(p, content.width, t)),
+            Paragraph::new(lines(item, content.width)),
             Rect {
                 y,
                 height: 2,
@@ -677,6 +699,68 @@ fn draw_accounts(
         );
         y += H;
     }
+}
+
+/// What a notification says its author did.
+fn notif_action(reason: &str) -> String {
+    match reason {
+        "like" => "liked your post".into(),
+        "repost" => "reposted your post".into(),
+        "follow" => "followed you".into(),
+        "mention" => "mentioned you".into(),
+        "reply" => "replied to you".into(),
+        "quote" => "quoted your post".into(),
+        "like-via-repost" => "liked your repost".into(),
+        "repost-via-repost" => "reposted your repost".into(),
+        "starterpack-joined" => "joined through your starter pack".into(),
+        "verified" => "verified you".into(),
+        "unverified" => "removed your verification".into(),
+        "subscribed-post" => "posted".into(),
+        other => format!("({other})"),
+    }
+}
+
+fn notif_lines(item: &NotifItem, width: u16, t: &Theme) -> Vec<Line<'static>> {
+    let width = usize::from(width.max(1));
+    let n = &item.n;
+    let mut head = Vec::new();
+    if item.fresh {
+        head.push(Span::styled("● ", t.accent()));
+    }
+    head.push(Span::styled(
+        n.author.name().to_string(),
+        Style::new().bold(),
+    ));
+    head.push(Span::styled(format!(" @{}", n.author.handle), t.dim()));
+    head.push(Span::raw(format!(" {}", notif_action(&n.reason))));
+    head.push(Span::styled(
+        format!(" · {}", format_time(&n.indexed_at)),
+        t.dim(),
+    ));
+    // The post itself for a reply or mention, the viewer's own post (dim)
+    // for a like or repost; nothing for a follow.
+    let text = |p: &Post| p.record().text.lines().next().unwrap_or("").to_string();
+    let second = match (&item.post, &item.subject) {
+        (Some(p), _) => Line::from(truncate(&text(p), width)),
+        (None, Some(p)) => Line::styled(truncate(&text(p), width), t.dim()),
+        (None, None) => Line::default(),
+    };
+    vec![truncate_line(Line::from(head), width), second]
+}
+
+fn draw_notifications(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
+    let t = app.theme;
+    let messages = (" loading…", " No notifications yet.");
+    draw_two_line_rows(
+        frame,
+        area,
+        &mut app.notifications,
+        images,
+        messages,
+        &t,
+        |i| i.n.author.avatar.as_deref(),
+        |i, w| notif_lines(i, w, &t),
+    );
 }
 
 fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
@@ -1440,6 +1524,54 @@ mod tests {
             "the reply is indented:\n{screen}"
         );
         assert!(reply_line.contains('│'), "with a guide line:\n{screen}");
+    }
+
+    #[test]
+    fn notifications_say_who_did_what_and_mark_the_unread() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let n = |reason: &str, read: bool| crate::tui::worker::NotifItem {
+            n: serde_json::from_value(json!({
+                "uri": format!("at://{reason}"), "reason": reason, "isRead": read,
+                "author": {"did": "d", "handle": format!("{reason}.test"), "displayName": "Eve"},
+                "indexedAt": "2026-09-22T00:00:00.000Z"
+            }))
+            .unwrap(),
+            post: None,
+            subject: (reason == "like").then(|| posts(1).remove(0)),
+            fresh: !read,
+        };
+        app.tab = Tab::Notifications;
+        app.unread = 1;
+        app.notifications = List {
+            items: vec![
+                n("like", false),
+                n("follow", true),
+                n("starterpack-joined", true),
+                n("brand-new", true),
+            ],
+            loaded: true,
+            ..List::default()
+        };
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains("4 Notifications (1)"), "{screen}");
+        assert!(
+            screen.contains("● Eve @like.test liked your post"),
+            "{screen}"
+        );
+        assert!(
+            screen.contains("post number 0"),
+            "the liked post is quoted:\n{screen}"
+        );
+        assert!(screen.contains("Eve @follow.test followed you"), "{screen}");
+        assert!(!screen.contains("● Eve @follow.test"), "{screen}");
+        assert!(
+            screen.contains("joined through your starter pack"),
+            "{screen}"
+        );
+        assert!(
+            screen.contains("(brand-new)"),
+            "an unknown reason is still shown:\n{screen}"
+        );
     }
 
     #[test]

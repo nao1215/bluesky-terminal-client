@@ -1,0 +1,243 @@
+# The Notifications tab (4): what each notification says, the posts it is
+# about, marking them seen, and acting on them.
+#
+# The list has a reply and a like (both unread), a follow, a like of a repost
+# (its subject is a repost URI, which getPosts cannot return), and a reason
+# this version of bs does not know. updateSeen answers 200 with an empty
+# body, as the real service does.
+version: "1"
+
+suite:
+  name: bs notifications
+
+scenarios:
+  - name: notifications show who did what and are marked seen
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - &notifications
+            method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            json:
+              notifications:
+                - uri: at://did:plc:ann/app.bsky.feed.post/reply1
+                  cid: cid-reply1
+                  author: { did: did:plc:ann, handle: ann.test, displayName: Ann }
+                  reason: reply
+                  reasonSubject: at://did:plc:me/app.bsky.feed.post/mine
+                  isRead: false
+                  indexedAt: "2026-09-22T01:00:00.000Z"
+                - uri: at://did:plc:ben/app.bsky.feed.like/l1
+                  cid: cid-l1
+                  author: { did: did:plc:ben, handle: ben.test, displayName: Ben }
+                  reason: like
+                  reasonSubject: at://did:plc:me/app.bsky.feed.post/mine
+                  isRead: false
+                  indexedAt: "2026-09-22T00:30:00.000Z"
+                - uri: at://did:plc:cat/app.bsky.graph.follow/f1
+                  cid: cid-f1
+                  author: { did: did:plc:cat, handle: cat.test, displayName: Cat }
+                  reason: follow
+                  isRead: true
+                  indexedAt: "2026-09-21T23:00:00.000Z"
+                - uri: at://did:plc:dan/app.bsky.feed.like/l2
+                  cid: cid-l2
+                  author: { did: did:plc:dan, handle: dan.test, displayName: Dan }
+                  reason: like-via-repost
+                  reasonSubject: at://did:plc:me/app.bsky.feed.repost/rp1
+                  isRead: true
+                  indexedAt: "2026-09-21T22:00:00.000Z"
+                - uri: at://did:plc:eli/app.bsky.graph.something/x1
+                  cid: cid-x1
+                  author: { did: did:plc:eli, handle: eli.test, displayName: Eli }
+                  reason: brand-new-reason
+                  isRead: true
+                  indexedAt: "2026-09-21T21:00:00.000Z"
+          - &get_posts
+            method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:ann/app.bsky.feed.post/reply1
+                  cid: cid-reply1
+                  author: { did: did:plc:ann, handle: ann.test, displayName: Ann }
+                  record: { text: "Ann answers your post", createdAt: "2026-09-22T01:00:00.000Z" }
+                - uri: at://did:plc:me/app.bsky.feed.post/mine
+                  cid: cid-mine
+                  author: { did: did:plc:me, handle: me.test }
+                  record: { text: "My post that people liked", createdAt: "2026-09-21T20:00:00.000Z" }
+          - &update_seen
+            method: POST
+            path: /xrpc/app.bsky.notification.updateSeen
+            body: ""
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains:
+                  - "● Ann @ann.test replied to you"
+                  - "Ann answers your post"
+                  - "● Ben @ben.test liked your post"
+                  - "My post that people liked"
+                  - "Cat @cat.test followed you"
+                  - "Dan @dan.test liked your repost"
+                  - "Eli @eli.test (brand-new-reason)"
+                not_contains: ["● Cat", "unexpected response"]
+            # Once seen, the tab stops counting them.
+            - expect_screen:
+                contains: "4 Notifications "
+                not_contains: "Notifications (2)"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.notification.listNotifications
+            count: 1
+            query: { name: limit, equals: "30" }
+      # One getPosts for the page; the repost URI is not asked for.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getPosts
+            count: 1
+            query: { name: uris, equals: "at://did:plc:ann/app.bsky.feed.post/reply1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.notification.updateSeen
+            method: POST
+            count: 1
+            body:
+              json: { path: "$.seenAt", matches: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' }
+
+  - name: a reply notification can be answered, and a follow opens the profile
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *notifications
+          - *get_posts
+          - *update_seen
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/new", cid: "cid-new" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:cat, handle: cat.test, displayName: Cat, followersCount: 1, followsCount: 1, postsCount: 1, viewer: { followedBy: at://did:plc:cat/app.bsky.graph.follow/f1 } }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains: "Ann answers your post"
+            - send: r
+            - expect_screen:
+                contains: ["Reply to @ann.test", "❝ Ann answers your post"]
+            - send: "Thanks, Ann"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "reply sent"
+                not_contains: "Reply to @ann.test"
+            # Down to Cat's follow; Enter opens her profile, Esc comes back.
+            - send: j
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["follows you", "esc back to notifications"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Cat @cat.test followed you"
+                not_contains: "follows you"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "Thanks, Ann" }
+                - { path: "$.record.reply.parent.uri", equals: "at://did:plc:ann/app.bsky.feed.post/reply1" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1, query: { name: actor, equals: "did:plc:cat" } }
+      # Coming back did not load the notifications again.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
+
+  - name: failing notifications are reported and R tries again
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            status: 500
+            json: { error: "InternalServerError", message: "try later" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains: ["listNotifications failed: InternalServerError: try later", "No notifications yet."]
+            - send: R
+            - expect_screen:
+                contains: "listNotifications failed"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 2 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }

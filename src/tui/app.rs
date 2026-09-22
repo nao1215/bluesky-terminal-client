@@ -13,7 +13,7 @@ use crate::error::Error;
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::thread::{self as thread_rows, ThreadRow};
-use crate::tui::worker::{Event, Feed, Job, MorePage, Page};
+use crate::tui::worker::{Event, Feed, Job, MorePage, NotifItem, Page};
 
 /// The three top-level views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,16 +21,18 @@ pub enum Tab {
     Timeline,
     Search,
     Profile,
+    Notifications,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 3] = [Tab::Timeline, Tab::Search, Tab::Profile];
+    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Profile, Tab::Notifications];
 
     pub fn title(self) -> &'static str {
         match self {
             Tab::Timeline => "Timeline",
             Tab::Search => "Search",
             Tab::Profile => "Profile",
+            Tab::Notifications => "Notifications",
         }
     }
 
@@ -67,6 +69,12 @@ impl Keyed for Post {
 impl Keyed for Profile {
     fn key(&self) -> &str {
         &self.did
+    }
+}
+
+impl Keyed for NotifItem {
+    fn key(&self) -> &str {
+        &self.n.uri
     }
 }
 
@@ -295,6 +303,10 @@ pub struct App {
     pub profile: ProfilePane,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
     pub threads: Vec<ThreadView>,
+    pub notifications: List<NotifItem>,
+    /// Notifications that were unread when the list was loaded and have not
+    /// been marked seen yet; shown on the tab.
+    pub unread: usize,
     pub overlay: Option<Overlay>,
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
@@ -336,6 +348,8 @@ impl App {
             },
             profile: ProfilePane::default(),
             threads: Vec::new(),
+            notifications: List::default(),
+            unread: 0,
             overlay: None,
             status: None,
             pending: 0,
@@ -689,7 +703,15 @@ impl App {
         if tab == Tab::Profile && self.profile.profile.is_none() && self.profile.actor.is_none() {
             return self.open_profile(None);
         }
+        if tab == Tab::Notifications && !self.notifications.loaded {
+            return self.load_notifications();
+        }
         Vec::new()
+    }
+
+    fn load_notifications(&mut self) -> Vec<Job> {
+        self.notifications.loaded = false;
+        vec![Job::Notifications]
     }
 
     fn open_profile(&mut self, actor: Option<String>) -> Vec<Job> {
@@ -721,12 +743,17 @@ impl App {
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&mut self.search.posts),
             Tab::Search => None,
             Tab::Profile => Some(&mut self.profile.posts),
+            Tab::Notifications => None,
         }
     }
 
     fn selected_post(&mut self) -> Option<Post> {
         if let Some(th) = self.threads.last() {
             return th.list.current().and_then(ThreadRow::post).cloned();
+        }
+        if self.tab == Tab::Notifications {
+            // Only a reply, mention, or quote is a post to act on.
+            return self.notifications.current()?.post.clone();
         }
         self.current_posts()?.current().cloned()
     }
@@ -741,6 +768,7 @@ impl App {
                 self.search.actors.current().cloned()
             }
             Tab::Profile => self.profile.profile.clone(),
+            Tab::Notifications => self.notifications.current().map(|i| i.n.author.clone()),
             _ => self.selected_post().map(|p| p.author),
         }
     }
@@ -753,6 +781,7 @@ impl App {
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
             KeyCode::Char('3') => return self.switch_tab(Tab::Profile),
+            KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
             KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
             KeyCode::Char('j') | KeyCode::Down => return self.step(1),
@@ -850,6 +879,12 @@ impl App {
                 self.timeline.step(delta);
                 self.timeline.want_more().map(|c| (Feed::Timeline, c))
             }
+            Tab::Notifications => {
+                self.notifications.step(delta);
+                self.notifications
+                    .want_more()
+                    .map(|c| (Feed::Notifications, c))
+            }
             Tab::Profile => {
                 self.profile.posts.step(delta);
                 let did = self.profile.profile.as_ref().map(|p| p.did.clone());
@@ -869,7 +904,15 @@ impl App {
     }
 
     fn open_thread(&mut self) -> Vec<Job> {
-        let Some(post) = self.selected_post() else {
+        let post = if self.tab == Tab::Notifications && self.threads.is_empty() {
+            // A like or repost opens the thread of the post it is about.
+            self.notifications
+                .current()
+                .and_then(|i| i.post.clone().or_else(|| i.subject.clone()))
+        } else {
+            self.selected_post()
+        };
+        let Some(post) = post else {
             return Vec::new();
         };
         self.threads.push(ThreadView {
@@ -892,6 +935,7 @@ impl App {
             }
             Tab::Search => self.run_search(),
             Tab::Profile => self.open_profile(self.profile.actor.clone()),
+            Tab::Notifications => self.load_notifications(),
         }
     }
 
@@ -1013,6 +1057,13 @@ impl App {
                 .filter(|p| p.uri == uri)
                 .for_each(&mut f);
         }
+        for item in &mut self.notifications.items {
+            item.post
+                .iter_mut()
+                .chain(item.subject.iter_mut())
+                .filter(|p| p.uri == uri)
+                .for_each(&mut f);
+        }
     }
 
     /// Set the follow state of `did` everywhere it is shown.
@@ -1036,6 +1087,9 @@ impl App {
                 .iter_mut()
                 .filter_map(ThreadRow::post_mut)
                 .for_each(|p| apply(&mut p.author));
+        }
+        for item in &mut self.notifications.items {
+            apply(&mut item.n.author);
         }
         if let Some(p) = &mut self.profile.profile {
             apply(p);
@@ -1088,9 +1142,13 @@ impl App {
             (Feed::Author(did), Ok(MorePage::Posts(page))) if Some(&did) == own_did.as_ref() => {
                 self.profile.posts.append(cursor, page)
             }
+            (Feed::Notifications, Ok(MorePage::Notifications(page))) => {
+                self.notifications.append(cursor, page)
+            }
             (feed, Err(e)) => {
                 // Let the next move try again.
                 match feed {
+                    Feed::Notifications => self.notifications.more_pending = false,
                     Feed::Timeline => self.timeline.more_pending = false,
                     Feed::SearchPosts(_) => self.search.posts.more_pending = false,
                     Feed::SearchActors(_) => self.search.actors.more_pending = false,
@@ -1196,6 +1254,32 @@ impl App {
                 cursor,
                 result,
             } => self.more(feed, &cursor, result),
+            Event::Notifications { seen_at, result } => match result {
+                Ok(page) => {
+                    self.notifications.set(page);
+                    self.unread = self
+                        .notifications
+                        .items
+                        .iter()
+                        .filter(|i| !i.n.is_read)
+                        .count();
+                    if self.unread > 0 {
+                        return vec![Job::UpdateSeen(seen_at)];
+                    }
+                }
+                Err(e) => {
+                    self.notifications.loaded = true;
+                    self.fail(&e);
+                }
+            },
+            Event::Seen(Ok(())) => {
+                self.notifications
+                    .items
+                    .iter_mut()
+                    .for_each(|i| i.n.is_read = true);
+                self.unread = 0;
+            }
+            Event::Seen(Err(e)) => self.fail(&e),
             Event::Thread { uri, result } => {
                 // Only the thread on top, still waiting, takes the answer.
                 let Some(th) = self
@@ -1810,7 +1894,8 @@ mod tests {
     #[test]
     fn backtab_arrives_at_search_focused_too() {
         let mut app = logged_in();
-        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Profile
+        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Notifications
+        app.handle_key(code(KeyCode::BackTab)); // Notifications -> Profile
         app.handle_key(code(KeyCode::BackTab)); // Profile -> Search
         assert_eq!(app.tab, Tab::Search);
         assert!(app.search.editing);
@@ -2209,6 +2294,127 @@ mod tests {
         );
         let jobs = app.handle_key(key('R'));
         assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"));
+    }
+
+    fn notif(
+        reason: &str,
+        uri: &str,
+        read: bool,
+        post: Option<Post>,
+        subject: Option<Post>,
+    ) -> NotifItem {
+        NotifItem {
+            n: serde_json::from_value(json!({
+                "uri": uri, "cid": "c", "reason": reason, "isRead": read,
+                "author": {"did": format!("did:plc:{reason}"), "handle": format!("{reason}.test")},
+                "indexedAt": "2026-09-22T00:00:00.000Z"
+            }))
+            .unwrap(),
+            fresh: !read,
+            post,
+            subject,
+        }
+    }
+
+    fn notifications_tab() -> App {
+        let mut app = logged_in();
+        let jobs = app.handle_key(key('4'));
+        assert!(matches!(&jobs[..], [Job::Notifications]));
+        let reply = post("at://reply/1", "did:plc:reply", false);
+        let mine = post("at://me/post", "did:plc:me", false);
+        let jobs = app.handle_event(Event::Notifications {
+            seen_at: "2026-09-22T01:00:00.000Z".into(),
+            result: Ok(Page {
+                items: vec![
+                    notif("reply", "at://reply/1", false, Some(reply), None),
+                    notif("like", "at://like/1", false, None, Some(mine)),
+                    notif("follow", "at://follow/1", true, None, None),
+                ],
+                cursor: Some("n1".into()),
+            }),
+        });
+        // Two were unread: they are marked seen, as of the time of the fetch.
+        assert!(matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-22T01:00:00.000Z"));
+        assert_eq!(app.unread, 2);
+        app
+    }
+
+    #[test]
+    fn notifications_load_once_and_are_marked_seen() {
+        let mut app = notifications_tab();
+        app.handle_event(Event::Seen(Ok(())));
+        assert_eq!(app.unread, 0);
+        assert!(app.notifications.items.iter().all(|i| i.n.is_read));
+        // The markers stay for this visit.
+        assert!(app.notifications.items[0].fresh);
+        // Coming back does not fetch again; R does.
+        app.handle_key(key('1'));
+        assert!(app.handle_key(key('4')).is_empty());
+        assert!(matches!(
+            &app.handle_key(key('R'))[..],
+            [Job::Notifications]
+        ));
+    }
+
+    #[test]
+    fn nothing_unread_sends_no_update_seen() {
+        let mut app = logged_in();
+        app.handle_key(key('4'));
+        let jobs = app.handle_event(Event::Notifications {
+            seen_at: "t".into(),
+            result: Ok(vec![notif("follow", "at://f", true, None, None)].into()),
+        });
+        assert!(jobs.is_empty());
+    }
+
+    #[test]
+    fn a_reply_notification_can_be_answered_and_liked() {
+        let mut app = notifications_tab();
+        let jobs = app.handle_key(key('r'));
+        assert!(jobs.is_empty());
+        let Some(Overlay::Compose(c)) = &app.overlay else {
+            panic!("no composer")
+        };
+        assert_eq!(c.reply.as_ref().unwrap().0.parent.uri, "at://reply/1");
+        app.handle_key(code(KeyCode::Esc));
+        let jobs = app.handle_key(key('l'));
+        assert!(matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://reply/1"));
+    }
+
+    #[test]
+    fn a_like_notification_opens_the_liked_post_and_its_author() {
+        let mut app = notifications_tab();
+        app.handle_key(key('j'));
+        // Nothing to like or answer on a like: it is not a post.
+        assert!(app.handle_key(key('l')).is_empty());
+        let jobs = app.handle_key(key('v'));
+        assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://me/post"));
+        app.handle_key(code(KeyCode::Esc));
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:like"));
+        assert_eq!(app.profile.came_from, Some(Tab::Notifications));
+        app.handle_key(code(KeyCode::Esc));
+        assert_eq!(app.tab, Tab::Notifications);
+    }
+
+    #[test]
+    fn notifications_page_like_every_other_list() {
+        let mut app = notifications_tab();
+        // Three items: the first move is already near the end.
+        let jobs = app.handle_key(key('j'));
+        assert!(
+            matches!(&jobs[..], [Job::More { feed: Feed::Notifications, cursor }] if cursor == "n1")
+        );
+        app.handle_event(Event::More {
+            feed: Feed::Notifications,
+            cursor: "n1".into(),
+            result: Ok(MorePage::Notifications(Page {
+                items: vec![notif("mention", "at://m/1", true, None, None)],
+                cursor: None,
+            })),
+        });
+        assert_eq!(app.notifications.items.len(), 4);
+        assert_eq!(app.notifications.cursor, None);
     }
 
     #[test]

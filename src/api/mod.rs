@@ -63,7 +63,8 @@ pub fn grapheme_len(text: &str) -> usize {
     text.graphemes(true).count()
 }
 
-fn now() -> String {
+/// The current time as the AT Protocol writes it.
+pub fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
@@ -82,7 +83,14 @@ fn decode<T: DeserializeOwned>(
         .read_to_string()
         .map_err(|e| Error::api(format!("{nsid}: cannot read response: {e}")))?;
     if status.is_success() {
-        return serde_json::from_str(&body)
+        // Some calls (updateSeen) answer 200 with no body at all; that is
+        // "nothing to return", not a malformed answer.
+        let body = if body.trim().is_empty() {
+            "null"
+        } else {
+            &body
+        };
+        return serde_json::from_str(body)
             .map_err(|e| Error::api(format!("{nsid}: unexpected response: {e}")));
     }
     let err: XrpcError = serde_json::from_str(&body).unwrap_or_default();
@@ -280,6 +288,34 @@ impl Client {
             &[("uri", uri), ("depth", "10"), ("parentHeight", "20")],
         )?;
         Ok(r.thread)
+    }
+
+    /// `app.bsky.notification.listNotifications`.
+    pub fn notifications(&mut self, cursor: Option<&str>) -> Result<Notifications> {
+        let mut q = vec![("limit", "30")];
+        q.extend(cursor.map(|c| ("cursor", c)));
+        self.get("app.bsky.notification.listNotifications", &q)
+    }
+
+    /// `app.bsky.feed.getPosts`, in batches of the 25 the endpoint allows.
+    pub fn posts(&mut self, uris: &[String]) -> Result<Vec<Post>> {
+        let mut out = Vec::new();
+        for chunk in uris.chunks(25) {
+            let q: Vec<(&str, &str)> = chunk.iter().map(|u| ("uris", u.as_str())).collect();
+            let r: Posts = self.get("app.bsky.feed.getPosts", &q)?;
+            out.extend(r.posts);
+        }
+        Ok(out)
+    }
+
+    /// `app.bsky.notification.updateSeen`: notifications up to `seen_at`
+    /// have been seen.
+    pub fn update_seen(&mut self, seen_at: &str) -> Result<()> {
+        let _: Value = self.post(
+            "app.bsky.notification.updateSeen",
+            &json!({"seenAt": seen_at}),
+        )?;
+        Ok(())
     }
 
     /// `app.bsky.actor.getProfile`.

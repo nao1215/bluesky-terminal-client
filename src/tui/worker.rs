@@ -7,7 +7,7 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
-use crate::api::types::{Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
+use crate::api::types::{Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
 use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
 use crate::config::{Session, SessionStore};
 use crate::error::{Error, Result};
@@ -28,6 +28,10 @@ pub enum Job {
     OpenProfile(String),
     /// A post's thread, by the post's URI.
     Thread(String),
+    /// The first page of notifications.
+    Notifications,
+    /// Notifications up to this time have been seen.
+    UpdateSeen(String),
     /// The page of `feed` that starts at `cursor`.
     More {
         feed: Feed,
@@ -93,6 +97,7 @@ pub enum Feed {
     SearchActors(String),
     /// An account's own posts, by DID.
     Author(String),
+    Notifications,
 }
 
 /// A further page of posts or of accounts.
@@ -100,6 +105,25 @@ pub enum Feed {
 pub enum MorePage {
     Posts(Page<Post>),
     Actors(Page<Profile>),
+    Notifications(Page<NotifItem>),
+}
+
+/// A notification with the posts it is about.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NotifItem {
+    pub n: Notification,
+    /// For a reply, mention, or quote: that post, which can be answered.
+    pub post: Option<Post>,
+    /// For a like or repost: the viewer's post it is about.
+    pub subject: Option<Post>,
+    /// It was unread when it arrived. Kept after it is marked seen, so the
+    /// marker stays for as long as the list is on screen.
+    pub fresh: bool,
+}
+
+/// The reasons whose notification URI is a post of its own.
+fn is_post_reason(reason: &str) -> bool {
+    matches!(reason, "reply" | "mention" | "quote" | "subscribed-post")
 }
 
 /// The fields of the account's own profile record.
@@ -127,6 +151,12 @@ pub enum Event {
         uri: String,
         result: Result<ThreadNode>,
     },
+    /// The first page of notifications, fetched at `seen_at`.
+    Notifications {
+        seen_at: String,
+        result: Result<Page<NotifItem>>,
+    },
+    Seen(Result<()>),
     Liked {
         post_uri: String,
         result: Result<String>,
@@ -228,6 +258,16 @@ impl State {
             Job::SearchPosts(q) => Event::SearchPosts(self.search_posts(&q, None)),
             Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
+            Job::Notifications => {
+                // Everything up to the moment of the request is what the user
+                // is about to see; later notifications stay unread.
+                let seen_at = api::now();
+                Event::Notifications {
+                    result: self.notifications(None),
+                    seen_at,
+                }
+            }
+            Job::UpdateSeen(at) => Event::Seen(self.client().and_then(|c| c.update_seen(&at))),
             Job::Thread(uri) => Event::Thread {
                 result: self.client().and_then(|c| c.post_thread(&uri)),
                 uri,
@@ -340,6 +380,57 @@ impl State {
         })
     }
 
+    /// A page of notifications, joined with the posts they are about.
+    fn notifications(&mut self, cursor: Option<&str>) -> Result<Page<NotifItem>> {
+        let client = self.client()?;
+        let page = client.notifications(cursor)?;
+        // One getPosts for the whole page. A like or repost of a repost
+        // names the repost, which getPosts does not return, so only post
+        // URIs are asked for.
+        let mut uris: Vec<String> = Vec::new();
+        for n in &page.notifications {
+            let uri = if is_post_reason(&n.reason) {
+                Some(n.uri.as_str())
+            } else {
+                n.reason_subject.as_deref()
+            };
+            if let Some(u) = uri.filter(|u| u.contains("/app.bsky.feed.post/"))
+                && !uris.iter().any(|x| x == u)
+            {
+                uris.push(u.to_string());
+            }
+        }
+        // The list is useful without the post texts; a failed join shows it
+        // without them rather than not at all.
+        let posts = if uris.is_empty() {
+            Vec::new()
+        } else {
+            client.posts(&uris).unwrap_or_default()
+        };
+        let find = |uri: Option<&str>| uri.and_then(|u| posts.iter().find(|p| p.uri == u)).cloned();
+        let items = page
+            .notifications
+            .into_iter()
+            .map(|n| {
+                let (post, subject) = if is_post_reason(&n.reason) {
+                    (find(Some(&n.uri)), None)
+                } else {
+                    (None, find(n.reason_subject.as_deref()))
+                };
+                NotifItem {
+                    fresh: !n.is_read,
+                    n,
+                    post,
+                    subject,
+                }
+            })
+            .collect();
+        Ok(Page {
+            items,
+            cursor: page.cursor,
+        })
+    }
+
     fn open_profile(&mut self, actor: &str) -> Result<(Profile, Page<Post>)> {
         let profile = self.client()?.profile(actor)?;
         let posts = self.author_feed(&profile.did, None)?;
@@ -353,6 +444,7 @@ impl State {
             Feed::SearchPosts(q) => MorePage::Posts(self.search_posts(q, c)?),
             Feed::SearchActors(q) => MorePage::Actors(self.search_actors(q, c)?),
             Feed::Author(did) => MorePage::Posts(self.author_feed(did, c)?),
+            Feed::Notifications => MorePage::Notifications(self.notifications(c)?),
         })
     }
 

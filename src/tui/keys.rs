@@ -18,7 +18,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            ("1 2 3", "Timeline, Search, Profile"),
+            ("1 2 3 4", "Timeline, Search, Profile, Notifications"),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
             ("?", "this help"),
@@ -64,6 +64,15 @@ pub const HELP: &[Section] = &[
             ("/ i", "type in the search box again"),
             ("ctrl+t t", "search posts or accounts"),
             ("esc", "leave the search box"),
+        ],
+    },
+    Section {
+        title: "Notifications",
+        keys: &[
+            ("enter", "open the profile of who it is from"),
+            ("r l b", "reply, like, repost a reply, mention, or quote"),
+            ("v", "open the thread it is about"),
+            ("R", "load new notifications"),
         ],
     },
     Section {
@@ -171,6 +180,14 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("enter", "profile"),
             ("R", "refresh"),
         ],
+        Tab::Notifications => vec![
+            ("j k", "move"),
+            ("enter", "profile"),
+            ("r", "reply"),
+            ("l", "like"),
+            ("v", "thread"),
+            ("R", "refresh"),
+        ],
         Tab::Profile if app.profile.actor.is_some() || app.profile.came_from.is_some() => vec![
             ("esc", back_label(app.profile.came_from)),
             ("j k", "move"),
@@ -198,6 +215,7 @@ fn back_label(from: Option<Tab>) -> &'static str {
     match from {
         Some(Tab::Search) => "back to search",
         Some(Tab::Timeline) => "back to timeline",
+        Some(Tab::Notifications) => "back to notifications",
         _ => "my profile",
     }
 }

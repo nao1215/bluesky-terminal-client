@@ -430,6 +430,37 @@ pub struct SearchActors {
     pub cursor: Option<String>,
 }
 
+/// `app.bsky.notification.listNotifications#notification`.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Notification {
+    /// The record that caused it: the like, the follow, the reply post, ...
+    pub uri: String,
+    pub cid: String,
+    pub author: Profile,
+    /// like, repost, follow, mention, reply, quote, and newer values.
+    pub reason: String,
+    /// For a like or repost, the post (or repost) it is about.
+    pub reason_subject: Option<String>,
+    pub is_read: bool,
+    pub indexed_at: String,
+}
+
+/// `app.bsky.notification.listNotifications` output.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Notifications {
+    pub notifications: Vec<Notification>,
+    pub cursor: Option<String>,
+}
+
+/// `app.bsky.feed.getPosts` output.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Posts {
+    pub posts: Vec<Post>,
+}
+
 /// `com.atproto.server.createSession` / `refreshSession` output.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
