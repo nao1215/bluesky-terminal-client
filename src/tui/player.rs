@@ -408,7 +408,7 @@ impl<'a> Pacer<'a> {
         // protocol only has to encode it.
         let area = Size::new(cols, rows);
         let img = scale::to_box(&DynamicImage::ImageRgb8(picture), area, self.cell);
-        let Some(p) = encode_picture(self.picker, img, area) else {
+        let Some(p) = encode_picture(self.picker, img, area, self.shown) else {
             return Ok(true);
         };
         if self.tx.send(Msg::Frame(Box::new(p))).is_err() {
@@ -420,23 +420,29 @@ impl<'a> Pacer<'a> {
     }
 }
 
-/// The kitty image id every picture of a video is sent under. ratatui-image
-/// gives each picture a new random id, and kitty keeps every image it is sent
-/// until its store is full, then drops the oldest: a video of a few hundred
-/// pictures pushed the timeline's avatars and photos out, and they came back
-/// blank after the viewer closed. Under one id each picture replaces the one
-/// before it in kitty's store.
-const VIDEO_IMAGE_ID: u32 = 0x00B5_4B59;
+/// The two kitty image ids the pictures of a video are sent under, in turn.
+/// ratatui-image gives each picture a new random id, and kitty keeps every
+/// image it is sent until its store is full, then drops the oldest: a video
+/// of a few hundred pictures pushed the timeline's avatars and photos out,
+/// and they came back blank after the viewer closed. A picture sent under an
+/// id replaces the image kitty had under it, so two ids keep at most two
+/// pictures there. Not one: the cells that show a kitty picture name its id,
+/// so under a single id they never change, the screen library leaves them
+/// alone, and kitty redraws only the row that carries the new picture; the
+/// video stayed black but for a strip at its top.
+const VIDEO_IMAGE_IDS: [u32; 2] = [0x00B5_4B59, 0x00B5_4B5A];
 
-/// The protocol for one picture of the video, already scaled to its box.
-fn encode_picture(picker: &Picker, img: DynamicImage, area: Size) -> Option<Protocol> {
+/// The protocol for the `nth` picture shown of the video, already scaled
+/// to its box.
+fn encode_picture(picker: &Picker, img: DynamicImage, area: Size, nth: usize) -> Option<Protocol> {
     if picker.protocol_type() == ProtocolType::Kitty {
         // What new_protocol would choose for a picture that fits its box.
         let size = Resize::natural_size(&img, picker.font_size());
         let compress = picker
             .capabilities()
             .contains(&Capability::KittyCompression);
-        return Kitty::new(img, size, VIDEO_IMAGE_ID, picker.tmux_detected(), compress)
+        let id = VIDEO_IMAGE_IDS[nth % 2];
+        return Kitty::new(img, size, id, picker.tmux_detected(), compress)
             .ok()
             .map(Protocol::Kitty);
     }
@@ -708,40 +714,47 @@ mod tests {
     /// Prints how long a 1280 x 720 video picture takes to be scaled and
     /// encoded for its box, the work behind every frame shown:
     /// `cargo test --release video_picture -- --ignored --nocapture`.
-    /// The escape sequences a protocol writes when drawn in `area`.
-    fn drawn(p: &Protocol, area: Size) -> String {
-        let rect = ratatui::layout::Rect::new(0, 0, area.width, area.height);
-        let mut buf = ratatui::buffer::Buffer::empty(rect);
-        ratatui::widgets::Widget::render(ratatui_image::Image::new(p), rect, &mut buf);
-        buf.content.iter().map(|c| c.symbol()).collect()
-    }
-
     #[test]
-    fn kitty_pictures_of_a_video_share_one_image_and_its_box() {
+    fn kitty_pictures_of_a_video_take_two_images_in_turn_and_redraw_every_cell() {
         #[allow(deprecated)]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ProtocolType::Kitty);
         let area = Size::new(40, 12);
-        let ids: Vec<String> = [10u8, 200]
+        let rect = ratatui::layout::Rect::new(0, 0, area.width, area.height);
+        let frames: Vec<(String, ratatui::buffer::Buffer)> = [10u8, 200, 90]
             .into_iter()
-            .map(|shade| {
+            .enumerate()
+            .map(|(nth, shade)| {
                 let picture = RgbImage::from_pixel(640, 360, image::Rgb([shade; 3]));
                 let img = scale::to_box(&DynamicImage::ImageRgb8(picture), area, (10, 20));
-                let p = encode_picture(&picker, img.clone(), area).unwrap();
+                let p = encode_picture(&picker, img.clone(), area, nth).unwrap();
                 // The same box new_protocol gives, so the picture sits where
                 // it did before.
                 let theirs = picker
                     .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
                     .unwrap();
                 assert_eq!(p.size(), theirs.size());
-                let seq = drawn(&p, area);
+                let mut buf = ratatui::buffer::Buffer::empty(rect);
+                ratatui::widgets::Widget::render(ratatui_image::Image::new(&p), rect, &mut buf);
+                let seq: String = buf.content.iter().map(|c| c.symbol()).collect();
                 // The transmission starts "\x1b_Gq=2,i=<id>,a=T".
                 let at = seq.find("_Gq=2,i=").unwrap() + 6;
-                seq[at..].split(',').next().unwrap().to_string()
+                (seq[at..].split(',').next().unwrap().to_string(), buf)
             })
             .collect();
-        assert_eq!(ids[0], ids[1]);
-        assert_eq!(ids[0], format!("i={VIDEO_IMAGE_ID}"));
+        let [a, b] = VIDEO_IMAGE_IDS;
+        let ids: Vec<&str> = frames.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, [format!("i={a}"), format!("i={b}"), format!("i={a}")]);
+        // Every cell the picture covers differs from the last picture's, so
+        // all of them are written again and kitty redraws every row.
+        let (before, after) = (&frames[0].1, &frames[1].1);
+        let covered = before
+            .content
+            .iter()
+            .zip(&after.content)
+            .filter(|(x, _)| !x.symbol().trim().is_empty());
+        assert!(covered.clone().count() > 0);
+        assert!(covered.clone().all(|(x, y)| x != y));
     }
 
     #[cfg(not(coverage))]
