@@ -5,6 +5,7 @@ pub mod files;
 pub mod images;
 pub mod input;
 pub mod keys;
+pub mod player;
 pub mod text;
 pub mod theme;
 pub mod thread;

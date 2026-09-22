@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
-use crate::api::types::{Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode};
+use crate::api::types::{
+    Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
+};
 use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, PostMedia, PostVideo, ProfileEdit};
 use crate::config::{Session, SessionStore};
 use crate::error::{Error, Result};
@@ -69,6 +71,8 @@ pub enum Job {
     },
     /// Load the fields the profile editor starts from.
     LoadProfileEditor,
+    /// Save a picture or video of a post in the download folder.
+    Download(Media),
     SaveProfile {
         display_name: String,
         description: String,
@@ -200,6 +204,8 @@ pub enum Event {
     },
     ProfileEditor(Result<ProfileFields>),
     ProfileSaved(Result<()>),
+    /// Where the download was saved.
+    Downloaded(Result<PathBuf>),
 }
 
 /// Handle to the running worker.
@@ -334,6 +340,7 @@ impl State {
                 result: self.post(&text, reply.as_ref(), &media),
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
+            Job::Download(media) => Event::Downloaded(download(&media)),
             Job::SaveProfile {
                 display_name,
                 description,
@@ -575,6 +582,125 @@ impl State {
     }
 }
 
+/// Largest file a download saves.
+const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
+
+fn fetch_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
+    let mut resp = agent
+        .get(url)
+        .call()
+        .map_err(|e| Error::api(format!("cannot download {url}: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(Error::api(format!(
+            "cannot download {url}: HTTP {}",
+            resp.status().as_u16()
+        )));
+    }
+    resp.body_mut()
+        .with_config()
+        .limit(MAX_DOWNLOAD_BYTES)
+        .read_to_vec()
+        .map_err(|e| Error::api(format!("cannot download {url}: {e}")))
+}
+
+/// The file name a Bluesky media URL suggests: `<cid>.<ext>` for
+/// `.../plain/<did>/<cid>@jpeg`, `<cid>.ts` for a video's
+/// `.../watch/<did>/<cid>/playlist.m3u8`.
+fn download_name(media: &Media) -> String {
+    let clean = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            .collect::<String>()
+    };
+    match media {
+        Media::Image { url, .. } => {
+            let last = url
+                .split('?')
+                .next()
+                .unwrap_or(url)
+                .rsplit('/')
+                .next()
+                .unwrap_or("");
+            let (stem, ext) = match last.split_once('@') {
+                Some((stem, ext)) => (stem, ext),
+                None => last.rsplit_once('.').unwrap_or((last, "jpg")),
+            };
+            let ext = if ext == "jpeg" { "jpg" } else { ext };
+            let stem = clean(stem);
+            let stem = if stem.is_empty() {
+                "picture".into()
+            } else {
+                stem
+            };
+            format!("{stem}.{}", clean(ext))
+        }
+        Media::Video { playlist, .. } => {
+            let path = playlist.split('?').next().unwrap_or(playlist);
+            let stem = path.rsplit('/').nth(1).map(clean).unwrap_or_default();
+            let stem = if stem.is_empty() {
+                "video".into()
+            } else {
+                stem
+            };
+            format!("{stem}.ts")
+        }
+    }
+}
+
+/// A path in `dir` for `name` that is not taken: `name`, then `name (1)`...
+fn free_path(dir: &std::path::Path, name: &str) -> PathBuf {
+    let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
+    (0..)
+        .map(|i| {
+            let n = match (i, ext.is_empty()) {
+                (0, _) => name.to_string(),
+                (i, true) => format!("{stem} ({i})"),
+                (i, false) => format!("{stem} ({i}).{ext}"),
+            };
+            dir.join(n)
+        })
+        .find(|p| !p.exists())
+        .expect("some name is free")
+}
+
+/// Save a picture (full size) or a video (its best variant, the segments
+/// joined into one MPEG transport stream, which players play as it is).
+fn download(media: &Media) -> Result<PathBuf> {
+    let dir = crate::config::download_dir()
+        .ok_or_else(|| Error::io("there is no download folder; set BS_DOWNLOAD_DIR"))?;
+    let agent = api::agent();
+    let bytes = match media {
+        Media::Image { url, .. } => fetch_bytes(&agent, url)?,
+        Media::Video { playlist, .. } => {
+            let text = |url: &str| {
+                fetch_bytes(&agent, url).map(|b| String::from_utf8_lossy(&b).into_owned())
+            };
+            let master = text(playlist)?;
+            let (media_url, media_text) = match crate::hls::pick_best_variant(&master, playlist) {
+                Some(url) => {
+                    let t = text(&url)?;
+                    (url, t)
+                }
+                None => (playlist.clone(), master),
+            };
+            let mut all = Vec::new();
+            for seg in crate::hls::segments(&media_text, &media_url) {
+                all.extend(fetch_bytes(&agent, &seg)?);
+            }
+            if all.is_empty() {
+                return Err(Error::api("the video's playlist lists nothing to download"));
+            }
+            all
+        }
+    };
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
+    let path = free_path(&dir, &download_name(media));
+    std::fs::write(&path, bytes)
+        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
+    Ok(path)
+}
+
 /// Read a new avatar and encode it the way post pictures are: upright,
 /// scaled, under the size limit, without the camera's metadata.
 fn read_avatar(path: &std::path::Path) -> Result<(Vec<u8>, String)> {
@@ -618,6 +744,41 @@ mod tests {
             err.message().contains("is not a picture bs can read"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn downloads_are_named_after_the_media() {
+        let img = |url: &str| Media::Image {
+            url: url.into(),
+            alt: String::new(),
+            aspect: None,
+        };
+        assert_eq!(
+            download_name(&img(
+                "https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:x/bafkreiabc@jpeg"
+            )),
+            "bafkreiabc.jpg"
+        );
+        assert_eq!(
+            download_name(&img("http://127.0.0.1:1/img/full1.png")),
+            "full1.png"
+        );
+        let video = Media::Video {
+            playlist: "https://video.bsky.app/watch/did%3Aplc%3Ax/bafkreivid/playlist.m3u8".into(),
+            thumbnail: None,
+            alt: String::new(),
+            aspect: None,
+        };
+        assert_eq!(download_name(&video), "bafkreivid.ts");
+    }
+
+    #[test]
+    fn a_taken_name_gets_a_number() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(free_path(dir.path(), "a.jpg"), dir.path().join("a.jpg"));
+        std::fs::write(dir.path().join("a.jpg"), "").unwrap();
+        std::fs::write(dir.path().join("a (1).jpg"), "").unwrap();
+        assert_eq!(free_path(dir.path(), "a.jpg"), dir.path().join("a (2).jpg"));
     }
 
     #[test]

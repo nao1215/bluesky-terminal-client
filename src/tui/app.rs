@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::api::types::{Post, Profile, ReplyRef};
+use crate::api::types::{Media, Post, Profile, ReplyRef};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::config::{Session, Settings};
 use crate::error::Error;
@@ -376,6 +376,13 @@ pub enum Overlay {
         selected: usize,
         previous: usize,
     },
+    /// A post's pictures and video, full screen, `index` the one shown;
+    /// `replay` counts `r` presses, each playing the video from the start.
+    Viewer {
+        media: Vec<Media>,
+        index: usize,
+        replay: u32,
+    },
 }
 
 /// A one-line message in the status row. It is transient: it clears after
@@ -599,7 +606,7 @@ impl App {
                 e.fields[e.focus].insert_str(text)
             }
             Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}
-            Some(Overlay::Help { .. } | Overlay::Themes { .. }) => {}
+            Some(Overlay::Help { .. } | Overlay::Themes { .. } | Overlay::Viewer { .. }) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
             }
@@ -684,6 +691,24 @@ impl App {
                 KeyCode::Char('G') | KeyCode::End => *scroll = u16::MAX,
                 // Anything else is ignored: a stray key must not close the
                 // reference the user opened on purpose.
+                _ => {}
+            },
+            Overlay::Viewer {
+                media,
+                index,
+                replay,
+            } => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
+                KeyCode::Char('r') => *replay += 1,
+                KeyCode::Char('d') => {
+                    let item = media[*index].clone();
+                    self.info("downloading…");
+                    return vec![Job::Download(item)];
+                }
+                KeyCode::Right | KeyCode::Char('l' | 'j') => {
+                    *index = (*index + 1).min(media.len() - 1)
+                }
+                KeyCode::Left | KeyCode::Char('h' | 'k') => *index = index.saturating_sub(1),
                 _ => {}
             },
             Overlay::Themes { selected, previous } => {
@@ -1059,6 +1084,7 @@ impl App {
                 self.threads.pop();
             }
             KeyCode::Char('v') => return self.open_thread(),
+            KeyCode::Char(' ') => self.open_viewer(),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             _ => {}
@@ -1131,6 +1157,29 @@ impl App {
         more.map(|(feed, cursor)| Job::More { feed, cursor })
             .into_iter()
             .collect()
+    }
+
+    /// Open the selected post's pictures (or video) full screen.
+    fn open_viewer(&mut self) {
+        let post = if self.tab == Tab::Notifications && self.threads.is_empty() {
+            self.notifications
+                .current()
+                .and_then(|i| i.post.clone().or_else(|| i.subject.clone()))
+        } else {
+            self.selected_post()
+        };
+        let media = post
+            .and_then(|p| p.embed.map(|e| e.media()))
+            .unwrap_or_default();
+        if media.is_empty() {
+            self.info("this post has no pictures or video");
+            return;
+        }
+        self.overlay = Some(Overlay::Viewer {
+            media,
+            index: 0,
+            replay: 0,
+        });
     }
 
     fn open_thread(&mut self) -> Vec<Job> {
@@ -1623,6 +1672,8 @@ impl App {
                     }
                 }
             }
+            Event::Downloaded(Ok(path)) => self.info(format!("saved {}", path.display())),
+            Event::Downloaded(Err(e)) => self.fail(&e),
             Event::ProfileSaved(Ok(())) => {
                 self.overlay = None;
                 self.info("profile updated");

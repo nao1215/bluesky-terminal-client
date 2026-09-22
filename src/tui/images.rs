@@ -27,6 +27,8 @@ use ratatui_image::picker::Picker;
 use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Image, Resize};
 
+use crate::tui::player::{Player, State};
+
 /// Largest image body bs downloads.
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 
@@ -40,8 +42,9 @@ const ENCODERS: usize = 2;
 /// draws (the browser's preview) is well under this on any screen, and
 /// scaling from a smaller source makes each encode cheaper.
 const MAX_LOCAL_SIDE: u32 = 1600;
-/// The same for a downloaded picture, drawn at most 36 cells wide.
-const MAX_REMOTE_SIDE: u32 = 1024;
+/// The same for a downloaded picture: lists draw them at most 36 cells
+/// wide, but the viewer draws one across the whole screen.
+const MAX_REMOTE_SIDE: u32 = 1600;
 
 /// Decoded pictures kept in memory; past this, the ones not drawn in the
 /// last frames are dropped, least recently drawn first.
@@ -133,6 +136,10 @@ pub struct Images {
     encode_rx: Receiver<(Key, Option<Protocol>)>,
     /// The pictures on the user's disk asked for, by key.
     local: HashMap<String, PathBuf>,
+    /// For the video player, which encodes its own pictures.
+    picker: Picker,
+    /// The video playing in the viewer.
+    video: Option<Player>,
 }
 
 impl Images {
@@ -190,6 +197,7 @@ impl Images {
             });
         }
         let f = picker.font_size();
+        let player_picker = picker.clone();
         Self {
             protocol_type: picker.protocol_type(),
             cell: (f.width, f.height),
@@ -203,6 +211,8 @@ impl Images {
             encode,
             encode_rx: done_rx,
             local: HashMap::new(),
+            picker: player_picker,
+            video: None,
         }
     }
 
@@ -216,9 +226,10 @@ impl Images {
         self.cell
     }
 
-    /// Collect finished downloads and encodes. Returns whether any arrived.
+    /// Collect finished downloads, encodes, and video pictures. Returns
+    /// whether any arrived.
     pub fn poll(&mut self) -> bool {
-        let mut changed = false;
+        let mut changed = self.video.as_mut().is_some_and(Player::poll);
         while let Ok((url, result)) = self.fetch_rx.try_recv() {
             let slot = match result {
                 Ok(img) => Slot::Ready(Arc::new(img)),
@@ -244,7 +255,10 @@ impl Images {
 
     /// Whether any requested image is still downloading or encoding.
     pub fn loading(&self) -> bool {
-        self.slots.values().any(|(s, _)| matches!(s, Slot::Loading))
+        self.video
+            .as_ref()
+            .is_some_and(|v| v.state == State::Loading)
+            || self.slots.values().any(|(s, _)| matches!(s, Slot::Loading))
             || self
                 .protocols
                 .values()
@@ -293,6 +307,46 @@ impl Images {
         }
     }
 
+    /// Play the video at `playlist` in `area`, starting it (again, for a new
+    /// `generation`) when needed. Draws nothing until its first picture;
+    /// returns where playback is.
+    pub fn draw_video(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        playlist: &str,
+        generation: u32,
+    ) -> State {
+        let area = area.intersection(frame.area());
+        let size = (area.width, area.height);
+        match &self.video {
+            Some(v) if v.is(playlist, generation) => v.resize(size),
+            _ => {
+                self.video = Some(Player::start(
+                    self.picker.clone(),
+                    playlist,
+                    size,
+                    generation,
+                ))
+            }
+        }
+        let v = self.video.as_ref().expect("started above");
+        if let Some(p) = v.frame() {
+            frame.render_widget(Image::new(p), area);
+        }
+        v.state.clone()
+    }
+
+    /// Stop the video, when the viewer no longer shows it.
+    pub fn stop_video(&mut self) {
+        self.video = None;
+    }
+
+    /// Whether a video picture is on screen.
+    pub fn video_shown(&self) -> bool {
+        self.video.as_ref().is_some_and(|v| v.frame().is_some())
+    }
+
     /// Draw the picture at `path` on the user's disk fitted inside `area`.
     pub fn draw_file(&mut self, frame: &mut Frame, area: Rect, path: &Path) {
         let key = file_key(path);
@@ -319,6 +373,14 @@ impl Images {
     pub fn prefetch(&mut self, url: &str, width: u16, height: u16) {
         if width > 0 && height > 0 && !url.is_empty() {
             let _ = self.request(url, width, height);
+        }
+    }
+
+    /// Pixel size of `url` once it is decoded (after shrinking).
+    pub fn dims(&self, url: &str) -> Option<(u32, u32)> {
+        match self.slots.get(url) {
+            Some((Slot::Ready(img), _)) => Some((img.width(), img.height())),
+            _ => None,
         }
     }
 

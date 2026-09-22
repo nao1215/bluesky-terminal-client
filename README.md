@@ -10,7 +10,8 @@ bs is a [Bluesky](https://bsky.app) client for the terminal that draws pictures 
 - The timeline shows posts written by the accounts you follow, and nothing else: no reposts, no posts of your own, no one you do not follow. A reply is shown under the posts it answers, and `v` opens its whole thread with every reply expanded.
 - Avatars and attached photos are drawn at their own shape with kitty graphics, sixel, or iTerm2 inline images.
 - Post, reply, like, and repost; search posts and accounts; follow and unfollow; read your notifications; edit your display name, description, and avatar. Lists load more as you reach the end.
-- Attach up to four pictures, or one video or animated GIF, to a post, chosen in a folder browser that previews them, each with alt text. Videos on the timeline are shown by their thumbnail.
+- Attach up to four pictures, or one video or animated GIF, to a post, chosen in a folder browser that previews them, each with alt text.
+- `Space` on a post shows its pictures full screen or plays its video, and `d` saves them.
 - Bluesky's own colors by default, and 42 themes in all (Dracula, Nord, Gruvbox, Solarized, Catppuccin, Tokyo Night, Rosé Pine, One Dark, GitHub, and more), previewed live and remembered.
 - The keys for the current view are always on screen, and `?` lists all of them.
 - A terminal that cannot draw images is refused at startup instead of giving you a client that silently drops every picture.
@@ -74,6 +75,7 @@ The bottom row always shows the keys that work where you are; `?` opens the full
 | `b` | Repost, or remove your repost |
 | `f` | Follow or unfollow the selected account (the author of the selected post, or the profile shown) |
 | `v` | Open the thread of the selected post: the posts above it and every reply |
+| `Space` | View the selected post's pictures full screen, or play its video |
 | `Enter` | Open the profile of the selected account or post author |
 | `/` | Search. Arriving at an empty Search tab puts the cursor in the box; `/` or `i` types again later. `Ctrl+T` in the box, or `t` outside it, switches between posts and accounts |
 | `e` | Edit your profile (Profile tab) |
@@ -88,7 +90,7 @@ Links, mentions, and hashtags in posts you write become clickable: bs finds them
 
 ## Pictures and videos
 
-`Ctrl+O` in the composer opens a browser of the folder you started bs in (or the one it showed last). It lists folders, pictures (PNG, JPEG, GIF, WebP), and videos (MP4, MOV, WebM, MPEG) only. The selected picture is drawn beside the list with its size; a video is described by its length, shape, and size, since bs does not play video.
+`Ctrl+O` in the composer opens a browser of the folder you started bs in (or the one it showed last). It lists folders, pictures (PNG, JPEG, GIF, WebP), and videos (MP4, MOV, WebM, MPEG) only. The selected picture is drawn beside the list with its size; a video on your disk is described by its length, shape, and size.
 
 | Key | Action |
 |-----|--------|
@@ -107,6 +109,19 @@ Back in the composer, each picture has a thumbnail and a line for its alt text: 
 Every picture is decoded and encoded again before it is uploaded: a photo taken sideways is turned upright, one larger than 2000 pixels on a side is scaled down, and the result is brought under Bluesky's 1 MB limit, as a PNG when a screenshot fits and as a JPEG otherwise. The camera's metadata, location included, stays on your disk. All pictures are read before any is uploaded, so one that cannot be read stops the post before anything is sent.
 
 A video (at most 100 MB and 3 minutes) or animated GIF is uploaded to Bluesky's video service, the way the official app does it: the PDS issues a short-lived token for the service, and bs waits while the service processes the file before posting. The service converts a GIF itself, so bs needs no codec and no external program.
+
+## Viewing pictures and videos
+
+`Space` on a post opens its pictures full screen, each as large as the screen allows at its own shape, with its alt text under it; a video plays in the same place, without sound. `Esc` goes back to where you were.
+
+| Key | Action |
+|-----|--------|
+| `←` `→`, `h` `l` | Previous / next picture |
+| `r` | Play the video again |
+| `d` | Save the picture (full size) or video in `Downloads/bs` (the platform download folder, or `BS_DOWNLOAD_DIR`) |
+| `Esc` | Back |
+
+Videos are played from Bluesky's HLS stream, in its lightest variant, and decoded by OpenH264, which is built into bs: nothing else is installed, and no external program is run. A video bs cannot play (not H.264, or not reachable) shows its thumbnail with a warning saying why. A saved video is its best variant's segments joined into one `.ts` file, which players such as mpv and VLC play as it is.
 
 ## Themes
 
@@ -130,6 +145,7 @@ A video (at most 100 MB and 3 minutes) or animated GIF is uploaded to Bluesky's 
 | `BS_GRAPHICS` | Force an image protocol: `kitty`, `sixel`, or `iterm2` |
 | `BS_CACHE_DIR` | Directory for downloaded pictures kept between runs (default: `bs` in the platform cache directory); `off` keeps none |
 | `BS_VIDEO_SERVICE` | Video service to upload videos to (default `https://video.bsky.app`) |
+| `BS_DOWNLOAD_DIR` | Folder the viewer's `d` saves in (default: `bs` in the platform download folder) |
 | `NO_COLOR` | Draw without color, whatever theme is chosen |
 
 A `settings.json` that cannot be read is reported and ignored; bs starts with the default theme and leaves the file as it is.

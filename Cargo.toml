@@ -22,6 +22,7 @@ clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.29"
 dirs = "7"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+openh264 = "0.9"
 ratatui = "0.30"
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
 serde = { version = "1", features = ["derive"] }

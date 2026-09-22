@@ -116,6 +116,20 @@ pub fn config_dir() -> Result<PathBuf> {
     })
 }
 
+/// Environment variable naming the folder downloads are saved in.
+pub const DOWNLOAD_DIR_ENV: &str = "BS_DOWNLOAD_DIR";
+
+/// Where the viewer's `d` saves pictures and videos: `bs` in the platform
+/// download folder (`~/Downloads/bs`), or `BS_DOWNLOAD_DIR`.
+pub fn download_dir() -> Option<PathBuf> {
+    match std::env::var_os(DOWNLOAD_DIR_ENV).filter(|v| !v.is_empty()) {
+        Some(v) => Some(PathBuf::from(v)),
+        None => dirs::download_dir()
+            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+            .map(|d| d.join("bs")),
+    }
+}
+
 /// Environment variable naming the video service to upload videos to.
 pub const VIDEO_SERVICE_ENV: &str = "BS_VIDEO_SERVICE";
 

@@ -139,6 +139,11 @@ pub enum Embed {
         thumbnail: Option<String>,
         #[serde(default, rename = "aspectRatio")]
         aspect_ratio: Option<AspectRatio>,
+        /// The HLS playlist to play it from.
+        #[serde(default)]
+        playlist: Option<String>,
+        #[serde(default)]
+        alt: Option<String>,
     },
     #[serde(rename = "app.bsky.embed.record#view")]
     Record { record: Value },
@@ -169,6 +174,7 @@ impl Embed {
             Embed::Video {
                 thumbnail,
                 aspect_ratio,
+                ..
             } => thumbnail
                 .as_deref()
                 .map(|url| EmbedImage {
@@ -179,6 +185,58 @@ impl Embed {
                 .collect(),
             Embed::RecordWithMedia { media } => media.images(),
             Embed::Record { .. } | Embed::Other => Vec::new(),
+        }
+    }
+}
+
+/// Something of a post the viewer opens full screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Media {
+    Image {
+        /// The full-size picture.
+        url: String,
+        alt: String,
+        aspect: Option<(u32, u32)>,
+    },
+    Video {
+        /// The HLS playlist.
+        playlist: String,
+        thumbnail: Option<String>,
+        alt: String,
+        aspect: Option<(u32, u32)>,
+    },
+}
+
+impl Embed {
+    /// The pictures and videos of the post, in order, for the viewer.
+    pub fn media(&self) -> Vec<Media> {
+        match self {
+            Embed::Images { images } => images
+                .iter()
+                .filter(|i| !i.fullsize.is_empty() || !i.thumb.is_empty())
+                .map(|i| Media::Image {
+                    url: if i.fullsize.is_empty() {
+                        i.thumb.clone()
+                    } else {
+                        i.fullsize.clone()
+                    },
+                    alt: i.alt.clone(),
+                    aspect: aspect(i.aspect_ratio),
+                })
+                .collect(),
+            Embed::Video {
+                thumbnail,
+                aspect_ratio,
+                playlist: Some(playlist),
+                alt,
+            } => vec![Media::Video {
+                playlist: playlist.clone(),
+                thumbnail: thumbnail.clone(),
+                alt: alt.clone().unwrap_or_default(),
+                aspect: aspect(*aspect_ratio),
+            }],
+            Embed::RecordWithMedia { media } => media.media(),
+            _ => Vec::new(),
         }
     }
 }

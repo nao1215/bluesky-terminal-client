@@ -1,0 +1,221 @@
+# The viewer: space on a post opens its pictures full screen, or plays its
+# video; Esc goes back to where you were.
+#
+# The video is played from its HLS playlist: testdata/hls is a master
+# playlist, one variant, and one 1-second 64x36 H.264 segment, as Bluesky's
+# video service serves them. bs decodes it with the OpenH264 it is built
+# with; nothing else needs to be installed. (atago counts every picture sent
+# to the terminal, so the frames of the video add to the count.)
+version: "1"
+
+suite:
+  name: bs viewer
+
+scenarios:
+  - name: space shows a post's pictures full screen, one after another, and esc goes back
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Two photos", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/thumb1.png", fullsize: "${api.url}/img/full1.png", alt: "The mountains", aspectRatio: { width: 4, height: 3 } }
+                        - { thumb: "${api.url}/img/thumb2.png", fullsize: "${api.url}/img/full2.png", alt: "", aspectRatio: { width: 1, height: 1 } }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Just words", createdAt: "2026-09-20T09:00:00.000Z" }
+          - { method: GET, path: /img/thumb1.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/thumb2.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/full1.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/full2.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            BS_CACHE_DIR: ${workdir}/cache
+            BS_DOWNLOAD_DIR: ${workdir}/downloads
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Two photos"
+            - send: " "
+            # The full-size picture, as large as the screen allows at 4:3:
+            # 26 rows of 20 pixels make 520 high, so 693 wide (69 cells).
+            - expect_screen:
+                contains: ["1/2", "The mountains", "esc back"]
+                not_contains: "Two photos"
+                images:
+                  contains:
+                    - { width: 690, height: 520 }
+            - send: l
+            - expect_screen:
+                contains: ["2/2", "(no alt text)", "d download"]
+            # d saves the one shown, full size, in the download folder.
+            - send: d
+            - expect_screen:
+                contains: "saved ${workdir}/downloads/full2.png"
+            # Esc goes back to the timeline, where it was.
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Two photos"
+                not_contains: "2/2"
+            # A post without pictures says so and stays put.
+            - send: j
+            - send: " "
+            - expect_screen:
+                contains: "this post has no pictures or video"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /img/full1.png, count: 1 }
+      # Shown and saved: fetched once to show it and once to save it.
+      - assert:
+          mock: { name: api, path: /img/full2.png, count: 2 }
+      - assert:
+          dir: { path: downloads, count: 1, contains: [full2.png] }
+      - assert:
+          image: { path: downloads/full2.png, width: 100, height: 100 }
+
+  - name: space plays a post's video, r plays it again, and esc stops it
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v1
+                    cid: cid-v1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Watch this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v1/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v1/thumbnail.png"
+                      alt: "A test pattern"
+                      aspectRatio: { width: 16, height: 9 }
+          - { method: GET, path: /watch/v1/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /watch/v1/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Watch this", "▶ video"]
+            - send: " "
+            # One second of video: it plays, then ends on its last picture.
+            - expect_screen:
+                contains: ["1/1", "A test pattern", "■ ended  r plays it again", "r replay"]
+                images: { min_count: 6 }
+            - send: r
+            - expect_screen:
+                contains: "■ ended"
+                stable_for: 1500ms
+            # d saves the video: its segments joined in one .ts file.
+            - send: d
+            - expect_screen:
+                contains: "saved ${workdir}/downloads/v1.ts"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Watch this"
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      # Played twice and saved once; the segment fetched each time.
+      - assert:
+          mock: { name: api, path: /watch/v1/playlist.m3u8, count: 3 }
+      - assert:
+          mock: { name: api, path: /watch/v1/v/seg0.ts, count: 3 }
+      - assert:
+          dir: { path: downloads, count: 1, contains: [v1.ts] }
+      - assert:
+          mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
+
+  - name: a video bs cannot play is a warning, not an error, and its thumbnail stays
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v1
+                    cid: cid-v1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Broken video", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v1/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v1/thumbnail.png"
+                      aspectRatio: { width: 4, height: 3 }
+          - { method: GET, path: /watch/v1/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - method: GET
+            path: /watch/v1/playlist.m3u8
+            status: 404
+            body: "not found"
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Broken video"
+            - send: " "
+            - expect_screen:
+                contains: ["⚠ cannot load the video: HTTP 404; showing its thumbnail"]
+                not_contains: " Error "
+                images:
+                  contains:
+                    - { width: 690, height: 520 }
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Broken video"
+            - send: q
+      - assert:
+          exit_code: 0

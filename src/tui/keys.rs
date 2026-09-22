@@ -2,6 +2,7 @@
 //! current view, and the sections of the `?` help. Both read from here so a
 //! binding cannot be documented in one place and forgotten in the other.
 
+use crate::api::types::Media;
 use crate::tui::app::{App, Overlay, SearchMode, Tab};
 
 /// A key and what it does.
@@ -44,6 +45,7 @@ pub const HELP: &[Section] = &[
             ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
             ("v", "open the thread: the posts above it and every reply"),
+            ("space", "view the post's pictures or video full screen"),
             ("enter", "open the selected account's profile"),
         ],
     },
@@ -116,6 +118,15 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Viewer",
+        keys: &[
+            ("← → h l", "previous / next picture"),
+            ("r", "play the video again"),
+            ("d", "download it to the download folder (Downloads/bs)"),
+            ("esc q", "back to where you were"),
+        ],
+    },
+    Section {
         title: "Theme picker",
         keys: &[
             ("j k", "preview the next / previous theme"),
@@ -160,6 +171,18 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ];
         }
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Viewer { media, index, .. }) => {
+            let mut v = Vec::new();
+            if media.len() > 1 {
+                v.push(("← →", "previous / next"));
+            }
+            if matches!(media.get(*index), Some(Media::Video { .. })) {
+                v.push(("r", "replay"));
+            }
+            v.push(("d", "download"));
+            v.push(("esc", "back"));
+            return v;
+        }
         Some(Overlay::Themes { .. }) => {
             return vec![("j k", "preview"), ("enter", "apply"), ("esc", "cancel")];
         }
@@ -173,6 +196,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("b", "repost"),
             ("r", "reply"),
             ("v", "thread"),
+            ("space", "view"),
             ("enter", "profile"),
             ("?", "help"),
         ];
@@ -208,6 +232,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("b", "repost"),
             ("r", "reply"),
             ("v", "thread"),
+            ("space", "view"),
             ("n", "post"),
             ("f", "unfollow"),
             ("enter", "profile"),
@@ -219,6 +244,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
             ("r", "reply"),
             ("l", "like"),
             ("v", "thread"),
+            ("space", "view"),
             ("R", "refresh"),
         ],
         Tab::Profile if app.profile.actor.is_some() => vec![

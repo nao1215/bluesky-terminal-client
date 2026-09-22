@@ -3,6 +3,7 @@
 mod api;
 mod config;
 mod error;
+mod hls;
 mod media;
 mod terminal;
 mod timeline;

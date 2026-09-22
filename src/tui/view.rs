@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::api::types::{Embed, Post, Profile, RefPost, ReplyContext};
+use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_GRAPHEMES, grapheme_len};
 use crate::media;
 use crate::terminal::protocol_name;
@@ -21,6 +21,7 @@ use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
+use crate::tui::player::State;
 use crate::tui::text::{format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
@@ -105,11 +106,115 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, &t),
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
+        Some(Overlay::Viewer {
+            media,
+            index,
+            replay,
+        }) => {
+            let body = Rect {
+                height: area.height.saturating_sub(2),
+                ..area
+            };
+            draw_viewer(frame, body, media, *index, *replay, images, &t)
+        }
         None => {}
+    }
+    if !matches!(
+        &app.overlay,
+        Some(Overlay::Viewer { media, index, .. })
+            if matches!(media.get(*index), Some(Media::Video { .. }))
+    ) {
+        images.stop_video();
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {
         draw_error(frame, area, &s.text, &t);
     }
+}
+
+/// The largest box of cells a `w` x `h` picture fits in within `area`, at
+/// its own shape, centered.
+fn fit(area: Rect, (w, h): (u32, u32), (cw, ch): (u16, u16)) -> Rect {
+    let (cw, ch) = (f64::from(cw.max(1)), f64::from(ch.max(1)));
+    let (aw, ah) = (f64::from(area.width) * cw, f64::from(area.height) * ch);
+    let scale = (aw / f64::from(w.max(1))).min(ah / f64::from(h.max(1)));
+    let width = ((f64::from(w) * scale / cw).floor() as u16).clamp(1, area.width.max(1));
+    let height = ((f64::from(h) * scale / ch).floor() as u16).clamp(1, area.height.max(1));
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
+}
+
+/// A post's pictures (or video) full screen, the one at `index` shown at its
+/// own shape, centered, with its number and alt text under it.
+fn draw_viewer(
+    frame: &mut Frame,
+    area: Rect,
+    media: &[Media],
+    index: usize,
+    replay: u32,
+    images: &mut Images,
+    t: &Theme,
+) {
+    frame.render_widget(Clear, area);
+    frame.render_widget(Block::new().style(t.base()), area);
+    let Some(item) = media.get(index) else {
+        return;
+    };
+    let [pic, caption] = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(area);
+    let (url, alt, aspect) = match item {
+        Media::Image { url, alt, aspect } => (Some(url.as_str()), alt, *aspect),
+        Media::Video {
+            thumbnail,
+            alt,
+            aspect,
+            ..
+        } => (thumbnail.as_deref(), alt, *aspect),
+    };
+    let shape = url.and_then(|u| images.dims(u)).or(aspect);
+    let r = match shape {
+        Some(d) => fit(pic, d, images.cell_size()),
+        None => pic,
+    };
+    let mut head = vec![Span::styled(
+        format!(" {}/{}", index + 1, media.len()),
+        t.accent().bold(),
+    )];
+    match item {
+        Media::Video { playlist, .. } => {
+            // The thumbnail until the first picture arrives, and if the
+            // video cannot be played at all.
+            let state = images.draw_video(frame, r, playlist, replay);
+            if !images.video_shown()
+                && let Some(url) = url
+            {
+                images.draw(frame, r, url);
+            }
+            let (text, style) = match state {
+                State::Loading => ("  loading the video…".to_string(), t.dim()),
+                State::Playing => ("  ▶ playing (no sound)".to_string(), t.accent()),
+                State::Ended => ("  ■ ended  r plays it again".to_string(), t.dim()),
+                State::Warning(why) => (format!("  ⚠ {why}; showing its thumbnail"), t.error()),
+            };
+            head.push(Span::styled(text, style));
+        }
+        Media::Image { .. } => {
+            if let Some(url) = url {
+                images.draw(frame, r, url);
+            }
+        }
+    }
+    let alt = if alt.is_empty() {
+        Line::styled(" (no alt text)", t.dim())
+    } else {
+        Line::from(format!(
+            " {}",
+            truncate(alt, usize::from(caption.width.saturating_sub(2)))
+        ))
+    };
+    frame.render_widget(Paragraph::new(vec![Line::from(head), alt]), caption);
 }
 
 /// An error in a box in the middle of the screen, over everything, where it
@@ -200,19 +305,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::styled(label, style));
         spans.push(Span::raw(" "));
     }
+    // The account's handle is on the Profile tab; up here a long one would
+    // be cut off.
     frame.render_widget(Line::from(spans), area);
-    if let Some(s) = &app.session {
-        let who = format!("@{} ", s.handle);
-        let w = who.width() as u16;
-        if w < area.width {
-            let r = Rect {
-                x: area.right() - w,
-                width: w,
-                ..area
-            };
-            frame.render_widget(Paragraph::new(who).style(t.dim()), r);
-        }
-    }
 }
 
 /// The keys that work in the current view, always visible.
