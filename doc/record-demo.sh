@@ -2,7 +2,8 @@
 # Record the README's demos in a real kitty window, with the account logged
 # in with bsky:
 #
-#   doc/record-demo.sh demo     doc/img/demo.gif: the timeline, then a search
+#   doc/record-demo.sh demo     doc/img/demo.gif: the timeline, a pinned feed,
+#                               then a search
 #   doc/record-demo.sh viewer   doc/img/viewer.gif: a picture and a video of
 #                               your profile's posts, full screen
 #   doc/record-demo.sh themes   doc/img/theme-*.png: the timeline in a few themes
@@ -83,7 +84,8 @@ ready() {
     fi
     sleep 0.5
   done
-  echo "the screen never showed $1" >&2
+  echo "the screen never showed $1; it showed:" >&2
+  printf '%s\n' "$screen" >&2
   exit 1
 }
 keys() { # KEY COUNT DELAY
@@ -117,11 +119,20 @@ shot() { # OUTPUT.png
 }
 
 demo() {
+  use_theme bluesky
   start 1120 700
   ready "♡"
   record
   keys j 4 1.2
   sleep 1
+  # The next feed (the first one pinned, or Discover), a look down it, and
+  # back to Following.
+  send "]"
+  sleep 4
+  keys j 3 1.2
+  sleep 1
+  send "["
+  sleep 1.5
   send "/"
   sleep 0.6
   typed github
@@ -135,6 +146,7 @@ demo() {
 }
 
 viewer() {
+  use_theme bluesky
   start 1120 700
   ready "♡"
   send "4"
@@ -163,19 +175,8 @@ viewer() {
 }
 
 themes() {
-  cfg=$(bs_config_dir)
-  saved="$WORK/settings.json.saved"
-  had=0
-  if [ -f "$cfg/settings.json" ]; then
-    cp "$cfg/settings.json" "$saved"
-    had=1
-  fi
-  restore() {
-    if [ "$had" = 1 ]; then cp "$saved" "$cfg/settings.json"; else rm -f "$cfg/settings.json"; fi
-  }
-  trap 'restore; cleanup' EXIT INT TERM
   for theme in bluesky bluesky-light dracula nord gruvbox catppuccin-latte; do
-    printf '{"theme": "%s"}\n' "$theme" > "$cfg/settings.json"
+    use_theme "$theme"
     start 960 600
     ready "♡"
     # Every picture on the first screen, the video's thumbnail included.
@@ -183,13 +184,22 @@ themes() {
     shot "$OUT/theme-$theme.png"
     quit
   done
-  restore
-  trap cleanup EXIT INT TERM
 }
 
 bs_config_dir() {
   if [ -n "${BSKY_CONFIG_DIR:-}" ]; then echo "$BSKY_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bsky"; fi
 }
+
+# Every recording is made in a theme it sets; the settings.json the account
+# had is put back however the script ends.
+CFG=$(bs_config_dir)
+SAVED_SETTINGS="$WORK/settings.json.saved"
+if [ -f "$CFG/settings.json" ]; then cp "$CFG/settings.json" "$SAVED_SETTINGS"; fi
+restore_settings() {
+  if [ -f "$SAVED_SETTINGS" ]; then cp "$SAVED_SETTINGS" "$CFG/settings.json"; else rm -f "$CFG/settings.json"; fi
+}
+trap 'restore_settings; cleanup' EXIT INT TERM
+use_theme() { printf '{"theme": "%s"}\n' "$1" > "$CFG/settings.json"; }
 
 case "${1:-demo}" in
   demo) demo ;;
