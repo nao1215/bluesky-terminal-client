@@ -275,6 +275,116 @@ scenarios:
                 - { path: "$.record.subject.uri", equals: "at://did:plc:erin/app.bsky.feed.post/s1" }
                 - { path: "$.record.subject.cid", equals: "cid-s1" }
 
+  - name: a feed that fails to load says why, R asks again, and Following is unharmed
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            json:
+              preferences:
+                - $type: app.bsky.actor.defs#savedFeedsPrefV2
+                  items:
+                    - { id: "1", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/science", pinned: true }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            json:
+              feeds:
+                - { uri: "at://did:plc:gen/app.bsky.feed.generator/science", displayName: Science, did: did:web:gen.test, creator: { did: did:plc:gen, handle: gen.test }, indexedAt: "2026-09-01T00:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeed
+            status: 500
+            json: { error: "InternalServerError", message: "the feed is down" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Science", "Photo from the mountains"]
+            - send: "]"
+            - expect_screen:
+                contains: "the feed is down"
+                not_contains: "Photo from the mountains"
+            # Esc closes the error box; the feed still says why it is empty.
+            - send: { key: esc }
+            - expect_screen:
+                contains: "the feed is down"
+                stable_for: 200ms
+            - send: R
+            - expect_screen:
+                contains: "the feed is down"
+            - send: "["
+            - expect_screen:
+                contains: "Photo from the mountains"
+                not_contains: "the feed is down"
+            - send: q
+      - assert:
+          exit_code: 0
+      # One load on showing it and one on R; going back to Following loads
+      # nothing.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getFeed, count: 2 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+
+  - name: with no feed pinned, Discover is offered next to Following
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            json:
+              preferences:
+                - $type: app.bsky.actor.defs#savedFeedsPrefV2
+                  items:
+                    - { id: "1", type: timeline, value: following, pinned: true }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            json:
+              feeds:
+                - { uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot", displayName: Discover, did: did:web:discover.test, creator: { did: did:plc:z72i7hdynmk6r22z27h6tvur, handle: bsky.app }, indexedAt: "2026-09-01T00:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Following", "Discover", "Photo from the mountains"]
+            - send: "]"
+            - expect_screen:
+                contains: "No posts in this feed yet"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getFeed
+            count: 1
+            query: { name: feed, equals: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot" }
+
   - name: l on a liked post removes the like, and l again restores it
     mock_servers:
       - name: api
