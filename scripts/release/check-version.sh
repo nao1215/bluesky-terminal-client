@@ -18,8 +18,13 @@ tag="$1"
 toolchain="$2"
 root="${3:-.}"
 
+# A key of the [package] table; awk rather than sed, whose range syntax
+# differs between GNU and BSD.
 field() {
-	sed -n "/^\[package\]/,/^\[/{s/^$1 *= *\"\(.*\)\"/\1/p}" "$root/Cargo.toml" | head -1
+	awk -v key="$1" '
+		/^\[/ { in_pkg = ($0 == "[package]"); next }
+		in_pkg && $1 == key { sub(/^[^"]*"/, ""); sub(/".*$/, ""); print; exit }
+	' "$root/Cargo.toml"
 }
 version="$(field version)"
 rust_version="$(field rust-version)"
