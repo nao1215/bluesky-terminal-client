@@ -123,7 +123,21 @@ mod tests {
         std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
         std::fs::set_permissions(&program, perms).unwrap();
         let url = "https://a.test/x?y=1&z=2";
-        spawn(&program.to_string_lossy(), &[url.into()]).unwrap();
+        // Another test forking at the moment the script was written holds
+        // its write handle until that child execs, and running the script
+        // then fails with "Text file busy" (ETXTBSY). That is the test
+        // racing itself, not the opener, so it waits it out.
+        let mut started = spawn(&program.to_string_lossy(), &[url.into()]);
+        for _ in 0..100 {
+            match &started {
+                Err(e) if e.message().contains("Text file busy") => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    started = spawn(&program.to_string_lossy(), &[url.into()]);
+                }
+                _ => break,
+            }
+        }
+        started.unwrap();
         let begin = std::time::Instant::now();
         while !out.exists() && begin.elapsed() < std::time::Duration::from_secs(5) {
             std::thread::sleep(std::time::Duration::from_millis(10));
