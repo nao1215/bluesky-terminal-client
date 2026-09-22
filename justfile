@@ -51,9 +51,9 @@ build:
 build-release:
     cargo build --release --locked
 
-# Run code coverage (requires cargo-llvm-cov)
+# Line coverage of the unit tests and the E2E suite together, as lcov.info (needs cargo-llvm-cov and atago)
 coverage:
-    cargo llvm-cov --all-targets --summary-only
+    ./scripts/coverage.sh
 
 # Remove build artifacts
 clean:

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# coverage.sh measures line coverage of the unit tests and the atago
+# end-to-end suite together and writes it as LCOV (lcov.info) and a summary.
+#
+# Both run instrumented builds of the same code: `cargo test` for the unit
+# tests, and a debug bsky on PATH for the E2E suite, so the drawing, the
+# terminal setup and the worker that only the real binary reaches are counted
+# too. The debug profile keeps the E2E binary and the test binaries in one
+# report.
+#
+# Needs cargo-llvm-cov (`cargo install cargo-llvm-cov`) and atago on PATH.
+#
+# Usage: scripts/coverage.sh [lcov output path]   (default lcov.info)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+OUT="${1:-lcov.info}"
+cd "$REPO_ROOT"
+
+if ! command -v atago >/dev/null 2>&1; then
+	echo "coverage: atago is not installed; see CONTRIBUTING.md" >&2
+	exit 127
+fi
+
+# Every cargo command below builds with -C instrument-coverage and writes
+# its profiles under target/.
+eval "$(cargo llvm-cov show-env --sh)"
+cargo llvm-cov clean --workspace
+
+echo "coverage: unit tests"
+cargo test --locked --all-targets
+
+echo "coverage: end-to-end suite"
+cargo build --locked
+PATH="$REPO_ROOT/target/debug:$PATH" atago run e2e/atago
+
+cargo llvm-cov report --lcov --output-path "$OUT"
+cargo llvm-cov report --summary-only
+echo "coverage: wrote $OUT"

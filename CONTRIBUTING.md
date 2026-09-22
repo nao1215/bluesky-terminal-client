@@ -14,6 +14,7 @@ just lint        # clippy with warnings as errors
 just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
 just e2e         # end-to-end suite
+just coverage    # line coverage of the unit tests and the E2E suite together (needs cargo-llvm-cov)
 ```
 
 `just ci` runs all of them.
