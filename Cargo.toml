@@ -1,0 +1,40 @@
+[package]
+name = "bluesky-terminal-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
+description = "Bluesky client for the terminal that shows images inline (kitty graphics, sixel, iTerm2)."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nao1215/bluesky-terminal-client"
+keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
+categories = ["command-line-utilities"]
+exclude = ["e2e/", ".github/", "docs/img/"]
+
+[[bin]]
+name = "bs"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.29"
+dirs = "6"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+ratatui = "0.30"
+ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+unicode-width = "0.2"
+ureq = "3"
+
+[dev-dependencies]
+rstest = "0.26"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

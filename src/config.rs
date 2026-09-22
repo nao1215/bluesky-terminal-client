@@ -1,0 +1,182 @@
+//! Where bs keeps its state on disk, and the saved login session.
+//!
+//! The only persistent state is `session.json` in the config directory:
+//! `$BS_CONFIG_DIR` when set, otherwise `<platform config dir>/bs`
+//! (`$XDG_CONFIG_HOME/bs` on Linux). It holds the tokens of an app-password
+//! login, so it is written with owner-only permissions on Unix.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::{Error, Result};
+
+/// Environment variable that overrides the config directory.
+pub const CONFIG_DIR_ENV: &str = "BS_CONFIG_DIR";
+
+const SESSION_FILE: &str = "session.json";
+
+/// An authenticated session against one PDS.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    /// Base URL of the PDS the session belongs to, without a trailing slash.
+    pub service: String,
+    /// Account DID.
+    pub did: String,
+    /// Account handle at login time.
+    pub handle: String,
+    /// Short-lived bearer token.
+    pub access_jwt: String,
+    /// Long-lived token used to mint a new access token.
+    pub refresh_jwt: String,
+}
+
+/// Resolve the config directory from the environment.
+pub fn config_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
+        return Ok(PathBuf::from(dir));
+    }
+    dirs::config_dir().map(|d| d.join("bs")).ok_or_else(|| {
+        Error::io("cannot determine the config directory")
+            .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
+    })
+}
+
+/// Reads and writes the session file inside one directory.
+#[derive(Debug, Clone)]
+pub struct SessionStore {
+    dir: PathBuf,
+}
+
+impl SessionStore {
+    /// A store rooted at `dir`; nothing is touched until a read or write.
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+
+    /// Path of the session file.
+    pub fn path(&self) -> PathBuf {
+        self.dir.join(SESSION_FILE)
+    }
+
+    /// Load the saved session; `Ok(None)` when there is none yet.
+    pub fn load(&self) -> Result<Option<Session>> {
+        let path = self.path();
+        let data = match fs::read(&path) {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", path.display()))),
+        };
+        serde_json::from_slice(&data).map(Some).map_err(|e| {
+            Error::io(format!(
+                "{} is not a valid session file: {e}",
+                path.display()
+            ))
+            .with_hint("run `bs logout` to discard it and log in again")
+        })
+    }
+
+    /// Save the session, creating the directory when needed.
+    pub fn save(&self, session: &Session) -> Result<()> {
+        fs::create_dir_all(&self.dir)
+            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        let path = self.path();
+        let json = serde_json::to_vec_pretty(session).expect("session serializes");
+        write_private(&path, &json)
+            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+    }
+
+    /// Remove the saved session. Returns whether a session existed.
+    pub fn clear(&self) -> Result<bool> {
+        let path = self.path();
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(Error::io(format!("cannot remove {}: {e}", path.display()))),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    // An existing file keeps its old mode through open(); tighten it explicitly.
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    file.write_all(data)
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    fs::write(path, data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> Session {
+        Session {
+            service: "https://pds.example".into(),
+            did: "did:plc:alice".into(),
+            handle: "alice.test".into(),
+            access_jwt: "access".into(),
+            refresh_jwt: "refresh".into(),
+        }
+    }
+
+    #[test]
+    fn load_without_file_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(SessionStore::new(dir.path()).load().unwrap(), None);
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().join("nested"));
+        store.save(&sample()).unwrap();
+        assert_eq!(store.load().unwrap(), Some(sample()));
+    }
+
+    #[test]
+    fn clear_reports_whether_a_session_existed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        assert!(!store.clear().unwrap());
+        store.save(&sample()).unwrap();
+        assert!(store.clear().unwrap());
+        assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn corrupt_file_is_an_io_error_with_a_hint() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        fs::write(store.path(), b"{not json").unwrap();
+        let err = store.load().unwrap_err();
+        assert_eq!(err.kind(), crate::error::Kind::Io);
+        assert!(err.to_string().contains("\nhint: run `bs logout`"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        fs::write(store.path(), b"old").unwrap();
+        fs::set_permissions(store.path(), fs::Permissions::from_mode(0o644)).unwrap();
+        store.save(&sample()).unwrap();
+        let mode = fs::metadata(store.path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+}

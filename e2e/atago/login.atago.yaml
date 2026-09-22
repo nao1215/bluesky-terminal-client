@@ -1,0 +1,235 @@
+# Logging in with an app password, and the session file it leaves behind.
+#
+# The Bluesky PDS is an atago mock server, reached through --service, so the
+# suite needs no account and no network. The password below is a throwaway
+# value the mock accepts; it is masked in reports all the same.
+version: "1"
+
+suite:
+  name: bs login
+
+secrets:
+  - app-pass-1234
+
+scenarios:
+  - name: logging in saves the session and loads the timeline with its token
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-1", refreshJwt: "ref-1" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+    steps:
+      - pty:
+          command: bs --service ${api.url}
+          graphics: kitty
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 20s
+          session:
+            # The service field starts filled in from --service, and focus
+            # starts on the identifier.
+            - expect_screen:
+                contains: ["Log in to Bluesky", "${api.url}", "Use an app password"]
+            - send: "me.test"
+            - send: { key: enter }
+            - send: "app-pass-1234"
+            # The password field shows bullets, never the password.
+            - expect_screen:
+                contains: "•••••••••••••"
+                not_contains: "app-pass-1234"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["No posts from accounts you follow yet", "@me.test", "logged in as @me.test"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.createSession
+            method: POST
+            count: 1
+            body:
+              json:
+                - { path: "$.identifier", equals: "me.test" }
+                - { path: "$.password", equals: "app-pass-1234" }
+      # The token from createSession is what the next request carries.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            method: GET
+            count: 1
+            header: { name: Authorization, equals: "Bearer acc-1" }
+      - assert:
+          file:
+            path: cfg/session.json
+            json:
+              - { path: "$.service", equals: "${api.url}" }
+              - { path: "$.did", equals: "did:plc:me" }
+              - { path: "$.handle", equals: "me.test" }
+              - { path: "$.accessJwt", equals: "acc-1" }
+              - { path: "$.refreshJwt", equals: "ref-1" }
+      # The app password itself is never stored, only the tokens.
+      - assert:
+          file:
+            path: cfg/session.json
+            not_contains: "app-pass-1234"
+
+  - name: a saved session skips the login screen on the next start
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc-9", "refreshJwt": "ref-9"}
+      - pty:
+          command: bs
+          graphics: kitty
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+                not_contains: "Log in to Bluesky"
+            - send: q
+      - assert:
+          exit_code: 0
+      # The session's own service is used, whatever --service says.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            count: 1
+            header: { name: Authorization, equals: "Bearer acc-9" }
+
+  - name: rejected credentials keep the form open and save nothing
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            status: 401
+            json: { error: "AuthenticationRequired", message: "Invalid identifier or password" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+    steps:
+      - pty:
+          command: bs --service ${api.url}
+          graphics: kitty
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Log in to Bluesky"
+            - send: "me.test"
+            - send: { key: enter }
+            - send: "wrong-password"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "AuthenticationRequired: Invalid identifier or password"
+            # A second attempt is possible: the form is still live. The old
+            # error is on screen until the answer arrives, so wait for the
+            # frame to settle rather than for the text alone.
+            - send: { key: enter }
+            - expect_screen:
+                contains: "AuthenticationRequired: Invalid identifier or password"
+                not_contains: "logging in"
+                stable_for: 500ms
+            - send: { key: esc }
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.createSession
+            count: 2
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            count: 0
+      - assert:
+          file:
+            path: cfg/session.json
+            exists: false
+
+  - name: an empty field is caught before anything is sent
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "a", refreshJwt: "r" }
+    steps:
+      - pty:
+          command: bs --service ${api.url}
+          graphics: kitty
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Log in to Bluesky"
+            # Enter on the empty identifier moves on; Enter on the empty
+            # password tries to submit and is refused.
+            - send: { key: enter }
+            - send: { key: enter }
+            - expect_screen:
+                contains: "fill in all three fields"
+            - send: { key: esc }
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            count: 0
+
+  - name: an unreachable server is reported on the form
+    skip:
+      os: windows
+    steps:
+      - pty:
+          # Port 9 (discard) on loopback: nothing listens there.
+          command: bs --service http://127.0.0.1:9
+          graphics: kitty
+          cols: 120
+          env:
+            BS_CONFIG_DIR: ${workdir}/cfg
+          timeout: 40s
+          session:
+            - expect_screen:
+                contains: "Log in to Bluesky"
+            - send: "me.test"
+            - send: { key: enter }
+            - send: "app-pass-1234"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "com.atproto.server.createSession: cannot reach the server"
+            - send: { key: esc }
+      - assert:
+          exit_code: 0
+          changes:
+            created: []
+            modified: []
+            deleted: []

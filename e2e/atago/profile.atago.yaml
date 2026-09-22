@@ -1,0 +1,537 @@
+# The Profile tab and the profile editor.
+#
+# Saving rewrites the whole app.bsky.actor.profile record, so the contract is
+# as much about what is kept (fields bs does not edit, the avatar when no new
+# one is given) as about what changes. The write is guarded with swapRecord so
+# it cannot silently overwrite an edit made elsewhere in the meantime.
+version: "1"
+
+suite:
+  name: bs profile
+
+scenarios:
+  - name: the Profile tab shows the account itself
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - &own_profile
+            method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: did:plc:me
+              handle: me.test
+              displayName: "Old Name"
+              description: "old bio"
+              followersCount: 12
+              followsCount: 3
+              postsCount: 42
+          - &own_feed
+            method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/m1
+                    cid: cid-m1
+                    author: { did: did:plc:me, handle: me.test, displayName: "Old Name" }
+                    record: { text: "My first post", createdAt: "2026-09-01T00:00:00.000Z" }
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains:
+                  - "Old Name"
+                  - "@me.test"
+                  - "12 followers  3 following  42 posts"
+                  - "this is you (e to edit)"
+                  - "old bio"
+                  - "My first post"
+                not_contains: "(f to toggle)"
+            # There is no following yourself.
+            - send: f
+            - expect_screen:
+                contains: "you cannot follow yourself"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1, query: { name: actor, equals: "did:plc:me" } }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: saving keeps the fields bs does not edit and guards the write with swapRecord
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - &own_record
+            method: GET
+            path: /xrpc/com.atproto.repo.getRecord
+            json:
+              uri: at://did:plc:me/app.bsky.actor.profile/self
+              cid: cid-profile-1
+              value:
+                $type: app.bsky.actor.profile
+                displayName: "Old Name"
+                description: "old bio"
+                avatar: { $type: blob, ref: { $link: bafyavatar }, mimeType: image/jpeg, size: 1000 }
+                banner: { $type: blob, ref: { $link: bafybanner }, mimeType: image/jpeg, size: 2000 }
+                pinnedPost: { uri: at://did:plc:me/app.bsky.feed.post/m1, cid: cid-m1 }
+          - &put_record
+            method: POST
+            path: /xrpc/com.atproto.repo.putRecord
+            json: { uri: at://did:plc:me/app.bsky.actor.profile/self, cid: cid-profile-2 }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            # The editor starts from the stored record, not from the view.
+            - expect_screen:
+                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (PNG/JPEG path, optional)", "tab next field  ctrl+s save"]
+            # Ctrl+U clears the field; the description is left as it is.
+            - send: { key: ctrl-u }
+            - send: "新しい名前"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile updated"
+                not_contains: "Edit profile"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.getRecord
+            count: 1
+            query: { name: collection, equals: "app.bsky.actor.profile" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.getRecord
+            query: { name: rkey, equals: "self" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            method: POST
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.actor.profile" }
+                - { path: "$.rkey", equals: "self" }
+                - { path: "$.swapRecord", equals: "cid-profile-1" }
+                - { path: "$.record.displayName", equals: "新しい名前" }
+                - { path: "$.record.description", equals: "old bio" }
+                - { path: "$.record['$type']", equals: "app.bsky.actor.profile" }
+                - { path: "$.record.avatar.ref['$link']", equals: "bafyavatar" }
+                - { path: "$.record.banner.ref['$link']", equals: "bafybanner" }
+                - { path: "$.record.pinnedPost.uri", equals: "at://did:plc:me/app.bsky.feed.post/m1" }
+      # No new avatar was given, so nothing was uploaded.
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+      # The profile is reloaded after saving.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 2 }
+
+  - name: a cleared description is removed from the record, not saved empty
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - *own_record
+          - *put_record
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            # The key hint appears once the stored record has loaded; "old bio"
+            # alone would also match the profile behind the editor.
+            - expect_screen:
+                contains: ["tab next field  ctrl+s save", "old bio"]
+            - send: { key: tab }
+            - send: { key: ctrl-u }
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile updated"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            count: 1
+            body:
+              not_contains: '"description"'
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            body:
+              json: { path: "$.record.displayName", equals: "Old Name" }
+
+  - name: a new avatar is uploaded first and the record points at the uploaded blob
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - *own_record
+          - *put_record
+          - method: POST
+            path: /xrpc/com.atproto.repo.uploadBlob
+            json:
+              blob: { $type: blob, ref: { $link: bafynewavatar }, mimeType: image/png, size: 178 }
+    steps:
+      - *session
+      - fixture:
+          file: me.png
+          from: testdata/new-avatar.png
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            # The key hint appears once the stored record has loaded; "old bio"
+            # alone would also match the profile behind the editor.
+            - expect_screen:
+                contains: ["tab next field  ctrl+s save", "old bio"]
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: "me.png"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile updated"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.uploadBlob
+            method: POST
+            count: 1
+            header: { name: Content-Type, equals: "image/png" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.avatar.ref['$link']", equals: "bafynewavatar" }
+                - { path: "$.record.avatar.mimeType", equals: "image/png" }
+                - { path: "$.record.banner.ref['$link']", equals: "bafybanner" }
+      # The avatar file is read, never changed or moved.
+      - assert:
+          file:
+            path: me.png
+            exists: true
+
+  - name: an avatar that is not a PNG or JPEG is refused before anything is uploaded
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - *own_record
+          - *put_record
+    steps:
+      - *session
+      - fixture:
+          file: notes.txt
+          content: "not an image\n"
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            # The key hint appears once the stored record has loaded; "old bio"
+            # alone would also match the profile behind the editor.
+            - expect_screen:
+                contains: ["tab next field  ctrl+s save", "old bio"]
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: "notes.txt"
+            - send: { key: ctrl-s }
+            # The editor stays open with the input, and says why.
+            - expect_screen:
+                contains: ["notes.txt is not a PNG or JPEG image", "Edit profile"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Edit profile"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.putRecord, count: 0 }
+
+  - name: an account that never saved a profile gets a new record without swapRecord
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - method: GET
+            path: /xrpc/com.atproto.repo.getRecord
+            status: 400
+            json: { error: "RecordNotFound", message: "Could not locate record" }
+          - *put_record
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            - expect_screen:
+                contains: "tab next field  ctrl+s save"
+            - send: "First Name"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile updated"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record['$type']", equals: "app.bsky.actor.profile" }
+                - { path: "$.record.displayName", equals: "First Name" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.putRecord
+            body:
+              not_contains: "swapRecord"
+
+  - name: a rejected save keeps the editor open with the reason
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - *own_record
+          - method: POST
+            path: /xrpc/com.atproto.repo.putRecord
+            status: 400
+            json: { error: "InvalidSwap", message: "Record was at cid-profile-9" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "this is you (e to edit)"
+            - send: e
+            # The key hint appears once the stored record has loaded; "old bio"
+            # alone would also match the profile behind the editor.
+            - expect_screen:
+                contains: ["tab next field  ctrl+s save", "old bio"]
+            - send: "!"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains:
+                  - "com.atproto.repo.putRecord failed: InvalidSwap: Record was at cid-profile-9"
+                  - "Old Name!"
+                  - "Edit profile"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Edit profile"
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: someone else's profile can be followed but not edited, and Esc returns home
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Photo from the mountains", createdAt: "2026-09-20T10:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: did:plc:alice
+              handle: alice.test
+              displayName: Alice
+              followersCount: 1
+              followsCount: 1
+              postsCount: 1
+              viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/fa2", cid: "cid-fa2" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Alice", "✓ following", "(f to toggle)"]
+            - send: e
+            - expect_screen:
+                contains: "you can only edit your own profile"
+            - send: f
+            - expect_screen:
+                contains: ["not following", "unfollowed"]
+            - send: f
+            - expect_screen:
+                contains: ["✓ following", "followed"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Alice"
+                not_contains: "(f to toggle)"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json: { path: "$.rkey", equals: "fa" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json: { path: "$.record.subject", equals: "did:plc:alice" }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.getRecord, count: 0 }
+      # Esc went back to the account's own profile.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 2, query: { name: actor, equals: "did:plc:me" } }

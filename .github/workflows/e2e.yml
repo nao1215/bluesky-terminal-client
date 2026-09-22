@@ -1,0 +1,69 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The suite drives bs in a pseudo-terminal, so it runs where atago's pty
+  # emulates a kitty-graphics terminal: Linux and macOS. On Windows the scenarios
+  # skip themselves; the unit tests in rust.yml cover that platform.
+  atago:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      # The suite needs `pty.graphics`, `screen.images` and the mock `query:`
+      # matcher, which no atago release carries yet, so atago is built from a
+      # pinned commit of its main branch. Switch back to nao1215/setup-atago
+      # with the first release that includes them.
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+
+      - name: Install atago
+        env:
+          ATAGO_REF: ATAGO_COMMIT_PLACEHOLDER
+        run: |
+          go install "github.com/nao1215/atago@${ATAGO_REF}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run atago E2E tests
+        run: ./e2e/run.sh

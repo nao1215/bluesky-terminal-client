@@ -1,0 +1,89 @@
+name: Release
+
+# A pushed version tag builds bs for every target below and attaches the
+# archives, with a SHA-256 checksum file, to a GitHub release for that tag.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="bs-${GITHUB_REF_NAME}-${TARGET}"
+          mkdir -p "dist/${name}"
+          cp README.md LICENSE CHANGELOG.md "dist/${name}/"
+          if [[ "${TARGET}" == *windows* ]]; then
+            cp "target/${TARGET}/release/bs.exe" "dist/${name}/"
+            (cd dist && 7z a "${name}.zip" "${name}" > /dev/null)
+          else
+            cp "target/${TARGET}/release/bs" "dist/${name}/"
+            tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bs-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums
+        working-directory: dist
+        run: sha256sum -- * > checksums.txt
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

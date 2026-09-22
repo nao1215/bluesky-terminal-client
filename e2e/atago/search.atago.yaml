@@ -1,0 +1,388 @@
+# Search (posts and accounts), follow and unfollow from the results, and
+# opening an account's profile.
+#
+# Routes match on the path alone, so each scenario checks with `query:` that
+# the words typed are the words sent.
+version: "1"
+
+suite:
+  name: bs search
+
+scenarios:
+  - name: searching posts sends the typed words and shows the hits with images
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              posts:
+                - uri: at://did:plc:dave/app.bsky.feed.post/s1
+                  cid: cid-s1
+                  author: { did: did:plc:dave, handle: dave.test, displayName: Dave, avatar: "${api.url}/img/dave.png" }
+                  record: { text: "Snow on the mountains today", createdAt: "2026-09-19T12:00:00.000Z" }
+                  embed: { $type: app.bsky.embed.images#view, images: [ { thumb: "${api.url}/img/photo.png", fullsize: "${api.url}/img/photo.png", alt: "snow", aspectRatio: { width: 4, height: 3 } } ] }
+                  likeCount: 7
+          - &img_dave { method: GET, path: /img/dave.png, body_file: testdata/avatar-bob.png, header: { Content-Type: image/png } }
+          - &img_photo { method: GET, path: /img/photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - &session
+        fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: &env
+            BS_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            # "/" jumps to the Search tab with the box focused.
+            - send: "/"
+            - expect_screen:
+                contains: ["Posts", "Accounts", "search:"]
+            - send: "snow mountains"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Snow on the mountains today", "Dave @dave.test", "♡ 7"]
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              contains:
+                - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            method: GET
+            count: 1
+            query: { name: q, equals: "snow mountains" }
+            header: { name: Authorization, equals: "Bearer acc" }
+
+  - name: letters typed into the search box are text, not commands
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - &no_posts
+            method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json: { posts: [] }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            # q quits, l likes and f follows outside the box; here they are text.
+            - send: "q l f 日本"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No posts found."
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            count: 1
+            query: { name: q, equals: "q l f 日本" }
+
+  - name: an empty query sends nothing
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *no_posts
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: "   "
+            - send: { key: enter }
+            - expect_screen:
+                contains: "search:"
+                not_contains: "No posts found."
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, count: 0 }
+
+  - name: account search follows and unfollows from the result list
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - &actors
+            method: GET
+            path: /xrpc/app.bsky.actor.searchActors
+            json:
+              actors:
+                - { did: did:plc:carol, handle: carol.test, displayName: Carol, description: "Photographer in the Alps" }
+                - { did: did:plc:dave, handle: dave.test, displayName: Dave, description: "Skier", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fd } }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/fc", cid: "cid-fc" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            # Ctrl+T switches the box between posts and accounts.
+            - send: { key: ctrl-t }
+            - send: "alps"
+            - send: { key: enter }
+            - expect_screen:
+                contains:
+                  - "Carol @carol.test"
+                  - "Photographer in the Alps"
+                  - "Dave @dave.test  ✓ following"
+                not_contains: "Carol @carol.test  ✓ following"
+            # f on Carol follows her.
+            - send: f
+            - expect_screen:
+                contains: ["Carol @carol.test  ✓ following", "followed"]
+            # f on Dave unfollows him.
+            - send: j
+            - send: f
+            - expect_screen:
+                contains: ["unfollowed", "Carol @carol.test  ✓ following"]
+                not_contains: "Dave @dave.test  ✓ following"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.actor.searchActors
+            count: 1
+            query: { name: q, equals: "alps" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.record['$type']", equals: "app.bsky.graph.follow" }
+                - { path: "$.record.subject", equals: "did:plc:carol" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.rkey", equals: "fd" }
+
+  - name: switching from posts to accounts re-runs the same query
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *no_posts
+          - *actors
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: "alps"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No posts found."
+            - send: t
+            - expect_screen:
+                contains: "Carol @carol.test"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, count: 1, query: { name: q, equals: "alps" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.searchActors, count: 1, query: { name: q, equals: "alps" } }
+
+  - name: no matching accounts says so
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.actor.searchActors
+            json: { actors: [] }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: { key: ctrl-t }
+            - send: "nobody-here"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No accounts found."
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: enter on an account opens its profile, where f follows it
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *actors
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: did:plc:carol
+              handle: carol.test
+              displayName: Carol
+              description: "Photographer in the Alps"
+              avatar: "${api.url}/img/carol.png"
+              followersCount: 120
+              followsCount: 45
+              postsCount: 310
+              viewer: { followedBy: at://did:plc:carol/app.bsky.graph.follow/me }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:carol/app.bsky.feed.post/c1
+                    cid: cid-c1
+                    author: { did: did:plc:carol, handle: carol.test, displayName: Carol }
+                    record: { text: "Sunrise over the ridge", createdAt: "2026-09-18T05:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:erin/app.bsky.feed.post/e1
+                    cid: cid-e1
+                    author: { did: did:plc:erin, handle: erin.test, displayName: Erin }
+                    record: { text: "Carol reposted this", createdAt: "2026-09-18T04:00:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:carol } }
+          - { method: GET, path: /img/carol.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/fc", cid: "cid-fc" }
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: { key: ctrl-t }
+            - send: "alps"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "Carol @carol.test"
+            - send: { key: enter }
+            - expect_screen:
+                contains:
+                  - "120 followers  45 following  310 posts"
+                  - "not following  · follows you  (f to toggle)"
+                  - "Photographer in the Alps"
+                  - "Sunrise over the ridge"
+                # The profile lists what Carol wrote, not what she reposted.
+                not_contains: "Carol reposted this"
+            - expect_screen:
+                images: { min_count: 1 }
+            - send: f
+            - expect_screen:
+                contains: ["✓ following  · follows you", "followed"]
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              # The profile avatar fills a 12x6-cell box.
+              contains:
+                - { width: 120, height: 120, similar_to: testdata/expected/alice-avatar-120.png, max_diff: 0.01 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1, query: { name: actor, equals: "did:plc:carol" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 1, query: { name: actor, equals: "did:plc:carol" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: filter, equals: "posts_no_replies" } }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json: { path: "$.record.subject", equals: "did:plc:carol" }
