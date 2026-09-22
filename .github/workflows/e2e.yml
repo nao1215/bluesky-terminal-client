@@ -60,7 +60,7 @@ jobs:
 
       - name: Install atago
         env:
-          ATAGO_REF: ATAGO_COMMIT_PLACEHOLDER
+          ATAGO_REF: e7a21227e604a116be00477f8ca2719304e59ae3
         run: |
           go install "github.com/nao1215/atago@${ATAGO_REF}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
