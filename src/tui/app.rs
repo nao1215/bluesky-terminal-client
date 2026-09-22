@@ -12,7 +12,7 @@ use crate::config::{Session, Settings};
 use crate::error::Error;
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
-use crate::tui::worker::{Event, Job};
+use crate::tui::worker::{Event, Feed, Job, MorePage, Page};
 
 /// The three top-level views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +51,27 @@ pub enum SearchMode {
     Accounts,
 }
 
+/// Items that are the same item when their keys are equal: posts by URI,
+/// accounts by DID. A further page can repeat what the last one ended with.
+pub trait Keyed {
+    fn key(&self) -> &str;
+}
+
+impl Keyed for Post {
+    fn key(&self) -> &str {
+        &self.uri
+    }
+}
+
+impl Keyed for Profile {
+    fn key(&self) -> &str {
+        &self.did
+    }
+}
+
+/// How close to the end the selection gets before the next page is fetched.
+const MORE_AHEAD: usize = 3;
+
 /// A scrollable list with a selection.
 #[derive(Debug, Clone, Default)]
 pub struct List<T> {
@@ -60,16 +81,52 @@ pub struct List<T> {
     pub offset: usize,
     /// Whether a result (possibly empty) has arrived.
     pub loaded: bool,
+    /// Where the next page begins; `None` once there is nothing more.
+    pub cursor: Option<String>,
+    /// A next page has been asked for and not answered yet.
+    pub more_pending: bool,
 }
 
-impl<T> List<T> {
-    fn set(&mut self, items: Vec<T>) {
-        self.items = items;
+impl<T: Keyed> List<T> {
+    /// Replace the list with a first page.
+    fn set(&mut self, page: Page<T>) {
+        self.items = page.items;
+        self.cursor = page.cursor;
+        self.more_pending = false;
         self.selected = 0;
         self.offset = 0;
         self.loaded = true;
     }
 
+    /// The cursor to fetch from when the selection is near the end, a next
+    /// page exists, and none is on its way. Marks the page as asked for.
+    fn want_more(&mut self) -> Option<String> {
+        if !self.loaded || self.more_pending || self.selected + MORE_AHEAD < self.items.len() {
+            return None;
+        }
+        let cursor = self.cursor.clone()?;
+        self.more_pending = true;
+        Some(cursor)
+    }
+
+    /// Add a further page fetched from `requested`, keeping the selection
+    /// and scroll position. A page that no longer continues this list (it
+    /// was refreshed meanwhile) is dropped. Items already present are
+    /// skipped, and the list ends when the server gives no cursor or the same
+    /// one again, which is what stops a server that repeats its last page.
+    fn append(&mut self, requested: &str, page: Page<T>) {
+        if !self.more_pending || self.cursor.as_deref() != Some(requested) {
+            return;
+        }
+        self.more_pending = false;
+        let seen: HashSet<String> = self.items.iter().map(|i| i.key().to_string()).collect();
+        self.items
+            .extend(page.items.into_iter().filter(|i| !seen.contains(i.key())));
+        self.cursor = page.cursor.filter(|c| c != requested);
+    }
+}
+
+impl<T> List<T> {
     pub fn current(&self) -> Option<&T> {
         self.items.get(self.selected)
     }
@@ -97,6 +154,8 @@ pub struct Search {
     pub mode: SearchMode,
     pub posts: List<Post>,
     pub actors: List<Profile>,
+    /// The query the results are for (the box may have been edited since).
+    pub query: String,
 }
 
 /// State of the profile tab.
@@ -243,6 +302,7 @@ impl App {
                 mode: SearchMode::Posts,
                 posts: List::default(),
                 actors: List::default(),
+                query: String::new(),
             },
             profile: ProfilePane::default(),
             overlay: None,
@@ -573,6 +633,7 @@ impl App {
         if q.is_empty() {
             return Vec::new();
         }
+        self.search.query = q.clone();
         match self.search.mode {
             SearchMode::Posts => {
                 self.search.posts.loaded = false;
@@ -646,12 +707,12 @@ impl App {
             KeyCode::Char('3') => return self.switch_tab(Tab::Profile),
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
             KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
-            KeyCode::Char('j') | KeyCode::Down => self.step(1),
-            KeyCode::Char('k') | KeyCode::Up => self.step(-1),
-            KeyCode::PageDown => self.step(5),
-            KeyCode::PageUp => self.step(-5),
-            KeyCode::Char('g') | KeyCode::Home => self.step(isize::MIN / 2),
-            KeyCode::Char('G') | KeyCode::End => self.step(isize::MAX / 2),
+            KeyCode::Char('j') | KeyCode::Down => return self.step(1),
+            KeyCode::Char('k') | KeyCode::Up => return self.step(-1),
+            KeyCode::PageDown => return self.step(5),
+            KeyCode::PageUp => return self.step(-5),
+            KeyCode::Char('g') | KeyCode::Home => return self.step(isize::MIN / 2),
+            KeyCode::Char('G') | KeyCode::End => return self.step(isize::MAX / 2),
             KeyCode::Char('/') => {
                 let jobs = self.switch_tab(Tab::Search);
                 self.search.editing = true;
@@ -671,6 +732,7 @@ impl App {
             }
             KeyCode::Char('r') => return self.reply(),
             KeyCode::Char('l') => return self.toggle_like(),
+            KeyCode::Char('b') => return self.toggle_repost(),
             KeyCode::Char('f') => return self.toggle_follow(),
             KeyCode::Char('e') if self.tab == Tab::Profile => return self.edit_profile(),
             KeyCode::Enter => {
@@ -689,12 +751,43 @@ impl App {
         Vec::new()
     }
 
-    fn step(&mut self, delta: isize) {
-        if self.tab == Tab::Search && self.search.mode == SearchMode::Accounts {
-            self.search.actors.step(delta);
-        } else if let Some(list) = self.current_posts() {
-            list.step(delta);
-        }
+    /// Move the selection, and ask for the next page when it nears the end.
+    fn step(&mut self, delta: isize) -> Vec<Job> {
+        let more = match self.tab {
+            Tab::Search if self.search.mode == SearchMode::Accounts => {
+                self.search.actors.step(delta);
+                self.search
+                    .actors
+                    .want_more()
+                    .map(|c| (Feed::SearchActors(self.search.query.clone()), c))
+            }
+            Tab::Search => {
+                self.search.posts.step(delta);
+                self.search
+                    .posts
+                    .want_more()
+                    .map(|c| (Feed::SearchPosts(self.search.query.clone()), c))
+            }
+            Tab::Timeline => {
+                self.timeline.step(delta);
+                self.timeline.want_more().map(|c| (Feed::Timeline, c))
+            }
+            Tab::Profile => {
+                self.profile.posts.step(delta);
+                let did = self.profile.profile.as_ref().map(|p| p.did.clone());
+                match did {
+                    Some(did) => self
+                        .profile
+                        .posts
+                        .want_more()
+                        .map(|c| (Feed::Author(did), c)),
+                    None => None,
+                }
+            }
+        };
+        more.map(|(feed, cursor)| Job::More { feed, cursor })
+            .into_iter()
+            .collect()
     }
 
     fn refresh(&mut self) -> Vec<Job> {
@@ -743,6 +836,24 @@ impl App {
                 like_uri: like.to_string(),
             }],
             None => vec![Job::Like {
+                subject: post.strong_ref(),
+            }],
+        }
+    }
+
+    fn toggle_repost(&mut self) -> Vec<Job> {
+        let Some(post) = self.selected_post() else {
+            return Vec::new();
+        };
+        if !self.claim(format!("repost:{}", post.uri)) {
+            return Vec::new();
+        }
+        match post.repost_uri() {
+            Some(uri) => vec![Job::Unrepost {
+                post_uri: post.uri.clone(),
+                repost_uri: uri.to_string(),
+            }],
+            None => vec![Job::Repost {
                 subject: post.strong_ref(),
             }],
         }
@@ -853,10 +964,42 @@ impl App {
         }
     }
 
+    /// Put a further page where it belongs, or drop it when that list has
+    /// moved on (a new query, another profile, a refresh).
+    fn more(&mut self, feed: Feed, cursor: &str, result: crate::error::Result<MorePage>) {
+        let own_did = self.profile.profile.as_ref().map(|p| p.did.clone());
+        match (feed, result) {
+            (Feed::Timeline, Ok(MorePage::Posts(page))) => self.timeline.append(cursor, page),
+            (Feed::SearchPosts(q), Ok(MorePage::Posts(page))) if q == self.search.query => {
+                self.search.posts.append(cursor, page)
+            }
+            (Feed::SearchActors(q), Ok(MorePage::Actors(page))) if q == self.search.query => {
+                self.search.actors.append(cursor, page)
+            }
+            (Feed::Author(did), Ok(MorePage::Posts(page))) if Some(&did) == own_did.as_ref() => {
+                self.profile.posts.append(cursor, page)
+            }
+            (feed, Err(e)) => {
+                // Let the next move try again.
+                match feed {
+                    Feed::Timeline => self.timeline.more_pending = false,
+                    Feed::SearchPosts(_) => self.search.posts.more_pending = false,
+                    Feed::SearchActors(_) => self.search.actors.more_pending = false,
+                    Feed::Author(_) => self.profile.posts.more_pending = false,
+                }
+                self.fail(&e);
+            }
+            _ => {}
+        }
+    }
+
     fn event(&mut self, event: Event) -> Vec<Job> {
         match &event {
             Event::Liked { post_uri, .. } | Event::Unliked { post_uri, .. } => {
                 self.in_flight.remove(&format!("like:{post_uri}"));
+            }
+            Event::Reposted { post_uri, .. } | Event::Unreposted { post_uri, .. } => {
+                self.in_flight.remove(&format!("repost:{post_uri}"));
             }
             Event::Followed { did, .. } | Event::Unfollowed { did, .. } => {
                 self.in_flight.remove(&format!("follow:{did}"));
@@ -917,6 +1060,33 @@ impl App {
                 });
                 self.info("like removed");
             }
+            Event::Reposted {
+                post_uri,
+                result: Ok(repost),
+            } => {
+                self.each_post(&post_uri, |p| {
+                    p.viewer.get_or_insert_with(Default::default).repost = Some(repost.clone());
+                    p.repost_count += 1;
+                });
+                self.info("reposted");
+            }
+            Event::Unreposted {
+                post_uri,
+                result: Ok(()),
+            } => {
+                self.each_post(&post_uri, |p| {
+                    if let Some(v) = &mut p.viewer {
+                        v.repost = None;
+                    }
+                    p.repost_count = p.repost_count.saturating_sub(1);
+                });
+                self.info("repost removed");
+            }
+            Event::More {
+                feed,
+                cursor,
+                result,
+            } => self.more(feed, &cursor, result),
             Event::Followed {
                 did,
                 result: Ok(uri),
@@ -1011,6 +1181,8 @@ impl App {
             }
             Event::Liked { result: Err(e), .. }
             | Event::Unliked { result: Err(e), .. }
+            | Event::Reposted { result: Err(e), .. }
+            | Event::Unreposted { result: Err(e), .. }
             | Event::Followed { result: Err(e), .. }
             | Event::Unfollowed { result: Err(e), .. } => self.fail(&e),
         }
@@ -1066,7 +1238,8 @@ mod tests {
         app.handle_event(Event::Timeline(Ok(vec![
             post("at://a/p/1", "did:plc:alice", true),
             post("at://b/p/2", "did:plc:bob", true),
-        ])));
+        ]
+        .into())));
         app
     }
 
@@ -1231,7 +1404,7 @@ mod tests {
         let carol: Profile =
             serde_json::from_value(json!({"did": "did:plc:carol", "handle": "carol.test"}))
                 .unwrap();
-        app.handle_event(Event::SearchActors(Ok(vec![carol])));
+        app.handle_event(Event::SearchActors(Ok(vec![carol].into())));
         let jobs = app.handle_key(key('f'));
         assert!(matches!(&jobs[..], [Job::Follow { did }] if did == "did:plc:carol"));
         app.handle_event(Event::Followed {
@@ -1260,7 +1433,7 @@ mod tests {
         assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
         let me: Profile =
             serde_json::from_value(json!({"did": "did:plc:me", "handle": "me.test"})).unwrap();
-        app.handle_event(Event::Profile(Ok((me, vec![]))));
+        app.handle_event(Event::Profile(Ok((me, vec![].into()))));
         assert!(app.handle_key(key('f')).is_empty());
         assert!(app.status.as_ref().unwrap().error);
     }
@@ -1408,12 +1581,12 @@ mod tests {
         // Bob's profile, opened earlier, answering late, is not shown as Alice's.
         let bob: Profile =
             serde_json::from_value(json!({"did": "did:plc:bob", "handle": "bob.test"})).unwrap();
-        app.handle_event(Event::Profile(Ok((bob, vec![]))));
+        app.handle_event(Event::Profile(Ok((bob, vec![].into()))));
         assert!(app.profile.profile.is_none());
         let alice: Profile =
             serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"}))
                 .unwrap();
-        app.handle_event(Event::Profile(Ok((alice, vec![]))));
+        app.handle_event(Event::Profile(Ok((alice, vec![].into()))));
         assert_eq!(app.profile.profile.as_ref().unwrap().did, "did:plc:alice");
         assert!(app.profile.error.is_none());
     }
@@ -1436,7 +1609,8 @@ mod tests {
         app.handle_event(Event::SearchPosts(Ok(vec![
             post("at://s/1", "did:plc:x", false),
             post("at://s/2", "did:plc:y", false),
-        ])));
+        ]
+        .into())));
         app.handle_key(key('j'));
         assert_eq!(app.search.posts.selected, 1);
         assert_eq!(app.search.input.text(), "q l f");
@@ -1594,6 +1768,162 @@ mod tests {
         app.handle_key(key('T'));
         assert!(app.overlay.is_none());
         assert!(app.status.as_ref().unwrap().text.contains("NO_COLOR"));
+    }
+
+    fn page(posts: Vec<Post>, cursor: Option<&str>) -> Page<Post> {
+        Page {
+            items: posts,
+            cursor: cursor.map(str::to_string),
+        }
+    }
+
+    fn timeline_with(n: usize, cursor: Option<&str>) -> App {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let posts = (0..n)
+            .map(|i| post(&format!("at://p/{i}"), "did:plc:a", true))
+            .collect();
+        app.handle_event(Event::Timeline(Ok(page(posts, cursor))));
+        app
+    }
+
+    #[test]
+    fn nothing_more_is_fetched_on_load_or_far_from_the_end() {
+        let mut app = timeline_with(10, Some("c1"));
+        assert_eq!(app.pending, 0);
+        assert!(app.handle_key(key('j')).is_empty());
+        assert!(app.handle_key(key('j')).is_empty());
+    }
+
+    #[test]
+    fn nearing_the_end_fetches_the_next_page_once() {
+        let mut app = timeline_with(5, Some("c1"));
+        assert!(app.handle_key(key('j')).is_empty());
+        let jobs = app.handle_key(key('j')); // 3 from the end
+        assert!(
+            matches!(&jobs[..], [Job::More { feed: Feed::Timeline, cursor }] if cursor == "c1")
+        );
+        // While it is on its way, moving on asks for nothing more.
+        assert!(app.handle_key(key('j')).is_empty());
+        app.handle_event(Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(
+                vec![
+                    post("at://p/4", "did:plc:a", true),
+                    post("at://p/5", "did:plc:a", true),
+                ],
+                Some("c2"),
+            ))),
+        });
+        // p/4 was already there: only p/5 is new; the selection did not move.
+        assert_eq!(app.timeline.items.len(), 6);
+        assert_eq!(app.timeline.selected, 3);
+        assert_eq!(app.timeline.cursor.as_deref(), Some("c2"));
+    }
+
+    #[rstest::rstest]
+    #[case::no_cursor(None)]
+    #[case::same_cursor(Some("c1"))]
+    fn the_list_ends_when_the_cursor_stops_moving(#[case] next: Option<&str>) {
+        let mut app = timeline_with(3, Some("c1"));
+        let jobs = app.handle_key(key('j'));
+        assert_eq!(jobs.len(), 1);
+        app.handle_event(Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(vec![], next))),
+        });
+        assert_eq!(app.timeline.cursor, None);
+        assert!(app.handle_key(key('j')).is_empty());
+        assert!(app.handle_key(key('G')).is_empty());
+    }
+
+    #[test]
+    fn a_page_for_a_refreshed_list_is_dropped() {
+        let mut app = timeline_with(3, Some("c1"));
+        app.handle_key(key('j'));
+        // R replaced the list before the old page came back.
+        app.handle_event(Event::Timeline(Ok(page(
+            vec![post("at://fresh", "did:plc:a", true)],
+            Some("new"),
+        ))));
+        app.handle_event(Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(
+                vec![post("at://old", "did:plc:a", true)],
+                None,
+            ))),
+        });
+        let uris: Vec<&str> = app.timeline.items.iter().map(|p| p.uri.as_str()).collect();
+        assert_eq!(uris, ["at://fresh"]);
+        assert_eq!(app.timeline.cursor.as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn a_failed_page_can_be_tried_again() {
+        let mut app = timeline_with(2, Some("c1"));
+        assert_eq!(app.handle_key(key('j')).len(), 1);
+        app.handle_event(Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Err(Error::api("boom")),
+        });
+        assert!(app.status.as_ref().unwrap().error);
+        assert_eq!(app.handle_key(key('k')).len(), 1, "the next move retries");
+    }
+
+    #[test]
+    fn a_page_for_an_old_query_is_dropped() {
+        let mut app = logged_in();
+        app.handle_key(key('/'));
+        type_str(&mut app, "old");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::SearchPosts(Ok(page(
+            vec![post("at://s/1", "did:plc:x", false)],
+            Some("c1"),
+        ))));
+        assert_eq!(app.handle_key(key('j')).len(), 1);
+        // A new search starts before the page arrives.
+        app.handle_key(key('/'));
+        app.handle_key(ctrl('u'));
+        type_str(&mut app, "new");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::More {
+            feed: Feed::SearchPosts("old".into()),
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(
+                vec![post("at://s/2", "did:plc:x", false)],
+                None,
+            ))),
+        });
+        assert_eq!(app.search.posts.items.len(), 1);
+    }
+
+    #[test]
+    fn repost_toggles_and_waits_for_the_answer() {
+        let mut app = logged_in();
+        let jobs = app.handle_key(key('b'));
+        let [Job::Repost { subject }] = &jobs[..] else {
+            panic!("{jobs:?}")
+        };
+        assert_eq!(subject.uri, "at://a/p/1");
+        assert!(app.handle_key(key('b')).is_empty(), "second press waits");
+        app.handle_event(Event::Reposted {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.repost/r1".into()),
+        });
+        assert_eq!(app.timeline.items[0].repost_count, 1);
+        let jobs = app.handle_key(key('b'));
+        assert!(
+            matches!(&jobs[..], [Job::Unrepost { repost_uri, .. }] if repost_uri.ends_with("/r1"))
+        );
+        app.handle_event(Event::Unreposted {
+            post_uri: "at://a/p/1".into(),
+            result: Ok(()),
+        });
+        assert_eq!(app.timeline.items[0].repost_count, 0);
+        assert!(app.timeline.items[0].repost_uri().is_none());
     }
 
     #[test]

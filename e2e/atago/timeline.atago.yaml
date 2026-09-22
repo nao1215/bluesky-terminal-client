@@ -237,6 +237,111 @@ scenarios:
             body:
               json: { path: "$.record.subject.uri", equals: "at://did:plc:bob/app.bsky.feed.post/p2" }
 
+  - name: b reposts a post, and b again removes the repost
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.repost/rp1", cid: "cid-rp1" }
+          - *delete_record
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "♡ 2   ⟳ 1   ↩ 0"
+            - send: b
+            - expect_screen:
+                contains: ["♡ 2   ⟳ 2   ↩ 0", "reposted"]
+            - send: b
+            - expect_screen:
+                contains: ["♡ 2   ⟳ 1   ↩ 0", "repost removed"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.record['$type']", equals: "app.bsky.feed.repost" }
+                - { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.subject.cid", equals: "cid-p1" }
+      # The repost record the server named is the one deleted.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.rkey", equals: "rp1" }
+
+  - name: nearing the end fetches the next page once, and a repeated page ends the list
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bs
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Replying to carol"
+            # Two posts: the first move is already near the end. The stub
+            # answers the next page with the same posts and the same cursor.
+            - send: j
+            - send: j
+            - send: k
+            - send: G
+            # The repeated posts were not added a second time: each is on
+            # screen exactly once.
+            - expect_screen:
+                matches: "Replying to carol"
+                count: 1
+                stable_for: 500ms
+            - expect_screen:
+                matches: "Photo from the mountains"
+                count: 1
+            - send: q
+      - assert:
+          exit_code: 0
+      # Once for the first page, once for the next; the repeated cursor ends it.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            count: 2
+            query: { name: cursor, equals: "next-page" }
+
   - name: a reply to a reply keeps the thread root and names the parent
     skip:
       os: windows
@@ -681,7 +786,7 @@ scenarios:
                 contains: ["? help", "j k move", "l like"]
             - send: "?"
             - expect_screen:
-                contains: ["Keys", "Global", "like / remove like", "j/pgdn more"]
+                contains: ["Keys", "Global", "choose a color theme", "j/pgdn more"]
                 not_contains: "edit your profile"
             # A stray key does not close it.
             - send: x
@@ -689,9 +794,12 @@ scenarios:
                 contains: "Keys"
                 stable_for: 200ms
             - send: { key: pagedown }
+            - expect_screen:
+                contains: ["like / remove like", "repost / remove repost"]
+            - send: { key: pagedown }
             - send: { key: pagedown }
             - expect_screen:
-                contains: ["Profile", "edit your profile"]
+                contains: "edit your profile"
             # Wait for the window itself to go before the next key, or Esc
             # followed by q reads as Alt+q.
             - send: { key: esc }

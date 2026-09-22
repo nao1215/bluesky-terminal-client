@@ -31,6 +31,7 @@ pub const HELP: &[Section] = &[
             ("j k ↓ ↑", "move the selection"),
             ("g G home end", "first / last item"),
             ("pgdn pgup", "move five items"),
+            ("", "more loads by itself near the end"),
             ("R F5", "refresh the current view"),
         ],
     },
@@ -40,6 +41,7 @@ pub const HELP: &[Section] = &[
             ("n", "new post"),
             ("r", "reply to the selected post"),
             ("l", "like / remove like"),
+            ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
             ("enter", "open the selected account's profile"),
         ],
@@ -130,6 +132,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
         Tab::Search => vec![
             ("j k", "move"),
             ("l", "like"),
+            ("b", "repost"),
             ("r", "reply"),
             ("enter", "profile"),
             ("/", "edit query"),
@@ -138,6 +141,7 @@ pub fn hints(app: &App) -> Vec<Hint> {
         Tab::Timeline => vec![
             ("j k", "move"),
             ("l", "like"),
+            ("b", "repost"),
             ("r", "reply"),
             ("n", "post"),
             ("f", "unfollow"),

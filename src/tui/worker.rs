@@ -26,12 +26,24 @@ pub enum Job {
     SearchActors(String),
     /// Load an actor's profile and recent posts.
     OpenProfile(String),
+    /// The page of `feed` that starts at `cursor`.
+    More {
+        feed: Feed,
+        cursor: String,
+    },
     Like {
         subject: StrongRef,
     },
     Unlike {
         post_uri: String,
         like_uri: String,
+    },
+    Repost {
+        subject: StrongRef,
+    },
+    Unrepost {
+        post_uri: String,
+        repost_uri: String,
     },
     Follow {
         did: String,
@@ -54,6 +66,40 @@ pub enum Job {
     },
 }
 
+/// One page of a list and where the next page begins.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    pub cursor: Option<String>,
+}
+
+impl<T> From<Vec<T>> for Page<T> {
+    /// A page with nothing after it.
+    fn from(items: Vec<T>) -> Self {
+        Self {
+            items,
+            cursor: None,
+        }
+    }
+}
+
+/// A list that continues past its first page, named by what it lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Feed {
+    Timeline,
+    SearchPosts(String),
+    SearchActors(String),
+    /// An account's own posts, by DID.
+    Author(String),
+}
+
+/// A further page of posts or of accounts.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MorePage {
+    Posts(Page<Post>),
+    Actors(Page<Profile>),
+}
+
 /// The fields of the account's own profile record.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileFields {
@@ -65,15 +111,29 @@ pub struct ProfileFields {
 #[derive(Debug)]
 pub enum Event {
     LoggedIn(Result<Session>),
-    Timeline(Result<Vec<Post>>),
-    SearchPosts(Result<Vec<Post>>),
-    SearchActors(Result<Vec<Profile>>),
-    Profile(Result<(Profile, Vec<Post>)>),
+    Timeline(Result<Page<Post>>),
+    SearchPosts(Result<Page<Post>>),
+    SearchActors(Result<Page<Profile>>),
+    Profile(Result<(Profile, Page<Post>)>),
+    /// A further page of `feed`, requested from `cursor`.
+    More {
+        feed: Feed,
+        cursor: String,
+        result: Result<MorePage>,
+    },
     Liked {
         post_uri: String,
         result: Result<String>,
     },
     Unliked {
+        post_uri: String,
+        result: Result<()>,
+    },
+    Reposted {
+        post_uri: String,
+        result: Result<String>,
+    },
+    Unreposted {
         post_uri: String,
         result: Result<()>,
     },
@@ -158,18 +218,26 @@ impl State {
                 identifier,
                 password,
             } => Event::LoggedIn(self.login(&service, &identifier, &password)),
-            Job::Timeline => Event::Timeline(self.timeline()),
-            Job::SearchPosts(q) => Event::SearchPosts(
-                self.client()
-                    .and_then(|c| c.search_posts(&q))
-                    .map(|r| r.posts),
-            ),
-            Job::SearchActors(q) => Event::SearchActors(
-                self.client()
-                    .and_then(|c| c.search_actors(&q))
-                    .map(|r| r.actors),
-            ),
+            Job::Timeline => Event::Timeline(self.timeline(None)),
+            Job::SearchPosts(q) => Event::SearchPosts(self.search_posts(&q, None)),
+            Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
+            Job::More { feed, cursor } => Event::More {
+                result: self.more(&feed, &cursor),
+                feed,
+                cursor,
+            },
+            Job::Repost { subject } => Event::Reposted {
+                post_uri: subject.uri.clone(),
+                result: self.client().and_then(|c| c.repost(&subject)),
+            },
+            Job::Unrepost {
+                post_uri,
+                repost_uri,
+            } => Event::Unreposted {
+                post_uri,
+                result: self.client().and_then(|c| c.unrepost(&repost_uri)),
+            },
             Job::Like { subject } => Event::Liked {
                 post_uri: subject.uri.clone(),
                 result: self.client().and_then(|c| c.like(&subject)),
@@ -209,23 +277,73 @@ impl State {
         Ok(session)
     }
 
-    fn timeline(&mut self) -> Result<Vec<Post>> {
+    /// A page of the timeline, filtered to posts by followed accounts.
+    ///
+    /// A raw page can be all reposts and own posts, which filters down to
+    /// nothing; then the next raw pages are read (a few at most) so that the
+    /// user gets posts, not an empty page that ends the scrolling.
+    fn timeline(&mut self, cursor: Option<&str>) -> Result<Page<Post>> {
+        const RAW_PAGES: usize = 3;
         let client = self.client()?;
         let did = client.session().did.clone();
-        Ok(timeline::followed_posts(client.timeline(None)?.feed, &did))
+        let mut cursor = cursor.map(str::to_string);
+        let mut items = Vec::new();
+        for _ in 0..RAW_PAGES {
+            let raw = client.timeline(cursor.as_deref())?;
+            items.extend(timeline::followed_posts(raw.feed, &did));
+            let advanced = raw.cursor.is_some() && raw.cursor != cursor;
+            cursor = raw.cursor;
+            if !items.is_empty() || !advanced {
+                break;
+            }
+        }
+        Ok(Page { items, cursor })
     }
 
-    fn open_profile(&mut self, actor: &str) -> Result<(Profile, Vec<Post>)> {
-        let client = self.client()?;
-        let profile = client.profile(actor)?;
-        let posts = client
-            .author_feed(&profile.did)?
-            .feed
-            .into_iter()
-            .filter(|i| i.reason.is_none())
-            .map(|i| i.post)
-            .collect();
+    fn search_posts(&mut self, q: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+        let r = self.client()?.search_posts(q, cursor)?;
+        Ok(Page {
+            items: r.posts,
+            cursor: r.cursor,
+        })
+    }
+
+    fn search_actors(&mut self, q: &str, cursor: Option<&str>) -> Result<Page<Profile>> {
+        let r = self.client()?.search_actors(q, cursor)?;
+        Ok(Page {
+            items: r.actors,
+            cursor: r.cursor,
+        })
+    }
+
+    /// An account's own posts: reposts are left out, as on the timeline.
+    fn author_feed(&mut self, did: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+        let r = self.client()?.author_feed(did, cursor)?;
+        Ok(Page {
+            items: r
+                .feed
+                .into_iter()
+                .filter(|i| i.reason.is_none())
+                .map(|i| i.post)
+                .collect(),
+            cursor: r.cursor,
+        })
+    }
+
+    fn open_profile(&mut self, actor: &str) -> Result<(Profile, Page<Post>)> {
+        let profile = self.client()?.profile(actor)?;
+        let posts = self.author_feed(&profile.did, None)?;
         Ok((profile, posts))
+    }
+
+    fn more(&mut self, feed: &Feed, cursor: &str) -> Result<MorePage> {
+        let c = Some(cursor);
+        Ok(match feed {
+            Feed::Timeline => MorePage::Posts(self.timeline(c)?),
+            Feed::SearchPosts(q) => MorePage::Posts(self.search_posts(q, c)?),
+            Feed::SearchActors(q) => MorePage::Actors(self.search_actors(q, c)?),
+            Feed::Author(did) => MorePage::Posts(self.author_feed(did, c)?),
+        })
     }
 
     fn profile_fields(&mut self) -> Result<ProfileFields> {

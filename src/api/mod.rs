@@ -262,15 +262,14 @@ impl Client {
     }
 
     /// `app.bsky.feed.getAuthorFeed` for one actor, without replies.
-    pub fn author_feed(&mut self, actor: &str) -> Result<AuthorFeed> {
-        self.get(
-            "app.bsky.feed.getAuthorFeed",
-            &[
-                ("actor", actor),
-                ("limit", "30"),
-                ("filter", "posts_no_replies"),
-            ],
-        )
+    pub fn author_feed(&mut self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
+        let mut q = vec![
+            ("actor", actor),
+            ("limit", "30"),
+            ("filter", "posts_no_replies"),
+        ];
+        q.extend(cursor.map(|c| ("cursor", c)));
+        self.get("app.bsky.feed.getAuthorFeed", &q)
     }
 
     /// `app.bsky.actor.getProfile`.
@@ -279,13 +278,17 @@ impl Client {
     }
 
     /// `app.bsky.feed.searchPosts`.
-    pub fn search_posts(&mut self, q: &str) -> Result<SearchPosts> {
-        self.get("app.bsky.feed.searchPosts", &[("q", q), ("limit", "30")])
+    pub fn search_posts(&mut self, q: &str, cursor: Option<&str>) -> Result<SearchPosts> {
+        let mut query = vec![("q", q), ("limit", "30")];
+        query.extend(cursor.map(|c| ("cursor", c)));
+        self.get("app.bsky.feed.searchPosts", &query)
     }
 
     /// `app.bsky.actor.searchActors`.
-    pub fn search_actors(&mut self, q: &str) -> Result<SearchActors> {
-        self.get("app.bsky.actor.searchActors", &[("q", q), ("limit", "30")])
+    pub fn search_actors(&mut self, q: &str, cursor: Option<&str>) -> Result<SearchActors> {
+        let mut query = vec![("q", q), ("limit", "30")];
+        query.extend(cursor.map(|c| ("cursor", c)));
+        self.get("app.bsky.actor.searchActors", &query)
     }
 
     /// `com.atproto.identity.resolveHandle`.
@@ -354,6 +357,18 @@ impl Client {
     /// Remove a like by its record URI.
     pub fn unlike(&mut self, like_uri: &str) -> Result<()> {
         self.delete_record(like_uri)
+    }
+
+    /// Repost a post; returns the repost record's URI.
+    pub fn repost(&mut self, subject: &StrongRef) -> Result<String> {
+        let record =
+            json!({"$type": "app.bsky.feed.repost", "subject": subject, "createdAt": now()});
+        Ok(self.create_record("app.bsky.feed.repost", record)?.uri)
+    }
+
+    /// Remove a repost by its record URI.
+    pub fn unrepost(&mut self, repost_uri: &str) -> Result<()> {
+        self.delete_record(repost_uri)
     }
 
     /// Follow an account; returns the follow record's URI.

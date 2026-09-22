@@ -6,6 +6,8 @@ use ratatui::layout::{Constraint, Layout, Position, Rect, Size};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
+use std::collections::HashMap;
+
 use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{Embed, Post, Profile};
@@ -341,20 +343,31 @@ fn draw_posts(
         return;
     }
     let content = content_rect(area);
-    let lines: Vec<PostLines> = list
-        .items
-        .iter()
-        .map(|p| PostLines::new(p, content.width, images.cell_size(), t))
-        .collect();
-    let heights: Vec<u16> = lines.iter().map(PostLines::height).collect();
+    let cell = images.cell_size();
+    // Lay out only what this frame can need: the posts between the scroll
+    // position and the selection (to keep the selection visible), then as
+    // many as fill the screen. A long, paged list costs no more than a short
+    // one.
+    let mut lines: HashMap<usize, PostLines> = HashMap::new();
+    let first = list.offset.min(list.selected);
+    let mut heights = vec![0; list.items.len()];
+    let last = list.selected.min(list.items.len() - 1);
+    for (i, post) in list.items.iter().enumerate().take(last + 1).skip(first) {
+        let pl = PostLines::new(post, content.width, cell, t);
+        heights[i] = pl.height();
+        lines.insert(i, pl);
+    }
     scroll(list, &heights, area.height);
 
     let mut y = area.y;
-    for (i, (post, pl)) in list.items.iter().zip(&lines).enumerate().skip(list.offset) {
+    for (i, post) in list.items.iter().enumerate().skip(list.offset) {
         if y >= area.bottom() {
             break;
         }
-        let h = heights[i];
+        let pl = lines
+            .entry(i)
+            .or_insert_with(|| PostLines::new(post, content.width, cell, t));
+        let h = pl.height();
         let visible = (area.bottom() - y).min(h);
         let row = Rect {
             y,
@@ -1033,7 +1046,7 @@ mod tests {
     #[test]
     fn timeline_scrolls_to_keep_the_selection_visible() {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_event(Event::Timeline(Ok(posts(20))));
+        app.handle_event(Event::Timeline(Ok(posts(20).into())));
         let screen = render(&mut app, 80, 24);
         assert!(screen.contains("post number 0"));
         for _ in 0..15 {
@@ -1050,14 +1063,14 @@ mod tests {
     #[test]
     fn empty_timeline_says_why() {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_event(Event::Timeline(Ok(vec![])));
+        app.handle_event(Event::Timeline(Ok(vec![].into())));
         assert!(render(&mut app, 80, 10).contains("No posts from accounts you follow"));
     }
 
     #[test]
     fn tiny_terminals_do_not_panic() {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_event(Event::Timeline(Ok(posts(3))));
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
         for (w, h) in [(1, 1), (5, 3), (10, 2), (20, 5)] {
             render(&mut app, w, h);
         }
@@ -1092,7 +1105,7 @@ mod tests {
     #[test]
     fn hints_stay_visible_while_a_status_message_shows() {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_event(Event::Timeline(Ok(posts(2))));
+        app.handle_event(Event::Timeline(Ok(posts(2).into())));
         app.handle_event(Event::Liked {
             post_uri: "at://p/0".into(),
             result: Ok("at://l".into()),
@@ -1138,7 +1151,7 @@ mod tests {
                     None,
                 );
                 assert_eq!(app.theme_index, i);
-                app.handle_event(Event::Timeline(Ok(posts(3))));
+                app.handle_event(Event::Timeline(Ok(posts(3).into())));
                 for overlay in [
                     None,
                     Some(Overlay::Help { scroll: 0 }),
@@ -1183,7 +1196,7 @@ mod tests {
             crate::tui::theme::ColorDepth::None,
             None,
         );
-        app.handle_event(Event::Timeline(Ok(posts(3))));
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
         app.overlay = Some(Overlay::Help { scroll: 0 });
         let buf = render_buffer(&mut app, 100, 30);
         for cell in buf.content() {
@@ -1217,6 +1230,7 @@ mod tests {
             selected: 3,
             offset: 0,
             loaded: true,
+            ..List::default()
         };
         scroll(&mut list, &[3, 3, 3, 3, 3], 7);
         assert_eq!(list.offset, 2);

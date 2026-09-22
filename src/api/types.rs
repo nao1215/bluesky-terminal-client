@@ -230,6 +230,11 @@ impl Post {
         self.viewer.as_ref()?.like.as_deref()
     }
 
+    /// The viewer's repost record URI, when reposted.
+    pub fn repost_uri(&self) -> Option<&str> {
+        self.viewer.as_ref()?.repost.as_deref()
+    }
+
     /// The `reply` field for a new post answering this one: the thread root
     /// stays the root of this post's thread, and this post becomes the parent.
     pub fn reply_ref(&self) -> ReplyRef {
