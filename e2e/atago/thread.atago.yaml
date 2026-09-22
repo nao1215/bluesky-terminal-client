@@ -12,10 +12,6 @@ suite:
 
 scenarios:
   - name: a reply is shown under its thread, and v opens the whole thread
-    # Windows: not understood yet (the thread's root, a broken video's
-    # warning); investigated separately.
-    skip:
-      os: windows
     mock_servers:
       - name: api
         routes:
