@@ -184,6 +184,11 @@ scenarios:
   # the line breaks of a pasted snippet become spaces rather than sending
   # the search half-typed, and emoji arrive whole.
   - name: a paste into the search box turns its line breaks into spaces and keeps emoji whole
+    # The Windows console hands a paste over as key presses rather than one
+    # bracketed paste, so bsky never sees it as a paste there; the next
+    # scenario is what a Windows terminal gets.
+    skip:
+      os: windows
     mock_servers:
       - name: api
         routes:
@@ -215,6 +220,41 @@ scenarios:
             path: /xrpc/app.bsky.feed.searchPosts
             count: 1
             query: { name: q, equals: "rust 👨‍👩‍👧‍👦 tui" }
+
+  - name: on Windows a paste into the search box arrives as key presses, emoji whole
+    only:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *no_posts
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: { paste: "rust\n👨‍👩‍👧‍👦 tui\r\n" }
+            - expect_screen:
+                contains: "rust👨‍👩‍👧‍👦 tui"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "No posts found."
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            count: 1
+            query: { name: q, equals: "rust👨‍👩‍👧‍👦 tui" }
 
   - name: account search follows and unfollows from the result list
     mock_servers:
