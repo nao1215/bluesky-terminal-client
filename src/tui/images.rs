@@ -411,7 +411,17 @@ impl Images {
     pub fn viewer_closed(&mut self, open: bool) -> Option<&'static str> {
         let closed = self.viewer_open && !open;
         self.viewer_open = open;
-        if !closed || self.protocol_type != ProtocolType::Kitty {
+        if !closed {
+            return None;
+        }
+        self.delete_all()
+    }
+
+    /// Forget every encoded picture, and return the sequence that deletes
+    /// kitty's copies of them, for the caller to write. Other protocols
+    /// draw into the cells, which the next full redraw overwrites.
+    pub fn delete_all(&mut self) -> Option<&'static str> {
+        if self.protocol_type != ProtocolType::Kitty {
             return None;
         }
         self.protocols.clear();

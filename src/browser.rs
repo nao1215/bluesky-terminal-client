@@ -30,6 +30,18 @@ fn opener(url: &str) -> (String, Vec<String>) {
     }
 }
 
+/// What opens links when `BSKY_BROWSER` is not set, as the settings
+/// screen names it.
+pub fn system_opener() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "the Windows URL handler"
+    } else {
+        "xdg-open"
+    }
+}
+
 /// Open `url` in the browser. Only web links are opened, so a post cannot
 /// make bsky run a file or a command.
 pub fn open(url: &str) -> Result<()> {

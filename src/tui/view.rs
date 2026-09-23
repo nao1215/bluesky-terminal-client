@@ -15,7 +15,7 @@ use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_p
 use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
-    App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, Tab, ThreadView,
+    App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, SettingRow, Tab, ThreadView,
 };
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
@@ -67,6 +67,8 @@ const THEME_ROWS: usize = 10;
 const ERROR_W: u16 = 76;
 /// Widest the actions list gets, in cells.
 const ACTIONS_W: u16 = 44;
+/// Widest the settings screen gets, in cells: room for a long path.
+const SETTINGS_W: u16 = 72;
 /// Widest the help box gets, in cells, and the column its keys take.
 const HELP_W: u16 = 64;
 const HELP_KEYS: usize = 18;
@@ -105,6 +107,11 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     // Read before the overlay is borrowed below: the list comes from the
     // whole app.
     let actions = keys::actions(app);
+    let settings = if matches!(app.overlay, Some(Overlay::Settings { .. })) {
+        app.settings_rows()
+    } else {
+        Vec::new()
+    };
     let hint_h = (hint_lines.len() as u16).clamp(1, MAX_HINT_ROWS);
     let [top, body, hint_row, status_row] = Layout::vertical([
         Constraint::Length(1),
@@ -137,6 +144,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
         Some(Overlay::Actions { selected }) => draw_actions(frame, area, &actions, *selected, &t),
+        Some(Overlay::Settings { selected }) => {
+            draw_settings(frame, area, &settings, *selected, &t)
+        }
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         Some(Overlay::Viewer {
             media,
@@ -275,6 +285,67 @@ fn draw_actions(frame: &mut Frame, area: Rect, entries: &[keys::Hint], selected:
             Line::from(vec![key, what])
         })
         .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// The settings screen: a row per setting, `name  value`, and under the
+/// list what the selected one's value comes from or what Enter does.
+fn draw_settings(frame: &mut Frame, area: Rect, rows: &[SettingRow], selected: usize, t: &Theme) {
+    const NAME_W: usize = 16;
+    let inner = popup(
+        frame,
+        area,
+        SETTINGS_W,
+        rows.len() as u16 + 5,
+        "Settings",
+        t,
+    );
+    let width = usize::from(inner.width);
+    // The note of the selected row, whole, below the list: two rows when
+    // there is room, one on a short screen.
+    let note_h = match inner.height {
+        0..=2 => 0,
+        3..=5 => 1,
+        _ => 2,
+    };
+    let list_h = usize::from(inner.height.saturating_sub(note_h + u16::from(note_h > 0)));
+    let top = (selected + 1).saturating_sub(list_h);
+    let mut lines: Vec<Line> = rows
+        .iter()
+        .enumerate()
+        .skip(top)
+        .take(list_h)
+        .map(|(i, r)| {
+            let marker = if i == selected { "▶ " } else { "  " };
+            let name = truncate(r.name, NAME_W);
+            let head = format!("{marker}{name:<NAME_W$} ");
+            let room = width.saturating_sub(head.width());
+            // A path is cut at its start: its end names the folder.
+            let value = truncate_start(&r.value, room);
+            let style = if i == selected {
+                t.base().bold()
+            } else {
+                t.dim()
+            };
+            Line::from(vec![
+                Span::styled(head, t.accent().bold()),
+                Span::styled(value, style),
+            ])
+        })
+        .collect();
+    if note_h > 0
+        && let Some(r) = rows.get(selected)
+    {
+        lines.push(Line::raw(""));
+        let note: Vec<String> = wrap(&r.note, width.saturating_sub(1).max(1))
+            .into_iter()
+            .take(usize::from(note_h))
+            .collect();
+        lines.extend(
+            note.into_iter()
+                .map(|l| Line::styled(format!(" {l}"), t.dim())),
+        );
+    }
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -1456,7 +1527,20 @@ fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Image
         rel.push(Span::styled("  (f to toggle)", t.dim()));
         lines.push(Line::from(rel));
     } else {
-        lines.push(Line::styled("this is you (e to edit)", t.dim()));
+        // Buttons that say the keys exist: bsky does not read the mouse, so
+        // they are pressed with the key they name.
+        let button = |key: &'static str, what: &'static str| {
+            [
+                Span::styled("[ ", t.accent()),
+                Span::styled(key, t.accent().bold()),
+                Span::styled(format!(" {what} ]"), t.accent()),
+            ]
+        };
+        let mut row = vec![Span::styled("this is you  ", t.dim())];
+        row.extend(button("e", "Edit profile"));
+        row.push(Span::raw("  "));
+        row.extend(button("s", "Settings"));
+        lines.push(Line::from(row));
     }
     lines.extend(desc.into_iter().map(Line::from));
     let head_h = (lines.len() as u16).max(big.1) + 1;
@@ -2626,6 +2710,29 @@ mod tests {
                 }),
             ),
             (
+                "own profile",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('4'));
+                    a.handle_event(Event::Profile(Ok((own_profile(), emoji_posts().into()))));
+                    a
+                }),
+            ),
+            (
+                "settings",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.env.download_dir =
+                        Some("/home/me/写真/👨\u{200d}👩\u{200d}👧 家族 🇯🇵/1️⃣ ❤️ e\u{301}".into());
+                    a.handle_key(ch('4'));
+                    a.handle_event(Event::Profile(Ok((own_profile(), emoji_posts().into()))));
+                    a.handle_key(ch('s'));
+                    a.handle_key(ch('j'));
+                    a.handle_key(ch('j'));
+                    a
+                }),
+            ),
+            (
                 "login",
                 Box::new(|| {
                     let (a, _) = App::new(None, "https://bsky.social");
@@ -2651,6 +2758,112 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn own_profile() -> Profile {
+        serde_json::from_value(json!({
+            "did": "did:plc:me", "handle": "me.test",
+            "displayName": "👨\u{200d}👩\u{200d}👧 Me 🇯🇵",
+            "description": "مرحبا 1️⃣ 今日は👍🏽",
+            "followersCount": 12, "followsCount": 3, "postsCount": 42
+        }))
+        .unwrap()
+    }
+
+    /// Your own profile says that e and s exist, as buttons; someone
+    /// else's has neither.
+    #[test]
+    fn your_own_profile_shows_the_edit_and_settings_buttons() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('4'),
+        ));
+        app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
+        let screen = render(&mut app, 100, 24);
+        assert!(
+            screen.contains("this is you  [ e Edit profile ]  [ s Settings ]"),
+            "{screen}"
+        );
+        assert!(screen.contains("s settings"), "{screen}");
+        // Still there with the screen open over it.
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('s'),
+        ));
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("[ s Settings ]"), "{screen}");
+        assert!(screen.contains(" Settings "), "{screen}");
+    }
+
+    /// The screen names every setting with its value, and says where the
+    /// selected one comes from.
+    #[test]
+    fn the_settings_screen_lists_each_setting_and_where_it_comes_from() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.env.graphics = Some("kitty".into());
+        app.env.browser = Some("firefox".into());
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('4'),
+        ));
+        app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('s'),
+        ));
+        let screen = render(&mut app, 100, 30);
+        for row in app.settings_rows() {
+            assert!(screen.contains(row.name), "{}:\n{screen}", row.name);
+        }
+        assert!(screen.contains("▶ Theme"), "{screen}");
+        assert!(screen.contains("bluesky"), "{screen}");
+        assert!(screen.contains("Pictures         kitty"), "{screen}");
+        assert!(screen.contains("Browser          firefox"), "{screen}");
+        assert!(
+            screen.contains("enter chooses one from the list"),
+            "{screen}"
+        );
+        assert!(
+            screen.contains("j k move  enter change  esc close"),
+            "{screen}"
+        );
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('j'),
+        ));
+        let screen = render(&mut app, 100, 30);
+        assert!(
+            screen.contains("set by BSKY_GRAPHICS for this run"),
+            "{screen}"
+        );
+    }
+
+    /// A long path keeps its end, where the folder's own name is, and the
+    /// selected row stays on a screen too short for the whole list.
+    #[test]
+    fn a_short_screen_keeps_the_selected_setting_in_sight() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.env.download_dir = Some(format!(
+            "/very/{}/写真👨\u{200d}👩\u{200d}👧",
+            "long/".repeat(20)
+        ));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('4'),
+        ));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('s'),
+        ));
+        for _ in 0..5 {
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char('j'),
+            ));
+        }
+        let screen = render_text_only(&mut app, 40, MIN_H);
+        assert!(screen.contains("▶ Browser"), "{screen}");
+        for _ in 0..3 {
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char('j'),
+            ));
+        }
+        let screen = render_text_only(&mut app, 40, 12);
+        assert!(screen.contains("▶ Download folder"), "{screen}");
+        assert!(screen.contains("写真👨\u{200d}👩\u{200d}👧"), "{screen}");
     }
 
     /// The key column is 18 cells wide, which leaves nothing for the
@@ -2870,7 +3083,13 @@ mod tests {
         let Some(Overlay::Help { scroll }) = app.overlay else {
             panic!()
         };
-        assert!(scroll < 100, "scroll was not clamped: {scroll}");
+        // No more rows than three per key (a description wraps onto two at
+        // most at this width) and two per section.
+        let rows: usize = keys::HELP.iter().map(|s| s.keys.len() * 3 + 2).sum();
+        assert!(
+            usize::from(scroll) < rows,
+            "scroll was not clamped: {scroll}"
+        );
         // The last section is on screen after scrolling to the end.
         assert!(screen.contains("scroll"), "{screen}");
     }
