@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- Loading runs beside other loads and beside likes, posts, and uploads. A thread, a profile, a search, or the next page no longer waits behind the notifications and feeds loaded at the start, a slow page, or a video being uploaded, and a like is sent while a load is still waiting. With every answer taking 400 ms, opening a thread right after the timeline appears went from 2.4 s to 0.9 s.
+
 ### Fixed
 
 - Removing a like, a repost, or a follow deletes only that kind of record in your own account. When the server named a like, repost, or follow that was another record, such as one of your posts, bsky deleted that record; it now shows an error and sends nothing.

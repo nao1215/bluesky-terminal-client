@@ -118,8 +118,8 @@ fn event_loop(
             // Only what is already waiting; the next frame is not held back.
             wait = Duration::ZERO;
         }
-        // Saved here rather than on the worker, which runs jobs in order: a
-        // theme applied just before q must not wait behind a network call.
+        // Saved here rather than on the worker, whose jobs wait for the
+        // network: a theme applied just before q must not wait behind one.
         if let Some(s) = app.take_settings_save() {
             app.settings_saved(settings.save(&s));
             dirty = true;

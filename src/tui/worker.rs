@@ -1,11 +1,15 @@
 //! Network calls run on a worker thread so the UI never blocks on the server.
 //!
-//! The UI sends a [`Job`]; the worker performs it with the [`Client`] it owns
-//! and answers with an [`Event`]. Jobs run one at a time, in order, which
-//! keeps a like followed by an unlike from racing each other.
+//! The UI sends a [`Job`]; the worker performs it with the [`Client`] it
+//! holds and answers with an [`Event`]. Writes, and whatever else changes the
+//! account, run one at a time in order on one thread, which keeps a like
+//! followed by an unlike from racing each other. Reads run on a few threads
+//! of their own, so a thread or a profile opens without waiting behind a
+//! slow page, an upload, or each other.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
 use crate::api::types::{
@@ -169,8 +173,16 @@ pub enum Event {
         uri: String,
         result: Result<Page<Post>>,
     },
-    SearchPosts(Result<Page<Post>>),
-    SearchActors(Result<Page<Profile>>),
+    /// The first page of posts found for `query`.
+    SearchPosts {
+        query: String,
+        result: Result<Page<Post>>,
+    },
+    /// The first page of accounts found for `query`.
+    SearchActors {
+        query: String,
+        result: Result<Page<Profile>>,
+    },
     Profile(Result<(Profile, Page<Post>)>),
     /// A further page of `feed`, requested from `cursor`.
     More {
@@ -226,32 +238,85 @@ pub enum Event {
     },
 }
 
+impl Job {
+    /// Whether the job only reads, so it may run beside other jobs and out
+    /// of order with them. The profile editor's load stays in order: the
+    /// save that follows it writes exactly the version it read.
+    fn reads(&self) -> bool {
+        matches!(
+            self,
+            Job::Timeline
+                | Job::PinnedFeeds
+                | Job::CustomFeed(_)
+                | Job::SearchPosts(_)
+                | Job::SearchActors(_)
+                | Job::OpenProfile(_)
+                | Job::Thread(_)
+                | Job::Notifications
+                | Job::More { .. }
+                | Job::Download(_)
+                | Job::OpenLink(_)
+        )
+    }
+}
+
+/// Threads that run reads. The start asks for three things at once (the
+/// timeline, the notifications, the pinned feeds); one more keeps a thread
+/// the user opens meanwhile from waiting behind them.
+const READERS: usize = 4;
+
 /// Handle to the running worker.
 pub struct Worker {
-    tx: Sender<Job>,
+    writes: Sender<Job>,
+    reads: Sender<Job>,
     rx: Receiver<Event>,
 }
 
 impl Worker {
     /// Start the worker. `session` is the saved login, if any.
     pub fn spawn(session: Option<Session>, store: SessionStore) -> Self {
-        let (job_tx, job_rx) = channel::<Job>();
+        let client = Arc::new(Mutex::new(
+            session.map(|s| Client::new(s, Some(store.clone()))),
+        ));
         let (ev_tx, ev_rx) = channel::<Event>();
+        let (writes, write_rx) = channel::<Job>();
+        let mut state = State {
+            client: Arc::clone(&client),
+            store: store.clone(),
+            editor_base: None,
+        };
+        let events = ev_tx.clone();
         thread::spawn(move || {
-            let mut state = State {
-                client: session.map(|s| Client::new(s, Some(store.clone()))),
-                store,
-                editor_base: None,
-            };
-            for job in job_rx {
-                let event = state.run(job);
-                if ev_tx.send(event).is_err() {
+            for job in write_rx {
+                if events.send(state.run(job)).is_err() {
                     break;
                 }
             }
         });
+        let (reads, read_rx) = channel::<Job>();
+        let read_rx = Arc::new(Mutex::new(read_rx));
+        for _ in 0..READERS {
+            let mut state = State {
+                client: Arc::clone(&client),
+                store: store.clone(),
+                editor_base: None,
+            };
+            let jobs = Arc::clone(&read_rx);
+            let events = ev_tx.clone();
+            thread::spawn(move || {
+                loop {
+                    // Held only while waiting for a job, not while running it.
+                    let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                    let Ok(job) = job else { break };
+                    if events.send(state.run(job)).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
         Self {
-            tx: job_tx,
+            writes,
+            reads,
             rx: ev_rx,
         }
     }
@@ -260,7 +325,12 @@ impl Worker {
     pub fn send(&self, job: Job) {
         // The worker only stops when the UI drops it, so a send cannot fail
         // while the UI is still running.
-        let _ = self.tx.send(job);
+        let lane = if job.reads() {
+            &self.reads
+        } else {
+            &self.writes
+        };
+        let _ = lane.send(job);
     }
 
     /// A finished job, if any.
@@ -279,7 +349,8 @@ fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
 }
 
 struct State {
-    client: Option<Client>,
+    /// Shared by every thread; a login replaces it for all of them.
+    client: Arc<Mutex<Option<Client>>>,
     store: SessionStore,
     /// The profile record the open editor was filled from (`Some(None)` when
     /// the account has none yet); saving edits exactly this version.
@@ -287,9 +358,11 @@ struct State {
 }
 
 impl State {
-    fn client(&mut self) -> Result<&mut Client> {
+    fn client(&self) -> Result<Client> {
         self.client
-            .as_mut()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
             .ok_or_else(|| Error::api("not logged in"))
     }
 
@@ -301,13 +374,19 @@ impl State {
                 password,
             } => Event::LoggedIn(self.login(&service, &identifier, &password)),
             Job::Timeline => Event::Timeline(self.timeline(None)),
-            Job::PinnedFeeds => Event::PinnedFeeds(self.client().and_then(Client::pinned_feeds)),
+            Job::PinnedFeeds => Event::PinnedFeeds(self.client().and_then(|c| c.pinned_feeds())),
             Job::CustomFeed(uri) => Event::CustomFeed {
                 result: self.custom_feed(&uri, None),
                 uri,
             },
-            Job::SearchPosts(q) => Event::SearchPosts(self.search_posts(&q, None)),
-            Job::SearchActors(q) => Event::SearchActors(self.search_actors(&q, None)),
+            Job::SearchPosts(query) => Event::SearchPosts {
+                result: self.search_posts(&query, None),
+                query,
+            },
+            Job::SearchActors(query) => Event::SearchActors {
+                result: self.search_actors(&query, None),
+                query,
+            },
             Job::OpenProfile(actor) => Event::Profile(self.open_profile(&actor)),
             Job::Notifications => {
                 let result = self.notifications(None);
@@ -381,7 +460,8 @@ impl State {
     fn login(&mut self, service: &str, identifier: &str, password: &str) -> Result<Session> {
         let session = api::login(service, identifier, password)?;
         self.store.save(&session)?;
-        self.client = Some(Client::new(session.clone(), Some(self.store.clone())));
+        *self.client.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some(Client::new(session.clone(), Some(self.store.clone())));
         Ok(session)
     }
 
@@ -393,7 +473,7 @@ impl State {
     fn timeline(&mut self, cursor: Option<&str>) -> Result<Page<Post>> {
         const RAW_PAGES: usize = 3;
         let client = self.client()?;
-        let did = client.session().did.clone();
+        let did = client.did().to_string();
         let mut cursor = cursor.map(str::to_string);
         let mut items = Vec::new();
         for _ in 0..RAW_PAGES {
