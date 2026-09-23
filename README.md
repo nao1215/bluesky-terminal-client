@@ -89,7 +89,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `l` `b` `f` | Like, repost, follow (each again undoes it) |
 | `[` `]` | Previous or next feed on the Timeline tab |
 | `v` | The post's thread |
-| `Space` `o` | View pictures or video (as text: open the post in the browser), open the link |
+| `Space` `o` | View pictures or video (as text: open the post in the browser), open the link or the post |
 | `Enter` | The author's profile (`Esc` comes back) |
 | `/` | Search (`t` switches posts and accounts) |
 | `e` | Edit your profile |

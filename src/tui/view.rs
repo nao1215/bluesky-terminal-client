@@ -803,23 +803,51 @@ fn embed_lines(embed: &Embed, width: usize, t: &Theme) -> Vec<Line<'static>> {
                 Line::styled(truncate(&external.uri, width), dim),
             ]
         }
-        Embed::Record { record } => quote_line(record, width, t).into_iter().collect(),
+        // A quote beside a picture is a recordWithMedia, and says whose
+        // post it quotes just as a plain quote does.
+        Embed::Record { .. } | Embed::RecordWithMedia { .. } => embed
+            .quoted()
+            .map(|r| quote_line(r, width, t))
+            .into_iter()
+            .collect(),
         Embed::Video { .. } => vec![Line::styled("▶ video", dim)],
-        Embed::Images { .. } | Embed::RecordWithMedia { .. } | Embed::Other => Vec::new(),
+        Embed::Images { .. } | Embed::Other => Vec::new(),
     }
 }
 
-fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) -> Option<Line<'static>> {
-    let handle = record.pointer("/author/handle")?.as_str()?;
-    let text = record
-        .pointer("/value/text")
-        .and_then(|t| t.as_str())
+/// The one line a quote gets: who is quoted and the start of what they
+/// wrote. A quote whose post cannot be shown says why, since a line that is
+/// simply missing reads as a post that quotes nothing.
+fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) -> Line<'static> {
+    let kind = record
+        .get("$type")
+        .and_then(serde_json::Value::as_str)
         .unwrap_or("");
-    let first = text.lines().next().unwrap_or("");
-    Some(Line::styled(
-        truncate(&format!("❝ @{handle}: {first}"), width),
-        t.dim(),
-    ))
+    let name = |p: &str| {
+        record
+            .pointer(p)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let text = match kind {
+        "app.bsky.embed.record#viewNotFound" => "❝ quoted post not found".to_string(),
+        "app.bsky.embed.record#viewBlocked" => {
+            "❝ quoted post from an account you cannot see".to_string()
+        }
+        "app.bsky.embed.record#viewDetached" => "❝ quote removed by the post's author".to_string(),
+        "app.bsky.feed.defs#generatorView" => format!("❝ feed: {}", name("/displayName")),
+        "app.bsky.graph.defs#listView" => format!("❝ list: {}", name("/name")),
+        _ => match record.pointer("/author/handle").and_then(|h| h.as_str()) {
+            Some(handle) => {
+                let said = name("/value/text");
+                let first = said.lines().next().unwrap_or("");
+                format!("❝ @{handle}: {first}")
+            }
+            None => "❝ quoted post cannot be shown".to_string(),
+        },
+    };
+    Line::styled(truncate(&text, width), t.dim())
 }
 
 /// Width left for a row's text once its indentation is taken off.
@@ -2627,6 +2655,60 @@ mod tests {
         assert!(
             wide.contains("1 2 3 4        Timeline, Search, Notifications, Profile"),
             "{wide}"
+        );
+    }
+
+    /// A quote post says whose post it quotes. Beside a picture the quote
+    /// used to be dropped, and a quote of a post that is gone or blocked
+    /// showed nothing at all, which reads as an empty post.
+    #[test]
+    fn a_quote_names_who_it_quotes_beside_a_picture_and_says_when_it_cannot() {
+        let quote_of = |embed: serde_json::Value| -> Post {
+            serde_json::from_value(json!({
+                "uri": "at://p/q", "cid": "c",
+                "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice"},
+                "record": {"text": "look at this", "createdAt": "2026-09-22T00:00:00Z"},
+                "embed": embed,
+            }))
+            .unwrap()
+        };
+        let viewed = json!({
+            "$type": "app.bsky.embed.record#viewRecord",
+            "uri": "at://did:plc:bob/app.bsky.feed.post/q", "cid": "c",
+            "author": {"did": "did:plc:bob", "handle": "bob.test"},
+            "value": {"text": "今日は👨\u{200d}👩\u{200d}👧 the quoted words"}
+        });
+        let with_picture = quote_of(json!({
+            "$type": "app.bsky.embed.recordWithMedia#view",
+            "record": {"$type": "app.bsky.embed.record#view", "record": viewed},
+            "media": {"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": ""}
+            ]}
+        }));
+        let gone = quote_of(json!({
+            "$type": "app.bsky.embed.record#view",
+            "record": {"$type": "app.bsky.embed.record#viewNotFound",
+                       "uri": "at://did:plc:bob/app.bsky.feed.post/x", "notFound": true}
+        }));
+        let blocked = quote_of(json!({
+            "$type": "app.bsky.embed.record#view",
+            "record": {"$type": "app.bsky.embed.record#viewBlocked",
+                       "uri": "at://did:plc:bob/app.bsky.feed.post/y", "blocked": true,
+                       "author": {"did": "did:plc:bob"}}
+        }));
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(
+            Ok(vec![with_picture, gone, blocked].into()),
+        ));
+        let screen = render_text_only(&mut app, 80, 40);
+        assert!(
+            screen.contains("❝ @bob.test: 今日は👨\u{200d}👩\u{200d}👧 the quoted words"),
+            "{screen}"
+        );
+        assert!(screen.contains("quoted post not found"), "{screen}");
+        assert!(
+            screen.contains("quoted post from an account you cannot see"),
+            "{screen}"
         );
     }
 
