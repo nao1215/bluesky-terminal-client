@@ -2,18 +2,9 @@
 //! cut. A post ends with its at:// URI so it can be given to the next
 //! command.
 
-use chrono::{DateTime, Local};
-
 use crate::api::types::{ChatMessage, Convo, Media, Notification, Post, Profile, ThreadNode};
 
-/// A timestamp as local time, `2026-09-20 10:00`; one that does not parse
-/// is shown as it is.
-pub fn time(ts: &str) -> String {
-    match DateTime::parse_from_rfc3339(ts) {
-        Ok(t) => t.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string(),
-        Err(_) => ts.to_string(),
-    }
-}
+pub use crate::clock::local_time as time;
 
 /// `name @handle`, or `@handle` when there is no display name.
 fn who(p: &Profile) -> String {
