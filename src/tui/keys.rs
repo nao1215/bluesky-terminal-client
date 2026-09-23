@@ -56,7 +56,10 @@ pub const HELP: &[Section] = &[
                 "space",
                 "view the post's pictures or video full screen, or open its link",
             ),
-            ("o", "open the post's link in the web browser"),
+            (
+                "o",
+                "open the post's link in the web browser, or the post itself",
+            ),
             ("enter", "open the selected account's profile"),
         ],
     },

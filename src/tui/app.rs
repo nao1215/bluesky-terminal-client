@@ -1308,7 +1308,7 @@ impl App {
             }
             KeyCode::Char('v') => return self.open_thread(),
             KeyCode::Char(' ') => return self.open_viewer(),
-            KeyCode::Char('o') => return self.open_link(),
+            KeyCode::Char('o') => return self.open_link(true),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             KeyCode::Char('[') if self.tab == Tab::Timeline && self.threads.is_empty() => {
@@ -1420,12 +1420,12 @@ impl App {
         };
         let media = post.embed.as_ref().map(|e| e.media()).unwrap_or_default();
         if media.is_empty() {
-            return self.open_link();
+            return self.open_link(false);
         }
         if !self.pictures {
             return match post.web_url() {
                 Some(url) => vec![Job::OpenLink(url)],
-                None => self.open_link(),
+                None => self.open_link(false),
             };
         }
         self.overlay = Some(Overlay::Viewer {
@@ -1436,12 +1436,20 @@ impl App {
         Vec::new()
     }
 
-    /// Open the selected post's first link in the web browser.
-    fn open_link(&mut self) -> Vec<Job> {
+    /// Open the selected post's first link in the web browser. `or_post`
+    /// falls back to the post's own page on bsky.app, where its replies
+    /// are: that is what `o` does, so the key always leads somewhere.
+    /// Space does not, since a browser is not what it offers.
+    fn open_link(&mut self, or_post: bool) -> Vec<Job> {
         let Some(post) = self.post_to_view() else {
             return Vec::new();
         };
-        match post.links().into_iter().next() {
+        let url = post
+            .links()
+            .into_iter()
+            .next()
+            .or_else(|| or_post.then(|| post.web_url()).flatten());
+        match url {
             Some(url) => vec![Job::OpenLink(url)],
             None => {
                 self.info("this post has no pictures, video, or link");
@@ -3426,6 +3434,45 @@ mod tests {
         let mut p = post(uri, "did:plc:alice", true);
         p.embed = serde_json::from_value(embed).ok();
         p
+    }
+
+    // o always leads somewhere: the post's link where it has one, and the
+    // post itself on bsky.app where it has none, which is where its
+    // replies and its author's other posts are.
+    #[test]
+    fn o_opens_the_link_or_the_post_itself() {
+        let mut app = logged_in();
+        app.handle_event(Event::Timeline(Ok(vec![
+            with_pictures(
+                "at://did:plc:alice/app.bsky.feed.post/p1",
+                json!({"$type": "app.bsky.embed.external#view",
+                       "external": {"uri": "https://example.com/a", "title": "A", "description": ""}}),
+            ),
+            post("at://did:plc:bob/app.bsky.feed.post/p2", "did:plc:bob", true),
+        ]
+        .into())));
+        let jobs = app.handle_key(key('o'));
+        assert!(
+            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://example.com/a"),
+            "{jobs:?}"
+        );
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(key('o'));
+        assert!(
+            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://bsky.app/profile/did:plc:bob/post/p2"),
+            "{jobs:?}"
+        );
+        // Space still opens the viewer, and says so when there is nothing
+        // to view: it does not send the reader to a browser.
+        let jobs = app.handle_key(key(' '));
+        assert!(jobs.is_empty(), "{jobs:?}");
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("no pictures, video, or link")),
+            "{:?}",
+            app.status
+        );
     }
 
     // A terminal that cannot show pictures has no viewer: space opens the
