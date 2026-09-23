@@ -76,6 +76,44 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, header: { name: Authorization, equals: "Bearer acc" } }
 
+  # Text others wrote is printed as text: an escape sequence in a post or a
+  # name would otherwise reach the terminal as a command (OSC 52 sets the
+  # clipboard, OSC 0 the window title, CSI 2J clears the screen). --json
+  # prints the server's objects as they are, escaped by JSON.
+  - name: timeline leaves out the control characters others wrote, and --json keeps them escaped
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "Bob\e]0;title\a\nEve 👨‍👩‍👧", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "hi\e]52;c;cHduZWQ=\a\e[2J 🇯🇵", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: bsky tl
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              Bob]0;title Eve 👨‍👩‍👧 @alice.test · 2026-09-20 10:00
+              hi]52;c;cHduZWQ=[2J 🇯🇵
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/p1
+      - run:
+          command: bsky tl --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: 'hi\u001b]52;c;cHduZWQ=\u0007\u001b[2J'
+
   - name: post sends the record the composer would, and prints its URI or the server's answer as JSON
     mock_servers:
       - name: api

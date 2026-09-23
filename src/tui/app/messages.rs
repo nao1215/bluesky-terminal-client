@@ -164,7 +164,7 @@ impl App {
         match (cursor, result) {
             (None, Ok(page)) => {
                 self.chat.refused = None;
-                self.chat.convos.set(page);
+                self.chat.convos.renew(page);
             }
             (Some(at), Ok(page)) => self.chat.convos.append(&at, page),
             (cursor, Err(e)) => {

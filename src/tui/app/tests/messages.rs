@@ -47,6 +47,7 @@ fn a_message_is_sent_once_and_a_failed_one_keeps_its_text() {
     assert!(app.handle_key(code(KeyCode::Enter)).is_empty(), "not twice");
     app.handle_event(Event::MessageSent {
         convo_id: "a".into(),
+        text: "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}".into(),
         result: Err(Error::api("chat.bsky.convo.sendMessage failed: HTTP 502")),
     });
     let o = app.chat.open.as_ref().unwrap();
@@ -56,6 +57,7 @@ fn a_message_is_sent_once_and_a_failed_one_keeps_its_text() {
     assert_eq!(jobs.len(), 1);
     app.handle_event(Event::MessageSent {
         convo_id: "a".into(),
+        text: "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}".into(),
         result: Ok(ChatMessage {
             sender: "did:plc:me".into(),
             ..a_message("m3", "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}")
@@ -159,4 +161,103 @@ fn an_app_password_without_access_to_messages_is_explained() {
         app.poll_chat(Instant::now() + chat::POLL_EVERY * 2)
             .is_empty()
     );
+}
+
+// What is typed while a message is on its way stays: the answer takes only
+// the text that was sent out of the box, and nothing of a conversation
+// opened again meanwhile.
+#[test]
+fn what_is_typed_while_a_message_is_sent_is_kept() {
+    let mut app = chat_tab();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('i'));
+    type_str(&mut app, "hello 👨\u{200d}👩\u{200d}👧");
+    assert_eq!(app.handle_key(code(KeyCode::Enter)).len(), 1);
+    type_str(&mut app, " and also 🇯🇵");
+    app.handle_event(Event::MessageSent {
+        convo_id: "a".into(),
+        text: "hello 👨\u{200d}👩\u{200d}👧".into(),
+        result: Ok(ChatMessage {
+            sender: "did:plc:me".into(),
+            ..a_message("m9", "hello 👨\u{200d}👩\u{200d}👧")
+        }),
+    });
+    let o = app.chat.open.as_ref().unwrap();
+    assert_eq!(o.input.text(), "and also 🇯🇵");
+    // Sent again, then the conversation closed and opened again, and a new
+    // draft begun before the answer came.
+    assert_eq!(app.handle_key(code(KeyCode::Enter)).len(), 1);
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('i'));
+    type_str(&mut app, "a new draft");
+    app.handle_event(Event::MessageSent {
+        convo_id: "a".into(),
+        text: "and also 🇯🇵".into(),
+        result: Ok(ChatMessage {
+            sender: "did:plc:me".into(),
+            ..a_message("m10", "and also 🇯🇵")
+        }),
+    });
+    assert_eq!(app.chat.open.as_ref().unwrap().input.text(), "a new draft");
+}
+
+// The list read again every 15 seconds brings its first page only. The
+// conversations loaded further down stay, and so does the one selected:
+// Enter opens it, not the first one, which it would also mark read.
+#[test]
+fn reading_the_list_again_keeps_the_pages_loaded_and_the_selection() {
+    let mut app = logged_in();
+    app.handle_key(key('6'));
+    let first: Vec<Convo> = (0..50).map(|i| a_convo(&format!("c{i}"), 1)).collect();
+    app.handle_event(Event::Convos {
+        cursor: None,
+        result: Ok(Page {
+            items: first.clone(),
+            cursor: Some("p2".into()),
+        }),
+    });
+    let more: Vec<Job> = (0..49).flat_map(|_| app.handle_key(key('j'))).collect();
+    assert!(
+        matches!(&more[..], [Job::Convos { cursor: Some(c) }] if c == "p2"),
+        "{more:?}"
+    );
+    app.handle_event(Event::Convos {
+        cursor: Some("p2".into()),
+        result: Ok(Page {
+            items: (50..60).map(|i| a_convo(&format!("c{i}"), 1)).collect(),
+            cursor: Some("p3".into()),
+        }),
+    });
+    for _ in 0..6 {
+        app.handle_key(key('j'));
+    }
+    assert_eq!(app.chat.convos.current().unwrap().id, "c55");
+    let later = Instant::now() + chat::POLL_EVERY * 2;
+    let jobs = app.poll_chat(later);
+    assert!(
+        matches!(&jobs[..], [Job::Convos { cursor: None }]),
+        "{jobs:?}"
+    );
+    // A new conversation comes first in the fresh page.
+    let mut fresh = vec![a_convo("new", 1)];
+    fresh.extend(first.into_iter().take(49));
+    app.handle_event(Event::Convos {
+        cursor: None,
+        result: Ok(Page {
+            items: fresh,
+            cursor: Some("p2b".into()),
+        }),
+    });
+    assert_eq!(app.chat.convos.items.len(), 61);
+    assert_eq!(app.chat.convos.items[0].id, "new");
+    assert_eq!(app.chat.convos.current().unwrap().id, "c55");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert!(
+        jobs.iter()
+            .all(|j| !matches!(j, Job::ReadConvo { convo_id } if convo_id != "c55")),
+        "{jobs:?}"
+    );
+    assert_eq!(app.chat.open.as_ref().unwrap().convo.id, "c55");
 }

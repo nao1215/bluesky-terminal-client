@@ -5,14 +5,29 @@
 use crate::api::types::{ChatMessage, Convo, Media, Notification, Post, Profile, ThreadNode};
 
 pub use crate::clock::local_time as time;
+use crate::tui::text::drawable;
+
+/// Text someone wrote, as text only: a control character in it would reach
+/// the terminal as a command (an escape sequence can set the clipboard or
+/// the window title, or clear the screen), so it is dropped as the client
+/// drops it. Line breaks stay.
+fn plain(s: &str) -> std::borrow::Cow<'_, str> {
+    drawable(s)
+}
+
+/// As [`plain`], on one line: for what is printed as one line of a list.
+fn one_line(s: &str) -> String {
+    drawable(s).replace('\n', " ")
+}
 
 /// `name @handle`, or `@handle` when there is no display name.
 fn who(p: &Profile) -> String {
-    let name = p.name();
-    if name == p.handle {
-        format!("@{}", p.handle)
+    let name = one_line(p.name());
+    let handle = one_line(&p.handle);
+    if name == handle {
+        format!("@{handle}")
     } else {
-        format!("{name} @{}", p.handle)
+        format!("{name} @{handle}")
     }
 }
 
@@ -29,7 +44,7 @@ fn post_indented(p: &Post, pad: &str) -> String {
         .filter(|t| !t.is_empty())
         .unwrap_or(&p.indexed_at);
     let mut out = format!("{pad}{} · {}\n", who(&p.author), time(when));
-    for line in record.text.lines() {
+    for line in plain(&record.text).lines() {
         out.push_str(&format!("{pad}{line}\n"));
     }
     if let Some(embed) = &p.embed {
@@ -50,17 +65,20 @@ fn post_indented(p: &Post, pad: &str) -> String {
             let quoted = q
                 .pointer("/author/handle")
                 .and_then(|h| h.as_str())
-                .map(|h| format!("[quotes @{h}]"))
+                .map(|h| format!("[quotes @{}]", one_line(h)))
                 .unwrap_or_else(|| "[quotes a post]".to_string());
             out.push_str(&format!("{pad}{quoted}\n"));
         }
     }
     for link in p.links().into_iter().take(1) {
-        out.push_str(&format!("{pad}{link}\n"));
+        out.push_str(&format!("{pad}{}\n", one_line(&link)));
     }
     out.push_str(&format!(
         "{pad}♡ {}  ⟳ {}  ↩ {}\n{pad}{}\n",
-        p.like_count, p.repost_count, p.reply_count, p.uri
+        p.like_count,
+        p.repost_count,
+        p.reply_count,
+        one_line(&p.uri)
     ));
     out
 }
@@ -117,7 +135,7 @@ pub fn notification(n: &Notification, text: Option<&str>) -> String {
         "mention" => "mentioned you",
         "reply" => "replied to you",
         "quote" => "quoted your post",
-        other => other,
+        other => &one_line(other),
     };
     let unread = if n.is_read { "" } else { "● " };
     let mut out = format!(
@@ -126,12 +144,12 @@ pub fn notification(n: &Notification, text: Option<&str>) -> String {
         time(&n.indexed_at)
     );
     if let Some(t) = text.filter(|t| !t.is_empty()) {
-        for line in t.lines() {
+        for line in plain(t).lines() {
             out.push_str(&format!("{line}\n"));
         }
     }
     let about = n.reason_subject.as_deref().unwrap_or(&n.uri);
-    out.push_str(&format!("{about}\n"));
+    out.push_str(&format!("{}\n", one_line(about)));
     out
 }
 
@@ -142,12 +160,12 @@ pub fn account_line(p: &Profile) -> String {
     } else {
         ""
     };
-    format!("{}{following}  {}\n", who(p), p.did)
+    format!("{}{following}  {}\n", who(p), one_line(&p.did))
 }
 
 /// A profile.
 pub fn profile(p: &Profile) -> String {
-    let mut out = format!("{}\n{}\n", who(p), p.did);
+    let mut out = format!("{}\n{}\n", who(p), one_line(&p.did));
     out.push_str(&format!(
         "{} followers  {} following  {} posts\n",
         p.followers_count.unwrap_or(0),
@@ -156,7 +174,7 @@ pub fn profile(p: &Profile) -> String {
     ));
     if let Some(d) = p.description.as_deref().filter(|d| !d.trim().is_empty()) {
         out.push('\n');
-        for line in d.lines() {
+        for line in plain(d).lines() {
             out.push_str(&format!("{line}\n"));
         }
     }
@@ -183,12 +201,12 @@ pub fn convo(c: &Convo, me: &str) -> String {
     let mut out = format!("{}{unread}\n", convo_with(c, me));
     if let Some(m) = &c.last_message {
         let who = if m.sender == me { "you: " } else { "" };
-        let text = if m.deleted {
-            "(deleted)"
+        let last = if m.deleted {
+            "(deleted)".to_string()
         } else {
-            m.text.lines().next().unwrap_or("")
+            plain(&m.text).lines().next().unwrap_or("").to_string()
         };
-        out.push_str(&format!("  {who}{text}\n"));
+        out.push_str(&format!("  {who}{last}\n"));
     }
     out
 }
@@ -202,13 +220,13 @@ pub fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
             .iter()
             .find(|p| p.did == m.sender)
             .map(who)
-            .unwrap_or_else(|| m.sender.clone())
+            .unwrap_or_else(|| one_line(&m.sender))
     };
     let mut out = format!("{who} · {}\n", time(&m.sent_at));
     if m.deleted {
         out.push_str("  (deleted)\n");
     } else {
-        for line in m.text.lines() {
+        for line in plain(&m.text).lines() {
             out.push_str(&format!("  {line}\n"));
         }
     }
@@ -294,6 +312,60 @@ mod tests {
              ♡ 2  ⟳ 1  ↩ 0\n\
              at://did:plc:a/app.bsky.feed.post/1\n"
         );
+    }
+
+    // What others wrote reaches the terminal as text only: an escape
+    // sequence in a post, a name or a message would otherwise set the
+    // clipboard (OSC 52), the window title, or clear the screen, and a line
+    // break in a name would split a one-line entry in two.
+    #[test]
+    fn control_characters_others_wrote_do_not_reach_the_terminal() {
+        let evil = "a\u{1b}]52;c;cHduZWQ=\u{7}\u{1b}[2J\tb\r\nc";
+        let mut p = a_post(evil, serde_json::Value::Null);
+        p.author.display_name = Some("Bob\u{1b}]0;title\u{7}\nEve 👨\u{200d}👩\u{200d}👧".into());
+        let c: Convo = serde_json::from_value(json!({
+            "id": "c", "rev": "r",
+            "members": [{"did": "did:plc:me", "handle": "me.test"},
+                        {"did": "did:plc:a", "handle": "alice.test", "displayName": "Al\nice"}],
+            "lastMessage": {"$type": "chat.bsky.convo.defs#messageView", "id": "m", "rev": "r",
+                            "text": evil, "sender": {"did": "did:plc:a"}, "sentAt": "x"},
+            "muted": false, "unreadCount": 0
+        }))
+        .unwrap();
+        let m = ChatMessage {
+            text: evil.into(),
+            sender: "did:plc:a".into(),
+            ..Default::default()
+        };
+        let mut prof = p.author.clone();
+        prof.description = Some(evil.into());
+        let n: Notification = serde_json::from_value(json!({
+            "uri": "at://x", "cid": "c", "reason": "reply", "isRead": true,
+            "indexedAt": "x", "record": {},
+            "author": {"did": "did:plc:b", "handle": "bob.test", "displayName": "B\u{1b}[2Job"}
+        }))
+        .unwrap();
+        for out in [
+            post(&p),
+            convo(&c, "did:plc:me"),
+            message(&m, "did:plc:me", &c),
+            profile(&prof),
+            account_line(&prof),
+            notification(&n, Some(evil)),
+        ] {
+            assert!(!out.chars().any(|c| c.is_control() && c != '\n'), "{out:?}");
+        }
+        let first = post(&p);
+        assert!(
+            first.starts_with("Bob]0;title Eve 👨\u{200d}👩\u{200d}👧 @alice.test · "),
+            "{first:?}"
+        );
+        assert!(
+            first.contains("\na]52;c;cHduZWQ=[2J    b\nc\n"),
+            "{first:?}"
+        );
+        assert_eq!(account_line(&prof).lines().count(), 1);
+        assert!(convo(&c, "did:plc:me").starts_with("Al ice @alice.test\n"));
     }
 
     #[test]
