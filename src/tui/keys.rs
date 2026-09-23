@@ -2,6 +2,8 @@
 //! current view, and the sections of the `?` help. Both read from here so a
 //! binding cannot be documented in one place and forgotten in the other.
 
+use crossterm::event::{KeyCode, KeyEvent};
+
 use crate::api::types::Media;
 use crate::tui::app::{App, Overlay, SearchMode, Tab};
 
@@ -59,6 +61,10 @@ pub const HELP: &[Section] = &[
             (
                 "o",
                 "open the post's link in the web browser, or the post itself",
+            ),
+            (
+                ".",
+                "everything these keys do to the selected post, as a list",
             ),
             ("Q", "quote the selected post in a new post"),
             ("c", "copy the post's address to the clipboard"),
@@ -227,6 +233,9 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ];
         }
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Actions { .. }) => {
+            return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
+        }
         Some(Overlay::Viewer { media, index, .. }) => {
             let mut v = Vec::new();
             if media.len() > 1 {
@@ -245,25 +254,13 @@ fn view_hints(app: &App) -> Vec<Hint> {
         None => {}
     }
     if !app.threads.is_empty() {
-        let mut v = vec![
-            ("esc", "back"),
+        return vec![
+            ("?", "help"),
             ("j k", "move"),
-            ("l", "like"),
-            ("b", "repost"),
-            ("r", "reply"),
-            ("v", "thread"),
+            (".", "actions"),
             ("space", "view"),
-            ("enter", "profile"),
+            ("esc", "back"),
         ];
-        if app.shown_post().is_some() {
-            v.push(("Q", "quote"));
-            v.push(("c", "copy link"));
-        }
-        if app.own_post_selected() {
-            v.push(("D", "delete"));
-        }
-        v.push(("?", "help"));
-        return v;
     }
     let mut v: Vec<Hint> = match app.tab {
         Tab::Search if app.search.editing => {
@@ -276,55 +273,40 @@ fn view_hints(app: &App) -> Vec<Hint> {
         }
         Tab::Search if app.search.mode == SearchMode::Accounts => vec![
             ("j k", "move"),
-            ("f", "follow"),
-            ("enter", "profile"),
+            (".", "actions"),
             ("/", "edit query"),
             ("t", "posts"),
         ],
         Tab::Search => vec![
             ("j k", "move"),
-            ("f", "follow"),
-            ("l", "like"),
-            ("b", "repost"),
-            ("r", "reply"),
-            ("enter", "profile"),
+            (".", "actions"),
             ("/", "edit query"),
             ("t", "accounts"),
         ],
         Tab::Timeline => vec![
             ("j k", "move"),
-            ("l", "like"),
-            ("b", "repost"),
-            ("r", "reply"),
-            ("v", "thread"),
+            (".", "actions"),
             ("space", "view"),
             ("n", "post"),
-            ("f", "unfollow"),
-            ("enter", "profile"),
             ("R", "refresh"),
         ],
         Tab::Notifications => vec![
             ("j k", "move"),
-            ("enter", "profile"),
-            ("r", "reply"),
-            ("l", "like"),
-            ("v", "thread"),
+            (".", "actions"),
             ("space", "view"),
             ("R", "refresh"),
         ],
         Tab::Profile if app.profile.actor.is_some() => vec![
             ("esc", back_label(app.profile.came_from)),
             ("j k", "move"),
-            ("f", "follow"),
-            ("l", "like"),
-            ("r", "reply"),
+            (".", "actions"),
+            ("space", "view"),
         ],
         Tab::Profile => {
             let mut v = vec![
                 ("j k", "move"),
+                (".", "actions"),
                 ("e", "edit profile"),
-                ("l", "like"),
-                ("r", "reply"),
                 ("R", "reload"),
             ];
             // Your own profile, opened from a list: Esc still goes back.
@@ -346,19 +328,84 @@ fn view_hints(app: &App) -> Vec<Hint> {
             v.insert(1, ("[ ]", "feed"));
         }
     }
-    // Quoting and copying work on any post; deleting only on one of your own.
-    if app.shown_post().is_some() {
-        v.push(("Q", "quote"));
-        v.push(("c", "copy link"));
-    }
-    if app.own_post_selected() {
-        v.push(("D", "delete"));
-    }
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
     // is the key that leads to every other one.
     v.insert(0, ("?", "help"));
     v.push(("q", "quit"));
     v
+}
+
+/// What `.` offers on the selected post or account: the keys of this view
+/// that act on it, each saying what it would do now. The list is the one
+/// place the keys of a post are all together, so the hint row does not have
+/// to carry them.
+pub fn actions(app: &App) -> Vec<Hint> {
+    if app.login.is_some()
+        || app.overlay.is_some() && !matches!(app.overlay, Some(Overlay::Actions { .. }))
+    {
+        return Vec::new();
+    }
+    let mut v: Vec<Hint> = Vec::new();
+    if let Some(post) = app.shown_post() {
+        v.push(("r", "reply to it"));
+        v.push((
+            "l",
+            if post.like_uri().is_some() {
+                "remove your like"
+            } else {
+                "like it"
+            },
+        ));
+        v.push((
+            "b",
+            if post.viewer.as_ref().is_some_and(|x| x.repost.is_some()) {
+                "remove your repost"
+            } else {
+                "repost it"
+            },
+        ));
+        v.push(("Q", "quote it in a new post"));
+        v.push((
+            "space",
+            if app.pictures {
+                "view its pictures or video"
+            } else {
+                "open it in the web browser"
+            },
+        ));
+        v.push(("o", "open its link in the web browser"));
+        v.push(("v", "open the thread"));
+        v.push(("c", "copy its address"));
+    }
+    if let Some(account) = app.shown_account() {
+        v.push(("enter", "open the profile"));
+        v.push((
+            "f",
+            if account
+                .viewer
+                .as_ref()
+                .is_some_and(|x| x.following.is_some())
+            {
+                "unfollow"
+            } else {
+                "follow"
+            },
+        ));
+    }
+    if app.own_post_selected() {
+        v.push(("D", "delete your post"));
+    }
+    v
+}
+
+/// The key an entry of the actions list stands for.
+pub fn action_key(name: &str) -> KeyEvent {
+    let code = match name {
+        "space" => KeyCode::Char(' '),
+        "enter" => KeyCode::Enter,
+        _ => KeyCode::Char(name.chars().next().unwrap_or('?')),
+    };
+    KeyEvent::from(code)
 }
 
 fn browser_hints() -> Vec<Hint> {

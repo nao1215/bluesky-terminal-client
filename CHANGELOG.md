@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- `.` lists everything the keys do to the selected post, each saying what it would do now (like it or remove your like, follow or unfollow), and runs the one you choose. The key itself still works, so the list teaches the keys rather than replacing them.
 - `Q` quotes the selected post: the composer says whose post it quotes, and the post that goes out carries it. A quote with pictures of its own is sent as one embed carrying both.
 - `D` deletes your own post, after a `y` that confirms it: any other key keeps the post. The hint row offers it only on a post of yours, and the deleted post goes from every list it was in.
 - `c` copies the selected post's address on bsky.app to the clipboard, through the terminal itself (OSC 52), so it works over ssh and in tmux with `set-clipboard on`.
@@ -15,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- The key hints are one row and keep to the few keys of the view: the keys that act on a post moved behind `.`. The row used to take three rows of a narrow terminal and was cut anyway.
 - `o` opens the post itself on bsky.app when it carries no link, instead of saying there is nothing to open. `Space` is unchanged: it shows the pictures or the video, and says when there are none.
 
 ### Fixed

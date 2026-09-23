@@ -14,6 +14,7 @@ use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
 use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
+use crate::tui::keys;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::thread::{self as thread_rows, RowKind, ThreadRow};
 use crate::tui::worker::{Attachment, Event, Feed, Job, MorePage, NotifItem, Page};
@@ -400,6 +401,12 @@ pub enum Overlay {
         selected: usize,
         previous: usize,
     },
+    /// What the keys of this view do to the selected post, as a list to
+    /// choose from: the keys still work on their own, and this is the way
+    /// that does not depend on remembering them.
+    Actions {
+        selected: usize,
+    },
     /// A post's pictures and video, full screen, `index` the one shown;
     /// `replay` counts `r` presses, each playing the video from the start.
     Viewer {
@@ -734,7 +741,12 @@ impl App {
                 e.fields[e.focus].insert_str(text)
             }
             Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}
-            Some(Overlay::Help { .. } | Overlay::Themes { .. } | Overlay::Viewer { .. }) => {}
+            Some(
+                Overlay::Help { .. }
+                | Overlay::Themes { .. }
+                | Overlay::Viewer { .. }
+                | Overlay::Actions { .. },
+            ) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
             }
@@ -955,8 +967,16 @@ impl App {
     }
 
     fn overlay_key(&mut self, key: KeyEvent) -> Vec<Job> {
+        // Taken first: the entries are read from the whole app, which the
+        // match below borrows.
+        if let Some(Overlay::Actions { selected }) = &self.overlay {
+            let selected = *selected;
+            return self.actions_key(key, selected);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match self.overlay.as_mut().unwrap() {
+            // Taken above, before this borrow.
+            Overlay::Actions { .. } => {}
             Overlay::Help { scroll } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
                 KeyCode::Char('j') | KeyCode::Down => *scroll = scroll.saturating_add(1),
@@ -1376,6 +1396,7 @@ impl App {
             KeyCode::Esc if !self.threads.is_empty() => {
                 self.threads.pop();
             }
+            KeyCode::Char('.') => self.open_actions(),
             KeyCode::Char('c') => self.copy_link(),
             KeyCode::Char('Q') => self.quote(),
             KeyCode::Char('D') => self.ask_delete(),
@@ -1610,6 +1631,71 @@ impl App {
             None => vec![Job::Like {
                 subject: post.strong_ref(),
             }],
+        }
+    }
+
+    /// A key while the actions list is open: move, run the chosen entry, or
+    /// run the key itself, which is what it would have done anyway.
+    fn actions_key(&mut self, key: KeyEvent, selected: usize) -> Vec<Job> {
+        let entries = keys::actions(self);
+        let n = entries.len().max(1);
+        let selected = selected.min(n - 1);
+        let run = |app: &mut Self, name: &'static str| {
+            app.overlay = None;
+            app.main_key(keys::action_key(name))
+        };
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.overlay = Some(Overlay::Actions {
+                    selected: (selected + 1) % n,
+                });
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.overlay = Some(Overlay::Actions {
+                    selected: (selected + n - 1) % n,
+                });
+            }
+            KeyCode::Esc | KeyCode::Char('.' | 'q') => self.overlay = None,
+            KeyCode::Enter => {
+                return match entries.get(selected) {
+                    Some(&(name, _)) => run(self, name),
+                    None => {
+                        self.overlay = None;
+                        Vec::new()
+                    }
+                };
+            }
+            code => {
+                if let Some(&(name, _)) = entries
+                    .iter()
+                    .find(|(name, _)| keys::action_key(name).code == code)
+                {
+                    return run(self, name);
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// `.`: what the keys of this view do to the selected post, as a list.
+    /// Nothing to act on means nothing to show.
+    fn open_actions(&mut self) {
+        if keys::actions(self).is_empty() {
+            return;
+        }
+        self.overlay = Some(Overlay::Actions { selected: 0 });
+    }
+
+    /// The account the keys act on here, without taking a copy of it.
+    pub fn shown_account(&self) -> Option<&Profile> {
+        if !self.threads.is_empty() {
+            return self.shown_post().map(|p| &p.author);
+        }
+        match self.tab {
+            Tab::Search if self.search.mode == SearchMode::Accounts => self.search.actors.current(),
+            Tab::Profile => self.profile.profile.as_ref(),
+            Tab::Notifications => self.notifications.current().map(|i| &i.n.author),
+            _ => self.shown_post().map(|p| &p.author),
         }
     }
 
@@ -2885,7 +2971,65 @@ mod tests {
         assert_eq!(app.current_feed(), Feed::Timeline);
     }
 
-    /// c puts the post's address where anything else can paste it. The
+    /// The actions list is a way to reach the keys of a post without
+    /// remembering them: what it runs is exactly what the key runs.
+    #[test]
+    fn the_actions_list_runs_the_key_it_names() {
+        let mut app = logged_in();
+        assert!(app.handle_key(key('.')).is_empty());
+        let Some(Overlay::Actions { selected: 0 }) = app.overlay else {
+            panic!("{:?}", app.overlay)
+        };
+        // The entries say what each key would do to this post now.
+        let entries = crate::tui::keys::actions(&app);
+        assert_eq!(entries[0], ("r", "reply to it"));
+        assert_eq!(entries[1], ("l", "like it"));
+        // Moving to the like and choosing it sends the like the key sends.
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://a/p/1"));
+        assert!(app.overlay.is_none(), "the list closes when it has run");
+        app.handle_event(Event::Liked {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/l".into()),
+        });
+        // With the post liked, the list says what l would do now.
+        app.handle_key(key('.'));
+        assert_eq!(
+            crate::tui::keys::actions(&app)[1],
+            ("l", "remove your like")
+        );
+        // A key of the list works from inside it, and Esc leaves everything
+        // as it was.
+        app.handle_event(Event::Timeline(Ok(vec![post(
+            "at://did:plc:bob/app.bsky.feed.post/p9",
+            "did:plc:bob",
+            true,
+        )]
+        .into())));
+        app.handle_key(key('.'));
+        app.handle_key(key('c'));
+        assert!(app.overlay.is_none());
+        assert_eq!(
+            app.take_copy().as_deref(),
+            Some("https://bsky.app/profile/did:plc:bob/post/p9")
+        );
+        app.handle_key(key('.'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none());
+        assert!(app.status.is_none() || !app.status.as_ref().unwrap().error);
+    }
+
+    /// Nothing selected, nothing to offer: `.` does not open an empty box.
+    #[test]
+    fn the_actions_list_does_not_open_on_an_empty_list() {
+        let mut app = logged_in();
+        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
+        assert!(app.handle_key(key('.')).is_empty());
+        assert!(app.overlay.is_none(), "{:?}", app.overlay);
+    }
+
+    /// c puts the post's address where anything else can paste it.    /// c puts the post's address where anything else can paste it. The
     /// address is the one o opens, so the two keys agree.
     #[test]
     fn c_copies_the_post_s_address() {
