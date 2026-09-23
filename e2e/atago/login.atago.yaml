@@ -514,3 +514,32 @@ scenarios:
             name: work
             path: /xrpc/com.atproto.repo.createRecord
             count: 0
+
+  # A session.json an earlier version wrote after the accounts were made is
+  # one more login: logout --all logs out it and every account.
+  - name: logout --all logs out a session.json of an earlier version and every account
+    steps:
+      - *two_accounts_me
+      - *two_accounts_work
+      - *two_accounts_current
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "http://127.0.0.1:9", "did": "did:plc:old", "handle": "old.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - run:
+          command: bsky logout --all
+          env: *accounts_env
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/session.json
+            exists: false
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            exists: false
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_work.json
+            exists: false

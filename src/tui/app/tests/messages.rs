@@ -261,3 +261,31 @@ fn reading_the_list_again_keeps_the_pages_loaded_and_the_selection() {
     );
     assert_eq!(app.chat.open.as_ref().unwrap().convo.id, "c55");
 }
+
+// The conversation m asked for opens only if its profile is still what is
+// looked at: an answer that comes after a move to another tab, or to a
+// thread, neither takes the screen nor marks the conversation read.
+#[test]
+fn a_late_answer_to_m_does_not_take_the_screen() {
+    let mut app = logged_in();
+    app.handle_key(key('4'));
+    app.open_profile(Some("did:plc:alice".into()));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
+        Vec::new().into(),
+    ))));
+    assert_eq!(app.handle_key(key('m')).len(), 1);
+    app.handle_key(key('1'));
+    let jobs = app.handle_event(Event::ConvoFor {
+        did: "did:plc:alice".into(),
+        result: Ok(a_convo("new", 2)),
+    });
+    assert!(jobs.is_empty(), "{jobs:?}");
+    assert_eq!(app.tab, Tab::Timeline);
+    assert!(app.chat.open.is_none());
+    assert!(
+        app.status.as_ref().unwrap().text.contains("Chat tab"),
+        "{:?}",
+        app.status
+    );
+}

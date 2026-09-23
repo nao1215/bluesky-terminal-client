@@ -557,7 +557,20 @@ impl App {
                         .any(|m| m.did == did)
                         || convo.members.iter().any(|m| m.did == did)
                     {
-                        return self.open_convo(convo);
+                        // Only while their profile is still what is looked
+                        // at: after a move elsewhere the answer would take
+                        // the screen, and mark the conversation read.
+                        let still_there = self.tab == Tab::Profile
+                            && self.threads.is_empty()
+                            && self.overlay.is_none()
+                            && self.profile.profile.as_ref().is_some_and(|p| p.did == did);
+                        if still_there {
+                            return self.open_convo(convo);
+                        }
+                        if !self.chat.convos.items.iter().any(|c| c.id == convo.id) {
+                            self.chat.convos.items.insert(0, convo);
+                        }
+                        self.info("the conversation is ready on the Chat tab");
                     }
                 }
                 Err(e) => self.fail(&e),
