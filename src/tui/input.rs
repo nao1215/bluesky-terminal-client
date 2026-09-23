@@ -11,6 +11,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::tui::text::drawable;
+
 /// One editable text field.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInput {
@@ -32,7 +34,7 @@ pub struct Layout {
 impl TextInput {
     /// A single-line field.
     pub fn single(text: &str) -> Self {
-        let chars: Vec<char> = text.chars().filter(|c| *c != '\n').collect();
+        let chars: Vec<char> = drawable(text).chars().filter(|c| *c != '\n').collect();
         let cursor = chars.len();
         Self {
             chars,
@@ -44,7 +46,7 @@ impl TextInput {
 
     /// A multi-line field; Enter inserts a newline.
     pub fn multi(text: &str) -> Self {
-        let chars: Vec<char> = text.chars().collect();
+        let chars: Vec<char> = drawable(text).chars().collect();
         let cursor = chars.len();
         Self {
             chars,
@@ -74,10 +76,7 @@ impl TextInput {
 
     /// Insert text at the cursor (newlines are dropped in single-line fields).
     pub fn insert_str(&mut self, s: &str) {
-        for c in s.chars() {
-            if c == '\r' {
-                continue;
-            }
+        for c in drawable(s).chars() {
             if c == '\n' && !self.multiline {
                 continue;
             }
@@ -253,6 +252,18 @@ impl TextInput {
 
 #[cfg(test)]
 mod tests {
+    // A field filled from the server, where another client may have
+    // written CRLF or tabs, is laid out as it is drawn.
+    #[test]
+    fn a_field_from_the_server_keeps_lines_and_cursor_in_step() {
+        let multi = TextInput::multi("line one\r\nline two\rthree");
+        assert_eq!(multi.text(), "line one\nline two\nthree");
+        assert_eq!(multi.layout(40).lines, ["line one", "line two", "three"]);
+        let single = TextInput::single("a\tb\u{7}");
+        assert_eq!(single.text(), "a    b");
+        assert_eq!(single.layout(20).cursor, (0, 6));
+    }
+
     use super::*;
 
     fn key(code: KeyCode) -> KeyEvent {

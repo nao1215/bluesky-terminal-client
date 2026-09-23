@@ -1,8 +1,32 @@
 //! Text helpers for drawing: wrapping by display width, truncation, and times.
 
+use std::borrow::Cow;
+
 use chrono::{DateTime, Local};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+/// `text` as a terminal draws it. A terminal gives a control character no
+/// cell, so text measured with one would be drawn shorter than it was laid
+/// out: a tab becomes four spaces, a CR (alone or before LF) ends the line
+/// as LF does, and other control characters are left out.
+pub fn drawable(text: &str) -> Cow<'_, str> {
+    if !text.chars().any(|c| c.is_control() && c != '\n') {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' if chars.peek() == Some(&'\n') => {}
+            '\r' | '\n' => out.push('\n'),
+            '\t' => out.push_str("    "),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    Cow::Owned(out)
+}
 
 /// Wrap `text` into lines at most `width` columns wide.
 ///
@@ -12,6 +36,7 @@ use unicode_width::UnicodeWidthStr;
 /// Explicit newlines are kept, and trailing blank lines are dropped.
 pub fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
+    let text = drawable(text);
     let mut out = Vec::new();
     for para in text.lines() {
         let mut line = String::new();
@@ -98,6 +123,7 @@ impl Class {
 /// The cut falls between grapheme clusters, so a family emoji, a flag, or a
 /// letter with a combining mark is kept whole or dropped whole.
 pub fn truncate(s: &str, width: usize) -> String {
+    let s = drawable(s);
     if s.width() <= width {
         return s.to_string();
     }
@@ -130,6 +156,26 @@ pub fn format_time(ts: &str) -> String {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    // A terminal draws no cell for a control character, so text measured
+    // with one is drawn shorter than it was laid out: a tab becomes spaces,
+    // a CR ends the line as LF does, and other controls go.
+    #[rstest]
+    #[case("name\tscore\nalice\t10", &["name    score", "alice    10"])]
+    #[case("a\r\nb\rc", &["a", "b", "c"])]
+    #[case("x\u{7}y\u{1b}z", &["xyz"])]
+    #[case("👨‍👩‍👧\t🇯🇵 1️⃣ ❤️ e\u{301}", &["👨‍👩‍👧    🇯🇵 1️⃣ ❤️ e\u{301}"])]
+    fn control_characters_are_laid_out_as_they_are_drawn(
+        #[case] text: &str,
+        #[case] want: &[&str],
+    ) {
+        assert_eq!(wrap(text, 40), want);
+    }
+
+    #[test]
+    fn a_truncated_name_has_no_control_characters() {
+        assert_eq!(truncate("Al\tice\u{7}", 20), "Al    ice");
+    }
 
     #[rstest]
     #[case("hello world", 5, &["hello", "world"])]
