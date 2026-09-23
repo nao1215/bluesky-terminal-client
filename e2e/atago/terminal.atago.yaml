@@ -120,7 +120,9 @@ scenarios:
                     uri: at://did:plc:alice/app.bsky.feed.post/p1
                     cid: cid-p1
                     author: { did: did:plc:alice, handle: alice.test, displayName: Alice, avatar: "${api.url}/img/a.png", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
-                    record: { text: "Two photos 👨‍👩‍👧 from the trip", createdAt: "2026-09-20T10:00:00.000Z" }
+                    # No ZWJ sequence here: ConPTY draws only its first
+                    # emoji. The unit tests cover them.
+                    record: { text: "Two photos from the trip", createdAt: "2026-09-20T10:00:00.000Z" }
                     embed:
                       $type: app.bsky.embed.images#view
                       images:
@@ -148,10 +150,13 @@ scenarios:
             TZ: UTC
           timeout: 20s
           session:
+            # The message goes after a few seconds: waited for on its own,
+            # before the timeline, which a slow runner may draw later.
+            - expect_screen:
+                contains: "this terminal cannot show pictures; bsky runs without them"
             - expect_screen:
                 contains:
-                  - "this terminal cannot show pictures; bsky runs without them"
-                  - "Two photos 👨‍👩‍👧 from the trip"
+                  - "Two photos from the trip"
                   - "▣ 2 pictures: 山の頂上"
                   - "▶ video: a cat"
                   - "space open in browser"
