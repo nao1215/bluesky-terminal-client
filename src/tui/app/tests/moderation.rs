@@ -183,6 +183,7 @@ fn m_on_an_account_muted_by_a_list_mutes_it_yourself() {
         matches!(&jobs[..], [Job::Mute { did, on: true }] if did == "did:plc:alice"),
         "{jobs:?}"
     );
+}
 
 // The count on the Notifications tab goes down with the notifications a
 // mute takes out of the list.
