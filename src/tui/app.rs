@@ -716,6 +716,9 @@ impl App {
     }
 
     fn open_theme_picker(&mut self) {
+        // Back to the list unless the settings screen, which opens it too,
+        // says otherwise after this.
+        self.settings_return = None;
         if self.color_depth == ColorDepth::None {
             self.error("colors are off because NO_COLOR is set");
             return;
@@ -3008,6 +3011,120 @@ mod tests {
         assert!(matches!(&jobs[..], [Job::Unlike { .. }]), "{jobs:?}");
     }
 
+    // The same for a repost: the reload's copy of the post, from before it,
+    // is shown reposted, so the next b removes the repost rather than
+    // reposting a second time.
+    #[test]
+    fn a_reload_sent_before_a_repost_does_not_undo_it() {
+        let mut app = logged_in();
+        let reload = press(&mut app, key('R'))[0];
+        let repost = press(&mut app, key('b'))[0];
+        app.handle_answer(
+            repost,
+            Event::Reposted {
+                post_uri: "at://a/p/1".into(),
+                result: Ok("at://did:plc:me/app.bsky.feed.repost/y".into()),
+            },
+        );
+        app.handle_answer(
+            reload,
+            Event::Timeline(Ok(vec![reloaded(false, false)].into())),
+        );
+        let p = &app.timeline.items[0];
+        assert_eq!(
+            p.repost_uri(),
+            Some("at://did:plc:me/app.bsky.feed.repost/y")
+        );
+        assert_eq!(p.repost_count, 1);
+        let jobs = app.handle_key(key('b'));
+        assert!(matches!(&jobs[..], [Job::Unrepost { .. }]), "{jobs:?}");
+    }
+
+    // A post deleted while a reload was out does not come back with the
+    // reload, which was read before the delete: shown again, it could be
+    // deleted a second time, or answered as if it were still there.
+    #[test]
+    fn a_reload_sent_before_a_delete_does_not_bring_the_post_back() {
+        let mine = || post("at://did:plc:me/app.bsky.feed.post/m1", "did:plc:me", false);
+        let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+        app.handle_event(Event::Timeline(Ok(vec![mine()].into())));
+        let thread = press(&mut app, key('v'))[0];
+        app.handle_answer(
+            thread,
+            Event::Thread {
+                uri: "at://did:plc:me/app.bsky.feed.post/m1".into(),
+                result: Ok(serde_json::from_value(json!({
+                    "$type": "app.bsky.feed.defs#threadViewPost",
+                    "post": {"uri": "at://did:plc:me/app.bsky.feed.post/m1", "cid": "c",
+                             "author": {"did": "did:plc:me", "handle": "me.test"},
+                             "record": {"text": "mine"}},
+                    "replies": [],
+                }))
+                .unwrap()),
+            },
+        );
+        app.handle_key(code(KeyCode::Esc));
+        let reload = press(&mut app, key('R'))[0];
+        press(&mut app, key('D'));
+        let delete = press(&mut app, key('y'))[0];
+        app.handle_answer(
+            delete,
+            Event::PostDeleted {
+                uri: "at://did:plc:me/app.bsky.feed.post/m1".into(),
+                result: Ok(()),
+            },
+        );
+        assert!(app.timeline.items.is_empty());
+        app.handle_answer(reload, Event::Timeline(Ok(vec![mine()].into())));
+        assert!(
+            app.timeline.items.is_empty(),
+            "the deleted post came back: {:?}",
+            app.timeline.items
+        );
+    }
+
+    // In an open thread, the deleted post keeps its row as a placeholder,
+    // so the replies under it keep their place.
+    #[test]
+    fn a_post_deleted_in_a_thread_leaves_a_placeholder() {
+        let mine = post("at://did:plc:me/app.bsky.feed.post/m1", "did:plc:me", false);
+        let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+        app.handle_event(Event::Timeline(Ok(vec![mine.clone()].into())));
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: mine.uri.clone(),
+            result: Ok(serde_json::from_value(json!({
+                "$type": "app.bsky.feed.defs#threadViewPost",
+                "post": {"uri": mine.uri, "cid": "c",
+                         "author": {"did": "did:plc:me", "handle": "me.test"},
+                         "record": {"text": "mine"}},
+                "replies": [{
+                    "$type": "app.bsky.feed.defs#threadViewPost",
+                    "post": {"uri": "at://b/p/r", "cid": "c",
+                             "author": {"did": "did:plc:bob", "handle": "bob.test"},
+                             "record": {"text": "a reply"}},
+                    "replies": [],
+                }],
+            }))
+            .unwrap()),
+        });
+        app.handle_key(key('D'));
+        let jobs = app.handle_key(key('y'));
+        assert!(matches!(&jobs[..], [Job::DeletePost { .. }]), "{jobs:?}");
+        app.handle_event(Event::PostDeleted {
+            uri: mine.uri.clone(),
+            result: Ok(()),
+        });
+        let rows = &app.threads[0].list.items;
+        assert_eq!(rows.len(), 2);
+        assert!(
+            matches!(&rows[0].kind, RowKind::NotFound(u) if *u == mine.uri),
+            "{:?}",
+            rows[0].kind
+        );
+        assert!(rows[1].post().is_some_and(|p| p.uri == "at://b/p/r"));
+    }
+
     #[test]
     fn a_reload_sent_before_an_unfollow_does_not_bring_the_account_back() {
         let mut app = logged_in();
@@ -3918,6 +4035,32 @@ mod tests {
         assert_eq!(form.fields[1].text(), "me.test");
         assert_eq!(form.focus, 2);
         assert!(form.error.as_deref().unwrap().contains("expired"));
+    }
+
+    /// The theme picker goes back to the settings screen only when the
+    /// settings screen opened it. A picker opened from the settings that
+    /// was closed another way (here the session expiring) used to leave
+    /// that behind, and the next T then Esc opened the settings screen on
+    /// whatever tab was shown.
+    #[test]
+    fn a_picker_opened_with_t_closes_to_the_list_after_one_from_the_settings() {
+        let mut app = logged_in();
+        app.handle_key(key('4'));
+        app.handle_key(key('s'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(app.overlay, Some(Overlay::Themes { .. })));
+        app.handle_event(Event::Timeline(Err(Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+        ))));
+        assert!(app.overlay.is_none());
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        app.handle_key(key('1'));
+        app.handle_key(key('T'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none(), "{:?}", app.overlay);
+        app.handle_key(key('T'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(app.overlay.is_none(), "{:?}", app.overlay);
     }
 
     #[test]
