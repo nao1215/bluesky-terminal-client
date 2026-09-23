@@ -51,6 +51,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 - Quote posts show the post they quote, with its picture or video; a quote of a feed, a list, or a starter pack is named on one line.
 - `c` copies a post's address through the terminal itself (OSC 52), so it works over ssh; in tmux it needs `set-clipboard on`.
 - Search posts and accounts, with who you already follow marked.
+- Mute and block accounts: `M` mutes the selected account, and `B` blocks it after a `y`. Their posts leave your lists at once.
 - Notifications, with an unread count on the tab from the start.
 - Direct messages on the Chat tab: the conversations with their unread counts, reading back through a conversation, and writing; `m` on a profile starts one. An app password needs "Allow access to your direct messages" for this.
 - Profile editing: display name, description, and avatar.
@@ -116,7 +117,7 @@ bsky search rust --json | jq -r .uri       # the server's own objects, one per l
 bsky like at://did:plc:.../app.bsky.feed.post/3abc
 ```
 
-`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, delete, chat, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
+`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, mute, unmute, mutes, block, unblock, blocks, delete, chat, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
 
 ## Keys
 
@@ -128,6 +129,7 @@ bsky like at://did:plc:.../app.bsky.feed.post/3abc
 | `n` `r` | New post, reply |
 | `Q` `c` `D` | Quote the post, copy its address, delete your own post (`y` confirms) |
 | `l` `b` `f` | Like, repost, follow (each again undoes it) |
+| `M` `B` | Mute, block the selected account (`y` confirms a block; each again undoes it) |
 | `[` `]` | Previous or next feed on the Timeline tab |
 | `v` | The post's thread |
 | `Space` `o` | View pictures or video (as text: open the post in the browser), open the link or the post |
@@ -177,7 +179,8 @@ Two other clients that run in a terminal, each good at different things. The tab
 | Notifications | Yes | No | Yes |
 | Direct messages | Yes | No | Yes |
 | Posting | Text, pictures, video, reply, quote | Text, pictures, quote | Text, pictures, video, reply, quote |
-| Block, mute, report, lists | No | No | Yes |
+| Mute and block | Yes | No | Yes |
+| Report, lists | No | No | Yes |
 | App passwords, invite codes | No | No | Yes |
 | JSON output | Every command | No | Most commands |
 | Key bindings | Fixed | Set in a TOML file | Not applicable |

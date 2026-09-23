@@ -95,7 +95,7 @@ fn without_pictures_the_keys_say_what_space_does() {
     assert!(
         posts
             .iter()
-            .any(|(k, d)| *k == "space" && d.contains("web browser"))
+            .any(|(k, d)| *k == "space" && d.contains("in the browser"))
     );
     assert!(
         crate::tui::keys::help(true)

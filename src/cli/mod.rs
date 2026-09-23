@@ -100,6 +100,24 @@ pub enum Command {
     Follow { actor: String },
     /// Unfollow an account.
     Unfollow { actor: String },
+    /// Mute an account.
+    Mute { actor: String },
+    /// Unmute an account.
+    Unmute { actor: String },
+    /// The accounts you muted.
+    Mutes {
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Block an account.
+    Block { actor: String },
+    /// Unblock an account.
+    Unblock { actor: String },
+    /// The accounts you blocked.
+    Blocks {
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Delete one of your own posts.
     Delete { post: String },
     /// Log an account in and make it the one in use.
@@ -188,6 +206,12 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
         Command::Unrepost { post } => repost(ctx, o, &post, false),
         Command::Follow { actor } => follow(ctx, o, &actor, true),
         Command::Unfollow { actor } => follow(ctx, o, &actor, false),
+        Command::Mute { actor } => mute(ctx, o, &actor, true),
+        Command::Unmute { actor } => mute(ctx, o, &actor, false),
+        Command::Mutes { limit } => own_list(ctx, o, limit, "app.bsky.graph.getMutes", "mutes"),
+        Command::Block { actor } => block(ctx, o, &actor, true),
+        Command::Unblock { actor } => block(ctx, o, &actor, false),
+        Command::Blocks { limit } => own_list(ctx, o, limit, "app.bsky.graph.getBlocks", "blocks"),
         Command::Delete { post } => delete(ctx, o, &post),
         Command::Login {
             identifier,
@@ -700,6 +724,97 @@ fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             &format!("unfollowed @{}", p.handle),
         )
     }
+}
+
+/// The account `actor` names, which is not you: what `what` is done to.
+fn other_account(client: &Client, actor: &str, what: &str) -> Result<Profile> {
+    let p = client.profile(actor.trim().trim_start_matches('@'))?;
+    if p.did == client.did() {
+        return Err(Error::new(
+            Kind::Usage,
+            format!("you cannot {what} yourself"),
+        ));
+    }
+    Ok(p)
+}
+
+fn mute(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
+    let client = ctx.client()?;
+    let p = other_account(&client, actor, "mute")?;
+    match (on, p.muted()) {
+        (true, true) => wrote(
+            ctx,
+            out,
+            json!({"muted": p.did, "already": true}),
+            &format!("already muted @{}", p.handle),
+        ),
+        (true, false) => {
+            client.mute(&p.did)?;
+            wrote(
+                ctx,
+                out,
+                json!({"muted": p.did}),
+                &format!("muted @{}", p.handle),
+            )
+        }
+        (false, true) => {
+            client.unmute(&p.did)?;
+            wrote(
+                ctx,
+                out,
+                json!({"unmuted": p.did}),
+                &format!("unmuted @{}", p.handle),
+            )
+        }
+        (false, false) => Err(Error::new(
+            Kind::Usage,
+            format!("you have not muted @{}", p.handle),
+        )),
+    }
+}
+
+fn block(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
+    let client = ctx.client()?;
+    let p = other_account(&client, actor, "block")?;
+    let blocking = p.blocking_uri().map(str::to_string);
+    match (on, blocking) {
+        (true, Some(uri)) => wrote(
+            ctx,
+            out,
+            json!({"uri": uri, "already": true}),
+            &format!("already blocking @{}", p.handle),
+        ),
+        (true, None) => {
+            let uri = client.block(&p.did)?;
+            wrote(
+                ctx,
+                out,
+                json!({"uri": uri}),
+                &format!("blocked @{}", p.handle),
+            )
+        }
+        (false, Some(uri)) => {
+            client.unblock(&uri)?;
+            wrote(
+                ctx,
+                out,
+                json!({"deleted": uri}),
+                &format!("unblocked @{}", p.handle),
+            )
+        }
+        (false, None) => Err(Error::new(
+            Kind::Usage,
+            format!("you do not block @{}", p.handle),
+        )),
+    }
+}
+
+/// A list of accounts that belongs to the account in use (its mutes, its
+/// blocks), newest first.
+fn own_list(ctx: &Ctx, out: &mut dyn Write, limit: usize, nsid: &str, field: &str) -> Result<()> {
+    let client = ctx.client()?;
+    let raw = collect(&client, nsid, &[], field, limit)?;
+    print_profiles(ctx, out, &raw)
 }
 
 fn delete(ctx: &Ctx, out: &mut dyn Write, post: &str) -> Result<()> {

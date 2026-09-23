@@ -257,31 +257,26 @@ fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
     let narrow = render(&mut app, MIN_W, 16);
     assert!(narrow.contains("1 2 3 4"), "{narrow}");
     // The words are whole and on their own rows, not cut to four cells.
-    assert!(narrow.contains("Timeline,"), "{narrow}");
-    assert!(narrow.contains("Search,"), "{narrow}");
+    assert!(narrow.contains("the tabs,"), "{narrow}");
+    assert!(narrow.contains("Timeline to"), "{narrow}");
     assert!(!narrow.contains("Time\n"), "{narrow}");
     // The two columns come back where they fit, and a description too
     // long for its column wraps rather than losing its end.
     let forty = render(&mut app, 40, 16);
     assert!(
-        forty.contains("1 2 3 4 5 6    Timeline, Search,"),
+        forty.contains("1 2 3 4 5 6    the tabs, Timeline"),
         "{forty}"
     );
     assert!(
         forty
             .lines()
-            .any(|l| l.contains("Notifications,") && !l.contains("1 2 3 4")),
+            .any(|l| l.trim_matches('│').trim() == "to Chat"),
         "{forty}"
     );
-    assert!(
-        forty
-            .lines()
-            .any(|l| l.trim_matches('│').trim() == "Profile, Columns,"),
-        "{forty}"
-    );
+    // Wide enough, every description is one line.
     let wide = render(&mut app, 80, 24);
     assert!(
-        wide.contains("1 2 3 4 5 6    Timeline, Search, Notifications,"),
+        wide.contains("1 2 3 4 5 6    the tabs, Timeline to Chat"),
         "{wide}"
     );
 }
@@ -330,4 +325,39 @@ fn a_short_conversation_sits_above_the_input_line() {
         "the title stays on top: {screen}"
     );
     assert!(rows[2].trim().is_empty(), "{screen}");
+}
+
+/// Someone's profile says when you muted or blocked them, and the actions
+/// list offers to undo it; your own offers neither.
+#[test]
+fn a_profile_says_muted_and_blocked_and_the_list_offers_to_undo_it() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    app.profile.actor = Some("did:plc:alice".into());
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({
+            "did": "did:plc:alice", "handle": "alice.test",
+            "displayName": "家族👨\u{200d}👩\u{200d}👧 Alice 🇯🇵",
+            "viewer": {"muted": true, "blocking": "at://did:plc:me/app.bsky.graph.block/b1"}
+        }))
+        .unwrap(),
+        Vec::new().into(),
+    ))));
+    let screen = render(&mut app, 100, 24);
+    assert!(
+        screen.contains("not following  · muted  · blocked"),
+        "{screen}"
+    );
+    app.handle_key(KeyEvent::from(KeyCode::Char('.')));
+    let screen = render(&mut app, 100, 30);
+    assert!(screen.contains("M      unmute them"), "{screen}");
+    assert!(screen.contains("B      unblock them"), "{screen}");
+    // Your own profile: nothing to mute or block.
+    let (mut own, _) = App::new(Some(session()), "x");
+    own.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    own.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
+    own.handle_key(KeyEvent::from(KeyCode::Char('.')));
+    let screen = render(&mut own, 100, 30);
+    assert!(!screen.contains("mute them"), "{screen}");
 }

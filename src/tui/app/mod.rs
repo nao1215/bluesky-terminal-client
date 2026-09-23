@@ -589,6 +589,8 @@ pub struct App {
     /// The post `D` has asked about, waiting for the `y` that deletes it.
     /// Deleting cannot be undone, so it takes a second key.
     pub confirm_delete: Option<String>,
+    /// The account `B` asked to block, waiting for the `y` that confirms it.
+    pub confirm_block: Option<String>,
     /// Text `c` has put up for the terminal's clipboard, which the event
     /// loop writes: the state machine has no terminal of its own.
     to_copy: Option<String>,
@@ -656,6 +658,8 @@ enum Written {
     Like { post: String, uri: Option<String> },
     Repost { post: String, uri: Option<String> },
     Follow { did: String, uri: Option<String> },
+    Mute { did: String, on: bool },
+    Block { did: String, uri: Option<String> },
     Deleted { post: String },
 }
 
@@ -704,6 +708,28 @@ impl Written {
                 did: did.clone(),
                 uri: None,
             },
+            Event::Muted {
+                did,
+                on,
+                result: Ok(()),
+            } => Written::Mute {
+                did: did.clone(),
+                on: *on,
+            },
+            Event::Blocked {
+                did,
+                result: Ok(uri),
+            } => Written::Block {
+                did: did.clone(),
+                uri: Some(uri.clone()),
+            },
+            Event::Unblocked {
+                did,
+                result: Ok(()),
+            } => Written::Block {
+                did: did.clone(),
+                uri: None,
+            },
             Event::PostDeleted {
                 uri,
                 result: Ok(()),
@@ -744,6 +770,7 @@ impl App {
             pending: 0,
             in_flight: HashSet::new(),
             confirm_delete: None,
+            confirm_block: None,
             to_copy: None,
             theme: THEMES[0],
             theme_index: 0,

@@ -2113,7 +2113,6 @@ scenarios:
             - send: { key: pagedown }
             - send: { key: pagedown }
             - send: { key: pagedown }
-            - send: { key: pagedown }
             - expect_screen:
                 contains: "edit your profile"
             # Wait for the window itself to go before the next key, or Esc
@@ -2578,3 +2577,68 @@ scenarios:
                 - { path: "$.record.embed['$type']", equals: "app.bsky.embed.record" }
                 - { path: "$.record.embed.record.uri", equals: "at://did:plc:bob/app.bsky.feed.post/theirs" }
                 - { path: "$.record.embed.record.cid", equals: "cid-theirs" }
+
+  # M mutes the author of the selected post at once; B asks first, since a
+  # block is public, and any key but y leaves them be. Their posts leave the
+  # timeline as the answer comes.
+  - name: M mutes the selected post's author and B blocks after a y, and their posts leave the timeline
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: POST
+            path: /xrpc/app.bsky.graph.muteActor
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.block/b1", cid: "cid-b1" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Photo from the mountains", "Replying to carol"]
+            - send: M
+            - expect_screen:
+                contains: ["muted: their posts leave your lists", "Replying to carol"]
+                not_contains: "Photo from the mountains"
+            - send: B
+            - expect_screen:
+                contains: "press y to block @bob.test"
+            - send: n
+            - expect_screen:
+                contains: ["not blocked", "Replying to carol"]
+            - send: B
+            - send: y
+            - expect_screen:
+                contains: ["blocked: B again unblocks", "My own post"]
+                not_contains: "Replying to carol"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.graph.muteActor
+            count: 1
+            body:
+              json: { path: "$.actor", equals: "did:plc:alice" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.block" }
+                - { path: "$.record.subject", equals: "did:plc:bob" }
+                - { path: "$.record['$type']", equals: "app.bsky.graph.block" }

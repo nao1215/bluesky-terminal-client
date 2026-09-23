@@ -1001,6 +1001,30 @@ impl Client {
         self.delete_record("app.bsky.graph.follow", follow_uri)
     }
 
+    /// Mute an account: its posts leave your timeline, feeds, and
+    /// notifications. Only you know; it is not a record.
+    pub fn mute(&self, did: &str) -> Result<()> {
+        let _: Value = self.post("app.bsky.graph.muteActor", &json!({"actor": did}))?;
+        Ok(())
+    }
+
+    pub fn unmute(&self, did: &str) -> Result<()> {
+        let _: Value = self.post("app.bsky.graph.unmuteActor", &json!({"actor": did}))?;
+        Ok(())
+    }
+
+    /// Block an account; returns the block record's URI. A block is public,
+    /// and neither of you sees the other's posts.
+    pub fn block(&self, did: &str) -> Result<String> {
+        let record = json!({"$type": "app.bsky.graph.block", "subject": did, "createdAt": now()});
+        Ok(self.create_record("app.bsky.graph.block", record)?.uri)
+    }
+
+    /// Remove a block by its record URI.
+    pub fn unblock(&self, block_uri: &str) -> Result<()> {
+        self.delete_record("app.bsky.graph.block", block_uri)
+    }
+
     /// The account's own `app.bsky.actor.profile` record, or `None` when the
     /// account has never saved one.
     pub fn own_profile_record(&self) -> Result<Option<Record>> {

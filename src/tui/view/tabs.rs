@@ -572,6 +572,12 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
         if viewer.followed_by.is_some() {
             rel.push(Span::styled("  · follows you", t.dim()));
         }
+        if viewer.muted {
+            rel.push(Span::styled("  · muted", t.error()));
+        }
+        if viewer.blocking.is_some() {
+            rel.push(Span::styled("  · blocked", t.error()));
+        }
         rel.push(Span::styled("  (f to toggle)", t.dim()));
         lines.push(Line::from(rel));
     } else {

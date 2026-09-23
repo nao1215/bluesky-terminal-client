@@ -660,3 +660,145 @@ scenarios:
               at://did:plc:me/app.bsky.feed.post/p1
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2, query: { name: cursor, equals: "page2" } }
+
+  - name: mute and block send once what the client sends, and mutes and blocks list the accounts
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: "did:plc:alice", handle: "alice.test", displayName: "家族👨‍👩‍👧 Alice" }
+          - method: POST
+            path: /xrpc/app.bsky.graph.muteActor
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.block/b1", cid: "cid-b1" }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getMutes
+            json:
+              mutes:
+                - { did: "did:plc:alice", handle: "alice.test", displayName: "家族👨‍👩‍👧 Alice" }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getBlocks
+            json:
+              blocks:
+                - { did: "did:plc:alice", handle: "alice.test" }
+    steps:
+      - *session
+      - run:
+          command: bsky mute @alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "muted @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.graph.muteActor
+            count: 1
+            body:
+              json: { path: "$.actor", equals: "did:plc:alice" }
+      - run:
+          command: bsky block alice.test --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.uri", equals: "at://did:plc:me/app.bsky.graph.block/b1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.graph.block" }
+                - { path: "$.record.subject", equals: "did:plc:alice" }
+      # Undoing what was not done is a usage error, and nothing is sent.
+      - run:
+          command: bsky unmute alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: you have not muted @alice.test"
+      - run:
+          command: bsky unblock alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: you do not block @alice.test"
+      - run:
+          command: bsky mutes
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "家族👨‍👩‍👧 Alice @alice.test  did:plc:alice\n"
+      - run:
+          command: bsky blocks --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.did", equals: "did:plc:alice" }
+
+  - name: unmute and unblock undo a mute and the block record, and yourself is refused
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: "did:plc:alice"
+              handle: "alice.test"
+              viewer: { muted: true, blocking: "at://did:plc:me/app.bsky.graph.block/b1" }
+          - method: POST
+            path: /xrpc/app.bsky.graph.unmuteActor
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - run:
+          command: bsky unmute alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "unmuted @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.graph.unmuteActor
+            count: 1
+            body:
+              json: { path: "$.actor", equals: "did:plc:alice" }
+      - run:
+          command: bsky unblock alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "unblocked @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.block" }
+                - { path: "$.rkey", equals: "b1" }
+      - run:
+          command: bsky mute alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already muted @alice.test\n"
