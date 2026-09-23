@@ -906,3 +906,118 @@ scenarios:
           stdout:
             line: 1
             matches: '"subject":\{.*"handle":"bob.test"' 
+
+  - name: report sends a post or an account to the moderators once, and an unknown reason is a usage error
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:spammer" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:spammer/app.bsky.feed.post/s1
+                  cid: cid-s1
+                  author: { did: did:plc:spammer, handle: spammer.test }
+                  record: { text: "Buy now 💰", createdAt: "2026-09-20T10:00:00.000Z" }
+          - method: POST
+            path: /xrpc/com.atproto.moderation.createReport
+            json: { id: 7, reasonType: "com.atproto.moderation.defs#reasonSpam", subject: {}, reportedBy: "did:plc:me", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: 'bsky report https://bsky.app/profile/spammer.test/post/s1 --reason spam --comment "同じ宣伝を何度も 🔁"'
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "reported at://did:plc:spammer/app.bsky.feed.post/s1\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.moderation.createReport
+            count: 1
+            body:
+              json:
+                - { path: "$.reasonType", equals: "com.atproto.moderation.defs#reasonSpam" }
+                - { path: "$.reason", equals: "同じ宣伝を何度も 🔁" }
+                - { path: "$.subject.uri", equals: "at://did:plc:spammer/app.bsky.feed.post/s1" }
+                - { path: "$.subject.cid", equals: "cid-s1" }
+      - run:
+          command: bsky report @spammer.test --reason rude --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.id", equals: 7 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.moderation.createReport
+            count: 2
+            body:
+              json:
+                - { path: "$.reasonType", equals: "com.atproto.moderation.defs#reasonRude" }
+                - { path: "$.subject['$type']", equals: "com.atproto.admin.defs#repoRef" }
+                - { path: "$.subject.did", equals: "did:plc:spammer" }
+      - run:
+          command: bsky report @spammer.test --reason angry
+          env: *env
+      - assert:
+          exit_code: 1
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.moderation.createReport, count: 2 }
+
+  - name: app-passwords lists, adds and revokes, and an app-password session is told why it cannot
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.server.listAppPasswords
+            json:
+              passwords:
+                - { name: "laptop 💻", createdAt: "2026-09-20T10:00:00.000Z", privileged: true }
+                - { name: "phone", createdAt: "2026-09-19T08:30:00.000Z" }
+          - method: POST
+            path: /xrpc/com.atproto.server.createAppPassword
+            json: { name: "bsky", password: "abcd-efgh-ijkl-mnop", createdAt: "2026-09-20T11:00:00.000Z", privileged: false }
+          - method: POST
+            path: /xrpc/com.atproto.server.revokeAppPassword
+            status: 400
+            json: { error: "InvalidToken", message: "Bad token scope" }
+    steps:
+      - *session
+      - run:
+          command: bsky app-passwords
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "laptop 💻  2026-09-20 10:00  (direct messages)\nphone  2026-09-19 08:30\n"
+      - run:
+          command: bsky app-passwords add bsky
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["abcd-efgh-ijkl-mnop", "it is not shown again"]
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.createAppPassword
+            count: 1
+            body:
+              json:
+                - { path: "$.name", equals: "bsky" }
+                - { path: "$.privileged", equals: false }
+      - run:
+          command: bsky app-passwords revoke phone
+          env: *env
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "hint: log in with the account's password"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.revokeAppPassword, count: 1 }

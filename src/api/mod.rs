@@ -681,6 +681,12 @@ impl Client {
         self.get(nsid, query)
     }
 
+    /// A procedure's answer as the server sent it, for the commands that
+    /// print it. A write: sent once, as every write is.
+    pub fn post_value(&self, nsid: &str, body: &Value) -> Result<Value> {
+        self.post(nsid, body)
+    }
+
     /// The links, mentions and tags of `text` as facets. A handle that
     /// cannot be resolved stays plain text rather than failing the send.
     fn facets(&self, text: &str) -> Vec<Value> {

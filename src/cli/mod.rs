@@ -144,6 +144,21 @@ pub enum Command {
     },
     /// Delete one of your own posts.
     Delete { post: String },
+    /// Report a post or an account to Bluesky's moderators.
+    Report {
+        /// A post (at:// URI or bsky.app address) or an account.
+        target: String,
+        #[arg(long, value_enum)]
+        reason: ReportReason,
+        /// What the moderators should know.
+        #[arg(long, value_name = "TEXT")]
+        comment: Option<String>,
+    },
+    /// The account's app passwords; add or revoke one.
+    AppPasswords {
+        #[command(subcommand)]
+        action: Option<AppPasswordAction>,
+    },
     /// Log an account in and make it the one in use.
     Login {
         /// The handle or email; asked for when left out.
@@ -162,6 +177,43 @@ pub enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
+}
+
+/// Why a post or an account is reported: `com.atproto.moderation.defs`.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum ReportReason {
+    Spam,
+    Violation,
+    Misleading,
+    Sexual,
+    Rude,
+    Other,
+}
+
+impl ReportReason {
+    fn token(self) -> &'static str {
+        match self {
+            ReportReason::Spam => "com.atproto.moderation.defs#reasonSpam",
+            ReportReason::Violation => "com.atproto.moderation.defs#reasonViolation",
+            ReportReason::Misleading => "com.atproto.moderation.defs#reasonMisleading",
+            ReportReason::Sexual => "com.atproto.moderation.defs#reasonSexual",
+            ReportReason::Rude => "com.atproto.moderation.defs#reasonRude",
+            ReportReason::Other => "com.atproto.moderation.defs#reasonOther",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppPasswordAction {
+    /// Make one; its password is printed once.
+    Add {
+        name: String,
+        /// Allow it direct messages.
+        #[arg(long)]
+        privileged: bool,
+    },
+    /// Revoke one by its name.
+    Revoke { name: String },
 }
 
 /// What a command runs with.
@@ -246,6 +298,12 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
             password_stdin,
         } => login(ctx, o, identifier, password_stdin),
         Command::Accounts => accounts(ctx, o),
+        Command::Report {
+            target,
+            reason,
+            comment,
+        } => report(ctx, o, &target, reason, comment.as_deref()),
+        Command::AppPasswords { action } => app_passwords(ctx, o, action),
         Command::Chat { actor, text, limit } => chat(ctx, o, actor.as_deref(), text, limit),
     }
 }
@@ -955,6 +1013,112 @@ fn own_list(ctx: &Ctx, out: &mut dyn Write, limit: usize, nsid: &str, field: &st
     let client = ctx.client()?;
     let raw = collect(&client, nsid, &[], field, limit)?;
     print_profiles(ctx, out, &raw)
+}
+
+fn report(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    target: &str,
+    reason: ReportReason,
+    comment: Option<&str>,
+) -> Result<()> {
+    let client = ctx.client()?;
+    let t = target.trim();
+    let is_post = t.starts_with("at://") || format::bsky_app_path(t, "post").is_some();
+    let (subject, what) = if is_post {
+        let p = fetch_post(&client, t)?;
+        (
+            json!({"$type": "com.atproto.repo.strongRef", "uri": p.uri, "cid": p.cid}),
+            p.uri.clone(),
+        )
+    } else {
+        let did = resolve_actor(&client, t)?;
+        (
+            json!({"$type": "com.atproto.admin.defs#repoRef", "did": did}),
+            format!("@{}", t.trim_start_matches('@')),
+        )
+    };
+    let mut body = json!({"reasonType": reason.token(), "subject": subject});
+    if let Some(c) = comment.map(str::trim).filter(|c| !c.is_empty()) {
+        body["reason"] = json!(c);
+    }
+    let answer = client.post_value("com.atproto.moderation.createReport", &body)?;
+    wrote(ctx, out, answer, &format!("reported {what}"))
+}
+
+fn app_passwords(ctx: &Ctx, out: &mut dyn Write, action: Option<AppPasswordAction>) -> Result<()> {
+    let client = ctx.client()?;
+    // A session made with an app password may not manage app passwords.
+    let hint = |e: Error| {
+        let m = e.message();
+        if m.contains("AuthRequired") || m.contains("InvalidToken") || m.contains("scope") {
+            e.with_hint("log in with the account's password, not an app password, to manage them")
+        } else {
+            e
+        }
+    };
+    match action {
+        None => {
+            let v = client
+                .get_value("com.atproto.server.listAppPasswords", &[])
+                .map_err(hint)?;
+            let items = v
+                .get("passwords")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            for p in &items {
+                if ctx.json {
+                    json_line(out, p)?;
+                } else {
+                    let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or("");
+                    let privileged = if p.get("privileged").and_then(Value::as_bool) == Some(true) {
+                        "  (direct messages)"
+                    } else {
+                        ""
+                    };
+                    text(
+                        out,
+                        &format!(
+                            "{}  {}{privileged}\n",
+                            s("name"),
+                            format::time(s("createdAt"))
+                        ),
+                    )?;
+                }
+            }
+            Ok(())
+        }
+        Some(AppPasswordAction::Add { name, privileged }) => {
+            let v = client
+                .post_value(
+                    "com.atproto.server.createAppPassword",
+                    &json!({"name": name, "privileged": privileged}),
+                )
+                .map_err(hint)?;
+            let password = v.get("password").and_then(Value::as_str).unwrap_or("");
+            wrote(
+                ctx,
+                out,
+                v.clone(),
+                &format!("{password}\n(the password of {name:?}; it is not shown again)"),
+            )
+        }
+        Some(AppPasswordAction::Revoke { name }) => {
+            client
+                .post_value(
+                    "com.atproto.server.revokeAppPassword",
+                    &json!({"name": name}),
+                )
+                .map_err(hint)?;
+            wrote(
+                ctx,
+                out,
+                json!({"revoked": name}),
+                &format!("revoked {name:?}"),
+            )
+        }
+    }
 }
 
 fn delete(ctx: &Ctx, out: &mut dyn Write, post: &str) -> Result<()> {
