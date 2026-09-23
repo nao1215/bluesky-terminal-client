@@ -1932,7 +1932,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             # The hint row names the keys of the current view at all times.
             - expect_screen:
-                contains: ["? help", "j k move", "l like"]
+                contains: ["? help", "j k move", ". actions"]
             - send: "?"
             - expect_screen:
                 contains: ["Keys", "Global", "choose a color theme", "j/pgdn more"]
@@ -2200,24 +2200,37 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Bob wrote this", "My own post to delete"]
-                # Bob's post is selected: his is not deletable.
-                not_contains: "D delete"
+                contains: ["Bob wrote this", "My own post to delete", ". actions"]
                 stable_for: 300ms
+            # Bob's post is selected: his is not deletable, and the actions
+            # list does not offer it.
+            - send: "."
+            - expect_screen:
+                contains: ["Actions", "reply to it"]
+                not_contains: "delete your post"
+            # Wait for the list to go: Esc and the next key together read as
+            # Alt and that key.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Actions"
             - send: D
             - expect_screen:
                 contains: "you can only delete your own posts"
-            # On my own post the hint row offers it.
+            # On my own post the list offers it.
             - send: j
+            - send: "."
             - expect_screen:
-                contains: "D delete"
+                contains: "delete your post"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Actions"
             - send: D
             - expect_screen:
                 contains: "press y to delete this post"
             # Any other key keeps the post, and that key does nothing else.
             - send: k
             - expect_screen:
-                contains: ["not deleted", "My own post to delete", "D delete"]
+                contains: ["not deleted", "My own post to delete"]
             - send: D
             - send: y
             - expect_screen:
@@ -2270,8 +2283,13 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Bob wrote this", "c copy link"]
+                contains: ["Bob wrote this", ". actions"]
                 stable_for: 300ms
+            # Through the list this time: it runs the key it names.
+            - send: "."
+            - expect_screen:
+                contains: "copy its address"
+                stable_for: 200ms
             - send: c
             - expect_screen:
                 contains: "copied https://bsky.app/profile/did:plc:bob/post/theirs"
@@ -2315,7 +2333,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Bob wrote this", "Q quote"]
+                contains: ["Bob wrote this", ". actions"]
                 stable_for: 300ms
             - send: Q
             - expect_screen:
