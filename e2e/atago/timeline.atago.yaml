@@ -656,6 +656,61 @@ scenarios:
                 - { path: "$.record.reply.parent.uri", equals: "at://did:plc:bob/app.bsky.feed.post/p2" }
                 - { path: "$.record.reply.parent.cid", equals: "cid-p2" }
 
+  # Another client wrote this reply without the CIDs its lexicon requires, and
+  # its time as a number. The text still shows, and answering it names the
+  # post itself as root and parent, as for a post that starts a thread.
+  - name: a post with a damaged reply field shows its text and can be answered
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record:
+                      text: "家族 👨‍👩‍👧 の写真 🇯🇵"
+                      createdAt: 1758000000
+                      reply: { root: { uri: at://did:plc:carol/app.bsky.feed.post/root }, parent: { uri: at://did:plc:carol/app.bsky.feed.post/root } }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+          - *create_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["家族 👨‍👩‍👧 の写真 🇯🇵", "Alice @alice.test · 2026-09-20 10:00"]
+            - send: r
+            - expect_screen:
+                contains: ["Reply to @alice.test", "❝ 家族 👨‍👩‍👧 の写真 🇯🇵"]
+            - send: "Nice"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                not_contains: "Reply to @alice.test"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.reply.root.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.reply.root.cid", equals: "cid-p1" }
+                - { path: "$.record.reply.parent.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.reply.parent.cid", equals: "cid-p1" }
+
   - name: a new post carries link, tag and mention facets at UTF-8 byte offsets
     mock_servers:
       - name: api
