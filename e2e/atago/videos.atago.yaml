@@ -561,3 +561,89 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 0 }
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  # The video service can be set on the settings screen instead of with
+  # BSKY_VIDEO_SERVICE; it is kept in settings.json and the next video goes
+  # there.
+  - name: a video service typed on the settings screen is where the video goes
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - *limits_ok
+          - *upload_video
+          - *job_done
+          - *create
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - expect_screen:
+                contains: "Video service    https://video.bsky.app"
+            - send: j
+            - send: j
+            - send: j
+            - send: j
+            - expect_screen:
+                contains: "the default; enter types another address"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "enter keeps it, empty is the default, esc cancels"
+            - send: { key: ctrl-u }
+            - send: "${api.url}"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["video service: ${api.url}", "x goes back to the default"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: n
+            - send: "My clip"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "clip.mp4"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 clip.mp4 (video 0:01)  alt:"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.video_service", equals: "${api.url}" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 1, query: { name: name, equals: "clip.mp4" } }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1 }

@@ -15,7 +15,8 @@ use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_p
 use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
-    App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, SettingRow, Tab, ThreadView,
+    App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, SettingEdit, SettingRow, Tab,
+    ThreadView,
 };
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
@@ -144,8 +145,15 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
         Some(Overlay::Actions { selected }) => draw_actions(frame, area, &actions, *selected, &t),
-        Some(Overlay::Settings { selected }) => {
-            draw_settings(frame, area, &settings, *selected, &t)
+        Some(Overlay::Settings { selected, edit }) => {
+            let typing = match edit {
+                Some(SettingEdit::Text(input)) => Some(&*input),
+                _ => None,
+            };
+            draw_settings(frame, area, &settings, *selected, typing, &t);
+            if let Some(SettingEdit::Folder(b)) = edit {
+                draw_browser(frame, area, b.as_mut(), images, &t);
+            }
         }
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         Some(Overlay::Viewer {
@@ -289,8 +297,16 @@ fn draw_actions(frame: &mut Frame, area: Rect, entries: &[keys::Hint], selected:
 }
 
 /// The settings screen: a row per setting, `name  value`, and under the
-/// list what the selected one's value comes from or what Enter does.
-fn draw_settings(frame: &mut Frame, area: Rect, rows: &[SettingRow], selected: usize, t: &Theme) {
+/// list what the selected one's value comes from or what Enter does, or the
+/// line its new value is typed in.
+fn draw_settings(
+    frame: &mut Frame,
+    area: Rect,
+    rows: &[SettingRow],
+    selected: usize,
+    typing: Option<&TextInput>,
+    t: &Theme,
+) {
     const NAME_W: usize = 16;
     let inner = popup(
         frame,
@@ -333,6 +349,26 @@ fn draw_settings(frame: &mut Frame, area: Rect, rows: &[SettingRow], selected: u
             ])
         })
         .collect();
+    if note_h > 0
+        && let Some(input) = typing
+    {
+        lines.push(Line::raw(""));
+        if note_h > 1 {
+            lines.push(Line::styled(
+                " enter keeps it, empty is the default, esc cancels",
+                t.dim(),
+            ));
+        }
+        frame.render_widget(Paragraph::new(lines), inner);
+        let field = Rect {
+            x: inner.x + 1,
+            y: inner.bottom().saturating_sub(1),
+            width: inner.width.saturating_sub(2),
+            height: 1,
+        };
+        draw_single_input(frame, field, input, true);
+        return;
+    }
     if note_h > 0
         && let Some(r) = rows.get(selected)
     {
@@ -1943,6 +1979,7 @@ fn truncate_start(s: &str, width: usize) -> String {
 /// left, the selected picture previewed on the right.
 fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Images, t: &Theme) {
     let title = match (b.videos, b.room) {
+        _ if b.folders => "Choose a folder".to_string(),
         (true, n) => format!("Attach pictures (up to {n}) or a video"),
         (false, 1) => "Choose a picture".to_string(),
         (false, n) => format!("Attach pictures (up to {n})"),
@@ -2057,8 +2094,20 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
                 },
             );
         }
+        Some(_) if b.folders => frame.render_widget(
+            Paragraph::new("enter opens the folder; space chooses the one you are in")
+                .style(t.dim())
+                .wrap(ratatui::widgets::Wrap { trim: true }),
+            preview,
+        ),
         Some(_) => frame.render_widget(
             Paragraph::new("enter opens the folder").style(t.dim()),
+            preview,
+        ),
+        None if b.folders => frame.render_widget(
+            Paragraph::new("no folders here; space chooses this one")
+                .style(t.dim())
+                .wrap(ratatui::widgets::Wrap { trim: true }),
             preview,
         ),
         None => frame.render_widget(
@@ -2068,6 +2117,10 @@ fn draw_browser(frame: &mut Frame, area: Rect, b: &mut Browser, images: &mut Ima
     }
     let foot_line = match &b.note {
         Some(n) => Line::styled(format!(" {n}"), t.error()),
+        None if b.folders => Line::styled(
+            " enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
+            t.dim(),
+        ),
         None => {
             let marked = if b.marked.is_empty() {
                 String::new()
@@ -2733,6 +2786,37 @@ mod tests {
                 }),
             ),
             (
+                "settings typing",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('4'));
+                    a.handle_key(ch('s'));
+                    for _ in 0..5 {
+                        a.handle_key(ch('j'));
+                    }
+                    a.handle_key(KeyEvent::from(KeyCode::Enter));
+                    for c in "ブラウザ👨\u{200d}👩\u{200d}👧 🇯🇵 1️⃣ ❤️ e\u{301} مرحبا".chars()
+                    {
+                        a.handle_key(ch(c));
+                    }
+                    a
+                }),
+            ),
+            (
+                "settings folder",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.browse_from = Some(std::env::temp_dir());
+                    a.env.download_dir = None;
+                    a.handle_key(ch('4'));
+                    a.handle_key(ch('s'));
+                    a.handle_key(ch('j'));
+                    a.handle_key(ch('j'));
+                    a.handle_key(KeyEvent::from(KeyCode::Enter));
+                    a
+                }),
+            ),
+            (
                 "login",
                 Box::new(|| {
                     let (a, _) = App::new(None, "https://bsky.social");
@@ -2830,6 +2914,47 @@ mod tests {
         let screen = render(&mut app, 100, 30);
         assert!(
             screen.contains("set by BSKY_GRAPHICS for this run"),
+            "{screen}"
+        );
+    }
+
+    /// Typing a setting shows the line it is typed in, and choosing a
+    /// folder shows the folder browser, which lists folders only.
+    #[test]
+    fn a_setting_is_typed_on_its_own_line_and_a_folder_chosen_in_the_browser() {
+        use crossterm::event::{KeyCode, KeyEvent};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("写真👨\u{200d}👩\u{200d}👧")).unwrap();
+        std::fs::write(dir.path().join("photo.png"), "not listed").unwrap();
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.settings.download_dir = Some(dir.path().display().to_string());
+        app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('s')));
+        for _ in 0..4 {
+            app.handle_key(KeyEvent::from(KeyCode::Char('j')));
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        let screen = render(&mut app, 100, 30);
+        assert!(
+            screen.contains("enter keeps it, empty is the default, esc cancels"),
+            "{screen}"
+        );
+        assert!(screen.contains("https://video.bsky.app"), "{screen}");
+        assert!(screen.contains("enter keep  esc cancel"), "{screen}");
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        for _ in 0..2 {
+            app.handle_key(KeyEvent::from(KeyCode::Char('k')));
+        }
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("x goes back to the default"), "{screen}");
+        assert!(screen.contains("x default"), "{screen}");
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        let screen = render_text_only(&mut app, 100, 30);
+        assert!(screen.contains("Choose a folder"), "{screen}");
+        assert!(screen.contains("写真👨\u{200d}👩\u{200d}👧/"), "{screen}");
+        assert!(!screen.contains("photo.png"), "{screen}");
+        assert!(
+            screen.contains("enter open  space choose this folder"),
             "{screen}"
         );
     }
@@ -3994,8 +4119,8 @@ mod state_fuzz {
             },
             Job::LoadProfileEditor => Event::ProfileEditor(Err(fail())),
             Job::SaveProfile { .. } => Event::ProfileSaved(if ok { Ok(()) } else { Err(fail()) }),
-            Job::Download(_) => Event::Downloaded(Err(fail())),
-            Job::OpenLink(url) => Event::Opened {
+            Job::Download { .. } => Event::Downloaded(Err(fail())),
+            Job::OpenLink { url, .. } => Event::Opened {
                 url,
                 result: Err(fail()),
             },

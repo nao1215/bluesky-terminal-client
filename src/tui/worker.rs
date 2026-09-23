@@ -78,6 +78,8 @@ pub enum Job {
         quote: Option<StrongRef>,
         /// Pictures, or one video.
         media: Vec<Attachment>,
+        /// Where a video is uploaded to.
+        video_service: String,
     },
     /// Delete one of the account's own posts, by its URI.
     DeletePost {
@@ -85,10 +87,17 @@ pub enum Job {
     },
     /// Load the fields the profile editor starts from.
     LoadProfileEditor,
-    /// Save a picture or video of a post in the download folder.
-    Download(Media),
-    /// Open a link in the web browser.
-    OpenLink(String),
+    /// Save a picture or video of a post in `dir`, the download folder
+    /// (`None` when there is none).
+    Download {
+        media: Media,
+        dir: Option<PathBuf>,
+    },
+    /// Open a link in the web browser, with `browser` when one is named.
+    OpenLink {
+        url: String,
+        browser: Option<String>,
+    },
     SaveProfile {
         display_name: String,
         description: String,
@@ -265,8 +274,8 @@ impl Job {
                 | Job::Thread(_)
                 | Job::Notifications
                 | Job::More { .. }
-                | Job::Download(_)
-                | Job::OpenLink(_)
+                | Job::Download { .. }
+                | Job::OpenLink { .. }
         )
     }
 }
@@ -453,18 +462,25 @@ impl State {
                 reply,
                 quote,
                 media,
+                video_service,
             } => Event::Posted {
                 reply_to: reply.as_ref().map(|r| r.parent.uri.clone()),
-                result: self.post(&text, reply.as_ref(), quote.as_ref(), &media),
+                result: self.post(
+                    &text,
+                    reply.as_ref(),
+                    quote.as_ref(),
+                    &media,
+                    &video_service,
+                ),
             },
             Job::DeletePost { uri } => Event::PostDeleted {
                 result: self.client().and_then(|c| c.delete_post(&uri)),
                 uri,
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
-            Job::Download(media) => Event::Downloaded(download(&media)),
-            Job::OpenLink(url) => Event::Opened {
-                result: crate::browser::open(&url),
+            Job::Download { media, dir } => Event::Downloaded(download(&media, dir.as_deref())),
+            Job::OpenLink { url, browser } => Event::Opened {
+                result: crate::browser::open(&url, browser.as_deref()),
                 url,
             },
             Job::SaveProfile {
@@ -646,6 +662,7 @@ impl State {
         reply: Option<&ReplyRef>,
         quote: Option<&StrongRef>,
         media: &[Attachment],
+        video_service: &str,
     ) -> Result<()> {
         let videos = media
             .iter()
@@ -661,9 +678,8 @@ impl State {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "video".into());
-                let service = crate::config::video_service();
                 let blob = self.client()?.upload_video(
-                    &service,
+                    video_service,
                     &v.bytes,
                     v.mime,
                     &name,
@@ -833,9 +849,11 @@ fn candidate_path(dir: &std::path::Path, name: &str, i: usize) -> PathBuf {
 
 /// Save a picture (full size) or a video (its best variant, the segments
 /// joined into one MPEG transport stream, which players play as it is).
-fn download(media: &Media) -> Result<PathBuf> {
-    let dir = crate::config::download_dir()
-        .ok_or_else(|| Error::io("there is no download folder; set BSKY_DOWNLOAD_DIR"))?;
+fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
+    let dir = dir.ok_or_else(|| {
+        Error::io("there is no download folder")
+            .with_hint("choose one on the settings screen (s on your Profile tab)")
+    })?;
     let agent = api::agent();
     let bytes = match media {
         Media::Image { url, .. } => fetch_bytes(&agent, url)?,
@@ -861,9 +879,9 @@ fn download(media: &Media) -> Result<PathBuf> {
             all
         }
     };
-    std::fs::create_dir_all(&dir)
+    std::fs::create_dir_all(dir)
         .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
-    save_new(&dir, &download_name(media), &bytes)
+    save_new(dir, &download_name(media), &bytes)
 }
 
 /// Write `bytes` to a new file in `dir` named `name`, or `name (1)`... A

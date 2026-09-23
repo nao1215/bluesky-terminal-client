@@ -1,6 +1,7 @@
 //! Opening a post's link in the user's web browser, with what the system
 //! already has: `xdg-open` on Linux and the BSDs, `open` on macOS, the URL
-//! handler on Windows. `BSKY_BROWSER` names another program to open links with.
+//! handler on Windows. `BSKY_BROWSER`, or the browser on the settings
+//! screen, names another program to open links with.
 
 use std::process::{Command, Stdio};
 
@@ -9,13 +10,11 @@ use crate::error::{Error, Kind, Result};
 /// Environment variable naming the program that opens links.
 pub const BROWSER_ENV: &str = "BSKY_BROWSER";
 
-/// The program and arguments that open `url` here.
-fn opener(url: &str) -> (String, Vec<String>) {
-    if let Some(program) = std::env::var_os(BROWSER_ENV).filter(|v| !v.is_empty()) {
-        return (
-            program.to_string_lossy().into_owned(),
-            vec![url.to_string()],
-        );
+/// The program and arguments that open `url` here: `program` when one is
+/// named, else the system's opener.
+fn opener(url: &str, program: Option<&str>) -> (String, Vec<String>) {
+    if let Some(program) = program {
+        return (program.to_string(), vec![url.to_string()]);
     }
     if cfg!(target_os = "macos") {
         ("open".into(), vec![url.into()])
@@ -42,13 +41,13 @@ pub fn system_opener() -> &'static str {
     }
 }
 
-/// Open `url` in the browser. Only web links are opened, so a post cannot
-/// make bsky run a file or a command.
-pub fn open(url: &str) -> Result<()> {
+/// Open `url` in the browser, with `program` when one is named. Only web
+/// links are opened, so a post cannot make bsky run a file or a command.
+pub fn open(url: &str, program: Option<&str>) -> Result<()> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(Error::new(Kind::Usage, format!("not a web link: {url}")));
     }
-    let (program, args) = opener(url);
+    let (program, args) = opener(url, program);
     spawn(&program, &args)
 }
 
@@ -71,7 +70,9 @@ fn spawn(program: &str, args: &[String]) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::io(format!(
             "cannot open the link: {program} was not found"
         ))
-        .with_hint(format!("set {BROWSER_ENV} to the program that opens links"))),
+        .with_hint(format!(
+            "set {BROWSER_ENV}, or Browser on the settings screen (s on your Profile tab), to the program that opens links"
+        ))),
         Err(e) => Err(Error::io(format!(
             "cannot open the link with {program}: {e}"
         ))),
@@ -90,7 +91,7 @@ mod tests {
             "/usr/bin/true",
             "",
         ] {
-            let e = open(url).unwrap_err();
+            let e = open(url, Some("/usr/bin/true")).unwrap_err();
             assert!(e.message().starts_with("not a web link"), "{url}: {e}");
         }
     }
@@ -161,7 +162,10 @@ mod tests {
     #[test]
     fn the_system_opener_takes_the_url_as_one_argument() {
         let url = "https://a.test/x?y=1&z=2";
-        let (_, args) = opener(url);
+        let (_, args) = opener(url, None);
         assert_eq!(args.last().map(String::as_str), Some(url));
+        let (program, args) = opener(url, Some("my browser 🦊"));
+        assert_eq!(program, "my browser 🦊");
+        assert_eq!(args, [url]);
     }
 }
