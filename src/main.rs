@@ -160,19 +160,16 @@ fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Re
             .iter()
             .map(|s| serde_json::json!({"did": s.did, "handle": s.handle}))
             .collect();
-        println!("{}", serde_json::json!({ "loggedOut": gone }));
+        say(&serde_json::json!({ "loggedOut": gone }).to_string());
     } else if chosen.is_empty() {
-        println!(
-            "{}",
-            if old_gone {
-                "logged out"
-            } else {
-                "not logged in"
-            }
-        );
+        say(if old_gone {
+            "logged out"
+        } else {
+            "not logged in"
+        });
     } else {
         for s in &chosen {
-            println!("logged out @{}", s.handle);
+            say(&format!("logged out @{}", s.handle));
         }
     }
     Ok(())
@@ -218,7 +215,13 @@ fn print_json_error(err: &Error) {
         "hint": err.hint(),
         "status": err.kind().exit_code(),
     });
-    println!("{v}");
+    say(&v.to_string());
+}
+
+/// A line on stdout. A reader that has gone (`| head`) is no reason to
+/// fail, and must not panic as `println!` does.
+fn say(line: &str) {
+    let _ = writeln!(std::io::stdout(), "{line}");
 }
 
 /// clap's message without its `error: ` prefix and trailing usage block.

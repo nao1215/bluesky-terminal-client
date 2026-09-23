@@ -239,6 +239,19 @@ impl Ctx<'_> {
 
 /// Run `cmd`, writing to stdout.
 pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
+    // A reader that stopped reading (`| head`) is not an error: what it
+    // wanted it has, so the command ends there, as the tools it is piped
+    // into expect.
+    match run_to(cmd, ctx) {
+        Err(e) if e.message() == PIPE_CLOSED => Ok(()),
+        r => r,
+    }
+}
+
+/// What `write_err` says when the reader has closed the pipe.
+const PIPE_CLOSED: &str = "the output was closed";
+
+fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
     let mut out = io::stdout().lock();
     let o = &mut out;
     match cmd {
@@ -314,6 +327,9 @@ fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
 }
 
 fn write_err(e: io::Error) -> Error {
+    if e.kind() == io::ErrorKind::BrokenPipe {
+        return Error::io(PIPE_CLOSED);
+    }
     Error::io(format!("cannot write the output: {e}"))
 }
 
@@ -964,10 +980,14 @@ fn mute(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
                 &format!("unmuted @{}", p.handle),
             )
         }
-        (false, false) => Err(Error::new(
-            Kind::Usage,
-            format!("you have not muted @{}", p.handle),
-        )),
+        (false, false) => Err(match p.muting_list() {
+            Some(list) => Error::new(
+                Kind::Usage,
+                format!("@{} is muted by your list {list:?}", p.handle),
+            )
+            .with_hint("take them off that list to unmute them"),
+            None => Error::new(Kind::Usage, format!("you have not muted @{}", p.handle)),
+        }),
     }
 }
 

@@ -743,6 +743,23 @@ impl DiskCache {
         self.dir.join(format!("{h:016x}"))
     }
 
+    /// Whether a file of the cache folder is one bsky wrote: a stored body
+    /// (16 hex digits, from [`Self::path`]) or a body being written
+    /// (`tmp.<pid>.<n>`). Anything else there is the user's.
+    fn is_own(name: &str) -> bool {
+        let hex = |s: &str| {
+            s.len() == 16
+                && s.bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        };
+        let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        hex(name)
+            || name
+                .strip_prefix("tmp.")
+                .and_then(|r| r.split_once('.'))
+                .is_some_and(|(pid, n)| digits(pid) && digits(n))
+    }
+
     /// The body stored for `url`. Reading it counts as a use.
     pub fn get(&self, url: &str) -> Option<Vec<u8>> {
         let path = self.path(url);
@@ -788,20 +805,25 @@ impl DiskCache {
     }
 
     /// Remove the least recently used files until the cache fits its budget,
-    /// and temporary files a crashed run left behind.
+    /// and temporary files a crashed run left behind. Only files bsky wrote
+    /// are counted or removed.
     pub fn trim(&self) {
         let Ok(dir) = fs::read_dir(&self.dir) else {
             return;
         };
         let mut files: Vec<(SystemTime, u64, PathBuf)> = Vec::new();
         for entry in dir.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str().filter(|n| Self::is_own(n)) else {
+                continue;
+            };
             let Ok(meta) = entry.metadata() else { continue };
             if !meta.is_file() {
                 continue;
             }
             let path = entry.path();
             let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            let stale_tmp = entry.file_name().to_string_lossy().starts_with("tmp.")
+            let stale_tmp = name.starts_with("tmp.")
                 && modified
                     .elapsed()
                     .is_ok_and(|age| age > Duration::from_secs(3600));
@@ -1122,6 +1144,46 @@ mod tests {
                 .keys()
                 .all(|(url, _, _)| images.slots.contains_key(url))
         );
+    }
+
+    /// The cache can be any folder the user picks, and its images/ folder
+    /// can hold their own files: only what bsky wrote there, by its names,
+    /// is counted and removed, however old and however large the rest.
+    #[test]
+    fn the_cache_trim_leaves_files_bsky_did_not_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = DiskCache::new(dir.path().to_path_buf(), 64);
+        let old = SystemTime::now() - Duration::from_secs(10 * 3600);
+        let mut theirs = Vec::new();
+        for name in [
+            "holiday.jpg",
+            "tmp.draft.txt",
+            "写真👨\u{200d}👩\u{200d}👧.png",
+            "0123456789abcdeg",
+        ] {
+            let p = dir.path().join(name);
+            fs::write(&p, vec![b'x'; 1000]).unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+            theirs.push(p);
+        }
+        cache.put("https://a.test/1.png", &[b'a'; 100]);
+        cache.put("https://a.test/2.png", &[b'b'; 100]);
+        cache.trim();
+        for p in &theirs {
+            assert!(p.exists(), "{} was removed", p.display());
+        }
+        // Its own files still go when they are over the budget.
+        let own = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| DiskCache::is_own(&e.file_name().to_string_lossy()))
+            .count();
+        assert!(own <= 1, "the cache was not trimmed: {own} files");
     }
 
     /// Temporary files a crashed run left in the cache are removed once they

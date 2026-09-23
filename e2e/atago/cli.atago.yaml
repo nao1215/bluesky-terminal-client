@@ -1021,3 +1021,75 @@ scenarios:
             contains: "hint: log in with the account's password"
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.server.revokeAppPassword, count: 1 }
+
+  # A reader that stops early (head) closes the pipe; bsky stops writing and
+  # exits 0, rather than 3 or a panic, so `set -o pipefail` scripts work.
+  # The page is larger than a pipe holds, so bsky is still writing then.
+  - name: a pipe closed early ends the output quietly with exit 0
+    skip:
+      os: windows  # the pipeline needs head and a POSIX shell
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            body_file: testdata/timeline-300.json
+            header: { Content-Type: application/json }
+    steps:
+      - *session
+      - run:
+          command: '{ bsky tl -n 300 --json; echo "bsky=$?" >&2; } | head -c 1'
+          shell: true
+          env: *env
+      - assert:
+          stderr:
+            contains: "bsky=0"
+            not_contains: ["panicked", "Broken pipe"]
+      - run:
+          command: '{ bsky tl -n 300; echo "bsky=$?" >&2; } | head -c 1'
+          shell: true
+          env: *env
+      - assert:
+          stderr:
+            contains: "bsky=0"
+            not_contains: "Broken pipe"
+
+  # A mute list mutes its members too, and the server says "muted" of them;
+  # unmute undoes only your own mute, so it says what to do instead, and
+  # mute adds your own.
+  - name: unmute of an account muted by a list says which list, and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: "did:plc:alice"
+              handle: "alice.test"
+              viewer: { muted: true, mutedByList: { uri: "at://did:plc:me/app.bsky.graph.list/l1", name: "Spam 🚫" } }
+          - method: POST
+            path: /xrpc/app.bsky.graph.muteActor
+            json: {}
+          - method: POST
+            path: /xrpc/app.bsky.graph.unmuteActor
+            json: {}
+    steps:
+      - *session
+      - run:
+          command: bsky unmute alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: ["@alice.test is muted by your list \"Spam 🚫\"", "hint: take them off that list"]
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.unmuteActor, count: 0 }
+      - run:
+          command: bsky mute alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "muted @alice.test\n"
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.muteActor, count: 1 }

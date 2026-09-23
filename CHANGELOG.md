@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - After `m` on a profile, moving to another tab or a thread before the conversation came still switched to the Chat tab and marked the conversation read. It opens only while the profile is still shown; otherwise it waits on the Chat tab.
 - The question `x` asks on the Columns tab or in the account list survived the session expiring: after logging in again, the first `y` removed the column or logged the account out. It is called off, as `D`'s is.
 - `bsky delete`, `like` and the other commands took an at:// URI with a trailing slash, a query or a fragment as a different record key, and the server refused it. What follows the record key is dropped.
+- The picture cache removed the user's own files: with the cache set to a folder whose `images/` folder held other files, the oldest of them were deleted once it passed 256 MB, and any file starting with `tmp.` after an hour. Only the files bsky wrote there, by their names, are counted and removed now.
+- Checking that a chosen download or cache folder can be written followed a link left at the name of its test file and emptied the file the link pointed to. The test file is always a new one.
+- A command piped into a reader that stops early, as `bsky tl | head -1` does, exited 3 with "Broken pipe", and with `--json` it panicked. It stops writing and exits 0.
+- `bsky unmute` on an account muted by one of your mute lists said "unmuted" and changed nothing, and `M` in the client did the same. It now says which list mutes them, and `bsky mute` and `M` add your own mute. A profile says "muted by the list" with its name.
 
 ## [0.4.0] - 2026-09-24
 
