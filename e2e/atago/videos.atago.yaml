@@ -149,6 +149,73 @@ scenarios:
                 - { path: "$.record.embed.aspectRatio.width", equals: 64 }
                 - { path: "$.record.embed.aspectRatio.height", equals: 36 }
 
+  - name: a QuickTime video without an ftyp box is posted as one
+    # testdata/classic.mov is a 2-second 64x36 QuickTime file written the way
+    # QuickTime wrote one before the ftyp box existed: a wide placeholder, the
+    # media data, then the header. bsky used to refuse it as not a video.
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - *limits_ok
+          - *upload_video
+          - *job_done
+          - *create
+    steps:
+      - *session
+      - fixture: { file: media/classic.mov, from: testdata/classic.mov }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: "An old clip"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["classic.mov", "video · 0:02 · 64×36"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 classic.mov (video 0:02)  alt:"
+                not_contains: "not a video bsky can post"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: ["New post", "not a video"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.video.uploadVideo
+            count: 1
+            header: { name: Content-Type, equals: "video/quicktime" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "classic.mov" } }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "An old clip" }
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.video" }
+                - { path: "$.record.embed.aspectRatio.width", equals: 64 }
+                - { path: "$.record.embed.aspectRatio.height", equals: 36 }
+
   - name: an animated GIF goes to the video service as it is
     mock_servers:
       - name: api

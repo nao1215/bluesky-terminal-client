@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - An invalid service URL is quoted in the error the way it was typed.
 - A video whose playlist names its files the scheme-relative (`//host/path`), absolute-path, query-only, or `..` way plays and saves. Those forms used to be joined to the playlist's address as text, which asked the server for a path that does not exist, so the video showed only its thumbnail with a warning.
 - A post or a profile whose send fails because the session expired keeps what you typed: the composer or the profile editor is behind the login form, and after logging in as the same account it is there to send again. The draft used to be dropped when the login form came up. Logging in as another account drops it, as it drops the rest of that account's state.
+- A hashtag followed straight away by a handle or a link, as text without spaces puts them (`#Rust【@alice.test】`), sends the tag as the word it is and the handle as a mention. The tag used to run to the next space, so it carried the handle and nobody was mentioned.
+- A QuickTime video whose file does not start with an `ftyp` box, which is what QuickTime wrote before 2001 and what some cameras and editors still write, is posted instead of being refused as not a video.
 
 ## [0.1.1] - 2026-09-23
 
