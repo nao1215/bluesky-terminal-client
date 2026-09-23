@@ -451,6 +451,18 @@ impl App {
             self.info("deleting…");
             return vec![Job::DeletePost { uri }];
         }
+        // As D's: the next key answers B's question, whatever it is.
+        if let Some(did) = self.confirm_block.take() {
+            if key.code != KeyCode::Char('y') {
+                self.info("not blocked");
+                return Vec::new();
+            }
+            if !self.claim(format!("block:{did}")) {
+                return Vec::new();
+            }
+            self.info("blocking…");
+            return vec![Job::Block { did }];
+        }
         // As D's: the next key answers x's question, whatever it is.
         if let Some(id) = self.confirm_column_remove.take() {
             if key.code == KeyCode::Char('y') && self.columns.focused().is_some_and(|c| c.id == id)
@@ -539,6 +551,8 @@ impl App {
             KeyCode::Char('l') => return self.toggle_like(),
             KeyCode::Char('b') => return self.toggle_repost(),
             KeyCode::Char('f') => return self.toggle_follow(),
+            KeyCode::Char('M') => return self.toggle_mute(),
+            KeyCode::Char('B') => return self.toggle_block(),
             KeyCode::Char('e') if self.tab == Tab::Profile => return self.edit_profile(),
             KeyCode::Char('s')
                 if self.tab == Tab::Profile

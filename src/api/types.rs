@@ -78,7 +78,7 @@ fn readable_items<'de, D: Deserializer<'de>, T: DeserializeOwned>(
     })
 }
 
-/// `app.bsky.actor.defs#viewerState`, reduced to the follow relationship.
+/// `app.bsky.actor.defs#viewerState`: follows, mutes and blocks.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ActorViewer {
@@ -88,6 +88,12 @@ pub struct ActorViewer {
     /// AT-URI of this actor's follow record for the viewer, when followed back.
     #[serde(deserialize_with = "any_opt_string")]
     pub followed_by: Option<String>,
+    /// Whether the viewer has muted this actor.
+    #[serde(deserialize_with = "any_bool")]
+    pub muted: bool,
+    /// AT-URI of the viewer's block record for this actor, when blocking.
+    #[serde(deserialize_with = "any_opt_string")]
+    pub blocking: Option<String>,
 }
 
 /// `app.bsky.actor.defs#profileView` and its basic/detailed variants.
@@ -131,6 +137,16 @@ impl Profile {
     /// The viewer's follow record URI for this actor.
     pub fn following_uri(&self) -> Option<&str> {
         self.viewer.as_ref()?.following.as_deref()
+    }
+
+    /// Whether the viewer has muted this actor.
+    pub fn muted(&self) -> bool {
+        self.viewer.as_ref().is_some_and(|v| v.muted)
+    }
+
+    /// The viewer's block record URI for this actor.
+    pub fn blocking_uri(&self) -> Option<&str> {
+        self.viewer.as_ref()?.blocking.as_deref()
     }
 }
 

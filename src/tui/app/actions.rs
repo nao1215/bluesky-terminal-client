@@ -306,6 +306,56 @@ impl App {
         }
     }
 
+    /// `M`: mute the selected account, or unmute it. Muting is private and
+    /// undone as easily, so it asks nothing.
+    pub(super) fn toggle_mute(&mut self) -> Vec<Job> {
+        let Some(account) = self.selected_account() else {
+            return Vec::new();
+        };
+        if self.session.as_ref().is_some_and(|s| s.did == account.did) {
+            self.error("you cannot mute yourself");
+            return Vec::new();
+        }
+        if !self.claim(format!("mute:{}", account.did)) {
+            return Vec::new();
+        }
+        vec![Job::Mute {
+            on: !account.muted(),
+            did: account.did,
+        }]
+    }
+
+    /// `B`: block the selected account after a `y`, since a block is public
+    /// and cuts both ways; unblocking asks nothing.
+    pub(super) fn toggle_block(&mut self) -> Vec<Job> {
+        let Some(account) = self.selected_account() else {
+            return Vec::new();
+        };
+        if self.session.as_ref().is_some_and(|s| s.did == account.did) {
+            self.error("you cannot block yourself");
+            return Vec::new();
+        }
+        if let Some(uri) = account.blocking_uri() {
+            if !self.claim(format!("block:{}", account.did)) {
+                return Vec::new();
+            }
+            return vec![Job::Unblock {
+                block_uri: uri.to_string(),
+                did: account.did,
+            }];
+        }
+        if self.in_flight.contains(&format!("block:{}", account.did)) {
+            self.info("still waiting for the server…");
+            return Vec::new();
+        }
+        self.info(format!(
+            "press y to block @{}, any other key to leave them be",
+            account.handle
+        ));
+        self.confirm_block = Some(account.did);
+        Vec::new()
+    }
+
     /// `e`: the profile editor, which waits for the record it starts from.
     pub(super) fn edit_profile(&mut self) -> Vec<Job> {
         if self.profile.actor.is_some() {

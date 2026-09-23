@@ -323,6 +323,23 @@ fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
             did,
             result: if ok { Ok(()) } else { Err(fail()) },
         },
+        Job::Mute { did, on } => Event::Muted {
+            did,
+            on,
+            result: if ok { Ok(()) } else { Err(fail()) },
+        },
+        Job::Block { did } => Event::Blocked {
+            did,
+            result: if ok {
+                Ok("at://did:plc:me/app.bsky.graph.block/new".into())
+            } else {
+                Err(fail())
+            },
+        },
+        Job::Unblock { did, .. } => Event::Unblocked {
+            did,
+            result: if ok { Ok(()) } else { Err(fail()) },
+        },
         Job::Post { reply, .. } => Event::Posted {
             reply_to: reply.map(|r| r.parent.uri),
             result: if ok { Ok(()) } else { Err(fail()) },
@@ -350,6 +367,9 @@ fn is_write(job: &Job) -> bool {
             | Job::Unrepost { .. }
             | Job::Follow { .. }
             | Job::Unfollow { .. }
+            | Job::Mute { .. }
+            | Job::Block { .. }
+            | Job::Unblock { .. }
             | Job::Post { .. }
             | Job::DeletePost { .. }
             | Job::SaveProfile { .. }
@@ -362,7 +382,7 @@ fn key(rng: &mut Rng) -> KeyEvent {
     const CHARS: &[char] = &[
         'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e', 'd',
         'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']', 's', '.', 'c', 'Q', 'i',
-        'h', 'A', '5', '+', '<', '>', 'H', 'L', '6', 'm',
+        'h', 'A', '5', '+', '<', '>', 'H', 'L', '6', 'm', 'M', 'B',
     ];
     let codes = [
         KeyCode::Esc,
@@ -492,6 +512,7 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                     .then(|| app.shown_account().map(|a| a.did.clone()))
                     .flatten();
                 let asked = delete_asked.take();
+                let block_asked = app.confirm_block.clone();
                 let composing = matches!(app.overlay, Some(Overlay::Compose(_)));
                 let jobs = app.handle_key(k);
                 let writes = jobs.iter().filter(|j| is_write(j)).count();
@@ -505,7 +526,7 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                 if writes > 0 {
                     let writer = match k.code {
                         KeyCode::Char('s') => ctrl,
-                        KeyCode::Char('l' | 'b' | 'f' | 'y') | KeyCode::Enter => !ctrl,
+                        KeyCode::Char('l' | 'b' | 'f' | 'y' | 'M' | 'B') | KeyCode::Enter => !ctrl,
                         _ => false,
                     };
                     assert!(
@@ -519,6 +540,12 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                         "seed {seed} step {step}: D asked about another post than the selected one"
                     );
                     delete_asked = app.confirm_delete.clone();
+                }
+                if app.confirm_block.is_some() && app.confirm_block != block_asked {
+                    assert_eq!(
+                        app.confirm_block, account,
+                        "seed {seed} step {step}: B asked about another account than the one shown"
+                    );
                 }
                 // A reply or a quote opened now is of the selected post.
                 if !composing && let Some(Overlay::Compose(c)) = &app.overlay {
@@ -547,11 +574,24 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                                 "seed {seed} step {step}: deleted someone else's post {uri}"
                             );
                         }
-                        Job::Follow { did } | Job::Unfollow { did, .. } => assert_eq!(
+                        Job::Follow { did }
+                        | Job::Unfollow { did, .. }
+                        | Job::Mute { did, .. }
+                        | Job::Unblock { did, .. } => assert_eq!(
                             Some(did),
                             account.as_ref(),
-                            "seed {seed} step {step}: {k:?} followed another account than the one shown"
+                            "seed {seed} step {step}: {k:?} acted on another account than the one shown"
                         ),
+                        // A block only on the y after B, of the account B
+                        // asked about.
+                        Job::Block { did } => {
+                            assert_eq!(
+                                Some(did),
+                                block_asked.as_ref(),
+                                "seed {seed} step {step}: blocked an account B did not ask about"
+                            );
+                            assert_eq!(k.code, KeyCode::Char('y'), "seed {seed} step {step}");
+                        }
                         _ => {}
                     }
                 }

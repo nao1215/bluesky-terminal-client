@@ -135,7 +135,7 @@ fn the_actions_list_offers_delete_only_on_your_own_post() {
     assert!(screen.contains("D      delete your post"), "{screen}");
     // The help says how it is confirmed.
     app.overlay = Some(Overlay::Help { scroll: 0 });
-    let help = render(&mut app, 100, 40);
+    let help = render(&mut app, 100, 50);
     assert!(help.contains("delete your own post"), "{help}");
 }
 

@@ -111,6 +111,19 @@ impl App {
                     self.timeline.retain(|p| p.author.did != *did);
                 }
             }
+            Written::Mute { did, on } => {
+                self.set_account(did, |v| v.muted = *on);
+                if *on {
+                    self.remove_posts_by(did);
+                }
+            }
+            Written::Block { did, uri } => {
+                let blocking = uri.clone();
+                self.set_account(did, move |v| v.blocking = blocking.clone());
+                if uri.is_some() {
+                    self.remove_posts_by(did);
+                }
+            }
             // A page asked for before the delete still carries the post.
             Written::Deleted { post } => self.remove_post(post),
         }
@@ -213,9 +226,41 @@ impl App {
 
     /// Set the follow state of `did` everywhere it is shown.
     pub(super) fn set_following(&mut self, did: &str, uri: Option<String>) {
+        self.set_account(did, move |v| v.following = uri.clone());
+    }
+
+    /// The posts and notifications of an account muted or blocked leave
+    /// every list, as the server leaves them out of the next pages. Its
+    /// profile, where the change was made, and an open thread stay.
+    pub(super) fn remove_posts_by(&mut self, did: &str) {
+        let feeds = self
+            .feeds
+            .iter_mut()
+            .map(|f| &mut f.list)
+            .chain(self.columns.post_lists());
+        for list in [&mut self.timeline, &mut self.search.posts]
+            .into_iter()
+            .chain(feeds)
+        {
+            list.retain(|p| p.author.did != did);
+        }
+        let notifications =
+            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
+        for list in notifications {
+            list.retain(|item| item.n.author.did != did);
+        }
+    }
+
+    /// Change what the viewer is to `did` (follow, mute, block) everywhere
+    /// the account is shown.
+    pub(super) fn set_account(
+        &mut self,
+        did: &str,
+        f: impl Fn(&mut crate::api::types::ActorViewer),
+    ) {
         let apply = |p: &mut Profile| {
             if p.did == did {
-                p.viewer.get_or_insert_with(Default::default).following = uri.clone();
+                f(p.viewer.get_or_insert_with(Default::default));
             }
         };
         let feeds = self
@@ -271,6 +316,9 @@ impl App {
             // A question asked before is not answered by the first key after
             // logging in again, and a theme being previewed was not chosen.
             self.confirm_delete = None;
+            self.confirm_block = None;
+            self.confirm_column_remove = None;
+            self.confirm_logout = None;
             if let Some(Overlay::Themes { previous, .. }) = self.overlay {
                 self.set_theme(previous);
             }
@@ -300,6 +348,7 @@ impl App {
         // Whatever was being typed belonged to the account left behind.
         self.overlay = None;
         self.confirm_delete = None;
+        self.confirm_block = None;
         self.confirm_logout = None;
         self.confirm_column_remove = None;
         self.columns = Columns::default();
@@ -388,6 +437,12 @@ impl App {
             }
             Event::Followed { did, .. } | Event::Unfollowed { did, .. } => {
                 self.in_flight.remove(&format!("follow:{did}"));
+            }
+            Event::Muted { did, .. } => {
+                self.in_flight.remove(&format!("mute:{did}"));
+            }
+            Event::Blocked { did, .. } | Event::Unblocked { did, .. } => {
+                self.in_flight.remove(&format!("block:{did}"));
             }
             Event::PostDeleted { uri, .. } => {
                 self.in_flight.remove(&format!("delete:{uri}"));
@@ -672,6 +727,34 @@ impl App {
                 self.timeline.retain(|p| p.author.did != did);
                 self.info("unfollowed");
             }
+            Event::Muted {
+                did,
+                on,
+                result: Ok(()),
+            } => {
+                self.set_account(&did, |v| v.muted = on);
+                if on {
+                    self.remove_posts_by(&did);
+                    self.info("muted: their posts leave your lists; M again unmutes");
+                } else {
+                    self.info("unmuted");
+                }
+            }
+            Event::Blocked {
+                did,
+                result: Ok(uri),
+            } => {
+                self.set_account(&did, move |v| v.blocking = Some(uri.clone()));
+                self.remove_posts_by(&did);
+                self.info("blocked: B again unblocks");
+            }
+            Event::Unblocked {
+                did,
+                result: Ok(()),
+            } => {
+                self.set_account(&did, |v| v.blocking = None);
+                self.info("unblocked");
+            }
             Event::Posted {
                 reply_to,
                 result: Ok(()),
@@ -772,7 +855,10 @@ impl App {
             | Event::Reposted { result: Err(e), .. }
             | Event::Unreposted { result: Err(e), .. }
             | Event::Followed { result: Err(e), .. }
-            | Event::Unfollowed { result: Err(e), .. } => self.fail(&e),
+            | Event::Unfollowed { result: Err(e), .. }
+            | Event::Muted { result: Err(e), .. }
+            | Event::Blocked { result: Err(e), .. }
+            | Event::Unblocked { result: Err(e), .. } => self.fail(&e),
         }
         Vec::new()
     }

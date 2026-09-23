@@ -102,6 +102,18 @@ pub enum Job {
         did: String,
         follow_uri: String,
     },
+    /// Mute (`on`) or unmute an account.
+    Mute {
+        did: String,
+        on: bool,
+    },
+    Block {
+        did: String,
+    },
+    Unblock {
+        did: String,
+        block_uri: String,
+    },
     Post {
         text: String,
         reply: Option<ReplyRef>,
@@ -293,6 +305,19 @@ pub enum Event {
         result: Result<String>,
     },
     Unfollowed {
+        did: String,
+        result: Result<()>,
+    },
+    Muted {
+        did: String,
+        on: bool,
+        result: Result<()>,
+    },
+    Blocked {
+        did: String,
+        result: Result<String>,
+    },
+    Unblocked {
         did: String,
         result: Result<()>,
     },
@@ -594,6 +619,21 @@ impl State {
             Job::Unfollow { did, follow_uri } => Event::Unfollowed {
                 did,
                 result: self.client().and_then(|c| c.unfollow(&follow_uri)),
+            },
+            Job::Mute { did, on } => Event::Muted {
+                result: self
+                    .client()
+                    .and_then(|c| if on { c.mute(&did) } else { c.unmute(&did) }),
+                did,
+                on,
+            },
+            Job::Block { did } => Event::Blocked {
+                result: self.client().and_then(|c| c.block(&did)),
+                did,
+            },
+            Job::Unblock { did, block_uri } => Event::Unblocked {
+                did,
+                result: self.client().and_then(|c| c.unblock(&block_uri)),
             },
             Job::Post {
                 text,

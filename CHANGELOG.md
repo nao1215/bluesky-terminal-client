@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- Mute and block accounts. `M` mutes the author of the selected post, or the account whose profile is shown, and `M` again unmutes; `B` blocks after a `y` that confirms it, and `B` again unblocks. Their posts and notifications leave the lists on screen at once, and a profile says "muted" or "blocked". Both are in the `.` list with what they would do now. On the command line: `bsky mute`, `unmute`, `mutes`, `block`, `unblock` and `blocks`.
+
 ### Fixed
 
 - `bsky logout` and `bsky logout --all` stopped after removing a `session.json` an earlier version wrote, and left the accounts logged in. Both now log out that file and the accounts they name.
@@ -13,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - With `--json`, a usage error such as a missing argument printed no JSON, and `bsky logout` printed text. Both print JSON on stdout now; `bsky logout --json` prints `{"loggedOut": [...]}`.
 - `bsky timeline -n N` printed fewer than N posts when a page was mostly reposts, which are left out. It reads the next pages until it has N, or there are no more.
 - After `m` on a profile, moving to another tab or a thread before the conversation came still switched to the Chat tab and marked the conversation read. It opens only while the profile is still shown; otherwise it waits on the Chat tab.
+- The question `x` asks on the Columns tab or in the account list survived the session expiring: after logging in again, the first `y` removed the column or logged the account out. It is called off, as `D`'s is.
 
 ## [0.4.0] - 2026-09-24
 

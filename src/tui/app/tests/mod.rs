@@ -9,6 +9,7 @@ mod feeds_and_actions;
 mod lists;
 mod login_and_writes;
 mod messages;
+mod moderation;
 mod navigation;
 mod notifications;
 mod settings;

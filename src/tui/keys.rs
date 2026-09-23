@@ -57,6 +57,14 @@ pub const HELP: &[Section] = &[
             ("l", "like / remove like"),
             ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
+            (
+                "M",
+                "mute / unmute the selected account: their posts leave your lists",
+            ),
+            (
+                "B",
+                "block / unblock the selected account: y confirms a block",
+            ),
             ("v", "open the thread: the posts above it and every reply"),
             (
                 "space",
@@ -121,6 +129,7 @@ pub const HELP: &[Section] = &[
                 "settings: theme, pictures, and where bsky keeps things",
             ),
             ("f", "follow / unfollow the account shown"),
+            ("M B", "mute / block the account shown, or undo it"),
             ("esc", "back to the list it was opened from"),
         ],
     },
@@ -524,6 +533,24 @@ pub fn actions(app: &App) -> Vec<Hint> {
                 "follow"
             },
         ));
+        if app.session.as_ref().is_none_or(|s| s.did != account.did) {
+            v.push((
+                "M",
+                if account.muted() {
+                    "unmute them"
+                } else {
+                    "mute them: their posts leave your lists"
+                },
+            ));
+            v.push((
+                "B",
+                if account.blocking_uri().is_some() {
+                    "unblock them"
+                } else {
+                    "block them (y confirms)"
+                },
+            ));
+        }
     }
     if app.own_post_selected() {
         v.push(("D", "delete your post"));
