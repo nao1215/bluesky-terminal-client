@@ -656,6 +656,122 @@ scenarios:
             count: 2
             query: { name: cursor, equals: "next-page" }
 
+  - name: nearing the end of a custom feed asks for the next page once
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            json:
+              preferences:
+                - $type: app.bsky.actor.defs#savedFeedsPrefV2
+                  items:
+                    - { id: "1", type: timeline, value: following, pinned: true }
+                    - { id: "2", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/science", pinned: true }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            json:
+              feeds:
+                - { uri: "at://did:plc:gen/app.bsky.feed.generator/science", displayName: Science, did: did:web:gen.test, creator: { did: did:plc:gen, handle: gen.test }, indexedAt: "2026-09-01T00:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeed
+            json:
+              cursor: "feed-page-2"
+              feed:
+                - post:
+                    uri: at://did:plc:erin/app.bsky.feed.post/s1
+                    cid: cid-s1
+                    author: { did: did:plc:erin, handle: erin.test, displayName: Erin }
+                    record: { text: "A new comet is visible tonight", createdAt: "2026-09-20T07:00:00.000Z" }
+                    indexedAt: "2026-09-20T07:00:05.000Z"
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Following", "Science"]
+            - send: "]"
+            - expect_screen:
+                contains: "A new comet is visible tonight"
+            # One post, so the first move is already near the end. The next
+            # page repeats it with the same cursor, which ends the list.
+            - send: j
+            - expect_screen:
+                matches: "A new comet is visible tonight"
+                count: 1
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getFeed
+            count: 2
+            query: { name: cursor, equals: "feed-page-2" }
+      # The Following timeline is not asked for again by the feed's paging.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+
+  - name: tab moves to the next tab and shift+tab to the previous one, the search box included
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - { method: GET, path: /xrpc/app.bsky.notification.listNotifications, json: { notifications: [] } }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me", followersCount: 1, followsCount: 2, postsCount: 3 }
+          - { method: GET, path: /xrpc/app.bsky.feed.getAuthorFeed, json: { feed: [] } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: { key: tab }
+            # The box takes the cursor, and tab leaves it rather than typing.
+            - expect_screen:
+                contains: ["search:", "type, then enter"]
+            - send: { key: tab }
+            - expect_screen:
+                contains: "No notifications yet."
+            - send: { key: tab }
+            - expect_screen:
+                contains: ["@me.test", "1 followers  2 following  3 posts"]
+            - send: { key: tab }
+            - expect_screen:
+                contains: "Photo from the mountains"
+            # Shift+tab goes the other way, wrapping to the Profile tab.
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "1 followers  2 following  3 posts"
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "No notifications yet."
+            - send: q
+      - assert:
+          exit_code: 0
+
   - name: a reply to a reply keeps the thread root and names the parent
     mock_servers:
       - name: api

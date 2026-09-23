@@ -525,3 +525,51 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, count: 1 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+
+  - name: nearing the end of a profile's posts asks for the next page once
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json:
+              cursor: "author-page-2"
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/m1
+                    cid: cid-m1
+                    author: { did: did:plc:me, handle: me.test, displayName: "Old Name" }
+                    record: { text: "My first post", createdAt: "2026-09-01T00:00:00.000Z" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains: ["@me.test", "My first post"]
+            # One post, so the first move is already near the end. The next
+            # page repeats it with the same cursor, which ends the list.
+            - send: j
+            - expect_screen:
+                matches: "My first post"
+                count: 1
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            count: 2
+            query: { name: cursor, equals: "author-page-2" }
