@@ -168,6 +168,82 @@ scenarios:
       - assert:
           mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
 
+  - name: a video plays when its playlist names files the scheme-relative and dot-segment way
+    # Bluesky serves plain relative URLs today, but a playlist may name a
+    # file any way RFC 3986 allows: here the variant is scheme-relative
+    # (//host/path) and the segment goes up a level and back down.
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v2
+                    cid: cid-v2
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Odd playlist", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v2/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v2/thumbnail.png"
+                      alt: "A test pattern"
+                      aspectRatio: { width: 16, height: 9 }
+          - { method: GET, path: /watch/v2/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - method: GET
+            path: /watch/v2/playlist.m3u8
+            header: { Content-Type: application/vnd.apple.mpegurl }
+            body: |
+              #EXTM3U
+              #EXT-X-VERSION:3
+              #EXT-X-STREAM-INF:PROGRAM-ID=0,BANDWIDTH=550000,CODECS="avc1.42c00a",RESOLUTION=64x36
+              //127.0.0.1:${api.port}/watch/v2/v/video.m3u8?session_id=t
+          - method: GET
+            path: /watch/v2/v/video.m3u8
+            header: { Content-Type: application/vnd.apple.mpegurl }
+            body: |
+              #EXTM3U
+              #EXT-X-VERSION:3
+              #EXT-X-PLAYLIST-TYPE:VOD
+              #EXT-X-TARGETDURATION:1
+              #EXTINF:1.000,
+              ../v/seg0.ts?dur=1
+              #EXT-X-ENDLIST
+          - { method: GET, path: /watch/v2/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Odd playlist", "▶ video"]
+            - send: " "
+            - expect_screen:
+                contains: ["1/1", "A test pattern", "■ ended  r plays it again"]
+                not_contains: "cannot load the video"
+                images: { min_count: 3 }
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Odd playlist"
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      # Each file was asked for at the path RFC 3986 gives, not at a joined one.
+      - assert:
+          mock: { name: api, path: /watch/v2/playlist.m3u8, count: 1 }
+      - assert:
+          mock: { name: api, path: /watch/v2/v/video.m3u8, count: 1, query: { name: session_id, equals: "t" } }
+      - assert:
+          mock: { name: api, path: /watch/v2/v/seg0.ts, count: 1 }
+
   - name: a video bsky cannot play is a warning, not an error, and its thumbnail stays
     mock_servers:
       - name: api
