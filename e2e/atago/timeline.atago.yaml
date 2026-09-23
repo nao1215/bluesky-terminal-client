@@ -1996,6 +1996,72 @@ scenarios:
               json:
                 - { path: "$.record.text", equals: "a draft worth keeping" }
 
+  # D asks, and the question belongs to that moment. The notifications load
+  # in the background and find the session expired while D is waiting for
+  # its y; the login form comes up, and after logging in again the first y
+  # is not taken as the answer to a question asked before.
+  - name: a delete asked before the session expired is not made by the first y after logging in
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/mine
+                    cid: cid-mine
+                    author: { did: did:plc:me, handle: me.test, displayName: Me }
+                    record: { text: "My own post, asked about", createdAt: "2026-09-20T09:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            delay: 2s
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has been revoked" }
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "My own post, asked about"
+            - send: D
+            - expect_screen:
+                contains: "press y to delete this post"
+            # No key: the background load expires the session.
+            - expect_screen:
+                contains: ["Log in to Bluesky", "the session has expired; log in again"]
+            - send: "app-pass-1234"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "My own post, asked about"
+                not_contains: "Log in to Bluesky"
+            - send: y
+            - expect_screen:
+                contains: "My own post, asked about"
+                not_contains: "deleting"
+                stable_for: 300ms
+            - send: { key: ctrl-c }
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.deleteRecord, count: 0 }
+
   - name: the help lists the keys by section, scrolls, and closes only on purpose
     mock_servers:
       - name: api

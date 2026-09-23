@@ -406,6 +406,9 @@ pub enum Overlay {
     /// that does not depend on remembering them.
     Actions {
         selected: usize,
+        /// The post (or account) it was opened on: the list acts on that
+        /// one only.
+        about: Option<String>,
     },
     /// The settings screen, opened with `s` on your own profile; `edit` is
     /// the setting being changed, when one is.
@@ -1021,9 +1024,9 @@ impl App {
     fn overlay_key(&mut self, key: KeyEvent) -> Vec<Job> {
         // Taken first: the entries are read from the whole app, which the
         // match below borrows.
-        if let Some(Overlay::Actions { selected }) = &self.overlay {
-            let selected = *selected;
-            return self.actions_key(key, selected);
+        if let Some(Overlay::Actions { selected, about }) = &self.overlay {
+            let (selected, about) = (*selected, about.clone());
+            return self.actions_key(key, selected, about);
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // Read before the overlay is borrowed: a post with a video needs it.
@@ -2049,7 +2052,14 @@ impl App {
 
     /// A key while the actions list is open: move, run the chosen entry, or
     /// run the key itself, which is what it would have done anyway.
-    fn actions_key(&mut self, key: KeyEvent, selected: usize) -> Vec<Job> {
+    fn actions_key(&mut self, key: KeyEvent, selected: usize, about: Option<String>) -> Vec<Job> {
+        // The selection moved off the post the list was opened on (a reload
+        // without it, say): what it offers is not about that post any more.
+        if self.actions_subject() != about {
+            self.overlay = None;
+            self.info("the post the list was about is no longer selected; press . again");
+            return Vec::new();
+        }
         let entries = keys::actions(self);
         let n = entries.len().max(1);
         let selected = selected.min(n - 1);
@@ -2061,11 +2071,13 @@ impl App {
             KeyCode::Char('j') | KeyCode::Down => {
                 self.overlay = Some(Overlay::Actions {
                     selected: (selected + 1) % n,
+                    about,
                 });
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.overlay = Some(Overlay::Actions {
                     selected: (selected + n - 1) % n,
+                    about,
                 });
             }
             KeyCode::Esc | KeyCode::Char('.' | 'q') => self.overlay = None,
@@ -2096,7 +2108,18 @@ impl App {
         if keys::actions(self).is_empty() {
             return;
         }
-        self.overlay = Some(Overlay::Actions { selected: 0 });
+        self.overlay = Some(Overlay::Actions {
+            selected: 0,
+            about: self.actions_subject(),
+        });
+    }
+
+    /// What the actions list acts on: the selected post, or, where the keys
+    /// act on an account alone, that account.
+    fn actions_subject(&self) -> Option<String> {
+        self.shown_post()
+            .map(|p| p.uri.clone())
+            .or_else(|| self.shown_account().map(|a| a.did.clone()))
     }
 
     /// The account the keys act on here, without taking a copy of it.
@@ -2410,6 +2433,12 @@ impl App {
             form.focus = 2;
             form.error = Some("the session has expired; log in again".into());
             self.login = Some(form);
+            // A question asked before is not answered by the first key after
+            // logging in again, and a theme being previewed was not chosen.
+            self.confirm_delete = None;
+            if let Some(Overlay::Themes { previous, .. }) = self.overlay {
+                self.set_theme(previous);
+            }
             // The composer and the profile editor hold text the user typed,
             // which is theirs to send after logging in again; they stay
             // behind the login form, which takes every key while it is up.
@@ -2435,6 +2464,7 @@ impl App {
     fn forget_account(&mut self) {
         // Whatever was being typed belonged to the account left behind.
         self.overlay = None;
+        self.confirm_delete = None;
         self.timeline = List::default();
         self.feeds.clear();
         self.feed = 0;
@@ -3504,7 +3534,7 @@ mod tests {
     fn the_actions_list_runs_the_key_it_names() {
         let mut app = logged_in();
         assert!(app.handle_key(key('.')).is_empty());
-        let Some(Overlay::Actions { selected: 0 }) = app.overlay else {
+        let Some(Overlay::Actions { selected: 0, .. }) = app.overlay else {
             panic!("{:?}", app.overlay)
         };
         // The entries say what each key would do to this post now.
@@ -3773,6 +3803,82 @@ mod tests {
             ..session()
         })));
         assert!(app.overlay.is_none());
+    }
+
+    fn expire(app: &mut App) {
+        app.handle_event(Event::Timeline(Err(Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+        ))));
+        assert!(app.login.is_some());
+    }
+
+    // D asks, and the question belongs to that moment: when the session
+    // expires before the answer, the login form takes the keys, and the
+    // first y after logging in again used to delete the post.
+    #[test]
+    fn a_delete_asked_before_the_session_expired_is_called_off() {
+        let mine = post("at://did:plc:me/app.bsky.feed.post/m1", "did:plc:me", false);
+        let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+        app.handle_event(Event::Timeline(Ok(vec![mine].into())));
+        app.handle_key(key('D'));
+        assert!(app.confirm_delete.is_some());
+        expire(&mut app);
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        let jobs = app.handle_key(key('y'));
+        assert!(jobs.is_empty(), "deleted after logging in again: {jobs:?}");
+    }
+
+    // A theme being previewed is not chosen: when the picker is closed by
+    // the session expiring, the theme goes back to the one in use, as Esc
+    // would. It used to stay on the previewed one, which settings.json did
+    // not hold.
+    #[test]
+    fn a_theme_previewed_when_the_session_expired_is_not_kept() {
+        let mut app = logged_in();
+        app.handle_key(key('T'));
+        app.handle_key(key('j'));
+        app.handle_key(key('j'));
+        assert_eq!(app.theme_index, 2);
+        expire(&mut app);
+        assert!(app.overlay.is_none());
+        assert_eq!(app.theme_index, 0);
+        assert_eq!(app.theme.name, THEMES[0].name);
+    }
+
+    // The actions list is about the post it was opened on. When that post
+    // leaves the list meanwhile (a reload without it), the selection moves
+    // to another post, and enter used to act on that one.
+    #[test]
+    fn the_actions_list_does_not_act_on_a_post_it_was_not_opened_on() {
+        let mut app = logged_in();
+        app.handle_key(key('j'));
+        app.handle_key(key('.'));
+        assert!(matches!(app.overlay, Some(Overlay::Actions { .. })));
+        // A reload that no longer has the second post.
+        app.handle_event(Event::Timeline(Ok(vec![post(
+            "at://a/p/1",
+            "did:plc:alice",
+            true,
+        )]
+        .into())));
+        // Enter on "reply to it", and l, would act on at://a/p/1.
+        let jobs = app.handle_key(key('l'));
+        assert!(jobs.is_empty(), "{jobs:?}");
+        assert!(app.overlay.is_none(), "{:?}", app.overlay);
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("no longer")),
+            "{:?}",
+            app.status
+        );
+        // Opened again, it is about the post selected now, and works.
+        app.handle_key(key('.'));
+        let jobs = app.handle_key(key('l'));
+        assert!(
+            matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://a/p/1"),
+            "{jobs:?}"
+        );
     }
 
     // The help, the theme picker, and the viewer hold nothing to keep, and a

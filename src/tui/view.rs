@@ -144,7 +144,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             }
         }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
-        Some(Overlay::Actions { selected }) => draw_actions(frame, area, &actions, *selected, &t),
+        Some(Overlay::Actions { selected, .. }) => {
+            draw_actions(frame, area, &actions, *selected, &t)
+        }
         Some(Overlay::Settings { selected, edit }) => {
             let typing = match edit {
                 Some(SettingEdit::Text(input)) => Some(&*input),
@@ -4058,11 +4060,31 @@ mod state_fuzz {
         Error::api("the server said no")
     }
 
+    /// Now and then the session expires, which brings the login form back.
+    fn fail_or_expire(rng: &mut Rng) -> Error {
+        if rng.chance(10) {
+            Error::api("com.atproto.server.refreshSession failed: ExpiredToken: Token has expired")
+        } else {
+            fail()
+        }
+    }
+
     /// What the worker would answer to `job`, sometimes with an error.
     fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
         let ok = !rng.chance(15);
         Some(match job {
-            Job::Login { .. } => Event::LoggedIn(Err(fail())),
+            // Logging in again, as the same account, mostly works.
+            Job::Login { .. } => Event::LoggedIn(if rng.chance(70) {
+                Ok(Session {
+                    service: "https://pds.test".into(),
+                    did: "did:plc:me".into(),
+                    handle: "me.test".into(),
+                    access_jwt: "a2".into(),
+                    refresh_jwt: "r2".into(),
+                })
+            } else {
+                Err(fail())
+            }),
             Job::PinnedFeeds => Event::PinnedFeeds(if ok {
                 Ok(["discover", "science"]
                     .iter()
@@ -4086,7 +4108,7 @@ mod state_fuzz {
             Job::Timeline => Event::Timeline(if ok {
                 Ok(page(rng, next_id))
             } else {
-                Err(fail())
+                Err(fail_or_expire(rng))
             }),
             Job::SearchPosts(query) => Event::SearchPosts {
                 query,
@@ -4330,9 +4352,13 @@ mod state_fuzz {
                     // when the key is pressed, whatever arrives later. The
                     // actions list runs the key on that same post.
                     let on_list = matches!(app.overlay, None | Some(Overlay::Actions { .. }));
-                    let target = on_list
-                        .then(|| app.shown_post().map(|p| p.uri.clone()))
-                        .flatten();
+                    // The actions list acts on the post it was opened on.
+                    let target = match &app.overlay {
+                        Some(Overlay::Actions { about, .. }) => about.clone(),
+                        _ => on_list
+                            .then(|| app.shown_post().map(|p| p.uri.clone()))
+                            .flatten(),
+                    };
                     let account = on_list
                         .then(|| app.shown_account().map(|a| a.did.clone()))
                         .flatten();
