@@ -517,3 +517,75 @@ scenarios:
               json:
                 - { path: "$.collection", equals: "app.bsky.graph.follow" }
                 - { path: "$.record.subject", equals: "did:plc:dave" }
+
+  - name: nearing the end of the results asks for the next page, once for posts and once for accounts
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              cursor: "posts-page-2"
+              posts:
+                - uri: at://did:plc:dave/app.bsky.feed.post/s1
+                  cid: cid-s1
+                  author: { did: did:plc:dave, handle: dave.test, displayName: Dave }
+                  record: { text: "Snow on the mountains today", createdAt: "2026-09-19T12:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.searchActors
+            json:
+              cursor: "actors-page-2"
+              actors:
+                - { did: did:plc:dave, handle: dave.test, displayName: Dave, description: "Climbs things" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - send: "snow"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "Snow on the mountains today"
+            # One hit, so the first move is already near the end. The stub
+            # answers the next page with the same hit and the same cursor,
+            # which ends the list without repeating it.
+            - send: j
+            - expect_screen:
+                matches: "Snow on the mountains today"
+                count: 1
+                stable_for: 500ms
+            # Accounts page the same way.
+            - send: t
+            # The account list, not the post whose author is also Dave: wait
+            # for the description only an account row shows.
+            - expect_screen:
+                contains: "Climbs things"
+            - send: j
+            - expect_screen:
+                matches: "Climbs things"
+                count: 1
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.searchPosts
+            count: 2
+            query: { name: cursor, equals: "posts-page-2" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.actor.searchActors
+            count: 2
+            query: { name: cursor, equals: "actors-page-2" }

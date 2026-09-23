@@ -507,3 +507,66 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+
+  - name: without BSKY_DOWNLOAD_DIR a picture is saved under the home download folder
+    # The platform download folder is the home one on Linux and macOS, so
+    # HOME decides it here. On Windows it comes from the shell's known
+    # folders, which no environment variable moves, so this runs on the
+    # other two; the default itself is unit-tested everywhere.
+    skip:
+      os: windows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p9
+                    cid: cid-p9
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "One photo", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/t.png", fullsize: "${api.url}/img/full.png", alt: "The lake", aspectRatio: { width: 1, height: 1 } }
+          - { method: GET, path: /img/t.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/full.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            HOME: ${workdir}/home
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "One photo"
+            - send: " "
+            - expect_screen:
+                contains: ["1/1", "The lake"]
+            - send: d
+            # The path is too long to fit the status line on a runner whose
+            # temporary folder is deep, so where the file went is asserted
+            # below instead of on screen.
+            - expect_screen:
+                contains: "saved "
+
+            - send: { key: esc }
+            - expect_screen:
+                contains: "One photo"
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          dir: { path: home/Downloads/bsky, count: 1, contains: [full.png] }
+      - assert:
+          image: { path: home/Downloads/bsky/full.png, width: 100, height: 100 }

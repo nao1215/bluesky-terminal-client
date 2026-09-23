@@ -501,3 +501,63 @@ scenarios:
           mock: { name: api, path: /img/thumb.png, count: 1 }
       - assert:
           mock: { name: api, path: /video/playlist.m3u8, count: 0 }
+
+  - name: a video longer than three minutes is refused with its length, before anything is sent
+    # testdata/too-long.mp4 is a header that says 180.4 seconds: over the
+    # limit, and its length is shown rounded up so it does not read as the
+    # 3:00 that is allowed.
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *get_session
+          - *service_auth
+          - *limits_ok
+          - *upload_video
+          - *job_done
+          - *create
+    steps:
+      - *session
+      - fixture: { file: media/too-long.mp4, from: testdata/too-long.mp4 }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - send: "Too long"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "media/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["too-long.mp4", "video · 3:00 · 64×36"]
+            - send: { key: enter }
+            - send: { key: ctrl-s }
+            # The box wraps the message, and where it wraps depends on the
+            # length of the temporary path in front of the file name, so a
+            # line break and a border are allowed between any two words.
+            - expect_screen:
+                matches: 'runs[\s│]+3:01;[\s│]+videos[\s│]+can[\s│]+be[\s│]+at[\s│]+most[\s│]+3:00'
+            # The composer keeps the text and the file: another video can be
+            # chosen instead.
+            - expect_screen:
+                contains: ["Too long", "1 too-long.mp4 (video 3:00)"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "New post"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      # Nothing was uploaded and nothing was posted.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }

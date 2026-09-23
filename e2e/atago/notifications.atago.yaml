@@ -270,3 +270,53 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 2 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
+
+  - name: nearing the end of the notifications asks for the next page once
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            json:
+              cursor: "notifs-page-2"
+              notifications:
+                - uri: at://did:plc:cat/app.bsky.graph.follow/f1
+                  cid: cid-f1
+                  author: { did: did:plc:cat, handle: cat.test, displayName: Cat }
+                  reason: follow
+                  isRead: true
+                  indexedAt: "2026-09-21T23:00:00.000Z"
+          - *update_seen
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "3"
+            - expect_screen:
+                contains: "Cat @cat.test followed you"
+            # One notification, so the first move is already near the end.
+            # The next page repeats it with the same cursor, which ends the
+            # list and shows it once.
+            - send: j
+            - expect_screen:
+                matches: "Cat @cat.test followed you"
+                count: 1
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.notification.listNotifications
+            count: 2
+            query: { name: cursor, equals: "notifs-page-2" }
