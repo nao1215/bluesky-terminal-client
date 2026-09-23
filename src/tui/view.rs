@@ -981,6 +981,9 @@ fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) -> Line<'stat
         "app.bsky.embed.record#viewDetached" => "❝ quote removed by the post's author".to_string(),
         "app.bsky.feed.defs#generatorView" => format!("❝ feed: {}", name("/displayName")),
         "app.bsky.graph.defs#listView" => format!("❝ list: {}", name("/name")),
+        "app.bsky.graph.defs#starterPackViewBasic" => {
+            format!("❝ starter pack: {}", name("/record/name"))
+        }
         _ => match record.pointer("/author/handle").and_then(|h| h.as_str()) {
             Some(handle) => {
                 let said = name("/value/text");
@@ -3115,6 +3118,27 @@ mod tests {
             screen.contains("quoted post from an account you cannot see"),
             "{screen}"
         );
+    }
+
+    /// A quote of something that is not a post is named on one line by
+    /// what it is: a feed, a list, or a starter pack.
+    #[rstest::rstest]
+    #[case(json!({"$type": "app.bsky.feed.defs#generatorView", "displayName": "猫🐈‍⬛ Cats"}), "❝ feed: 猫🐈‍⬛ Cats")]
+    #[case(json!({"$type": "app.bsky.graph.defs#listView", "name": "Rustaceans 🦀"}), "❝ list: Rustaceans 🦀")]
+    #[case(
+        json!({"$type": "app.bsky.graph.defs#starterPackViewBasic",
+               "uri": "at://did:plc:bob/app.bsky.graph.starterpack/sp", "cid": "c",
+               "record": {"$type": "app.bsky.graph.starterpack", "name": "👨\u{200d}👩\u{200d}👧 家族 🇯🇵"},
+               "creator": {"did": "did:plc:bob", "handle": "bob.test"}}),
+        "❝ starter pack: 👨\u{200d}👩\u{200d}👧 家族 🇯🇵"
+    )]
+    fn a_quote_of_a_feed_a_list_or_a_starter_pack_says_what_it_is(
+        #[case] record: serde_json::Value,
+        #[case] want: &str,
+    ) {
+        let line = quote_line(&record, 80, &THEMES[0]);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, want);
     }
 
     /// The actions list offers D only where it works: on a post of your own.
