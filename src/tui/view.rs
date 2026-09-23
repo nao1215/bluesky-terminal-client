@@ -65,6 +65,13 @@ const THEME_ROWS: usize = 10;
 const ERROR_W: u16 = 76;
 /// Size of a picture's thumbnail in the composer, in cells.
 const THUMB: (u16, u16) = (14, 5);
+/// Smallest terminal the client draws in, in cells. The rows are the tab
+/// bar, the key hints, the status line, and one whole post under them; the
+/// columns are the selection marker, an avatar, and enough of a post to
+/// read. Below either bound the screen would be shreds of all of them with
+/// nothing to say why, so it says why instead.
+const MIN_W: u16 = 24;
+const MIN_H: u16 = 8;
 
 /// Draw the whole UI.
 pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
@@ -74,6 +81,13 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     // Every cell starts in the theme's colors, so a theme with its own
     // background covers the whole terminal, not only the cells with text.
     frame.render_widget(Block::new().style(t.base()), area);
+    if area.width < MIN_W || area.height < MIN_H {
+        // Nothing of the client is drawn, so a video would decode pictures
+        // that never reach the screen.
+        images.stop_video();
+        draw_too_small(frame, area, &t);
+        return;
+    }
     if let Some(form) = &app.login {
         draw_login(frame, area, form, &t);
         return;
@@ -223,6 +237,28 @@ fn draw_viewer(
         ))
     };
     frame.render_widget(Paragraph::new(vec![Line::from(head), alt]), caption);
+}
+
+/// The screen for a terminal too small for the client: what is wrong, and
+/// the size to reach. The numbers are there so the window can be dragged
+/// until they meet, rather than guessed at.
+fn draw_too_small(frame: &mut Frame, area: Rect, t: &Theme) {
+    let w = usize::from(area.width).max(1);
+    let mut lines: Vec<Line> = wrap("Terminal too small", w)
+        .into_iter()
+        .map(|l| Line::styled(l, t.accent().bold()).centered())
+        .collect();
+    let size = format!("{MIN_W}x{MIN_H} needed, now {}x{}", area.width, area.height);
+    lines.extend(wrap(&size, w).into_iter().map(|l| Line::raw(l).centered()));
+    let h = lines.len() as u16;
+    frame.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            y: area.y + area.height.saturating_sub(h) / 2,
+            height: h.min(area.height),
+            ..area
+        },
+    );
 }
 
 /// An error in a box in the middle of the screen, over everything, where it
@@ -2215,7 +2251,7 @@ mod tests {
             "likeCount": 3,
         }))
         .unwrap();
-        for width in 12u16..=80 {
+        for width in MIN_W..=80 {
             let (mut app, _) = App::new(Some(session()), "x");
             app.handle_event(Event::Timeline(Ok(vec![post.clone()].into())));
             let rows = cells(&mut app, width, 24);
@@ -2298,6 +2334,39 @@ mod tests {
         let (mut app, _) = App::new(Some(session()), "x");
         app.handle_event(Event::Timeline(Ok(vec![].into())));
         assert!(render(&mut app, 80, 10).contains("No posts from accounts you follow"));
+    }
+
+    #[test]
+    fn a_terminal_below_the_minimum_says_so_and_gives_both_sizes() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
+        let small = render(&mut app, 23, 7);
+        assert!(small.contains("Terminal too small"), "{small}");
+        assert!(small.contains("24x8 needed, now 23x7"), "{small}");
+        // Only the notice: no shreds of the tabs, the posts, or the hints.
+        assert!(!small.contains("Timeline"), "{small}");
+        assert!(!small.contains("post number"), "{small}");
+        assert!(!small.contains("? help"), "{small}");
+        // One cell short in either direction is still too small.
+        assert!(render(&mut app, 24, 7).contains("Terminal too small"));
+        assert!(render(&mut app, 23, 8).contains("Terminal too small"));
+        // At the minimum the client is drawn.
+        let ok = render(&mut app, 24, 8);
+        assert!(!ok.contains("Terminal too small"), "{ok}");
+        assert!(ok.contains("post number 0"), "{ok}");
+    }
+
+    #[test]
+    fn the_notice_replaces_the_login_form_too_and_fits_the_narrowest_screen() {
+        let (mut login, _) = App::new(None, "x");
+        let small = render(&mut login, 20, 7);
+        assert!(small.contains("Terminal too small"), "{small}");
+        assert!(!small.contains("Handle"), "{small}");
+        // Narrower than the words: they wrap instead of being cut off.
+        let thin = render(&mut login, 9, 6);
+        assert!(thin.contains("Terminal"), "{thin}");
+        assert!(thin.contains("small"), "{thin}");
+        assert!(thin.contains("now 9x6"), "{thin}");
     }
 
     #[test]

@@ -51,6 +51,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 - Pictures and videos full screen, played, and saved to disk.
 - 42 color themes, Bluesky's own colors by default.
 - The keys that work where you are are always on the bottom row; `?` lists them all.
+- A terminal smaller than 24x8 cells says so, and names the size it needs and the size it has, instead of drawing a screen too cramped to read.
 
 ## Pictures and videos
 

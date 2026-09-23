@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- A terminal smaller than 24 columns by 8 rows shows what size bsky needs and what size the terminal is, instead of a screen with shreds of the tabs, a post, and the key hints on it. The client comes back as soon as the window is made bigger.
+
 ## [0.2.0] - 2026-09-23
 
 ### Changed
