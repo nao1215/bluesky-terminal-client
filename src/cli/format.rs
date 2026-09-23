@@ -163,6 +163,37 @@ pub fn account_line(p: &Profile) -> String {
     format!("{}{following}  {}\n", who(p), one_line(&p.did))
 }
 
+/// A list: its name, what it is for and how many are in it, its
+/// description, its at:// URI.
+pub fn list(v: &serde_json::Value) -> String {
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
+    let purpose = match s("purpose").rsplit('#').next().unwrap_or("") {
+        "curatelist" => "curation list",
+        "modlist" => "moderation list",
+        "referencelist" => "reference list",
+        other => other,
+    };
+    let mut head = one_line(s("name"));
+    if !purpose.is_empty() {
+        head.push_str(&format!(" · {}", one_line(purpose)));
+    }
+    if let Some(n) = v.get("listItemCount").and_then(|n| n.as_u64()) {
+        head.push_str(&format!(
+            " · {n} {}",
+            if n == 1 { "member" } else { "members" }
+        ));
+    }
+    let mut out = format!("{head}\n");
+    for line in plain(s("description"))
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+    {
+        out.push_str(&format!("{line}\n"));
+    }
+    out.push_str(&format!("{}\n", one_line(s("uri"))));
+    out
+}
+
 /// A profile.
 pub fn profile(p: &Profile) -> String {
     let mut out = format!("{}\n{}\n", who(p), one_line(&p.did));
@@ -366,6 +397,24 @@ mod tests {
         );
         assert_eq!(account_line(&prof).lines().count(), 1);
         assert!(convo(&c, "did:plc:me").starts_with("Al ice @alice.test\n"));
+    }
+
+    #[test]
+    fn a_list_says_what_it_is_for_and_how_many_are_in_it() {
+        let v = json!({
+            "uri": "at://did:plc:me/app.bsky.graph.list/l1", "name": "Rust 🦀 仲間",
+            "purpose": "app.bsky.graph.defs#curatelist", "listItemCount": 12,
+            "description": "People who write Rust\n\n👨\u{200d}👩\u{200d}👧 and friends"
+        });
+        assert_eq!(
+            list(&v),
+            "Rust 🦀 仲間 · curation list · 12 members\n\
+             People who write Rust\n\
+             👨\u{200d}👩\u{200d}👧 and friends\n\
+             at://did:plc:me/app.bsky.graph.list/l1\n"
+        );
+        let one = json!({"uri": "at://x", "name": "Mods", "purpose": "app.bsky.graph.defs#modlist", "listItemCount": 1});
+        assert_eq!(list(&one), "Mods · moderation list · 1 member\nat://x\n");
     }
 
     #[test]

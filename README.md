@@ -117,7 +117,7 @@ bsky search rust --json | jq -r .uri       # the server's own objects, one per l
 bsky like at://did:plc:.../app.bsky.feed.post/3abc
 ```
 
-`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, mute, unmute, mutes, block, unblock, blocks, delete, chat, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
+`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, likes, reposts, lists, list, post, like, unlike, repost, unrepost, follow, unfollow, mute, unmute, mutes, block, unblock, blocks, delete, chat, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
 
 ## Keys
 
@@ -180,7 +180,8 @@ Two other clients that run in a terminal, each good at different things. The tab
 | Direct messages | Yes | No | Yes |
 | Posting | Text, pictures, video, reply, quote | Text, pictures, quote | Text, pictures, video, reply, quote |
 | Mute and block | Yes | No | Yes |
-| Report, lists | No | No | Yes |
+| Lists | Yes | No | Yes |
+| Report | No | No | Yes |
 | App passwords, invite codes | No | No | Yes |
 | JSON output | Every command | No | Most commands |
 | Key bindings | Fixed | Set in a TOML file | Not applicable |

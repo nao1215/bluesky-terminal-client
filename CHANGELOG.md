@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Added
 
 - Mute and block accounts. `M` mutes the author of the selected post, or the account whose profile is shown, and `M` again unmutes; `B` blocks after a `y` that confirms it, and `B` again unblocks. Their posts and notifications leave the lists on screen at once, and a profile says "muted" or "blocked". Both are in the `.` list with what they would do now. On the command line: `bsky mute`, `unmute`, `mutes`, `block`, `unblock` and `blocks`.
+- `bsky likes POST` and `bsky reposts POST` print who liked and who reposted a post; `bsky lists [ACTOR]` prints the lists an account made (name, purpose, number of members, description, URI), and `bsky list LIST` a list's members. A list is named by its at:// URI or its bsky.app address.
 
 ### Changed
 
@@ -22,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `bsky timeline -n N` printed fewer than N posts when a page was mostly reposts, which are left out. It reads the next pages until it has N, or there are no more.
 - After `m` on a profile, moving to another tab or a thread before the conversation came still switched to the Chat tab and marked the conversation read. It opens only while the profile is still shown; otherwise it waits on the Chat tab.
 - The question `x` asks on the Columns tab or in the account list survived the session expiring: after logging in again, the first `y` removed the column or logged the account out. It is called off, as `D`'s is.
+- `bsky delete`, `like` and the other commands took an at:// URI with a trailing slash, a query or a fragment as a different record key, and the server refused it. What follows the record key is dropped.
 
 ## [0.4.0] - 2026-09-24
 
