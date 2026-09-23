@@ -100,6 +100,68 @@ scenarios:
       - assert:
           image: { path: downloads/full2.png, width: 100, height: 100 }
 
+  # What d saves is named by what it is, not by the address the post
+  # gives: a picture at an address ending in .exe is saved as the picture
+  # it is, and bytes that are no picture are not saved at all.
+  - name: d saves a picture as what it is and refuses what is not a picture
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/x1
+                    cid: cid-x1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Two odd pictures", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/setup.exe", fullsize: "${api.url}/img/setup.exe", alt: "a picture with a program's name", aspectRatio: { width: 1, height: 1 } }
+                        - { thumb: "${api.url}/img/tool.exe", fullsize: "${api.url}/img/tool.exe", alt: "not a picture", aspectRatio: { width: 1, height: 1 } }
+          - { method: GET, path: /img/setup.exe, body_file: testdata/avatar-alice.png, header: { Content-Type: application/octet-stream } }
+          - { method: GET, path: /img/tool.exe, body: "MZ this is a program, not a picture", header: { Content-Type: application/octet-stream } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Two odd pictures"
+            - send: " "
+            - expect_screen:
+                contains: ["1/2", "a picture with a program's name"]
+            - send: d
+            - expect_screen:
+                matches: 'saved .+downloads[/\\]setup\.png'
+            - send: l
+            - expect_screen:
+                contains: ["2/2", "not a picture"]
+            - send: d
+            - expect_screen:
+                contains: [" Error ", "tool.exe is not a picture bsky can save; nothing was written"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: " Error "
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Two odd pictures"
+                not_contains: "2/2"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          dir: { path: downloads, count: 1, contains: [setup.png] }
+      - assert:
+          image: { path: downloads/setup.png, width: 100, height: 100 }
+
   - name: space plays a post's video, r plays it again, and esc stops it
     mock_servers:
       - name: api
