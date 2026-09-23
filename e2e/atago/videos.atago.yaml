@@ -65,7 +65,7 @@ scenarios:
     steps:
       - &session
         fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - fixture: { file: media/clip.mp4, from: testdata/clip.mp4 }

@@ -28,7 +28,7 @@ Or download a binary for Linux (x86_64, arm64), macOS (Intel, Apple silicon), or
 
 ## Try it
 
-Run `bsky` and log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them.
+Run `bsky` and log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them. Several accounts can be logged in: `A` lists them, switches between them and logs in another.
 
 Pictures and videos need a terminal that can draw images:
 
@@ -109,6 +109,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `/` | Search (`t` switches posts and accounts) |
 | `e` `s` | Edit your profile, settings (on your own Profile tab) |
 | `T` | Themes |
+| `A` | Accounts: switch, log in another, log out |
 | `R` | Refresh |
 | `?` `q` | Help, quit |
 
@@ -121,6 +122,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | Variable | Meaning |
 |----------|---------|
 | `BSKY_SERVICE` | PDS to log in to (default `https://bsky.social`; also `--service`) |
+| `BSKY_ACCOUNT` | Account to use for this run, by handle or DID, without changing the one in use (also `-a`) |
 | `BSKY_CONFIG_DIR` | Where `session.json` and `settings.json` live (default `~/.config/bsky` and the platform equivalents) |
 | `BSKY_CACHE_DIR` | Where downloaded pictures are kept between runs; `off` keeps none |
 | `BSKY_DOWNLOAD_DIR` | Where `d` saves (default `Downloads/bsky`) |

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- Several accounts can be logged in. `A` lists them with the one in use marked, switches to another (its timeline, notifications and profile, nothing of the one before), logs in another, and logs one out after a `y`. `bsky -a <handle>` (or `BSKY_ACCOUNT`) starts on an account without changing the one in use, `bsky logout` logs out the one in use or the one `-a` names, and `bsky logout --all` every one. Each account's tokens are in a file of their own under `accounts/` in the config folder; the `session.json` of earlier versions becomes the first account the first time this version starts, and an earlier version started afterwards finds no login.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

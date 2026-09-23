@@ -91,7 +91,7 @@ scenarios:
             json: { uri: "at://did:plc:me/app.bsky.feed.like/l9", cid: "cid-l9" }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -203,7 +203,7 @@ scenarios:
             json: { uri: "at://did:plc:me/app.bsky.feed.like/l9", cid: "cid-l9" }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -280,7 +280,7 @@ scenarios:
             json: { uri: "at://did:plc:me/app.bsky.feed.like/l8", cid: "cid-l8" }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -345,7 +345,7 @@ scenarios:
             json: { error: "NotFound", message: "Post not found" }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
