@@ -63,6 +63,9 @@ const MAX_HINT_ROWS: u16 = 3;
 const THEME_ROWS: usize = 10;
 /// Widest the error box gets, in cells.
 const ERROR_W: u16 = 76;
+/// Widest the help box gets, in cells, and the column its keys take.
+const HELP_W: u16 = 64;
+const HELP_KEYS: usize = 18;
 /// Size of a picture's thumbnail in the composer, in cells.
 const THUMB: (u16, u16) = (14, 5);
 /// Smallest terminal the client draws in, in cells. The rows are the tab
@@ -1559,8 +1562,14 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
     // A row of thumbnails, then a line per picture for its alt text.
     let pics_h = if n > 0 { THUMB.1 + n } else { 0 };
     let inner = popup(frame, area, 72, 14 + pics_h, &title, t);
+    let quote_h = if c.reply.is_some() { 2 } else { 0 };
+    // On a box too short for all of it, the pictures take everything left
+    // after the quote, one row of text, and the footer. Asking for more
+    // than the box has left them nothing at all, so what the post would
+    // send was not on the screen anywhere.
+    let pics_h = pics_h.min(inner.height.saturating_sub(quote_h + 2));
     let [quote, text, pics, foot] = Layout::vertical([
-        Constraint::Length(if c.reply.is_some() { 2 } else { 0 }),
+        Constraint::Length(quote_h),
         Constraint::Min(1),
         Constraint::Length(pics_h),
         Constraint::Length(1),
@@ -1626,10 +1635,22 @@ fn draw_attachments(
     typing: bool,
     t: &Theme,
 ) {
-    // No thumbnails behind the browser (they would only cost encodes), nor
-    // when the terminal is too low to give them their rows.
-    let thumbs = c.browser.is_none() && area.height >= THUMB.1 + c.media.len() as u16;
-    for (i, a) in c.media.iter().enumerate() {
+    let n = c.media.len() as u16;
+    // Room for a strip of thumbnails above a line per picture.
+    let room = area.height >= THUMB.1 + n;
+    // No thumbnails behind the browser (they would only cost encodes), but
+    // their rows stay where they are, so the list does not jump when the
+    // browser opens and closes.
+    let thumbs = c.browser.is_none() && room;
+    // Where there is no room the strip is not kept empty either: the names
+    // start at the top of the area instead of below a strip that is not
+    // drawn, which put them past the bottom of the box.
+    let top = if room { THUMB.1 } else { 0 };
+    let rows = area.height.saturating_sub(top);
+    // Fewer rows than pictures: the last row counts the ones left out, so
+    // the post never carries a picture the screen does not mention.
+    let shown = if n > rows { rows.saturating_sub(1) } else { n };
+    for (i, a) in c.media.iter().enumerate().take(usize::from(shown)) {
         let i16 = i as u16;
         let x = area.x + 1 + i16 * (THUMB.0 + 1);
         if thumbs && x + THUMB.0 <= area.right() {
@@ -1642,7 +1663,7 @@ fn draw_attachments(
             draw_media_box(frame, r, &a.path, a.info, images, t);
         }
         let row = Rect {
-            y: area.y + THUMB.1 + i16,
+            y: area.y + top + i16,
             height: 1,
             ..area
         };
@@ -1680,6 +1701,16 @@ fn draw_attachments(
         } else {
             draw_single_input(frame, field, &a.alt, focused);
         }
+    }
+    if n > shown {
+        frame.render_widget(
+            Paragraph::new(format!(" and {} more", n - shown)).style(t.dim()),
+            Rect {
+                y: area.y + top + shown,
+                height: 1,
+                ..area
+            },
+        );
     }
 }
 
@@ -2020,6 +2051,13 @@ fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
 }
 
 fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, pictures: bool, t: &Theme) {
+    // The popup is 64 wide where the screen allows it; knowing the width
+    // here decides whether a description fits beside its keys.
+    let inner_w = usize::from(HELP_W.min(area.width).saturating_sub(2));
+    // A description beside the keys needs the key column and enough cells
+    // after it to read a few words. On a narrower screen it goes under
+    // them, wrapped, rather than being cut to nothing.
+    let beside = inner_w >= HELP_KEYS + 20;
     let mut lines: Vec<Line> = Vec::new();
     for (i, (title, keys)) in keys::help(pictures).into_iter().enumerate() {
         if i > 0 {
@@ -2027,13 +2065,30 @@ fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, pictures: bool, t:
         }
         lines.push(Line::styled(format!(" {title}"), Style::new().bold()));
         for (k, d) in keys {
-            lines.push(Line::from(vec![
-                Span::styled(format!("   {k:<15}"), t.accent().bold()),
-                Span::raw(d),
-            ]));
+            if beside {
+                // A description too long for its column wraps onto more
+                // rows under itself instead of being cut off.
+                let mut parts = wrap(d, inner_w - HELP_KEYS).into_iter();
+                let first = parts.next().unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled(format!("   {k:<15}"), t.accent().bold()),
+                    Span::raw(first),
+                ]));
+                lines.extend(parts.map(|l| Line::raw(format!("{:HELP_KEYS$}{l}", ""))));
+                continue;
+            }
+            lines.push(Line::from(vec![Span::styled(
+                format!("   {k}"),
+                t.accent().bold(),
+            )]));
+            lines.extend(
+                wrap(d, inner_w.saturating_sub(5).max(1))
+                    .into_iter()
+                    .map(|l| Line::raw(format!("     {l}"))),
+            );
         }
     }
-    let inner = popup(frame, area, 64, lines.len() as u16 + 3, "Keys", t);
+    let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, "Keys", t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     // Clamp here, where the viewport is known, and write it back so scrolling
     // up after overshooting starts at once.
@@ -2369,6 +2424,212 @@ mod tests {
         assert!(thin.contains("now 9x6"), "{thin}");
     }
 
+    /// Every view, on every screen from the smallest the client draws in up
+    /// to a comfortable one, stays inside the screen and never cuts a
+    /// cluster apart. The narrow screens are where the columns a layout
+    /// reserves (an avatar, a key column, a row of thumbnails) stop fitting.
+    #[test]
+    fn every_view_on_a_cramped_screen_stays_inside_it() {
+        use crossterm::event::{KeyCode, KeyEvent};
+        fn ch(c: char) -> KeyEvent {
+            KeyEvent::from(KeyCode::Char(c))
+        }
+        fn emoji_posts() -> Vec<Post> {
+            (0..4)
+                .map(|i| {
+                    serde_json::from_value(json!({
+                        "uri": format!("at://p/{i}"), "cid": "c",
+                        "author": {"did": "did:plc:a", "handle": "alice.test",
+                                   "displayName": "👨‍👩‍👧‍👦 家族 🇯🇵 Alice"},
+                        "record": {"text": "今日は👍🏽 1️⃣ ❤️ e\u{301}te\u{301} 🇯🇵🇺🇸 https://example.com/a?b=1 @bob.test #タグ",
+                                   "createdAt": "2026-09-22T00:00:00Z"},
+                        "likeCount": 12,
+                        "embed": {"$type": "app.bsky.embed.images#view", "images": [
+                            {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": "山の頂上👨‍👩‍👧", "aspectRatio": {"width": 4, "height": 3}},
+                            {"thumb": "https://t/2", "fullsize": "https://f/2", "alt": ""}
+                        ]}
+                    }))
+                    .unwrap()
+                })
+                .collect()
+        }
+        /// A named view, built from scratch for each size.
+        type State = (&'static str, Box<dyn Fn() -> App>);
+        let states: Vec<State> = vec![
+            (
+                "timeline",
+                Box::new(|| {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a
+                }),
+            ),
+            (
+                "compose",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('n'));
+                    for c in "今日は👍🏽 1️⃣ ❤️ 🇯🇵 a rather long draft that wraps".chars()
+                    {
+                        a.handle_key(ch(c));
+                    }
+                    a
+                }),
+            ),
+            (
+                "compose+pictures",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('n'));
+                    let Some(Overlay::Compose(c)) = &mut a.overlay else {
+                        panic!()
+                    };
+                    for i in 0..4 {
+                        c.media
+                            .push(crate::tui::app::Attached::new(std::path::PathBuf::from(
+                                format!("/tmp/写真👨\u{200d}👩\u{200d}👧{i}.png"),
+                            )));
+                    }
+                    a
+                }),
+            ),
+            (
+                "reply",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('r'));
+                    a
+                }),
+            ),
+            (
+                "help",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('?'));
+                    a
+                }),
+            ),
+            (
+                "themes",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('T'));
+                    a
+                }),
+            ),
+            (
+                "viewer",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+                    a
+                }),
+            ),
+            (
+                "thread",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.handle_key(ch('v'));
+                    a
+                }),
+            ),
+            (
+                "search",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('2'));
+                    a.handle_key(ch('/'));
+                    for c in "検索👍🏽 word".chars() {
+                        a.handle_key(ch(c));
+                    }
+                    a
+                }),
+            ),
+            (
+                "profile",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('4'));
+                    a
+                }),
+            ),
+            (
+                "login",
+                Box::new(|| {
+                    let (a, _) = App::new(None, "https://bsky.social");
+                    a
+                }),
+            ),
+        ];
+        for (name, make) in &states {
+            for w in [MIN_W, MIN_W + 1, 30, 33, 40, 47, 56] {
+                for h in [MIN_H, MIN_H + 1, 12, 16] {
+                    let mut app = make();
+                    let rows = cells(&mut app, w, h);
+                    for (y, row) in rows.iter().enumerate() {
+                        let shown: usize = row.iter().map(|c| c.width().max(1)).sum();
+                        assert!(shown <= w as usize, "{name} {w}x{h} row {y}: {row:?}");
+                        for c in row {
+                            assert!(
+                                !is_fragment(c),
+                                "{name} {w}x{h} row {y}: cut {c:?} in {row:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The key column is 18 cells wide, which leaves nothing for the
+    /// description on a narrow screen: the help was the one screen that
+    /// could not be read where it is needed most.
+    #[test]
+    fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(1).into())));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('?'),
+        ));
+        let narrow = render(&mut app, MIN_W, 16);
+        assert!(narrow.contains("1 2 3 4"), "{narrow}");
+        // The words are whole and on their own rows, not cut to four cells.
+        assert!(narrow.contains("Timeline,"), "{narrow}");
+        assert!(narrow.contains("Search,"), "{narrow}");
+        assert!(!narrow.contains("Time\n"), "{narrow}");
+        // The two columns come back where they fit, and a description too
+        // long for its column wraps rather than losing its end.
+        let forty = render(&mut app, 40, 16);
+        assert!(
+            forty.contains("1 2 3 4        Timeline, Search,"),
+            "{forty}"
+        );
+        assert!(
+            forty
+                .lines()
+                .any(|l| l.contains("Notifications,") && !l.contains("1 2 3 4")),
+            "{forty}"
+        );
+        assert!(
+            forty
+                .lines()
+                .any(|l| l.trim_matches('│').trim() == "Profile"),
+            "{forty}"
+        );
+        let wide = render(&mut app, 80, 24);
+        assert!(
+            wide.contains("1 2 3 4        Timeline, Search, Notifications, Profile"),
+            "{wide}"
+        );
+    }
+
     #[test]
     fn tiny_terminals_do_not_panic() {
         let (mut app, _) = App::new(Some(session()), "x");
@@ -2463,7 +2724,7 @@ mod tests {
                     }),
                 ] {
                     app.overlay = overlay;
-                    for (w, h) in [(100, 30), (20, 6), (1, 1)] {
+                    for (w, h) in [(100, 30), (MIN_W, MIN_H), (20, 6), (1, 1)] {
                         render(&mut app, w, h);
                     }
                 }
@@ -2747,6 +3008,60 @@ mod tests {
         measured.sort_unstable();
         measured.dedup();
         assert_eq!(measured, [9_996, 9_997, 9_998, 9_999]);
+    }
+
+    /// The composer on the smallest screen the client draws in: the box has
+    /// no room for the thumbnails, and the names of the pictures that will
+    /// be sent must take their rows rather than fall off the bottom.
+    #[test]
+    fn a_short_composer_still_lists_every_picture_it_would_send() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(1).into())));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('n'),
+        ));
+        let Some(Overlay::Compose(c)) = &mut app.overlay else {
+            panic!()
+        };
+        for i in 0..4 {
+            c.media.push(crate::tui::app::Attached::new(
+                dir.path()
+                    .join(format!("写真👨\u{200d}👩\u{200d}👧{i}.png")),
+            ));
+        }
+        // The cells a wide character covers are skipped, so the names read
+        // as the terminal shows them.
+        let screen = render_text_only(&mut app, MIN_W, MIN_H);
+        for i in 1..=4 {
+            assert!(
+                screen.contains(&format!(" {i} 写真👨\u{200d}👩\u{200d}👧{}", i - 1)),
+                "{i}: {screen}"
+            );
+        }
+    }
+
+    /// A reply loses two more rows to the post it answers, so not every
+    /// name fits. The ones that do not are counted rather than dropped.
+    #[test]
+    fn a_composer_too_short_for_every_name_counts_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(1).into())));
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('r'),
+        ));
+        let Some(Overlay::Compose(c)) = &mut app.overlay else {
+            panic!()
+        };
+        for i in 0..4 {
+            c.media.push(crate::tui::app::Attached::new(
+                dir.path().join(format!("pic{i}.png")),
+            ));
+        }
+        let screen = render(&mut app, MIN_W, MIN_H);
+        assert!(screen.contains(" 1 pic0.png"), "{screen}");
+        assert!(screen.contains("and 3 more"), "{screen}");
     }
 
     #[test]
