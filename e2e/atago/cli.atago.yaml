@@ -802,3 +802,107 @@ scenarios:
           exit_code: 0
           stdout:
             equals: "already muted @alice.test\n"
+
+  - name: likes and reposts list who liked and reposted a post named by its bsky.app address
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getLikes
+            json:
+              likes:
+                - { createdAt: "2026-09-20T10:00:00.000Z", indexedAt: "2026-09-20T10:00:00.000Z", actor: { did: "did:plc:bob", handle: "bob.test", displayName: "Bob 🇯🇵" } }
+                - { createdAt: "2026-09-20T09:00:00.000Z", indexedAt: "2026-09-20T09:00:00.000Z", actor: { did: "did:plc:erin", handle: "erin.test" } }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getRepostedBy
+            json:
+              repostedBy:
+                - { did: "did:plc:carol", handle: "carol.test", displayName: "家族👨‍👩‍👧 Carol" }
+    steps:
+      - *session
+      - run:
+          command: bsky likes https://bsky.app/profile/alice.test/post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "Bob 🇯🇵 @bob.test  did:plc:bob\n@erin.test  did:plc:erin\n"
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getLikes, query: { name: uri, equals: "at://did:plc:alice/app.bsky.feed.post/p1" } }
+      - run:
+          command: bsky likes at://did:plc:alice/app.bsky.feed.post/p1/ --json -n 1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.actor.handle", equals: "bob.test" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getLikes, query: { name: uri, equals: "at://did:plc:alice/app.bsky.feed.post/p1" } }
+      - run:
+          command: bsky reposts at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "家族👨‍👩‍👧 Carol @carol.test  did:plc:carol\n"
+      - run:
+          command: bsky likes https://bsky.app/profile/alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not a post"
+
+  - name: lists prints the lists an account made, and list prints a list's members
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getLists
+            json:
+              lists:
+                - { uri: "at://did:plc:alice/app.bsky.graph.list/l1", cid: "c", name: "Rust 🦀 仲間", purpose: "app.bsky.graph.defs#curatelist", listItemCount: 2, description: "People who write Rust", indexedAt: "2026-09-20T10:00:00.000Z", creator: { did: "did:plc:alice", handle: "alice.test" } }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getList
+            json:
+              list: { uri: "at://did:plc:alice/app.bsky.graph.list/l1", cid: "c", name: "Rust 🦀 仲間", purpose: "app.bsky.graph.defs#curatelist", indexedAt: "2026-09-20T10:00:00.000Z", creator: { did: "did:plc:alice", handle: "alice.test" } }
+              items:
+                - { uri: "at://did:plc:alice/app.bsky.graph.listitem/i1", subject: { did: "did:plc:bob", handle: "bob.test", displayName: "Bob" } }
+                - { uri: "at://did:plc:alice/app.bsky.graph.listitem/i2", subject: { did: "did:plc:erin", handle: "erin.test" } }
+    steps:
+      - *session
+      - run:
+          command: bsky lists alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              Rust 🦀 仲間 · curation list · 2 members
+              People who write Rust
+              at://did:plc:alice/app.bsky.graph.list/l1
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.getLists, query: { name: actor, equals: "did:plc:alice" } }
+      - run:
+          command: bsky list https://bsky.app/profile/alice.test/lists/l1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "Bob @bob.test  did:plc:bob\n@erin.test  did:plc:erin\n"
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.getList, query: { name: list, equals: "at://did:plc:alice/app.bsky.graph.list/l1" } }
+      - run:
+          command: bsky list at://did:plc:alice/app.bsky.graph.list/l1 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 1
+            matches: '"subject":\{.*"handle":"bob.test"' 

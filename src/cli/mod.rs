@@ -88,6 +88,30 @@ pub enum Command {
         #[arg(long, value_name = "POST")]
         quote: Option<String>,
     },
+    /// The accounts that liked a post, newest first.
+    Likes {
+        post: String,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// The accounts that reposted a post, newest first.
+    Reposts {
+        post: String,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// The lists ACTOR made (you by default).
+    Lists {
+        actor: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// The members of a list: its at:// URI or its bsky.app address.
+    List {
+        list: String,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Like a post.
     Like { post: String },
     /// Remove your like of a post.
@@ -200,6 +224,10 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
             reply,
             quote,
         } => post(ctx, o, &text, images, alts, video, reply, quote),
+        Command::Likes { post, limit } => likes(ctx, o, &post, limit),
+        Command::Reposts { post, limit } => reposts(ctx, o, &post, limit),
+        Command::Lists { actor, limit } => lists(ctx, o, actor.as_deref(), limit),
+        Command::List { list, limit } => list_members(ctx, o, &list, limit),
         Command::Like { post } => like(ctx, o, &post, true),
         Command::Unlike { post } => like(ctx, o, &post, false),
         Command::Repost { post } => repost(ctx, o, &post, true),
@@ -399,11 +427,18 @@ fn resolve_actor(client: &Client, actor: &str) -> Result<String> {
     client.resolve_handle(a)
 }
 
+/// An at:// URI as given, without what a copied address can carry after
+/// the record key: a trailing slash, a query, a fragment.
+fn bare_at_uri(uri: &str) -> String {
+    let uri = uri.split(['?', '#']).next().unwrap_or(uri);
+    uri.trim_end_matches('/').to_string()
+}
+
 /// A post's at:// URI from its URI or its bsky.app address.
 fn post_uri(client: &Client, post: &str) -> Result<String> {
     let p = post.trim();
     if p.starts_with("at://") {
-        return Ok(p.to_string());
+        return Ok(bare_at_uri(p));
     }
     match format::bsky_app_path(p, "post") {
         Some((actor, rkey)) => {
@@ -510,6 +545,111 @@ fn print_profiles(ctx: &Ctx, out: &mut dyn Write, raw: &[Value]) -> Result<()> {
         if ctx.json {
             json_line(out, v)?;
         } else if let Ok(p) = serde_json::from_value::<Profile>(v.clone()) {
+            text(out, &format::account_line(&p))?;
+        }
+    }
+    Ok(())
+}
+
+fn likes(ctx: &Ctx, out: &mut dyn Write, post: &str, limit: usize) -> Result<()> {
+    let client = ctx.client()?;
+    let uri = post_uri(&client, post)?;
+    let raw = collect(
+        &client,
+        "app.bsky.feed.getLikes",
+        &[("uri", &uri)],
+        "likes",
+        limit,
+    )?;
+    // Each like is {actor, createdAt}: the JSON keeps it whole, the text
+    // shows who.
+    for v in &raw {
+        if ctx.json {
+            json_line(out, v)?;
+        } else if let Some(p) = v
+            .get("actor")
+            .and_then(|a| serde_json::from_value::<Profile>(a.clone()).ok())
+        {
+            text(out, &format::account_line(&p))?;
+        }
+    }
+    Ok(())
+}
+
+fn reposts(ctx: &Ctx, out: &mut dyn Write, post: &str, limit: usize) -> Result<()> {
+    let client = ctx.client()?;
+    let uri = post_uri(&client, post)?;
+    let raw = collect(
+        &client,
+        "app.bsky.feed.getRepostedBy",
+        &[("uri", &uri)],
+        "repostedBy",
+        limit,
+    )?;
+    print_profiles(ctx, out, &raw)
+}
+
+fn lists(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>, limit: usize) -> Result<()> {
+    let client = ctx.client()?;
+    let actor = match actor {
+        Some(a) => resolve_actor(&client, a)?,
+        None => client.did().to_string(),
+    };
+    let raw = collect(
+        &client,
+        "app.bsky.graph.getLists",
+        &[("actor", &actor)],
+        "lists",
+        limit,
+    )?;
+    for (i, v) in raw.iter().enumerate() {
+        if ctx.json {
+            json_line(out, v)?;
+        } else {
+            if i > 0 {
+                text(out, "\n")?;
+            }
+            text(out, &format::list(v))?;
+        }
+    }
+    Ok(())
+}
+
+/// A list's at:// URI from its URI or its bsky.app address.
+fn list_uri(client: &Client, list: &str) -> Result<String> {
+    let l = list.trim();
+    if l.starts_with("at://") {
+        return Ok(bare_at_uri(l));
+    }
+    match format::bsky_app_path(l, "lists") {
+        Some((actor, rkey)) => {
+            let did = resolve_actor(client, &actor)?;
+            Ok(format!("at://{did}/app.bsky.graph.list/{rkey}"))
+        }
+        None => Err(Error::new(Kind::Usage, format!("{l} is not a list"))
+            .with_hint("give its at:// URI or its https://bsky.app/profile/.../lists/... address")),
+    }
+}
+
+fn list_members(ctx: &Ctx, out: &mut dyn Write, list: &str, limit: usize) -> Result<()> {
+    let client = ctx.client()?;
+    let uri = list_uri(&client, list)?;
+    let raw = collect(
+        &client,
+        "app.bsky.graph.getList",
+        &[("list", &uri)],
+        "items",
+        limit,
+    )?;
+    // Each item is {uri, subject}: the JSON keeps it whole, the text shows
+    // the account.
+    for v in &raw {
+        if ctx.json {
+            json_line(out, v)?;
+        } else if let Some(p) = v
+            .get("subject")
+            .and_then(|a| serde_json::from_value::<Profile>(a.clone()).ok())
+        {
             text(out, &format::account_line(&p))?;
         }
     }
@@ -1010,4 +1150,33 @@ fn chat(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    // A URI copied with what follows the record key names the same record;
+    // the key sent is the record's, not "p9/".
+    #[rstest]
+    #[case(
+        "at://did:plc:me/app.bsky.feed.post/p9",
+        "at://did:plc:me/app.bsky.feed.post/p9"
+    )]
+    #[case(
+        "at://did:plc:me/app.bsky.feed.post/p9/",
+        "at://did:plc:me/app.bsky.feed.post/p9"
+    )]
+    #[case(
+        "at://did:plc:me/app.bsky.feed.post/p9?x=1",
+        "at://did:plc:me/app.bsky.feed.post/p9"
+    )]
+    #[case(
+        "at://did:plc:me/app.bsky.graph.list/l1#top",
+        "at://did:plc:me/app.bsky.graph.list/l1"
+    )]
+    fn an_at_uri_loses_what_follows_its_record_key(#[case] given: &str, #[case] want: &str) {
+        assert_eq!(bare_at_uri(given), want);
+    }
 }
