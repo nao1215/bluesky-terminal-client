@@ -524,6 +524,14 @@ impl Post {
         }
     }
 
+    /// The post on bsky.app, for `at://<did>/app.bsky.feed.post/<rkey>`.
+    pub fn web_url(&self) -> Option<String> {
+        let rest = self.uri.strip_prefix("at://")?;
+        let (did, rkey) = rest.split_once("/app.bsky.feed.post/")?;
+        (!did.is_empty() && !rkey.is_empty() && !rkey.contains('/'))
+            .then(|| format!("https://bsky.app/profile/{did}/post/{rkey}"))
+    }
+
     /// The web links of the post, in order: its link card, then the links in
     /// its text. Only http(s) links; each once.
     pub fn links(&self) -> Vec<String> {
@@ -763,6 +771,22 @@ pub struct XrpcError {
 mod link_tests {
     use super::*;
     use serde_json::json;
+
+    #[rstest::rstest]
+    #[case(
+        "at://did:plc:alice/app.bsky.feed.post/3k",
+        Some("https://bsky.app/profile/did:plc:alice/post/3k")
+    )]
+    #[case("at://did:plc:alice/app.bsky.feed.like/3k", None)]
+    #[case("at://did:plc:alice/app.bsky.feed.post/", None)]
+    #[case("https://bsky.app/x", None)]
+    fn a_post_has_its_page_on_bsky_app(#[case] uri: &str, #[case] want: Option<&str>) {
+        let post = Post {
+            uri: uri.into(),
+            ..Post::default()
+        };
+        assert_eq!(post.web_url().as_deref(), want);
+    }
 
     #[test]
     fn links_come_from_the_card_then_the_text_web_only_and_once() {

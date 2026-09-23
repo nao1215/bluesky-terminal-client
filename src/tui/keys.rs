@@ -153,8 +153,43 @@ pub const HELP: &[Section] = &[
     },
 ];
 
+/// The help as it applies to this terminal. Without pictures there is no
+/// viewer, and `space` opens a post in the web browser instead.
+pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
+    HELP.iter()
+        .filter(|s| pictures || s.title != "Viewer")
+        .map(|s| {
+            let keys = s
+                .keys
+                .iter()
+                .map(|&(k, d)| match (pictures, s.title, k) {
+                    (false, "Posts", "space") => (
+                        k,
+                        "open the post in the web browser: on bsky.app when it has pictures or video, else its link",
+                    ),
+                    (false, "File browser", "j k") => (k, "move; a video is described"),
+                    _ => (k, d),
+                })
+                .collect();
+            (s.title, keys)
+        })
+        .collect()
+}
+
 /// The bindings worth showing under the current view, most useful first.
 pub fn hints(app: &App) -> Vec<Hint> {
+    let mut v = view_hints(app);
+    if !app.pictures {
+        for h in &mut v {
+            if *h == ("space", "view") {
+                h.1 = "open in browser";
+            }
+        }
+    }
+    v
+}
+
+fn view_hints(app: &App) -> Vec<Hint> {
     if app.login.is_some() {
         return vec![
             ("enter", "next / log in"),

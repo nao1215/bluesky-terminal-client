@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- A terminal without kitty graphics, sixel, or iTerm2 inline images gets the client as text instead of being refused with exit status 2. Posts say how many pictures they carry, with their descriptions, or that they have a video; no avatar column is kept and nothing is downloaded to be drawn; `Space` opens the post on bsky.app in the web browser, and the key hints and `?` help say so and leave the viewer out. Exit status 2 now only means bsky was not started in an interactive terminal.
+
 ## [0.1.1] - 2026-09-23
 
 ### Changed

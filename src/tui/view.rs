@@ -111,7 +111,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
                 draw_browser(frame, area, b, images, &t);
             }
         }
-        Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, &t),
+        Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         Some(Overlay::Viewer {
             media,
@@ -420,7 +420,10 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     let right = if app.pending > 0 || images.loading() {
         "loading… ".to_string()
     } else {
-        format!("{} ", protocol_name(images.protocol_type()))
+        match images.shows() {
+            true => format!("{} ", protocol_name(images.protocol_type())),
+            false => "text ".to_string(),
+        }
     };
     // Errors are drawn in the middle of the screen (draw_error); the row
     // keeps the passing news.
@@ -511,6 +514,9 @@ struct PostLines {
     images: Vec<String>,
     /// Rows the images take: enough for the tallest at its box width.
     image_rows: u16,
+    /// Whether an avatar is drawn beside it, which the row must be tall
+    /// enough for.
+    avatar: bool,
     stats: Line<'static>,
 }
 
@@ -539,7 +545,9 @@ impl PostLines {
     /// `me` is the viewer's DID when the post should say whether its author
     /// is followed (a search, a thread); `None` where that goes without
     /// saying (the timeline is only followed accounts, a profile says it once).
-    fn new(post: &Post, width: u16, cell: (u16, u16), me: Option<&str>, t: &Theme) -> Self {
+    /// `cell` is the terminal's cell size in pixels, or `None` when it
+    /// shows no pictures: then a line says what the post carries instead.
+    fn new(post: &Post, width: u16, cell: Option<(u16, u16)>, me: Option<&str>, t: &Theme) -> Self {
         let width = usize::from(width.max(1));
         let record = post.record();
         let time = format_time(record.created_at.as_deref().unwrap_or(&post.indexed_at));
@@ -570,7 +578,17 @@ impl PostLines {
             .collect();
         let mut images = Vec::new();
         let mut rows = 0;
-        if let Some(embed) = &post.embed {
+        if let Some(embed) = &post.embed
+            && cell.is_none()
+        {
+            // The media line names a video with its description.
+            if !matches!(embed, Embed::Video { .. }) {
+                body.extend(embed_lines(embed, width, t));
+            }
+            body.extend(media_line(embed, width, t));
+        } else if let Some(embed) = &post.embed
+            && let Some(cell) = cell
+        {
             body.extend(embed_lines(embed, width, t));
             let shown: Vec<_> = embed.images().into_iter().take(4).collect();
             let box_w = image_box_width(width as u16, shown.len() as u16);
@@ -603,6 +621,7 @@ impl PostLines {
             body,
             images,
             image_rows: rows,
+            avatar: cell.is_some(),
             stats,
         }
     }
@@ -615,6 +634,7 @@ impl PostLines {
             body: Vec::new(),
             images: Vec::new(),
             image_rows: 0,
+            avatar: false,
             stats: Line::default(),
         }
     }
@@ -622,7 +642,8 @@ impl PostLines {
     fn height(&self) -> u16 {
         let ctx = self.context.len() as u16;
         let content = ctx + 2 + self.body.len() as u16 + self.image_rows;
-        content.max(ctx + AVATAR.1) + 1
+        let avatar = if self.avatar { ctx + AVATAR.1 } else { 0 };
+        content.max(avatar) + 1
     }
 }
 
@@ -692,6 +713,43 @@ fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
     Line::from(out)
 }
 
+/// What a post carries, for a terminal that cannot show it: the number of
+/// pictures and their descriptions, or the video's.
+fn media_line(embed: &Embed, width: usize, t: &Theme) -> Option<Line<'static>> {
+    let media = embed.media();
+    let alts = |alt: &str| {
+        let alt = alt.trim();
+        (!alt.is_empty()).then(|| alt.to_string())
+    };
+    let text = match media.first()? {
+        Media::Video { alt, .. } => match alts(alt) {
+            Some(alt) => format!("▶ video: {alt}"),
+            None => "▶ video".to_string(),
+        },
+        Media::Image { .. } => {
+            let described: Vec<String> = media
+                .iter()
+                .filter_map(|m| match m {
+                    Media::Image { alt, .. } => alts(alt),
+                    Media::Video { .. } => None,
+                })
+                .collect();
+            let n = media.len();
+            let what = if n == 1 {
+                "1 picture".to_string()
+            } else {
+                format!("{n} pictures")
+            };
+            if described.is_empty() {
+                format!("▣ {what}")
+            } else {
+                format!("▣ {what}: {}", described.join(" · "))
+            }
+        }
+    };
+    Some(Line::styled(truncate(&text, width), t.dim()))
+}
+
 fn embed_lines(embed: &Embed, width: usize, t: &Theme) -> Vec<Line<'static>> {
     let dim = t.dim();
     match embed {
@@ -731,8 +789,12 @@ fn content_width<T: PostRow>(content: Rect, row: &T) -> u16 {
 }
 
 /// The content column of a list row, right of the marker and avatar.
-fn content_rect(area: Rect) -> Rect {
-    let left = MARK_W + AVATAR.0 + 1;
+fn content_rect(area: Rect, avatars: bool) -> Rect {
+    let left = if avatars {
+        MARK_W + AVATAR.0 + 1
+    } else {
+        MARK_W + 1
+    };
     Rect {
         x: area.x + left.min(area.width),
         width: area.width.saturating_sub(left),
@@ -794,7 +856,7 @@ impl PostRow for ThreadRow {
 fn row_lines<T: PostRow>(
     row: &T,
     width: u16,
-    cell: (u16, u16),
+    cell: Option<(u16, u16)>,
     me: Option<&str>,
     t: &Theme,
 ) -> PostLines {
@@ -821,8 +883,8 @@ fn draw_posts<T: PostRow>(
         empty_message(frame, area, list, empty, t);
         return;
     }
-    let content = content_rect(area);
-    let cell = images.cell_size();
+    let content = content_rect(area, images.shows());
+    let cell = images.shows().then(|| images.cell_size());
     // Lay out only what this frame can need: the posts above the selection
     // that fit with it on screen, then as many as fill the screen. A long,
     // paged list costs no more than a short one.
@@ -1044,7 +1106,7 @@ fn draw_two_line_rows<T>(
         area.height,
         |_| H,
     );
-    let content = content_rect(area);
+    let content = content_rect(area, images.shows());
     let mut y = area.y;
     for (i, item) in list.items.iter().enumerate().skip(list.offset) {
         if y + H > area.bottom() {
@@ -1242,7 +1304,12 @@ fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Image
         frame.render_widget(msg.wrap(ratatui::widgets::Wrap { trim: true }), area);
         return;
     };
-    let text_x = MARK_W + BIG_AVATAR.0 + 2;
+    let big = if images.shows() { BIG_AVATAR } else { (0, 0) };
+    let text_x = if images.shows() {
+        MARK_W + big.0 + 2
+    } else {
+        MARK_W + 1
+    };
     let text_w = area.width.saturating_sub(text_x);
     let desc: Vec<String> = wrap(
         p.description.as_deref().unwrap_or(""),
@@ -1289,7 +1356,7 @@ fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Image
         lines.push(Line::styled("this is you (e to edit)", t.dim()));
     }
     lines.extend(desc.into_iter().map(Line::from));
-    let head_h = (lines.len() as u16).max(BIG_AVATAR.1) + 1;
+    let head_h = (lines.len() as u16).max(big.1) + 1;
     let [head, feed] =
         Layout::vertical([Constraint::Length(head_h), Constraint::Min(1)]).areas(area);
     if let Some(url) = &p.avatar {
@@ -1916,20 +1983,17 @@ fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
     );
 }
 
-fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, t: &Theme) {
+fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, pictures: bool, t: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
-    for (i, section) in keys::HELP.iter().enumerate() {
+    for (i, (title, keys)) in keys::help(pictures).into_iter().enumerate() {
         if i > 0 {
             lines.push(Line::raw(""));
         }
-        lines.push(Line::styled(
-            format!(" {}", section.title),
-            Style::new().bold(),
-        ));
-        for (k, d) in section.keys {
+        lines.push(Line::styled(format!(" {title}"), Style::new().bold()));
+        for (k, d) in keys {
             lines.push(Line::from(vec![
                 Span::styled(format!("   {k:<15}"), t.accent().bold()),
-                Span::raw(*d),
+                Span::raw(d),
             ]));
         }
     }
@@ -2021,6 +2085,64 @@ mod tests {
             "{screen}"
         );
         assert!(screen.contains("esc quit"), "{screen}");
+    }
+
+    fn render_text_only(app: &mut App, w: u16, h: u16) -> String {
+        let mut images = Images::none();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| draw(f, app, &mut images)).unwrap();
+        let buf = term.backend().buffer().clone();
+        // The cells a wide character covers are skipped, so the text reads
+        // as the terminal shows it.
+        (0..h)
+            .map(|y| {
+                let mut row = String::new();
+                let mut x = 0;
+                while x < w {
+                    let sym = buf[(x, y)].symbol();
+                    x += sym.width().max(1) as u16;
+                    row.push_str(sym);
+                }
+                row.trim_end().to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    // Without pictures the text starts where the avatar was, and a line
+    // says what each post carries; descriptions keep their emoji whole.
+    #[test]
+    fn without_pictures_a_post_says_what_it_carries() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.without_pictures();
+        let mut photos = posts(1).remove(0);
+        photos.embed =
+            serde_json::from_value(json!({"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": "家族👨‍👩‍👧 🇯🇵 1️⃣ ❤️"},
+                {"thumb": "https://t/2", "fullsize": "https://f/2", "alt": ""}
+            ]}))
+            .ok();
+        let mut clip = posts(2).remove(1);
+        clip.embed = serde_json::from_value(json!({"$type": "app.bsky.embed.video#view",
+            "playlist": "https://v/p.m3u8", "alt": "a cat"}))
+        .ok();
+        app.handle_event(Event::Timeline(Ok(vec![photos, clip].into())));
+        let screen = render_text_only(&mut app, 80, 24);
+        assert!(screen.contains("▣ 2 pictures: 家族👨‍👩‍👧 🇯🇵 1️⃣ ❤️"), "{screen}");
+        assert!(screen.contains("▶ video: a cat"), "{screen}");
+        // The name starts right after the selection marker and one space.
+        assert!(
+            !screen.contains("▶ video\n"),
+            "the video is named once: {screen}"
+        );
+        assert!(
+            screen.lines().any(|l| l.starts_with("▌  Alice")),
+            "{screen}"
+        );
+        assert!(screen.contains("space open in browser"), "{screen}");
+        // A narrow screen cuts the line as one piece.
+        let narrow = render_text_only(&mut app, 24, 24);
+        assert!(narrow.contains("▣ 2 pictures: 家族👨‍👩‍👧…"), "{narrow}");
     }
 
     #[test]

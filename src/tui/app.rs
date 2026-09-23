@@ -461,6 +461,9 @@ pub struct App {
     /// could not be read, since writing would lose what it holds.
     pub settings_writable: bool,
     pub quit: bool,
+    /// Whether the terminal shows pictures and video. Without them the
+    /// lists are text, and `Space` opens a post's media on bsky.app.
+    pub pictures: bool,
     /// Jobs numbered so far by [`App::stamp`].
     sent: u64,
     /// The numbers of the reads sent and not yet answered.
@@ -570,6 +573,7 @@ impl App {
             settings_to_save: None,
             settings_writable: true,
             quit: false,
+            pictures: true,
             sent: 0,
             reads_out: BTreeSet::new(),
             written: Vec::new(),
@@ -1399,8 +1403,17 @@ impl App {
         }
     }
 
+    /// Run as text, for a terminal that cannot show pictures or video.
+    pub fn without_pictures(&mut self) {
+        self.pictures = false;
+        if self.status.is_none() {
+            self.info("this terminal cannot show pictures; bsky runs without them");
+        }
+    }
+
     /// Open the selected post's pictures (or video) full screen; a post
-    /// with none but a link opens the link.
+    /// with none but a link opens the link. A terminal that cannot show
+    /// them opens the post on bsky.app, where they can be seen.
     fn open_viewer(&mut self) -> Vec<Job> {
         let Some(post) = self.post_to_view() else {
             return Vec::new();
@@ -1408,6 +1421,12 @@ impl App {
         let media = post.embed.as_ref().map(|e| e.media()).unwrap_or_default();
         if media.is_empty() {
             return self.open_link();
+        }
+        if !self.pictures {
+            return match post.web_url() {
+                Some(url) => vec![Job::OpenLink(url)],
+                None => self.open_link(),
+            };
         }
         self.overlay = Some(Overlay::Viewer {
             media,
@@ -3276,6 +3295,73 @@ mod tests {
         v["parent"] = node("at://parent");
         v["replies"] = json!(replies.iter().map(|r| node(r)).collect::<Vec<_>>());
         serde_json::from_value(v).unwrap()
+    }
+
+    fn with_pictures(uri: &str, embed: serde_json::Value) -> Post {
+        let mut p = post(uri, "did:plc:alice", true);
+        p.embed = serde_json::from_value(embed).ok();
+        p
+    }
+
+    // A terminal that cannot show pictures has no viewer: space opens the
+    // post on bsky.app, where they can be seen, and a link as before.
+    #[test]
+    fn without_pictures_space_opens_the_post_in_the_browser() {
+        let mut app = logged_in();
+        app.without_pictures();
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("cannot show pictures")),
+            "{:?}",
+            app.status
+        );
+        app.handle_event(Event::Timeline(Ok(vec![
+            with_pictures(
+                "at://did:plc:alice/app.bsky.feed.post/p1",
+                json!({"$type": "app.bsky.embed.images#view", "images": [{"thumb": "https://t/1", "fullsize": "https://f/1", "alt": ""}]}),
+            ),
+            with_pictures(
+                "at://did:plc:alice/app.bsky.feed.post/p2",
+                json!({"$type": "app.bsky.embed.external#view", "external": {"uri": "https://example.com/a", "title": "A", "description": ""}}),
+            ),
+        ]
+        .into())));
+        let jobs = app.handle_key(key(' '));
+        assert!(
+            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://bsky.app/profile/did:plc:alice/post/p1"),
+            "{jobs:?}"
+        );
+        assert!(app.overlay.is_none());
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(key(' '));
+        assert!(
+            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://example.com/a"),
+            "{jobs:?}"
+        );
+    }
+
+    #[test]
+    fn without_pictures_the_keys_say_what_space_does() {
+        let mut app = logged_in();
+        assert!(crate::tui::keys::hints(&app).contains(&("space", "view")));
+        app.without_pictures();
+        let hints = crate::tui::keys::hints(&app);
+        assert!(hints.contains(&("space", "open in browser")), "{hints:?}");
+        assert!(!hints.contains(&("space", "view")));
+        let help = crate::tui::keys::help(false);
+        assert!(help.iter().all(|(title, _)| *title != "Viewer"));
+        let posts = &help.iter().find(|(t, _)| *t == "Posts").unwrap().1;
+        assert!(
+            posts
+                .iter()
+                .any(|(k, d)| *k == "space" && d.contains("web browser"))
+        );
+        assert!(
+            crate::tui::keys::help(true)
+                .iter()
+                .any(|(t, _)| *t == "Viewer")
+        );
     }
 
     #[test]

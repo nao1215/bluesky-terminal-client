@@ -39,10 +39,11 @@ enum Command {
 }
 
 const AFTER_HELP: &str = "\
-The terminal must display images: kitty graphics, sixel, or iTerm2 inline
-images. bsky exits with status 2 on a terminal that supports none of them.
+Pictures and videos are drawn with kitty graphics, sixel, or iTerm2 inline
+images. On a terminal that supports none of them bsky runs as text, and
+Space opens a post's pictures or video on bsky.app in the web browser.
 
-Exit status: 0 success, 1 usage error, 2 terminal unsupported,
+Exit status: 0 success, 1 usage error, 2 not an interactive terminal,
 3 local file error. Network and server errors are shown in the client and
 do not end it.";
 

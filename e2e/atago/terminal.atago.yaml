@@ -19,7 +19,7 @@ suite:
   name: bsky terminal and exit codes
 
 scenarios:
-  - name: help documents the image requirement and the exit codes
+  - name: help documents the image protocols, the text fallback, and the exit codes
     steps:
       - run:
           command: bsky --help
@@ -30,8 +30,8 @@ scenarios:
           stdout:
             contains:
               - "kitty graphics, sixel, or iTerm2"
-              - "exits with status 2 on a terminal that supports none of them"
-              - "0 success, 1 usage error, 2 terminal unsupported"
+              - "On a terminal that supports none of them bsky runs as text"
+              - "0 success, 1 usage error, 2 not an interactive terminal"
               - "3 local file error. Network and server errors are shown in the client"
               - "--service <URL>"
               - "logout"
@@ -102,13 +102,36 @@ scenarios:
             modified: []
             deleted: []
 
-  - name: a terminal that cannot draw images is refused before any request
+  # A terminal that answers no image protocol still gets the client, as
+  # text: no avatar column, a line saying what a post carries instead of the
+  # pictures, nothing downloaded to draw, and space opens the post on
+  # bsky.app, where its pictures and video can be seen, instead of a viewer
+  # this terminal cannot show. bsky itself stands in for the browser: the
+  # opener is started and not waited for, so any program that exists will do.
+  - name: a terminal that cannot draw images gets the client as text
     mock_servers:
       - name: api
         routes:
           - method: GET
             path: /xrpc/app.bsky.feed.getTimeline
-            json: { feed: [] }
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, avatar: "${api.url}/img/a.png", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Two photos 👨‍👩‍👧 from the trip", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/1.png", fullsize: "${api.url}/img/1.png", alt: "山の頂上" }
+                        - { thumb: "${api.url}/img/2.png", fullsize: "${api.url}/img/2.png", alt: "" }
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "A short clip", createdAt: "2026-09-20T09:00:00.000Z" }
+                    embed: { $type: app.bsky.embed.video#view, playlist: "${api.url}/v/playlist.m3u8", thumbnail: "${api.url}/img/v.png", alt: "a cat" }
     steps:
       - fixture:
           file: cfg/session.json
@@ -116,23 +139,43 @@ scenarios:
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
           command: bsky
-          cols: 200
+          rows: 30
+          cols: 100
           env:
             BSKY_CONFIG_DIR: ${workdir}/cfg
             BSKY_CACHE_DIR: ${workdir}/cache
-          timeout: 15s
+            BSKY_BROWSER: bsky
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains:
+                  - "this terminal cannot show pictures; bsky runs without them"
+                  - "Two photos 👨‍👩‍👧 from the trip"
+                  - "▣ 2 pictures: 山の頂上"
+                  - "▶ video: a cat"
+                  - "space open in browser"
+                not_contains: "space view"
+            - send: " "
+            - expect_screen:
+                contains: "opened https://bsky.app/profile/did:plc:alice/post/p1"
+            - send: "?"
+            - expect_screen:
+                contains: "open the post in the web browser"
+                not_contains: "Viewer"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "open the post in the web browser"
+            - send: q
       - assert:
-          exit_code: 2
+          exit_code: 0
           screen:
-            contains:
-              - "error: this terminal cannot display images"
-              - "hint: use a terminal with kitty graphics, sixel, or iTerm2 inline images"
-              - "or set BSKY_GRAPHICS when yours supports one but does not answer the query"
-      # Refusing means refusing up front: no timeline was requested.
+            images: { count: 0 }
+      # Nothing is downloaded to be drawn.
       - assert:
-          mock:
-            name: api
-            count: 0
+          mock: { name: api, path: /img/a.png, count: 0 }
+      - assert:
+          mock: { name: api, path: /img/1.png, count: 0 }
 
   - name: a kitty terminal is detected from its answer alone
     steps:

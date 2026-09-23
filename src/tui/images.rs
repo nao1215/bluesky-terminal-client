@@ -184,6 +184,9 @@ pub struct Images {
     /// Pictures are sent inside tmux's passthrough, which a delete would
     /// need too.
     tmux: bool,
+    /// Whether the terminal can show pictures. When it cannot, nothing is
+    /// downloaded, decoded, or drawn.
+    shows: bool,
 }
 
 impl Images {
@@ -270,7 +273,20 @@ impl Images {
             picker: player_picker,
             video: None,
             viewer_open: false,
+            shows: true,
         }
+    }
+
+    /// For a terminal that cannot show pictures: every picture is left out.
+    pub fn none() -> Self {
+        let mut images = Self::new(Picker::halfblocks(), None);
+        images.shows = false;
+        images
+    }
+
+    /// Whether pictures and video are shown at all.
+    pub fn shows(&self) -> bool {
+        self.shows
     }
 
     /// The protocol images are drawn with.
@@ -284,6 +300,9 @@ impl Images {
     /// a second or more; paid here, the first pictures only wait for their
     /// own download.
     pub fn connect(&self, url: &str) {
+        if !self.shows {
+            return;
+        }
         for _ in 0..LOADERS {
             self.fetch
                 .push_background((String::new(), Source::Connect(url.to_string())));
@@ -410,6 +429,9 @@ impl Images {
         playlist: &str,
         generation: u32,
     ) -> State {
+        if !self.shows {
+            return State::Warning("this terminal cannot show video".into());
+        }
         let area = area.intersection(frame.area());
         let size = (area.width, area.height);
         match &self.video {
@@ -525,6 +547,9 @@ impl Images {
     /// The decoded picture, starting its download when needed; or the mark
     /// to show until it is there.
     fn decoded(&mut self, url: &str, urgent: bool) -> Result<Arc<DynamicImage>, &'static str> {
+        if !self.shows {
+            return Err("");
+        }
         let frame_no = self.frame;
         let source = match self.local.get(url) {
             Some(path) => Source::Local(path.clone()),

@@ -64,7 +64,7 @@ pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Resul
 
 fn event_loop(
     term: &mut ratatui::DefaultTerminal,
-    picker: ratatui_image::picker::Picker,
+    picker: Option<ratatui_image::picker::Picker>,
     session: Option<crate::config::Session>,
     store: SessionStore,
     settings: SettingsStore,
@@ -73,7 +73,10 @@ fn event_loop(
 ) -> Result<()> {
     let cache =
         crate::config::cache_dir().map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
-    let mut images = Images::new(picker, cache);
+    let mut images = match picker {
+        Some(picker) => Images::new(picker, cache),
+        None => Images::none(),
+    };
     if let Some(cdn) = picture_server(service) {
         images.connect(cdn);
     }
@@ -81,6 +84,9 @@ fn event_loop(
     let (mut app, jobs) = App::new(session, service);
     let (loaded, warning) = settings.load();
     app.apply_settings(loaded, depth, warning);
+    if !images.shows() {
+        app.without_pictures();
+    }
     for job in jobs {
         worker.send(app.stamp(&job), job);
     }
