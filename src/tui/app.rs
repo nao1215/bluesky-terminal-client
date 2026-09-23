@@ -1739,7 +1739,17 @@ impl App {
             form.focus = 2;
             form.error = Some("the session has expired; log in again".into());
             self.login = Some(form);
-            self.overlay = None;
+            // The composer and the profile editor hold text the user typed,
+            // which is theirs to send after logging in again; they stay
+            // behind the login form, which takes every key while it is up.
+            // Nothing else behind it is worth keeping, and a video must not
+            // go on playing there.
+            if !matches!(
+                self.overlay,
+                Some(Overlay::Compose(_) | Overlay::EditProfile(_))
+            ) {
+                self.overlay = None;
+            }
             return;
         }
         // The hint is the part that says what to do; the error box shows it.
@@ -1752,6 +1762,8 @@ impl App {
     /// Drop everything loaded for the account that was logged in, when
     /// another one logs in: its notifications, its profile, its threads.
     fn forget_account(&mut self) {
+        // Whatever was being typed belonged to the account left behind.
+        self.overlay = None;
         self.timeline = List::default();
         self.feeds.clear();
         self.feed = 0;
@@ -2669,6 +2681,108 @@ mod tests {
         };
         assert_eq!(c.input.text(), "draft");
         assert!(!c.sending);
+    }
+
+    // was: the login form the expired session brings up dropped the
+    // composer, so the draft was gone after logging in again.
+    #[test]
+    fn a_draft_survives_the_session_expiring_while_it_is_sent() {
+        let mut app = logged_in();
+        app.handle_key(key('n'));
+        type_str(&mut app, "a long draft");
+        app.handle_key(ctrl('s'));
+        app.handle_event(Event::Posted {
+            reply_to: None,
+            result: Err(Error::api(
+                "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+            )),
+        });
+        assert!(app.login.is_some(), "the login form is up");
+        let Some(Overlay::Compose(c)) = &app.overlay else {
+            panic!("the composer was dropped")
+        };
+        assert_eq!(c.input.text(), "a long draft");
+        assert!(!c.sending);
+        // The login form takes the keys while it is up.
+        app.handle_key(key('x'));
+        let Some(Overlay::Compose(c)) = &app.overlay else {
+            panic!()
+        };
+        assert_eq!(c.input.text(), "a long draft");
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        let Some(Overlay::Compose(c)) = &app.overlay else {
+            panic!("the draft was lost on logging in again")
+        };
+        assert_eq!(c.input.text(), "a long draft");
+        // And it can be sent again.
+        let jobs = app.handle_key(ctrl('s'));
+        assert!(matches!(&jobs[..], [Job::Post { .. }]), "{jobs:?}");
+    }
+
+    #[test]
+    fn a_profile_editor_survives_the_session_expiring_while_it_is_saved() {
+        let mut app = logged_in();
+        app.overlay = Some(Overlay::EditProfile(EditProfile {
+            fields: [
+                TextInput::single("My new name"),
+                TextInput::multi("About me"),
+                TextInput::single(""),
+            ],
+            focus: 0,
+            loading: false,
+            saving: true,
+            browser: None,
+            avatar_chosen: None,
+        }));
+        app.handle_event(Event::ProfileSaved(Err(Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+        ))));
+        assert!(app.login.is_some());
+        let Some(Overlay::EditProfile(e)) = &app.overlay else {
+            panic!("the editor was dropped")
+        };
+        assert_eq!(e.fields[0].text(), "My new name");
+        assert!(!e.saving);
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        let Some(Overlay::EditProfile(e)) = &app.overlay else {
+            panic!("the editor was lost on logging in again")
+        };
+        assert_eq!(e.fields[1].text(), "About me");
+    }
+
+    // Another account has nothing to do with the draft: it goes, as the rest
+    // of the first account's state does.
+    #[test]
+    fn logging_in_as_someone_else_drops_the_draft() {
+        let mut app = logged_in();
+        app.handle_key(key('n'));
+        type_str(&mut app, "a long draft");
+        app.handle_key(ctrl('s'));
+        app.handle_event(Event::Posted {
+            reply_to: None,
+            result: Err(Error::api(
+                "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+            )),
+        });
+        app.handle_event(Event::LoggedIn(Ok(Session {
+            did: "did:plc:other".into(),
+            handle: "other.test".into(),
+            ..session()
+        })));
+        assert!(app.overlay.is_none());
+    }
+
+    // The help, the theme picker, and the viewer hold nothing to keep, and a
+    // playing video must not go on behind the login form.
+    #[test]
+    fn an_expired_session_closes_the_help_over_it() {
+        let mut app = logged_in();
+        app.overlay = Some(Overlay::Help { scroll: 0 });
+        app.handle_event(Event::Timeline(Err(Error::api(
+            "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
+        ))));
+        assert!(app.login.is_some());
+        assert!(app.overlay.is_none());
     }
 
     #[test]
