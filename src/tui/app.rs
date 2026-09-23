@@ -8,10 +8,12 @@ use std::time::{Duration, Instant};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::api::post_length_problem;
+use crate::api::types::{ChatMessage, Convo};
 use crate::api::types::{Media, Post, Profile, ReplyRef, StrongRef};
 use crate::config::{Environment, Session, Settings};
 use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
+use crate::tui::chat::{self, ChatPane, OpenConvo};
 use crate::tui::columns::{self, Columns, Rows};
 use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
@@ -28,15 +30,17 @@ pub enum Tab {
     Profile,
     Notifications,
     Columns,
+    Chat,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 5] = [
+    pub const ALL: [Tab; 6] = [
         Tab::Timeline,
         Tab::Search,
         Tab::Notifications,
         Tab::Profile,
         Tab::Columns,
+        Tab::Chat,
     ];
 
     pub fn title(self) -> &'static str {
@@ -46,6 +50,7 @@ impl Tab {
             Tab::Profile => "Profile",
             Tab::Notifications => "Notifications",
             Tab::Columns => "Columns",
+            Tab::Chat => "Chat",
         }
     }
 
@@ -82,6 +87,12 @@ impl Keyed for Post {
 impl Keyed for Profile {
     fn key(&self) -> &str {
         &self.did
+    }
+}
+
+impl Keyed for Convo {
+    fn key(&self) -> &str {
+        &self.id
     }
 }
 
@@ -574,6 +585,8 @@ pub struct App {
     pub confirm_logout: Option<String>,
     /// The Columns tab of the account in use.
     pub columns: Columns,
+    /// The Chat tab of the account in use.
+    pub chat: ChatPane,
     /// The column `x` asked about, waiting for the `y` that removes it.
     pub confirm_column_remove: Option<u64>,
     /// Pictures turned on (`true`) or off on the settings screen, for the
@@ -707,6 +720,7 @@ impl App {
             account_logout: None,
             confirm_logout: None,
             columns: Columns::default(),
+            chat: ChatPane::default(),
             confirm_column_remove: None,
             pictures_change: None,
             settings_return: None,
@@ -871,6 +885,11 @@ impl App {
             ) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
+            }
+            None if self.tab == Tab::Chat && self.chat.open.as_ref().is_some_and(|o| o.typing) => {
+                if let Some(o) = &mut self.chat.open {
+                    o.input.insert_str(text);
+                }
             }
             None => {}
         }
@@ -1050,6 +1069,12 @@ impl App {
         }
         if self.tab == Tab::Search && self.search.editing {
             return self.search_key(key);
+        }
+        if self.tab == Tab::Chat
+            && self.threads.is_empty()
+            && let Some(jobs) = self.chat_key(key)
+        {
+            return jobs;
         }
         self.main_key(key)
     }
@@ -1409,6 +1434,11 @@ impl App {
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
+        if tab == Tab::Chat && !self.chat.convos.loaded && !self.chat.convos.loading {
+            self.chat.convos.begin();
+            self.chat.polled = Some(Instant::now());
+            return vec![Job::Convos { cursor: None }];
+        }
         if tab == Tab::Columns {
             let waiting: Vec<u64> = self
                 .columns
@@ -1487,6 +1517,7 @@ impl App {
                 Some(Rows::Posts(l)) => Some(l),
                 _ => None,
             },
+            Tab::Chat => None,
         }
     }
 
@@ -1557,6 +1588,10 @@ impl App {
             KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
             KeyCode::Char('4') => return self.switch_tab(Tab::Profile),
             KeyCode::Char('5') => return self.switch_tab(Tab::Columns),
+            KeyCode::Char('6') => return self.switch_tab(Tab::Chat),
+            KeyCode::Char('m') if self.tab == Tab::Profile && self.threads.is_empty() => {
+                return self.message_profile();
+            }
             KeyCode::Left | KeyCode::Char('H')
                 if self.tab == Tab::Columns && self.threads.is_empty() =>
             {
@@ -1716,6 +1751,16 @@ impl App {
                     .map(|c| (Feed::Notifications, c))
             }
             Tab::Columns => return self.step_column(delta),
+            Tab::Chat => {
+                self.chat.convos.step(delta);
+                return self
+                    .chat
+                    .convos
+                    .want_more()
+                    .map(|c| Job::Convos { cursor: Some(c) })
+                    .into_iter()
+                    .collect();
+            }
             Tab::Profile => {
                 self.profile.posts.step(delta);
                 let did = self.profile.profile.as_ref().map(|p| p.did.clone());
@@ -2014,6 +2059,213 @@ impl App {
         let id = self.columns.add(source);
         self.save_columns();
         self.load_column(id)
+    }
+
+    /// A key on the Chat tab, when it is the tab's to take: in an open
+    /// conversation (typing, scrolling, leaving it) and Enter on the list.
+    /// Everything else goes on to the keys every tab has.
+    fn chat_key(&mut self, key: KeyEvent) -> Option<Vec<Job>> {
+        let Some(open) = &mut self.chat.open else {
+            if key.code == KeyCode::Enter {
+                let convo = self.chat.convos.current().cloned()?;
+                return Some(self.open_convo(convo));
+            }
+            return None;
+        };
+        if open.typing {
+            match key.code {
+                KeyCode::Esc => open.typing = false,
+                KeyCode::Enter if !open.sending => {
+                    let text = open.input.text();
+                    if text.trim().is_empty() {
+                        return Some(Vec::new());
+                    }
+                    if let Some(why) = crate::api::message_length_problem(text.trim_end()) {
+                        self.error(why);
+                        return Some(Vec::new());
+                    }
+                    open.sending = true;
+                    return Some(vec![Job::SendMessage {
+                        convo_id: open.convo.id.clone(),
+                        text,
+                    }]);
+                }
+                KeyCode::Enter => {}
+                _ => {
+                    open.input.handle_key(key);
+                }
+            }
+            return Some(Vec::new());
+        }
+        match key.code {
+            KeyCode::Esc => {
+                self.chat.open = None;
+                Some(Vec::new())
+            }
+            KeyCode::Enter | KeyCode::Char('i') => {
+                open.typing = true;
+                Some(Vec::new())
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                open.scroll += 1;
+                Some(self.older_messages())
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                open.scroll = open.scroll.saturating_sub(1);
+                Some(Vec::new())
+            }
+            KeyCode::Char('g') | KeyCode::Home => {
+                open.scroll = usize::MAX / 2;
+                Some(self.older_messages())
+            }
+            KeyCode::Char('G') | KeyCode::End => {
+                open.scroll = 0;
+                Some(Vec::new())
+            }
+            _ => None,
+        }
+    }
+
+    /// Scrolled up to the oldest message: ask for the ones before it.
+    fn older_messages(&mut self) -> Vec<Job> {
+        let Some(open) = &mut self.chat.open else {
+            return Vec::new();
+        };
+        if open.loading_older || open.scroll < open.messages.len() {
+            return Vec::new();
+        }
+        let Some(cursor) = open.older.clone() else {
+            return Vec::new();
+        };
+        open.loading_older = true;
+        vec![Job::Messages {
+            convo_id: open.convo.id.clone(),
+            cursor: Some(cursor),
+        }]
+    }
+
+    /// Open `convo`: its latest messages are asked for, and it is marked
+    /// read now that it is looked at, not when the list was loaded.
+    fn open_convo(&mut self, convo: Convo) -> Vec<Job> {
+        self.tab = Tab::Chat;
+        self.threads.clear();
+        let mut jobs = vec![Job::Messages {
+            convo_id: convo.id.clone(),
+            cursor: None,
+        }];
+        if convo.unread_count > 0 {
+            jobs.push(Job::ReadConvo {
+                convo_id: convo.id.clone(),
+            });
+        }
+        if !self.chat.convos.items.iter().any(|c| c.id == convo.id) {
+            self.chat.convos.items.insert(0, convo.clone());
+        }
+        self.chat.open = Some(OpenConvo::new(convo));
+        self.chat.polled = Some(Instant::now());
+        jobs
+    }
+
+    /// `m` on someone's profile: the conversation with them.
+    fn message_profile(&mut self) -> Vec<Job> {
+        let Some(p) = self.profile.profile.clone() else {
+            return Vec::new();
+        };
+        if self.profile.actor.is_none() || self.session.as_ref().is_some_and(|s| s.did == p.did) {
+            self.info("m opens a conversation with someone else's profile");
+            return Vec::new();
+        }
+        self.info(format!("opening the conversation with @{}…", p.handle));
+        vec![Job::ConvoFor { did: p.did }]
+    }
+
+    /// Read the Chat tab again: the open conversation's latest messages, or
+    /// the list.
+    fn read_chat(&mut self) -> Vec<Job> {
+        self.chat.polled = Some(Instant::now());
+        match &self.chat.open {
+            Some(o) => vec![Job::Messages {
+                convo_id: o.convo.id.clone(),
+                cursor: None,
+            }],
+            None => {
+                self.chat.convos.loading = true;
+                vec![Job::Convos { cursor: None }]
+            }
+        }
+    }
+
+    /// While the Chat tab is shown, read it again every
+    /// [`chat::POLL_EVERY`]; nothing is read while another tab is.
+    pub fn poll_chat(&mut self, now: Instant) -> Vec<Job> {
+        if self.tab != Tab::Chat || self.login.is_some() || self.chat.refused.is_some() {
+            return Vec::new();
+        }
+        if self
+            .chat
+            .polled
+            .is_some_and(|at| now.saturating_duration_since(at) < chat::POLL_EVERY)
+        {
+            return Vec::new();
+        }
+        let jobs = self.read_chat();
+        self.chat.polled = Some(now);
+        self.pending += jobs.len();
+        jobs
+    }
+
+    fn convos_page(&mut self, cursor: Option<String>, result: crate::error::Result<Page<Convo>>) {
+        match (cursor, result) {
+            (None, Ok(page)) => {
+                self.chat.refused = None;
+                self.chat.convos.set(page);
+            }
+            (Some(at), Ok(page)) => self.chat.convos.append(&at, page),
+            (cursor, Err(e)) => {
+                if e.message().contains("scope") || e.message().contains("Scope") {
+                    self.chat.convos.loaded = true;
+                    self.chat.convos.loading = false;
+                    self.chat.refused = Some(
+                        "this app password cannot read direct messages. Make one with \
+                         \"Allow access to your direct messages\" (Settings, Privacy and \
+                         security, App passwords) and log in with it (A, then a)."
+                            .into(),
+                    );
+                    return;
+                }
+                match cursor {
+                    None => self.chat.convos.failed(&e),
+                    Some(_) => self.chat.convos.more_pending = false,
+                }
+                self.fail(&e);
+            }
+        }
+    }
+
+    fn messages_page(
+        &mut self,
+        convo_id: &str,
+        cursor: Option<String>,
+        result: crate::error::Result<Page<ChatMessage>>,
+    ) {
+        // A conversation left or changed since: its page is dropped.
+        let Some(open) = self.chat.open.as_mut().filter(|o| o.convo.id == convo_id) else {
+            return;
+        };
+        match (cursor, result) {
+            (None, Ok(page)) => open.take_latest(page.items, page.cursor),
+            (Some(at), Ok(page)) => open.take_older(&at, page.items, page.cursor),
+            (cursor, Err(e)) => {
+                match cursor {
+                    None => {
+                        open.loaded = true;
+                        open.error = Some(e.message().to_string());
+                    }
+                    Some(_) => open.loading_older = false,
+                }
+                self.fail(&e);
+            }
+        }
     }
 
     /// The account the list asked to switch to, for the event loop.
@@ -2502,6 +2754,7 @@ impl App {
                     .flatten()
                     .collect()
             }
+            Tab::Chat => self.read_chat(),
         }
     }
 
@@ -2985,6 +3238,7 @@ impl App {
         self.confirm_logout = None;
         self.confirm_column_remove = None;
         self.columns = Columns::default();
+        self.chat = ChatPane::default();
         self.timeline = List::default();
         self.feeds.clear();
         self.feed = 0;
@@ -3186,6 +3440,56 @@ impl App {
                 cursor,
                 result,
             } => self.column_page(id, generation, cursor, result),
+            Event::Convos { cursor, result } => self.convos_page(cursor, result),
+            Event::Messages {
+                convo_id,
+                cursor,
+                result,
+            } => self.messages_page(&convo_id, cursor, result),
+            Event::MessageSent { convo_id, result } => {
+                let open = self.chat.open.as_mut().filter(|o| o.convo.id == convo_id);
+                match (open, result) {
+                    (Some(o), Ok(m)) => {
+                        o.sending = false;
+                        o.input = TextInput::single("");
+                        let last = m.clone();
+                        o.sent(m);
+                        if let Some(c) =
+                            self.chat.convos.items.iter_mut().find(|c| c.id == convo_id)
+                        {
+                            c.last_message = Some(last);
+                        }
+                    }
+                    (None, Ok(_)) => self.info("message sent"),
+                    (Some(o), Err(e)) => {
+                        // The text stays in the box, to send again or change.
+                        o.sending = false;
+                        self.fail(&e);
+                    }
+                    (None, Err(e)) => self.fail(&e),
+                }
+            }
+            Event::ConvoFor { did, result } => match result {
+                Ok(convo) => {
+                    if convo
+                        .others(self.session.as_ref().map_or("", |s| s.did.as_str()))
+                        .iter()
+                        .any(|m| m.did == did)
+                        || convo.members.iter().any(|m| m.did == did)
+                    {
+                        return self.open_convo(convo);
+                    }
+                }
+                Err(e) => self.fail(&e),
+            },
+            Event::ConvoRead { convo_id, result } => match result {
+                Ok(()) => {
+                    if let Some(c) = self.chat.convos.items.iter_mut().find(|c| c.id == convo_id) {
+                        c.unread_count = 0;
+                    }
+                }
+                Err(e) => self.fail(&e),
+            },
             Event::Notifications { seen_at, result } => match result {
                 Ok(page) => {
                     self.notifications.set(page);
@@ -4526,6 +4830,205 @@ mod tests {
         assert_eq!(app.columns.sources(), [columns::Source::Following]);
     }
 
+    fn a_convo(id: &str, unread: u64) -> Convo {
+        serde_json::from_value(json!({
+            "id": id, "rev": "r",
+            "members": [
+                {"did": "did:plc:me", "handle": "me.test"},
+                {"did": "did:plc:alice", "handle": "alice.test", "displayName": "家族👨\u{200d}👩\u{200d}👧 Alice"}
+            ],
+            "muted": false, "unreadCount": unread
+        }))
+        .unwrap()
+    }
+
+    fn a_message(id: &str, text: &str) -> ChatMessage {
+        ChatMessage {
+            id: id.into(),
+            text: text.into(),
+            sender: "did:plc:alice".into(),
+            sent_at: "2026-09-22T00:00:00Z".into(),
+            ..ChatMessage::default()
+        }
+    }
+
+    /// On the Chat tab with conversations `a` (2 unread) and `b` (none).
+    fn chat_tab() -> App {
+        let mut app = logged_in();
+        let jobs = app.handle_key(key('6'));
+        assert!(
+            matches!(&jobs[..], [Job::Convos { cursor: None }]),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::Convos {
+            cursor: None,
+            result: Ok(vec![a_convo("a", 2), a_convo("b", 0)].into()),
+        });
+        app
+    }
+
+    #[test]
+    fn a_conversation_is_marked_read_when_it_is_opened_not_when_it_is_listed() {
+        let mut app = chat_tab();
+        assert_eq!(app.chat.unread(), 2);
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(
+            matches!(&jobs[..], [Job::Messages { convo_id, cursor: None }, Job::ReadConvo { convo_id: r }] if convo_id == "a" && r == "a"),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::ConvoRead {
+            convo_id: "a".into(),
+            result: Ok(()),
+        });
+        assert_eq!(app.chat.unread(), 0);
+        // Nothing unread: nothing marked.
+        app.handle_key(code(KeyCode::Esc));
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(&jobs[..], [Job::Messages { .. }]), "{jobs:?}");
+    }
+
+    #[test]
+    fn a_message_is_sent_once_and_a_failed_one_keeps_its_text() {
+        let mut app = chat_tab();
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::Messages {
+            convo_id: "a".into(),
+            cursor: None,
+            result: Ok(vec![a_message("m2", "second"), a_message("m1", "first")].into()),
+        });
+        let o = app.chat.open.as_ref().unwrap();
+        assert_eq!(
+            o.messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m1", "m2"]
+        );
+        // Keys go to the box once i is pressed: q is a letter, not quit.
+        app.handle_key(key('i'));
+        type_str(&mut app, "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}");
+        assert!(!app.quit);
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(
+            matches!(&jobs[..], [Job::SendMessage { convo_id, text }] if convo_id == "a" && text == "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}"),
+            "{jobs:?}"
+        );
+        assert!(app.handle_key(code(KeyCode::Enter)).is_empty(), "not twice");
+        app.handle_event(Event::MessageSent {
+            convo_id: "a".into(),
+            result: Err(Error::api("chat.bsky.convo.sendMessage failed: HTTP 502")),
+        });
+        let o = app.chat.open.as_ref().unwrap();
+        assert!(!o.sending);
+        assert_eq!(o.input.text(), "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}");
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert_eq!(jobs.len(), 1);
+        app.handle_event(Event::MessageSent {
+            convo_id: "a".into(),
+            result: Ok(ChatMessage {
+                sender: "did:plc:me".into(),
+                ..a_message("m3", "quiet 👍🏽 🇯🇵 1️⃣ ❤️ e\u{301}")
+            }),
+        });
+        let o = app.chat.open.as_ref().unwrap();
+        assert_eq!(o.input.text(), "");
+        assert_eq!(o.messages.last().unwrap().id, "m3");
+        // Esc stops writing, Esc again goes back to the list.
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.chat.open.as_ref().is_some_and(|o| !o.typing));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.chat.open.is_none());
+    }
+
+    #[test]
+    fn a_page_for_a_conversation_left_is_dropped() {
+        let mut app = chat_tab();
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(code(KeyCode::Esc));
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_event(Event::Messages {
+            convo_id: "a".into(),
+            cursor: None,
+            result: Ok(vec![a_message("x", "from a")].into()),
+        });
+        let o = app.chat.open.as_ref().unwrap();
+        assert_eq!(o.convo.id, "b");
+        assert!(o.messages.is_empty());
+    }
+
+    #[test]
+    fn the_chat_tab_is_read_again_only_while_it_is_shown() {
+        let mut app = chat_tab();
+        let now = Instant::now();
+        assert!(app.poll_chat(now).is_empty(), "just read");
+        let later = now + chat::POLL_EVERY + Duration::from_secs(1);
+        let jobs = app.poll_chat(later);
+        assert!(
+            matches!(&jobs[..], [Job::Convos { cursor: None }]),
+            "{jobs:?}"
+        );
+        app.handle_key(code(KeyCode::Enter));
+        let jobs = app.poll_chat(later + chat::POLL_EVERY + Duration::from_secs(1));
+        assert!(
+            matches!(&jobs[..], [Job::Messages { cursor: None, .. }]),
+            "{jobs:?}"
+        );
+        app.handle_key(code(KeyCode::Esc));
+        app.handle_key(key('1'));
+        assert!(app.poll_chat(later + chat::POLL_EVERY * 10).is_empty());
+    }
+
+    #[test]
+    fn m_on_a_profile_opens_the_conversation_with_them() {
+        let mut app = logged_in();
+        app.handle_key(key('4'));
+        // Your own profile has nobody to message.
+        assert!(app.handle_key(key('m')).is_empty());
+        app.open_profile(Some("did:plc:alice".into()));
+        app.handle_event(Event::Profile(Ok((
+            serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"}))
+                .unwrap(),
+            Vec::new().into(),
+        ))));
+        let jobs = app.handle_key(key('m'));
+        assert!(
+            matches!(&jobs[..], [Job::ConvoFor { did }] if did == "did:plc:alice"),
+            "{jobs:?}"
+        );
+        let jobs = app.handle_event(Event::ConvoFor {
+            did: "did:plc:alice".into(),
+            result: Ok(a_convo("new", 0)),
+        });
+        assert_eq!(app.tab, Tab::Chat);
+        assert!(
+            matches!(&jobs[..], [Job::Messages { convo_id, .. }] if convo_id == "new"),
+            "{jobs:?}"
+        );
+        assert_eq!(app.chat.open.as_ref().unwrap().convo.id, "new");
+    }
+
+    #[test]
+    fn an_app_password_without_access_to_messages_is_explained() {
+        let mut app = logged_in();
+        app.handle_key(key('6'));
+        app.handle_event(Event::Convos {
+            cursor: None,
+            result: Err(Error::api(
+                "chat.bsky.convo.listConvos failed: AuthRequired: Bad token scope",
+            )),
+        });
+        assert!(
+            app.chat
+                .refused
+                .as_deref()
+                .unwrap()
+                .contains("Allow access to your direct messages")
+        );
+        assert!(
+            app.poll_chat(Instant::now() + chat::POLL_EVERY * 2)
+                .is_empty()
+        );
+    }
+
     fn work() -> Session {
         Session {
             did: "did:plc:work".into(),
@@ -5081,10 +5584,10 @@ mod tests {
     #[test]
     fn backtab_arrives_at_search_focused_too() {
         let mut app = logged_in();
-        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Columns
-        app.handle_key(code(KeyCode::BackTab)); // Columns -> Profile
-        app.handle_key(code(KeyCode::BackTab)); // Profile -> Notifications
-        app.handle_key(code(KeyCode::BackTab)); // Notifications -> Search
+        // From the Timeline back round every tab after Search, to Search.
+        for _ in 1..Tab::ALL.len() {
+            app.handle_key(code(KeyCode::BackTab));
+        }
         assert_eq!(app.tab, Tab::Search);
         assert!(app.search.editing);
     }

@@ -1,6 +1,7 @@
 //! The interactive client: terminal setup, the event loop, and teardown.
 
 pub mod app;
+pub mod chat;
 pub mod clipboard;
 pub mod columns;
 pub mod events;
@@ -202,6 +203,11 @@ fn event_loop(
             dirty = true;
         }
         if app.expire_status(std::time::Instant::now()) {
+            dirty = true;
+        }
+        // The Chat tab reads the server again now and then while it is shown.
+        for job in app.poll_chat(std::time::Instant::now()) {
+            worker.send(app.stamp(&job), job);
             dirty = true;
         }
     }

@@ -22,8 +22,8 @@ pub const HELP: &[Section] = &[
         title: "Global",
         keys: &[
             (
-                "1 2 3 4 5",
-                "Timeline, Search, Notifications, Profile, Columns",
+                "1 2 3 4 5 6",
+                "Timeline, Search, Notifications, Profile, Columns, Chat",
             ),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
@@ -113,6 +113,10 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("e", "edit your profile"),
             (
+                "m",
+                "message the account shown, starting the conversation if needed",
+            ),
+            (
                 "s",
                 "settings: theme, pictures, and where bsky keeps things",
             ),
@@ -185,6 +189,19 @@ pub const HELP: &[Section] = &[
             ("x", "remove the column: y confirms"),
             ("R", "load the column again"),
             ("", "the keys of a post act on the column's selected post"),
+        ],
+    },
+    Section {
+        title: "Chat",
+        keys: &[
+            ("enter", "open the conversation; it is marked read"),
+            (
+                "i enter",
+                "write a message; enter sends it, esc stops writing",
+            ),
+            ("j k g G", "read further back / forward"),
+            ("esc", "back to the conversations"),
+            ("", "read again every 15 seconds while the tab is shown"),
         ],
     },
     Section {
@@ -385,6 +402,11 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("n", "post"),
             ("R", "refresh"),
         ],
+        Tab::Chat => match &app.chat.open {
+            Some(o) if o.typing => return vec![("enter", "send"), ("esc", "stop writing")],
+            Some(_) => vec![("i", "write"), ("j k", "scroll"), ("esc", "back")],
+            None => vec![("j k", "move"), ("enter", "open"), ("R", "refresh")],
+        },
         Tab::Columns if app.columns.items.is_empty() => vec![("+", "add a column")],
         Tab::Columns => vec![
             ("← →", "column"),
@@ -482,6 +504,13 @@ pub fn actions(app: &App) -> Vec<Hint> {
         v.push(("c", "copy its address"));
     }
     if let Some(account) = app.shown_account() {
+        if app.tab == Tab::Profile
+            && app.threads.is_empty()
+            && app.profile.actor.is_some()
+            && app.session.as_ref().is_none_or(|s| s.did != account.did)
+        {
+            v.push(("m", "message them"));
+        }
         v.push(("enter", "open the profile"));
         v.push((
             "f",

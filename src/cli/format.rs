@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Local};
 
-use crate::api::types::{Media, Notification, Post, Profile, ThreadNode};
+use crate::api::types::{ChatMessage, Convo, Media, Notification, Post, Profile, ThreadNode};
 
 /// A timestamp as local time, `2026-09-20 10:00`; one that does not parse
 /// is shown as it is.
@@ -167,6 +167,58 @@ pub fn profile(p: &Profile) -> String {
         out.push('\n');
         for line in d.lines() {
             out.push_str(&format!("{line}\n"));
+        }
+    }
+    out
+}
+
+/// Who a conversation is with: everyone in it but `me`.
+pub fn convo_with(c: &Convo, me: &str) -> String {
+    let others: Vec<String> = c.others(me).iter().map(|p| who(p)).collect();
+    if others.is_empty() {
+        "(just you)".to_string()
+    } else {
+        others.join(", ")
+    }
+}
+
+/// A conversation in the list: who, how many unread, its last message.
+pub fn convo(c: &Convo, me: &str) -> String {
+    let unread = if c.unread_count > 0 {
+        format!("  ({} new)", c.unread_count)
+    } else {
+        String::new()
+    };
+    let mut out = format!("{}{unread}\n", convo_with(c, me));
+    if let Some(m) = &c.last_message {
+        let who = if m.sender == me { "you: " } else { "" };
+        let text = if m.deleted {
+            "(deleted)"
+        } else {
+            m.text.lines().next().unwrap_or("")
+        };
+        out.push_str(&format!("  {who}{text}\n"));
+    }
+    out
+}
+
+/// A message: who and when, then its text.
+pub fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
+    let who = if m.sender == me {
+        "you".to_string()
+    } else {
+        c.members
+            .iter()
+            .find(|p| p.did == m.sender)
+            .map(who)
+            .unwrap_or_else(|| m.sender.clone())
+    };
+    let mut out = format!("{who} · {}\n", time(&m.sent_at));
+    if m.deleted {
+        out.push_str("  (deleted)\n");
+    } else {
+        for line in m.text.lines() {
+            out.push_str(&format!("  {line}\n"));
         }
     }
     out

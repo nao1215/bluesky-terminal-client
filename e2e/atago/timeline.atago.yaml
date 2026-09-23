@@ -736,6 +736,7 @@ scenarios:
             path: /xrpc/app.bsky.actor.getProfile
             json: { did: did:plc:me, handle: me.test, displayName: "Me", followersCount: 1, followsCount: 2, postsCount: 3 }
           - { method: GET, path: /xrpc/app.bsky.feed.getAuthorFeed, json: { feed: [] } }
+          - { method: GET, path: /xrpc/chat.bsky.convo.listConvos, json: { convos: [] } }
     steps:
       - *session
       - pty:
@@ -763,9 +764,15 @@ scenarios:
                 contains: "No columns yet"
             - send: { key: tab }
             - expect_screen:
+                contains: "No conversations yet"
+            - send: { key: tab }
+            - expect_screen:
                 contains: "Photo from the mountains"
-                not_contains: "No columns yet"
-            # Shift+tab goes the other way, wrapping to the Columns tab.
+                not_contains: "No conversations yet"
+            # Shift+tab goes the other way, wrapping to the Chat tab.
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "No conversations yet"
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "No columns yet"

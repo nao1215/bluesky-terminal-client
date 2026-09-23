@@ -1,0 +1,294 @@
+# Direct messages: the Chat tab and `bsky chat`. The calls go to the
+# account's PDS with the atproto-proxy header that passes them on to
+# Bluesky's chat service; the mock stands in for both.
+version: "1"
+
+suite:
+  name: bsky chat
+
+scenarios:
+  - name: the Chat tab lists conversations, marks one read only when it is opened, and sends a message once
+    mock_servers:
+      - name: api
+        routes:
+          - &empty_timeline { method: GET, path: /xrpc/app.bsky.feed.getTimeline, json: { feed: [] } }
+          - &convos
+            method: GET
+            path: /xrpc/chat.bsky.convo.listConvos
+            json:
+              convos:
+                - id: convo-a
+                  rev: r1
+                  members:
+                    - { did: did:plc:me, handle: me.test }
+                    - { did: did:plc:alice, handle: alice.test, displayName: "家族👨‍👩‍👧 Alice" }
+                  lastMessage: { $type: chat.bsky.convo.defs#messageView, id: m2, rev: r, text: "See you 🇯🇵", sender: { did: did:plc:alice }, sentAt: "2026-09-21T10:05:00.000Z" }
+                  muted: false
+                  unreadCount: 2
+          - &messages
+            method: GET
+            path: /xrpc/chat.bsky.convo.getMessages
+            json:
+              messages:
+                - { $type: chat.bsky.convo.defs#messageView, id: m2, rev: r, text: "See you 🇯🇵", sender: { did: did:plc:alice }, sentAt: "2026-09-21T10:05:00.000Z" }
+                - { $type: chat.bsky.convo.defs#messageView, id: m1, rev: r, text: "Hello there", sender: { did: did:plc:alice }, sentAt: "2026-09-21T10:00:00.000Z" }
+          - method: POST
+            path: /xrpc/chat.bsky.convo.updateRead
+            json: { convo: { id: convo-a, rev: r2, members: [], muted: false, unreadCount: 0 } }
+          - method: POST
+            path: /xrpc/chat.bsky.convo.sendMessage
+            json: { id: m3, rev: r3, text: "on my way 👍🏽", sender: { did: did:plc:me }, sentAt: "2026-09-21T10:06:00.000Z" }
+    steps:
+      - &session
+        fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &env
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "6"
+            - expect_screen:
+                contains: ["6 Chat (2)", "家族👨‍👩‍👧 Alice @alice.test  2 new", "See you 🇯🇵", "enter open"]
+            - send: { key: enter }
+            # Oldest first, the newest at the bottom; the tab has nothing
+            # unread once the server has marked it read.
+            - expect_screen:
+                contains: ["Hello there", "See you 🇯🇵", "i write a message"]
+                not_contains: "(2)"
+            - send: i
+            - expect_screen:
+                contains: "enter send  esc stop writing"
+            # q is a letter here, not quit.
+            - send: "on my way 👍🏽"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["you · 2026-09-21 10:06", "on my way 👍🏽"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "i write a message"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "enter open"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.listConvos
+            header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.getMessages
+            query: { name: convoId, equals: "convo-a" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.updateRead
+            count: 1
+            header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
+            body:
+              json: { path: "$.convoId", equals: "convo-a" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.sendMessage
+            count: 1
+            body:
+              json:
+                - { path: "$.convoId", equals: "convo-a" }
+                - { path: "$.message.text", equals: "on my way 👍🏽" }
+
+  - name: listing conversations marks nothing read
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *convos
+          - method: POST
+            path: /xrpc/chat.bsky.convo.updateRead
+            json: {}
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "6"
+            - expect_screen:
+                contains: "2 new"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/chat.bsky.convo.updateRead, count: 0 }
+
+  - name: an app password without access to messages is told how to get one that has it
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/chat.bsky.convo.listConvos
+            status: 401
+            json: { error: "AuthRequired", message: "Bad token scope" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "6"
+            - expect_screen:
+                contains: ["this app password cannot read direct messages", "Allow access to your direct messages"]
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: m on a profile opens the conversation with them
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Alice posted", createdAt: "2026-09-20T10:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:alice, handle: alice.test, displayName: Alice }
+          - { method: GET, path: /xrpc/app.bsky.feed.getAuthorFeed, json: { feed: [] } }
+          - method: GET
+            path: /xrpc/chat.bsky.convo.getConvoForMembers
+            json:
+              convo:
+                id: convo-new
+                rev: r
+                members:
+                  - { did: did:plc:me, handle: me.test }
+                  - { did: did:plc:alice, handle: alice.test, displayName: Alice }
+                muted: false
+                unreadCount: 0
+          - method: GET
+            path: /xrpc/chat.bsky.convo.getMessages
+            json: { messages: [] }
+          - { method: GET, path: /xrpc/chat.bsky.convo.listConvos, json: { convos: [] } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Alice posted"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Alice", "(f to toggle)"]
+            - send: m
+            - expect_screen:
+                contains: ["Alice @alice.test", "the start of the conversation", "i write a message"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.getConvoForMembers
+            count: 1
+            query: { name: members, equals: "did:plc:alice" }
+      - assert:
+          mock: { name: api, path: /xrpc/chat.bsky.convo.getMessages, query: { name: convoId, equals: "convo-new" } }
+
+  - name: bsky chat lists, reads and sends, as text and as JSON
+    mock_servers:
+      - name: api
+        routes:
+          - *convos
+          - *messages
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/chat.bsky.convo.getConvoForMembers
+            json:
+              convo:
+                id: convo-a
+                rev: r
+                members:
+                  - { did: did:plc:me, handle: me.test }
+                  - { did: did:plc:alice, handle: alice.test, displayName: Alice }
+                muted: false
+                unreadCount: 0
+          - method: POST
+            path: /xrpc/chat.bsky.convo.sendMessage
+            json: { id: m3, rev: r3, text: "from a script", sender: { did: did:plc:me }, sentAt: "2026-09-21T10:06:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: bsky chat
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "家族👨‍👩‍👧 Alice @alice.test  (2 new)\n  See you 🇯🇵\n"
+      - run:
+          command: bsky chat alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              Alice @alice.test · 2026-09-21 10:00
+                Hello there
+              Alice @alice.test · 2026-09-21 10:05
+                See you 🇯🇵
+      - run:
+          command: bsky chat @alice.test "from a script" --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: "m3" }
+              - { path: "$.convoId", equals: "convo-a" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/chat.bsky.convo.sendMessage
+            count: 1
+            header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
+            body:
+              json: { path: "$.message.text", equals: "from a script" }

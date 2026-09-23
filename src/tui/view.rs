@@ -475,7 +475,191 @@ fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t
         Tab::Profile => draw_profile(frame, body, app, images),
         Tab::Notifications => draw_notifications(frame, body, app, images),
         Tab::Columns => draw_columns(frame, body, app, images, &t),
+        Tab::Chat => draw_chat(frame, body, app, images, &t),
     }
+}
+
+/// The Chat tab: the conversations, or the one open with its messages
+/// (the newest at the bottom) and the box to write in.
+fn draw_chat(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
+    let me = app
+        .session
+        .as_ref()
+        .map(|s| s.did.clone())
+        .unwrap_or_default();
+    if let Some(why) = &app.chat.refused {
+        frame.render_widget(
+            Paragraph::new(format!(" {why}"))
+                .style(t.error())
+                .wrap(ratatui::widgets::Wrap { trim: true }),
+            body,
+        );
+        return;
+    }
+    let Some(open) = &mut app.chat.open else {
+        let messages = (
+            " loading…",
+            " No conversations yet. m on someone's profile starts one.",
+        );
+        let me2 = me.clone();
+        draw_two_line_rows(
+            frame,
+            body,
+            &mut app.chat.convos,
+            images,
+            messages,
+            t,
+            move |c| {
+                c.members
+                    .iter()
+                    .find(|m| m.did != me2)
+                    .and_then(|m| m.avatar.as_deref())
+            },
+            |c, w| convo_lines(c, &me, w, t),
+        );
+        return;
+    };
+    let [head, msgs, input] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(body);
+    let width = usize::from(body.width.saturating_sub(2)).max(1);
+    frame.render_widget(
+        Paragraph::new(format!(
+            " {}",
+            truncate(&convo_title(&open.convo, &me), width)
+        ))
+        .style(t.accent().bold()),
+        head,
+    );
+    let names: std::collections::HashMap<&str, String> = open
+        .convo
+        .members
+        .iter()
+        .map(|m| (m.did.as_str(), m.name().to_string()))
+        .collect();
+    let mut lines: Vec<Line> = Vec::new();
+    if open.loading_older {
+        lines.push(Line::styled(" loading earlier messages…", t.dim()));
+    } else if open.older.is_none() && open.loaded {
+        lines.push(Line::styled(" the start of the conversation", t.dim()));
+    }
+    for m in &open.messages {
+        let who = if m.sender == me {
+            "you".to_string()
+        } else {
+            names
+                .get(m.sender.as_str())
+                .cloned()
+                .unwrap_or_else(|| m.sender.clone())
+        };
+        let style = if m.sender == me {
+            t.accent()
+        } else {
+            t.base().bold()
+        };
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(truncate(&who, width.saturating_sub(20)), style),
+            Span::styled(format!(" · {}", format_time(&m.sent_at)), t.dim()),
+        ]));
+        let text = if m.deleted {
+            Line::styled("   (deleted)", t.dim())
+        } else if m.system {
+            Line::styled(format!("   {}", m.text), t.dim())
+        } else {
+            Line::raw("")
+        };
+        if m.deleted || m.system {
+            lines.push(text);
+        } else {
+            for l in wrap(&m.text, width.saturating_sub(3).max(1)) {
+                lines.push(Line::raw(format!("   {l}")));
+            }
+        }
+    }
+    if !open.loaded {
+        lines.push(Line::styled(" loading…", t.dim()));
+    } else if let Some(e) = &open.error {
+        lines.push(Line::styled(format!(" {e}  (R to retry)"), t.error()));
+    }
+    // Scrolled `scroll` lines up from the newest, as far as there is.
+    let h = usize::from(msgs.height);
+    let most = lines.len().saturating_sub(h);
+    open.scroll = open.scroll.min(most);
+    let top = most - open.scroll;
+    let shown: Vec<Line> = lines.into_iter().skip(top).take(h).collect();
+    frame.render_widget(Paragraph::new(shown), msgs);
+    if open.typing {
+        frame.render_widget(Paragraph::new(" ›").style(t.accent()), input);
+        let field = Rect {
+            x: input.x + 3,
+            width: input.width.saturating_sub(3),
+            ..input
+        };
+        draw_single_input(frame, field, &open.input, true);
+    } else {
+        let draft = open.input.text();
+        let text = if open.sending {
+            " sending…".to_string()
+        } else if draft.is_empty() {
+            " i write a message".to_string()
+        } else {
+            format!(
+                " i continue: {}",
+                truncate(&draft, width.saturating_sub(13))
+            )
+        };
+        frame.render_widget(Paragraph::new(text).style(t.dim()), input);
+    }
+}
+
+/// Who a conversation is with: everyone in it but you.
+fn convo_title(c: &crate::api::types::Convo, me: &str) -> String {
+    let others: Vec<String> = c
+        .others(me)
+        .iter()
+        .map(|m| format!("{} @{}", m.name(), m.handle))
+        .collect();
+    if others.is_empty() {
+        "(just you)".to_string()
+    } else {
+        others.join(", ")
+    }
+}
+
+/// A conversation in the list: who, how many unread, the last message.
+fn convo_lines(
+    c: &crate::api::types::Convo,
+    me: &str,
+    width: u16,
+    t: &Theme,
+) -> Vec<Line<'static>> {
+    let w = usize::from(width).max(1);
+    let mut head = vec![Span::styled(
+        truncate(&convo_title(c, me), w.saturating_sub(12)),
+        Style::new().bold(),
+    )];
+    if c.unread_count > 0 && !c.muted {
+        head.push(Span::styled(
+            format!("  {} new", c.unread_count),
+            t.accent().bold(),
+        ));
+    }
+    if c.muted {
+        head.push(Span::styled("  muted", t.dim()));
+    }
+    let last = match &c.last_message {
+        Some(m) if m.deleted => "(deleted)".to_string(),
+        Some(m) => {
+            let who = if m.sender == me { "you: " } else { "" };
+            format!("{who}{}", m.text.lines().next().unwrap_or(""))
+        }
+        None => String::new(),
+    };
+    vec![Line::from(head), Line::styled(truncate(&last, w), t.dim())]
 }
 
 /// Narrowest a column is drawn; fewer columns show on a narrow screen.
@@ -638,6 +822,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     for (i, tab) in Tab::ALL.iter().enumerate() {
         let label = match (tab, app.unread) {
             (Tab::Notifications, n) if n > 0 => format!(" {} {} ({n}) ", i + 1, tab.title()),
+            (Tab::Chat, _) if app.chat.unread() > 0 => {
+                format!(" {} {} ({}) ", i + 1, tab.title(), app.chat.unread())
+            }
             _ => format!(" {} {} ", i + 1, tab.title()),
         };
         let style = if *tab == app.tab {
@@ -3128,6 +3315,62 @@ mod tests {
                 }),
             ),
             (
+                "chat",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('6'));
+                    let convo: crate::api::types::Convo = serde_json::from_value(json!({
+                        "id": "c", "rev": "r",
+                        "members": [{"did": "did:plc:me", "handle": "me.test"},
+                                    {"did": "did:plc:a", "handle": "alice.test", "displayName": "👨‍👩‍👧‍👦 家族 🇯🇵 Alice"}],
+                        "lastMessage": {"$type": "chat.bsky.convo.defs#messageView", "id": "m", "rev": "r",
+                                        "text": "今日は👍🏽 1️⃣ ❤️ e\u{301}te\u{301} مرحبا", "sender": {"did": "did:plc:a"}, "sentAt": "2026-09-22T00:00:00Z"},
+                        "muted": false, "unreadCount": 3
+                    }))
+                    .unwrap();
+                    a.handle_event(Event::Convos {
+                        cursor: None,
+                        result: Ok(vec![convo].into()),
+                    });
+                    a
+                }),
+            ),
+            (
+                "chat open",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('6'));
+                    let convo: crate::api::types::Convo = serde_json::from_value(json!({
+                        "id": "c", "rev": "r",
+                        "members": [{"did": "did:plc:a", "handle": "alice.test", "displayName": "👨‍👩‍👧‍👦 家族 🇯🇵"}],
+                        "muted": false, "unreadCount": 0
+                    }))
+                    .unwrap();
+                    a.handle_event(Event::Convos {
+                        cursor: None,
+                        result: Ok(vec![convo].into()),
+                    });
+                    a.handle_key(KeyEvent::from(KeyCode::Enter));
+                    a.handle_event(Event::Messages {
+                        convo_id: "c".into(),
+                        cursor: None,
+                        result: Ok(vec![crate::api::types::ChatMessage {
+                            id: "m".into(),
+                            text: "今日は👍🏽 1️⃣ ❤️ e\u{301} a long message that has to wrap over the rows of a narrow screen مرحبا".into(),
+                            sender: "did:plc:a".into(),
+                            sent_at: "2026-09-22T00:00:00Z".into(),
+                            ..Default::default()
+                        }]
+                        .into()),
+                    });
+                    a.handle_key(ch('i'));
+                    for c in "返事👨‍👩‍👧 🇯🇵".chars() {
+                        a.handle_key(ch(c));
+                    }
+                    a
+                }),
+            ),
+            (
                 "add column",
                 Box::new(move || {
                     let (mut a, _) = App::new(Some(session()), "x");
@@ -3479,7 +3722,7 @@ mod tests {
         // long for its column wraps rather than losing its end.
         let forty = render(&mut app, 40, 16);
         assert!(
-            forty.contains("1 2 3 4 5      Timeline, Search,"),
+            forty.contains("1 2 3 4 5 6    Timeline, Search,"),
             "{forty}"
         );
         assert!(
@@ -3491,12 +3734,12 @@ mod tests {
         assert!(
             forty
                 .lines()
-                .any(|l| l.trim_matches('│').trim() == "Profile, Columns"),
+                .any(|l| l.trim_matches('│').trim() == "Profile, Columns,"),
             "{forty}"
         );
         let wide = render(&mut app, 80, 24);
         assert!(
-            wide.contains("1 2 3 4 5      Timeline, Search, Notifications,"),
+            wide.contains("1 2 3 4 5 6    Timeline, Search, Notifications,"),
             "{wide}"
         );
     }
@@ -4468,6 +4711,30 @@ mod state_fuzz {
         Error::api("the server said no")
     }
 
+    fn convo(id: &str, unread: u64) -> crate::api::types::Convo {
+        serde_json::from_value(json!({
+            "id": id, "rev": "r",
+            "members": [
+                {"did": "did:plc:me", "handle": "me.test"},
+                {"did": "did:plc:alice", "handle": "alice.test", "displayName": TEXTS[1]}
+            ],
+            "lastMessage": {"$type": "chat.bsky.convo.defs#messageView", "id": "l", "rev": "r",
+                            "text": TEXTS[2], "sender": {"did": "did:plc:alice"}, "sentAt": "2026-09-22T00:00:00Z"},
+            "muted": false, "unreadCount": unread
+        }))
+        .unwrap()
+    }
+
+    fn message(id: &str) -> crate::api::types::ChatMessage {
+        crate::api::types::ChatMessage {
+            id: id.into(),
+            text: TEXTS[3].into(),
+            sender: "did:plc:alice".into(),
+            sent_at: "2026-09-22T00:00:00Z".into(),
+            ..Default::default()
+        }
+    }
+
     /// Now and then the session expires, which brings the login form back.
     fn fail_or_expire(rng: &mut Rng) -> Error {
         if rng.chance(10) {
@@ -4582,6 +4849,53 @@ mod state_fuzz {
                 generation,
                 cursor,
             },
+            Job::Convos { cursor } => Event::Convos {
+                cursor,
+                result: if ok {
+                    Ok(Page {
+                        items: (0..rng.below(4))
+                            .map(|i| convo(&format!("c{i}"), rng.below(3) as u64))
+                            .collect(),
+                        cursor: rng.chance(50).then(|| format!("k{}", rng.below(9))),
+                    })
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::Messages { convo_id, cursor } => Event::Messages {
+                convo_id,
+                cursor,
+                result: if ok {
+                    Ok(Page {
+                        items: (0..rng.below(6))
+                            .map(|_| {
+                                *next_id += 1;
+                                message(&format!("m{next_id}"))
+                            })
+                            .collect(),
+                        cursor: rng.chance(50).then(|| format!("k{}", rng.below(9))),
+                    })
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::SendMessage { convo_id, .. } => Event::MessageSent {
+                convo_id,
+                result: if ok {
+                    *next_id += 1;
+                    Ok(message(&format!("m{next_id}")))
+                } else {
+                    Err(fail())
+                },
+            },
+            Job::ConvoFor { did } => Event::ConvoFor {
+                did,
+                result: if ok { Ok(convo("cx", 1)) } else { Err(fail()) },
+            },
+            Job::ReadConvo { convo_id } => Event::ConvoRead {
+                convo_id,
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
             Job::More { feed, cursor } => {
                 let result = if !ok {
                     Err(fail())
@@ -4666,6 +4980,8 @@ mod state_fuzz {
                 | Job::Post { .. }
                 | Job::DeletePost { .. }
                 | Job::SaveProfile { .. }
+                | Job::SendMessage { .. }
+                | Job::ReadConvo { .. }
         )
     }
 
@@ -4673,7 +4989,7 @@ mod state_fuzz {
         const CHARS: &[char] = &[
             'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
             'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']', 's', '.', 'c',
-            'Q', 'i', 'h', 'A', '5', '+', '<', '>', 'H', 'L',
+            'Q', 'i', 'h', 'A', '5', '+', '<', '>', 'H', 'L', '6', 'm',
         ];
         let codes = [
             KeyCode::Esc,
