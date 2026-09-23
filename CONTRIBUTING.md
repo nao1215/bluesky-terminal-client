@@ -5,6 +5,7 @@
 - Rust stable (`rustup default stable`); the minimum supported version is the `rust-version` in `Cargo.toml`
 - [just](https://github.com/casey/just) (`cargo install just`)
 - [atago](https://github.com/nao1215/atago) for the end-to-end suite (`go install github.com/nao1215/atago@latest`)
+- [himorime](https://github.com/nao1215/himorime) and python3 for the benchmarks (`go install github.com/nao1215/himorime@latest`)
 
 ## Checks
 
@@ -14,6 +15,7 @@ just lint        # clippy with warnings as errors
 just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
 just e2e         # end-to-end suite
+just bench       # performance with himorime (see bench/README.md)
 just coverage    # line coverage of the unit tests and the E2E suite together (needs cargo-llvm-cov)
 ```
 
@@ -30,6 +32,14 @@ The suite lives in `e2e/atago/*.atago.yaml` and runs with `e2e/run.sh`, which bu
 The suite runs on Linux, macOS, and Windows (on Windows atago draws `graphics: kitty` through the OpenConsole it ships). Skip a platform only for a reason written in a comment on the scenario, such as a stand-in program that only runs there (write the other platform's version as a scenario with `only:`).
 
 Write a scenario for every behavior you add or change, including how it fails. Wait for the screen with `expect_screen` before sending the next key, and send a key after `Esc` only once the screen has changed, or the terminal reads the pair as `Alt` plus the key.
+
+## Benchmarks
+
+`bench/himorime.yaml` measures start-up, the commands, and the client from start to its first post, against a stand-in server. Every pull request is compared with its base by `.github/workflows/bench.yml`; see [bench/README.md](bench/README.md).
+
+## Screenshots
+
+The pictures in the README are recorded with `doc/record-demo.sh` (kitty, xdotool and ffmpeg on X11). The chat, accounts and columns pictures use `doc/demo-server.py`, a stand-in server with made-up accounts, so no real account's messages are shown.
 
 ## Code style
 
