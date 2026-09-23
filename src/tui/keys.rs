@@ -60,6 +60,12 @@ pub const HELP: &[Section] = &[
                 "o",
                 "open the post's link in the web browser, or the post itself",
             ),
+            ("Q", "quote the selected post in a new post"),
+            ("c", "copy the post's address to the clipboard"),
+            (
+                "D",
+                "delete your own post: y confirms, any other key keeps it",
+            ),
             ("enter", "open the selected account's profile"),
         ],
     },
@@ -239,7 +245,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
         None => {}
     }
     if !app.threads.is_empty() {
-        return vec![
+        let mut v = vec![
             ("esc", "back"),
             ("j k", "move"),
             ("l", "like"),
@@ -248,8 +254,16 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("v", "thread"),
             ("space", "view"),
             ("enter", "profile"),
-            ("?", "help"),
         ];
+        if app.shown_post().is_some() {
+            v.push(("Q", "quote"));
+            v.push(("c", "copy link"));
+        }
+        if app.own_post_selected() {
+            v.push(("D", "delete"));
+        }
+        v.push(("?", "help"));
+        return v;
     }
     let mut v: Vec<Hint> = match app.tab {
         Tab::Search if app.search.editing => {
@@ -331,6 +345,14 @@ fn view_hints(app: &App) -> Vec<Hint> {
         if !app.feeds.is_empty() {
             v.insert(1, ("[ ]", "feed"));
         }
+    }
+    // Quoting and copying work on any post; deleting only on one of your own.
+    if app.shown_post().is_some() {
+        v.push(("Q", "quote"));
+        v.push(("c", "copy link"));
+    }
+    if app.own_post_selected() {
+        v.push(("D", "delete"));
     }
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
     // is the key that leads to every other one.

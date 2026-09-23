@@ -1582,15 +1582,16 @@ fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
 }
 
 fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images, t: &Theme) {
-    let title = match &c.reply {
-        Some((_, handle, _)) => format!("Reply to @{handle}"),
-        None => "New post".to_string(),
+    let (title, quoted) = match (&c.reply, &c.quote) {
+        (Some((_, handle, excerpt)), _) => (format!("Reply to @{handle}"), Some(excerpt)),
+        (None, Some((_, handle, excerpt))) => (format!("Quote @{handle}"), Some(excerpt)),
+        (None, None) => ("New post".to_string(), None),
     };
     let n = c.media.len() as u16;
     // A row of thumbnails, then a line per picture for its alt text.
     let pics_h = if n > 0 { THUMB.1 + n } else { 0 };
     let inner = popup(frame, area, 72, 14 + pics_h, &title, t);
-    let quote_h = if c.reply.is_some() { 2 } else { 0 };
+    let quote_h = if quoted.is_some() { 2 } else { 0 };
     // On a box too short for all of it, the pictures take everything left
     // after the quote, one row of text, and the footer. Asking for more
     // than the box has left them nothing at all, so what the post would
@@ -1603,7 +1604,7 @@ fn draw_compose(frame: &mut Frame, area: Rect, c: &Compose, images: &mut Images,
         Constraint::Length(1),
     ])
     .areas(inner);
-    if let Some((_, _, excerpt)) = &c.reply {
+    if let Some(excerpt) = quoted {
         frame.render_widget(
             Paragraph::new(truncate(&format!("❝ {excerpt}"), usize::from(quote.width)))
                 .style(t.dim()),
@@ -2742,6 +2743,30 @@ mod tests {
         );
     }
 
+    /// The hint row offers D only where it works: on a post of your own.
+    #[test]
+    fn the_hints_offer_delete_only_on_your_own_post() {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let mine: Post = serde_json::from_value(json!({
+            "uri": "at://did:plc:me/app.bsky.feed.post/mine", "cid": "c",
+            "author": {"did": "did:plc:me", "handle": "me.test", "displayName": "Me"},
+            "record": {"text": "my own post", "createdAt": "2026-09-22T00:00:00Z"},
+        }))
+        .unwrap();
+        app.handle_event(Event::Timeline(Ok(vec![posts(1).remove(0), mine].into())));
+        let screen = render(&mut app, 100, 20);
+        assert!(!screen.contains("D delete"), "{screen}");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('j'),
+        ));
+        let screen = render(&mut app, 100, 20);
+        assert!(screen.contains("D delete"), "{screen}");
+        // The help says how it is confirmed.
+        app.overlay = Some(Overlay::Help { scroll: 0 });
+        let help = render(&mut app, 100, 40);
+        assert!(help.contains("delete your own post"), "{help}");
+    }
+
     #[test]
     fn tiny_terminals_do_not_panic() {
         let (mut app, _) = App::new(Some(session()), "x");
@@ -3682,6 +3707,10 @@ mod state_fuzz {
                 reply_to: reply.map(|r| r.parent.uri),
                 result: if ok { Ok(()) } else { Err(fail()) },
             },
+            Job::DeletePost { uri } => Event::PostDeleted {
+                uri,
+                result: if ok { Ok(()) } else { Err(fail()) },
+            },
             Job::LoadProfileEditor => Event::ProfileEditor(Err(fail())),
             Job::SaveProfile { .. } => Event::ProfileSaved(if ok { Ok(()) } else { Err(fail()) }),
             Job::Download(_) => Event::Downloaded(Err(fail())),
@@ -3702,6 +3731,7 @@ mod state_fuzz {
                 | Job::Follow { .. }
                 | Job::Unfollow { .. }
                 | Job::Post { .. }
+                | Job::DeletePost { .. }
                 | Job::SaveProfile { .. }
         )
     }

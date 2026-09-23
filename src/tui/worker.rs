@@ -74,8 +74,14 @@ pub enum Job {
     Post {
         text: String,
         reply: Option<ReplyRef>,
+        /// The post this one quotes, when it does.
+        quote: Option<StrongRef>,
         /// Pictures, or one video.
         media: Vec<Attachment>,
+    },
+    /// Delete one of the account's own posts, by its URI.
+    DeletePost {
+        uri: String,
     },
     /// Load the fields the profile editor starts from.
     LoadProfileEditor,
@@ -226,6 +232,11 @@ pub enum Event {
     },
     Posted {
         reply_to: Option<String>,
+        result: Result<()>,
+    },
+    /// The post at this URI was deleted, or the server refused to.
+    PostDeleted {
+        uri: String,
         result: Result<()>,
     },
     ProfileEditor(Result<ProfileFields>),
@@ -437,9 +448,18 @@ impl State {
                 did,
                 result: self.client().and_then(|c| c.unfollow(&follow_uri)),
             },
-            Job::Post { text, reply, media } => Event::Posted {
+            Job::Post {
+                text,
+                reply,
+                quote,
+                media,
+            } => Event::Posted {
                 reply_to: reply.as_ref().map(|r| r.parent.uri.clone()),
-                result: self.post(&text, reply.as_ref(), &media),
+                result: self.post(&text, reply.as_ref(), quote.as_ref(), &media),
+            },
+            Job::DeletePost { uri } => Event::PostDeleted {
+                result: self.client().and_then(|c| c.delete_post(&uri)),
+                uri,
             },
             Job::LoadProfileEditor => Event::ProfileEditor(self.profile_fields()),
             Job::Download(media) => Event::Downloaded(download(&media)),
@@ -620,7 +640,13 @@ impl State {
     /// post with them. Everything is prepared before anything is uploaded,
     /// so a file that cannot be read stops the post before anything reaches
     /// the server.
-    fn post(&mut self, text: &str, reply: Option<&ReplyRef>, media: &[Attachment]) -> Result<()> {
+    fn post(
+        &mut self,
+        text: &str,
+        reply: Option<&ReplyRef>,
+        quote: Option<&StrongRef>,
+        media: &[Attachment],
+    ) -> Result<()> {
         let videos = media
             .iter()
             .filter(|a| media::inspect(&a.path).kind == media::Kind::Video)
@@ -673,7 +699,7 @@ impl State {
                 ));
             }
         };
-        self.client()?.create_post(text, reply, &embed)?;
+        self.client()?.create_post(text, reply, quote, &embed)?;
         Ok(())
     }
 
