@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-23
+
 ### Added
 
 - `.` lists everything the keys do to the selected post, each saying what it would do now (like it or remove your like, follow or unfollow), and runs the one you choose. The key itself still works, so the list teaches the keys rather than replacing them.
