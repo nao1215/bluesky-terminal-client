@@ -770,6 +770,54 @@ scenarios:
                 - { path: "$.record.reply.parent.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
                 - { path: "$.record.reply.parent.cid", equals: "cid-p1" }
 
+  # Bob's post comes with a count, an avatar, a like, and a picture's alt of
+  # the wrong type, and one item is not a post at all. The page still shows,
+  # Bob's post with it, as if the odd fields were missing.
+  - name: a post with odd fields neither fails its page nor goes missing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "An ordinary post", createdAt: "2026-09-20T10:00:00.000Z" }
+                    likeCount: 2
+                - 7
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, avatar: 5, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Odd fields 👨‍👩‍👧 だらけ", createdAt: "2026-09-20T09:00:00.000Z" }
+                    likeCount: null
+                    repostCount: "3"
+                    viewer: { like: 1 }
+                    embed: { $type: app.bsky.embed.images#view, images: [ { thumb: "${api.url}/img/photo.png", fullsize: "${api.url}/img/photo.png", alt: null } ] }
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["An ordinary post", "Odd fields 👨‍👩‍👧 だらけ", "♡ 0   ⟳ 3"]
+                not_contains: "failed"
+            - expect_screen:
+                images: { count: 1 }
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+
   - name: a new post carries link, tag and mention facets at UTF-8 byte offsets
     mock_servers:
       - name: api

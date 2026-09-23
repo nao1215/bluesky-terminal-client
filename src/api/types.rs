@@ -4,16 +4,89 @@
 //! default, because the AppView adds fields over time and a client that fails
 //! on a new field would break without any change on its side.
 
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+
+// Readers for fields the AppView passes on as some client wrote them: a
+// value of the wrong type reads as if it were missing, so one odd field
+// neither loses its post nor fails the page it is on.
+
+fn any_string<'de, D: Deserializer<'de>>(de: D) -> Result<String, D::Error> {
+    Ok(Value::deserialize(de)?
+        .as_str()
+        .unwrap_or_default()
+        .to_string())
+}
+
+fn any_opt_string<'de, D: Deserializer<'de>>(de: D) -> Result<Option<String>, D::Error> {
+    Ok(Value::deserialize(de)?.as_str().map(str::to_string))
+}
+
+/// A count or a size: a whole number, a fraction (rounded), or digits in a
+/// string; anything else, a negative number included, is `None`.
+fn number(v: &Value) -> Option<u64> {
+    match v {
+        Value::Number(n) => n
+            .as_u64()
+            .or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f.round() as u64)),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+fn any_count<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
+    Ok(number(&Value::deserialize(de)?).unwrap_or(0))
+}
+
+fn any_opt_count<'de, D: Deserializer<'de>>(de: D) -> Result<Option<u64>, D::Error> {
+    Ok(number(&Value::deserialize(de)?))
+}
+
+fn any_size<'de, D: Deserializer<'de>>(de: D) -> Result<u32, D::Error> {
+    Ok(number(&Value::deserialize(de)?)
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(0))
+}
+
+fn any_bool<'de, D: Deserializer<'de>>(de: D) -> Result<bool, D::Error> {
+    Ok(Value::deserialize(de)?.as_bool().unwrap_or(false))
+}
+
+/// A nested object, or `None` when it does not read.
+fn any_opt<'de, D: Deserializer<'de>, T: DeserializeOwned>(de: D) -> Result<Option<T>, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(de)?).ok())
+}
+
+/// A nested object, or its default when it does not read.
+fn any_or_default<'de, D: Deserializer<'de>, T: DeserializeOwned + Default>(
+    de: D,
+) -> Result<T, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(de)?).unwrap_or_default())
+}
+
+/// A list of which only the items that read are kept.
+fn readable_items<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+    de: D,
+) -> Result<Vec<T>, D::Error> {
+    Ok(match Value::deserialize(de)? {
+        Value::Array(items) => items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect(),
+        _ => Vec::new(),
+    })
+}
 
 /// `app.bsky.actor.defs#viewerState`, reduced to the follow relationship.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ActorViewer {
     /// AT-URI of the viewer's follow record for this actor, when following.
+    #[serde(deserialize_with = "any_opt_string")]
     pub following: Option<String>,
     /// AT-URI of this actor's follow record for the viewer, when followed back.
+    #[serde(deserialize_with = "any_opt_string")]
     pub followed_by: Option<String>,
 }
 
@@ -24,15 +97,25 @@ pub struct ActorViewer {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Profile {
+    #[serde(deserialize_with = "any_string")]
     pub did: String,
+    #[serde(deserialize_with = "any_string")]
     pub handle: String,
+    #[serde(deserialize_with = "any_opt_string")]
     pub display_name: Option<String>,
+    #[serde(deserialize_with = "any_opt_string")]
     pub description: Option<String>,
+    #[serde(deserialize_with = "any_opt_string")]
     pub avatar: Option<String>,
+    #[serde(deserialize_with = "any_opt_string")]
     pub banner: Option<String>,
+    #[serde(deserialize_with = "any_opt_count")]
     pub followers_count: Option<u64>,
+    #[serde(deserialize_with = "any_opt_count")]
     pub follows_count: Option<u64>,
+    #[serde(deserialize_with = "any_opt_count")]
     pub posts_count: Option<u64>,
+    #[serde(deserialize_with = "any_opt")]
     pub viewer: Option<ActorViewer>,
 }
 
@@ -78,8 +161,10 @@ pub struct PostRecord {
 #[serde(rename_all = "camelCase", default)]
 pub struct PostViewer {
     /// AT-URI of the viewer's like record, when liked.
+    #[serde(deserialize_with = "any_opt_string")]
     pub like: Option<String>,
     /// AT-URI of the viewer's repost record, when reposted.
+    #[serde(deserialize_with = "any_opt_string")]
     pub repost: Option<String>,
 }
 
@@ -87,7 +172,9 @@ pub struct PostViewer {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct AspectRatio {
+    #[serde(deserialize_with = "any_size")]
     pub width: u32,
+    #[serde(deserialize_with = "any_size")]
     pub height: u32,
 }
 
@@ -95,9 +182,13 @@ pub struct AspectRatio {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ImageView {
+    #[serde(deserialize_with = "any_string")]
     pub thumb: String,
+    #[serde(deserialize_with = "any_string")]
     pub fullsize: String,
+    #[serde(deserialize_with = "any_string")]
     pub alt: String,
+    #[serde(deserialize_with = "any_opt")]
     pub aspect_ratio: Option<AspectRatio>,
 }
 
@@ -129,19 +220,22 @@ pub struct ExternalView {
 #[serde(tag = "$type")]
 pub enum Embed {
     #[serde(rename = "app.bsky.embed.images#view")]
-    Images { images: Vec<ImageView> },
+    Images {
+        #[serde(default, deserialize_with = "readable_items")]
+        images: Vec<ImageView>,
+    },
     #[serde(rename = "app.bsky.embed.external#view")]
     External { external: ExternalView },
     #[serde(rename = "app.bsky.embed.video#view")]
     Video {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "any_opt_string")]
         thumbnail: Option<String>,
-        #[serde(default, rename = "aspectRatio")]
+        #[serde(default, rename = "aspectRatio", deserialize_with = "any_opt")]
         aspect_ratio: Option<AspectRatio>,
         /// The HLS playlist to play it from.
-        #[serde(default)]
+        #[serde(default, deserialize_with = "any_opt_string")]
         playlist: Option<String>,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "any_opt_string")]
         alt: Option<String>,
     },
     #[serde(rename = "app.bsky.embed.record#view")]
@@ -248,18 +342,26 @@ impl Embed {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Post {
+    #[serde(deserialize_with = "any_string")]
     pub uri: String,
+    #[serde(deserialize_with = "any_string")]
     pub cid: String,
+    #[serde(deserialize_with = "any_or_default")]
     pub author: Profile,
     /// The raw record; see [`Post::record`] for the typed view.
     #[serde(rename = "record")]
     pub raw_record: Value,
     #[serde(deserialize_with = "lenient_embed")]
     pub embed: Option<Embed>,
+    #[serde(deserialize_with = "any_count")]
     pub reply_count: u64,
+    #[serde(deserialize_with = "any_count")]
     pub repost_count: u64,
+    #[serde(deserialize_with = "any_count")]
     pub like_count: u64,
+    #[serde(deserialize_with = "any_string")]
     pub indexed_at: String,
+    #[serde(deserialize_with = "any_opt")]
     pub viewer: Option<PostViewer>,
     /// The thread above a reply, when the feed gave it. Not part of the
     /// lexicon's postView: bsky attaches it from the feedViewPost around it.
@@ -516,6 +618,7 @@ where
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Timeline {
+    #[serde(deserialize_with = "readable_items")]
     pub feed: Vec<FeedItem>,
     pub cursor: Option<String>,
 }
@@ -558,6 +661,7 @@ pub type AuthorFeed = Timeline;
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct SearchPosts {
+    #[serde(deserialize_with = "readable_items")]
     pub posts: Vec<Post>,
     pub cursor: Option<String>,
 }
@@ -566,6 +670,7 @@ pub struct SearchPosts {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct SearchActors {
+    #[serde(deserialize_with = "readable_items")]
     pub actors: Vec<Profile>,
     pub cursor: Option<String>,
 }
@@ -575,14 +680,21 @@ pub struct SearchActors {
 #[serde(rename_all = "camelCase", default)]
 pub struct Notification {
     /// The record that caused it: the like, the follow, the reply post, ...
+    #[serde(deserialize_with = "any_string")]
     pub uri: String,
+    #[serde(deserialize_with = "any_string")]
     pub cid: String,
+    #[serde(deserialize_with = "any_or_default")]
     pub author: Profile,
     /// like, repost, follow, mention, reply, quote, and newer values.
+    #[serde(deserialize_with = "any_string")]
     pub reason: String,
     /// For a like or repost, the post (or repost) it is about.
+    #[serde(deserialize_with = "any_opt_string")]
     pub reason_subject: Option<String>,
+    #[serde(deserialize_with = "any_bool")]
     pub is_read: bool,
+    #[serde(deserialize_with = "any_string")]
     pub indexed_at: String,
 }
 
@@ -590,6 +702,7 @@ pub struct Notification {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Notifications {
+    #[serde(deserialize_with = "readable_items")]
     pub notifications: Vec<Notification>,
     pub cursor: Option<String>,
 }
@@ -598,6 +711,7 @@ pub struct Notifications {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Posts {
+    #[serde(deserialize_with = "readable_items")]
     pub posts: Vec<Post>,
 }
 
@@ -740,7 +854,7 @@ mod tests {
             "record": {"text": "x"},
             "embed": {"$type": "app.bsky.embed.images#view", "images": 3}
         }));
-        assert_eq!(p.embed, None);
+        assert!(p.embed.as_ref().is_none_or(|e| e.images().is_empty()));
         assert_eq!(p.record().text, "x");
     }
 
@@ -781,6 +895,96 @@ mod tests {
         assert_eq!(r.text, "still here");
         assert_eq!(r.created_at, None);
         assert_eq!(r.reply.map(|x| x.root.uri).as_deref(), Some("at://top"));
+    }
+
+    fn feed_post(uri: &str) -> Value {
+        json!({"post": {
+            "uri": uri, "cid": "c", "author": {"did": "did:plc:a", "handle": "a.test"},
+            "record": {"text": format!("text of {uri}")}, "likeCount": 4,
+            "indexedAt": "2026-09-20T10:00:00Z"
+        }})
+    }
+
+    /// A page of three posts whose middle one has `path` replaced by `bad`.
+    fn page_with(path: &[&str], bad: Value) -> Timeline {
+        let mut middle = feed_post("at://2");
+        let mut at = &mut middle["post"];
+        for k in &path[..path.len() - 1] {
+            at = &mut at[*k];
+        }
+        at[path[path.len() - 1]] = bad;
+        serde_json::from_value(json!({"feed": [feed_post("at://1"), middle, feed_post("at://3")]}))
+            .unwrap()
+    }
+
+    // One odd field in one post must neither fail the page nor lose the
+    // post: the field reads as missing, the rest as sent.
+    #[rstest::rstest]
+    #[case::count_null(&["likeCount"], json!(null))]
+    #[case::count_string(&["likeCount"], json!("3"))]
+    #[case::count_negative(&["replyCount"], json!(-1))]
+    #[case::time_null(&["indexedAt"], json!(null))]
+    #[case::cid_null(&["cid"], json!(null))]
+    #[case::viewer_like_number(&["viewer"], json!({"like": 1}))]
+    #[case::avatar_number(&["author", "avatar"], json!(5))]
+    #[case::handle_null(&["author", "handle"], json!(null))]
+    #[case::followers_negative(&["author", "followersCount"], json!(-1))]
+    #[case::display_name_object(&["author", "displayName"], json!({"x": 1}))]
+    fn a_post_with_one_odd_field_keeps_its_page(#[case] path: &[&str], #[case] bad: Value) {
+        let page = page_with(path, bad);
+        let uris: Vec<_> = page.feed.iter().map(|i| i.post.uri.as_str()).collect();
+        assert_eq!(uris, ["at://1", "at://2", "at://3"]);
+        assert_eq!(page.feed[1].post.record().text, "text of at://2");
+    }
+
+    #[test]
+    fn an_item_that_is_not_a_post_is_left_out_of_its_page() {
+        let page: Timeline = serde_json::from_value(
+            json!({"feed": [feed_post("at://1"), 7, {"post": "x"}, feed_post("at://3")], "cursor": "c"}),
+        )
+        .unwrap();
+        let uris: Vec<_> = page.feed.iter().map(|i| i.post.uri.as_str()).collect();
+        assert_eq!(uris, ["at://1", "at://3"]);
+        assert_eq!(page.cursor.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn other_lists_keep_their_readable_items() {
+        let n: Notifications = serde_json::from_value(json!({"notifications": [
+            {"uri": "at://n/1", "author": {"did": "d", "handle": "h", "avatar": 1}, "reason": "like", "isRead": "no"},
+            "junk",
+            {"uri": "at://n/2", "author": {"did": "d", "handle": "h"}, "reason": "follow"}
+        ]}))
+        .unwrap();
+        let uris: Vec<_> = n.notifications.iter().map(|x| x.uri.as_str()).collect();
+        assert_eq!(uris, ["at://n/1", "at://n/2"]);
+        let a: SearchActors = serde_json::from_value(json!({"actors": [
+            {"did": "d1", "handle": "a.test", "followsCount": "many"}, null, {"did": "d2", "handle": "b.test"}
+        ]}))
+        .unwrap();
+        assert_eq!(a.actors.len(), 2);
+        let s: SearchPosts =
+            serde_json::from_value(json!({"posts": [feed_post("at://1")["post"], 3]})).unwrap();
+        assert_eq!(s.posts.len(), 1);
+    }
+
+    // alt is written by whoever posted; one odd image must not hide the
+    // others, nor a fractional aspect ratio the video.
+    #[test]
+    fn an_odd_image_or_aspect_ratio_keeps_the_media() {
+        let e: Embed = serde_json::from_value(json!({"$type": "app.bsky.embed.images#view", "images": [
+            {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": null},
+            {"thumb": "https://t/2", "fullsize": "https://f/2", "alt": "b", "aspectRatio": {"width": "4", "height": 3}},
+            "not an image"
+        ]}))
+        .unwrap();
+        let urls: Vec<_> = e.images().iter().map(|i| i.url).collect();
+        assert_eq!(urls, ["https://t/1", "https://t/2"]);
+        let v: Embed = serde_json::from_value(json!({"$type": "app.bsky.embed.video#view",
+            "playlist": "https://v/p.m3u8", "thumbnail": "https://v/t.jpg",
+            "aspectRatio": {"width": 1080.0, "height": 1920.5}}))
+        .unwrap();
+        assert_eq!(v.images()[0].aspect, Some((1080, 1921)));
     }
 
     #[test]

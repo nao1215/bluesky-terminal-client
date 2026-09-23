@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A post whose record another client wrote with a damaged reply field (a reply without its CIDs) or a time that is not a string is shown with its text instead of blank, and a reply to it names that post as root and parent.
 - `d` saves under a new name when anything already has the chosen one, a link to nothing included. It used to write through such a link, creating or replacing the file the link pointed to outside the download folder, and a file created between the check and the write was overwritten.
 - A download is never named after a device Windows reserves (`CON`, `NUL`, `COM1`...), never ends in a dot or has an empty extension, and a `#` part of the URL no longer ends up in the name.
+- One post with a field of the wrong type (a count that is null or a string, an avatar or a like that is a number, a missing handle) no longer fails the whole timeline, feed, search, thread, or notifications page it is on; the post shows as if the field were missing, and an item that is not a post at all is left out.
+- A picture whose alt text is null, or whose aspect ratio is written as strings, no longer hides every picture of its post, and a video whose aspect ratio has fractions is shown.
 
 ## [0.1.0] - 2026-09-22
 
