@@ -16,6 +16,13 @@
 #   doc/record-demo.sh compose  doc/img/compose.png: the picture browser of the
 #                               composer, over sample pictures; nothing is sent
 #   doc/record-demo.sh text     doc/img/text.png: the timeline with pictures off
+#   doc/record-demo.sh accounts doc/img/accounts.png: the account list
+#   doc/record-demo.sh columns  doc/img/columns.png: three columns
+#   doc/record-demo.sh chat     doc/img/chat.png: a conversation, a reply typed
+#                               but not sent
+#                               These three run against doc/demo-server.py,
+#                               with made-up accounts and messages, so no real
+#                               account's messages are shown or changed.
 #
 # Needs kitty, xdotool, and ffmpeg, and an X11 display (Xwayland is fine):
 # kitty runs as an X11 window so ffmpeg can capture it, and the keys are sent
@@ -37,6 +44,7 @@ W=""
 cleanup() {
   [ -n "$FPID" ] && kill "$FPID" || true
   [ -n "$KPID" ] && kill "$KPID" || true
+  [ -n "${SPID:-}" ] && kill "$SPID" || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
@@ -51,7 +59,7 @@ start() {
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
     -o cursor_blink_interval=0 -o window_padding_width=0 \
     --listen-on "$SOCK" --class bsdemo --title bsky --directory "${START_DIR:-$(pwd)}" \
-    env PATH="$BIN:$PATH" COLORTERM=truecolor bsky &
+    env PATH="$BIN:$PATH" COLORTERM=truecolor ${DEMO_ENV:-} bsky &
   KPID=$!
   W=""
   for _ in $(seq 1 50); do
@@ -102,7 +110,7 @@ keys() { # KEY COUNT DELAY
   while [ "$i" -lt "$2" ]; do send "$1"; sleep "$3"; i=$((i + 1)); done
 }
 typed() { # TEXT, a key at a time
-  printf '%s\n' "$1" | fold -w1 | while read -r c; do [ -n "$c" ] && send "$c"; sleep 0.12; done
+  printf '%s\n' "$1" | fold -w1 | while IFS= read -r c; do [ -n "$c" ] && send "$c"; sleep 0.12; done
 }
 
 record() {
@@ -301,6 +309,72 @@ text() {
   quit
 }
 
+# A config folder of its own, with two made-up accounts on the stand-in
+# server and three columns, for the screens that would otherwise show or
+# change a real account.
+demo_server() {
+  python3 doc/demo-server.py "$WORK/port" &
+  SPID=$!
+  for _ in $(seq 1 50); do [ -s "$WORK/port" ] && break; sleep 0.1; done
+  PORT=$(cat "$WORK/port")
+  DCFG="$WORK/demo-cfg"
+  mkdir -p "$DCFG/accounts"
+  printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:river", "handle": "river.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_river.json"
+  printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:sea", "handle": "sea.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_sea.json"
+  printf '{"current": "did:plc:river"}\n' > "$DCFG/accounts.json"
+  cat > "$DCFG/settings.json" <<JSON
+{"theme": "bluesky", "columns": {"did:plc:river": [
+  {"kind": "following"},
+  {"kind": "feed", "uri": "at://did:plc:carol/app.bsky.feed.generator/cats", "name": "Cats"},
+  {"kind": "notifications"}
+]}}
+JSON
+  DEMO_ENV="BSKY_CONFIG_DIR=$DCFG BSKY_CACHE_DIR=off"
+}
+
+demo_accounts() {
+  demo_server
+  start 1120 700
+  ready "Finished the trail"
+  send "A"
+  ready "in use"
+  sleep 1
+  shot "$OUT/accounts.png"
+  quit
+  kill "$SPID" || true
+}
+
+demo_columns() {
+  demo_server
+  start 1400 700
+  ready "Finished the trail"
+  send "5"
+  ready "replied to you"
+  sleep 3
+  shot "$OUT/columns.png"
+  quit
+  kill "$SPID" || true
+}
+
+demo_chat() {
+  demo_server
+  start 1120 700
+  ready "Finished the trail"
+  send "6"
+  ready "1 new"
+  send "\r"
+  ready "clear skies"
+  send "i"
+  sleep 0.3
+  typed "Perfect, see you then"
+  sleep 1
+  shot "$OUT/chat.png"
+  send "\x1b"
+  sleep 0.5
+  quit
+  kill "$SPID" || true
+}
+
 bs_config_dir() {
   if [ -n "${BSKY_CONFIG_DIR:-}" ]; then echo "$BSKY_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bsky"; fi
 }
@@ -326,7 +400,10 @@ case "${1:-demo}" in
   search) search ;;
   editor) editor ;;
   compose) compose ;;
+  accounts) demo_accounts ;;
+  columns) demo_columns ;;
+  chat) demo_chat ;;
   text) text ;;
-  all) demo; viewer; themes; actions; settings; thread; search; editor; compose; text ;;
-  *) echo "usage: $0 [demo|viewer|themes|actions|settings|thread|search|editor|compose|text|all]" >&2; exit 2 ;;
+  all) demo; viewer; themes; actions; settings; thread; search; editor; compose; text; demo_accounts; demo_columns; demo_chat ;;
+  *) echo "usage: $0 [demo|viewer|themes|actions|settings|thread|search|editor|compose|text|accounts|columns|chat|all]" >&2; exit 2 ;;
 esac

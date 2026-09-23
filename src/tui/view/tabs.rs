@@ -120,6 +120,14 @@ pub(super) fn draw_chat(
     open.scroll = open.scroll.min(most);
     let top = most - open.scroll;
     let shown: Vec<Line> = lines.into_iter().skip(top).take(h).collect();
+    // A short conversation sits just above the input line, where the next
+    // message goes, rather than under the title with a gap below it.
+    let used = u16::try_from(shown.len()).unwrap_or(msgs.height);
+    let msgs = Rect {
+        y: msgs.y + msgs.height.saturating_sub(used),
+        height: used.min(msgs.height),
+        ..msgs
+    };
     frame.render_widget(Paragraph::new(shown), msgs);
     if open.typing {
         frame.render_widget(Paragraph::new(" ›").style(t.accent()), input);

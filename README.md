@@ -66,6 +66,16 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 | `.`: what the keys do to a post | `e`: edit your profile |
 | ![the timeline with the list that . opens: reply, like, repost, quote, view, open, thread, copy, profile, unfollow](doc/img/actions.png) | ![the profile editor over your profile: display name, description, and a new avatar](doc/img/editor.png) |
 
+`5`: the Columns tab, here Following, a pinned feed, and notifications side by side.
+
+![three columns: the Following timeline with a photo, a feed of cat posts, and notifications](doc/img/columns.png)
+
+| `6`: a conversation on the Chat tab | `A`: the accounts logged in |
+|:--:|:--:|
+| ![a conversation between two made-up accounts about a hike, and a reply being written](doc/img/chat.png) | ![the account list over the timeline, the account in use marked](doc/img/accounts.png) |
+
+The accounts, posts, and messages in these three pictures are made up and served by [doc/demo-server.py](doc/demo-server.py).
+
 ## Pictures and videos
 
 `Space` on a post shows its pictures full screen at their own shape, or plays its video (without sound). `←` `→` go through several pictures, `r` plays the video again, `d` saves it in `Downloads/bsky` (or the folder chosen in the settings), and `Esc` goes back. On a post with only a link, `Space` (or `o` anywhere) opens it in your web browser.
@@ -151,6 +161,28 @@ bsky like at://did:plc:.../app.bsky.feed.post/3abc
 | `NO_COLOR` | No color |
 
 Exit status: 0 success, 1 usage error, 2 not an interactive terminal, 3 local file error, 4 a command's network or server error. In the client, server errors do not end bsky; they are shown in it and can be retried.
+
+## Other terminal clients
+
+Two other clients that run in a terminal, each good at different things. The table is from their READMEs and source as of September 2026; their projects are the place to check what they do now.
+
+| | bsky | [tuisky](https://github.com/sugyan/tuisky) | [mattn/bsky](https://github.com/mattn/bsky) |
+|---|---|---|---|
+| Written in | Rust | Rust | Go |
+| Interface | Full-screen client, and commands | Full-screen client | Commands |
+| Pictures and videos | Drawn in the terminal, videos played | Listed as links that open in the browser | Not shown |
+| Several columns | Yes | Yes | Not applicable |
+| Several accounts | Yes | Yes | Yes, as named profiles |
+| New posts arrive without a key | Chat only | Yes, on a set interval | `stream` prints posts from the whole network as they are made |
+| Notifications | Yes | No | Yes |
+| Direct messages | Yes | No | Yes |
+| Posting | Text, pictures, video, reply, quote | Text, pictures, quote | Text, pictures, video, reply, quote |
+| Block, mute, report, lists | No | No | Yes |
+| App passwords, invite codes | No | No | Yes |
+| JSON output | Every command | No | Most commands |
+| Key bindings | Fixed | Set in a TOML file | Not applicable |
+| MCP server | No | No | Yes |
+| Install | Homebrew, Cargo, release binaries | Cargo, AUR, x-cmd | `go install`, release binaries |
 
 ## Contributing
 
