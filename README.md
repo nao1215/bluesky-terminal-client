@@ -86,6 +86,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `1`–`4`, `Tab` | Timeline, Search, Notifications, Profile |
 | `j` `k`, `g` `G` | Move; more loads by itself near the end |
 | `n` `r` | New post, reply |
+| `Q` `c` `D` | Quote the post, copy its address, delete your own post (`y` confirms) |
 | `l` `b` `f` | Like, repost, follow (each again undoes it) |
 | `[` `]` | Previous or next feed on the Timeline tab |
 | `v` | The post's thread |
