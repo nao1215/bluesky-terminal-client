@@ -81,8 +81,44 @@ pub fn detect(text: &str) -> Vec<Span> {
                 spans.push(span);
             }
         }
+        // A tag runs to the next space, so a mention or a link written
+        // straight after one is inside the token: `#Rust【@alice.test】`.
+        // The tag stops there (see `tag_of`) and that span is taken too, so
+        // the person is mentioned rather than spelled into the tag.
+        if spans[first..]
+            .iter()
+            .any(|s| matches!(s.target, Target::Tag(_)))
+            && let Some(i) = glued(token)
+            && let Some(span) = span_at(start + i, &token[i..])
+            && !spans[first..]
+                .iter()
+                .any(|s| (s.start..s.end).contains(&span.start))
+        {
+            spans.push(span);
+        }
     }
     spans
+}
+
+/// Where a mention or an http(s) link begins inside `s`, past its first
+/// character. A tag ends there, and the span itself is taken as well.
+fn glued(s: &str) -> Option<usize> {
+    s.char_indices()
+        .skip(1)
+        .find(|&(i, c)| {
+            let rest = &s[i..];
+            match c {
+                '@' => matches!(
+                    span_at(0, rest),
+                    Some(Span {
+                        target: Target::Mention(_),
+                        ..
+                    })
+                ),
+                _ => rest.starts_with("https://") || rest.starts_with("http://"),
+            }
+        })
+        .map(|(i, _)| i)
 }
 
 /// `s` up to the `close` that has no `open` before it in `s`.
@@ -259,7 +295,10 @@ fn tag_of(token: &str) -> Option<(usize, &str)> {
     if rest.starts_with('\u{fe0f}') {
         return None;
     }
-    let tag = rest[..rest.find(TAG_STOP).unwrap_or(rest.len())].trim_end_matches(is_punctuation);
+    let tag = &rest[..rest.find(TAG_STOP).unwrap_or(rest.len())];
+    // A mention or a link written straight after the tag is not part of it.
+    let tag = &tag[..glued(tag).unwrap_or(tag.len())];
+    let tag = tag.trim_end_matches(is_punctuation);
     is_tag(tag).then_some((hash.len_utf8(), tag))
 }
 
@@ -330,6 +369,38 @@ mod tests {
                 ("#rust".into(), Target::Tag("rust".into())),
             ]
         );
+    }
+
+    // A tag runs to the next space, so in text without spaces it used to
+    // swallow a mention or a link written straight after it: the handle went
+    // into the tag and nobody was mentioned.
+    #[rstest]
+    #[case(
+        "#Rust\u{3010}@alice.test\u{3011}",
+        vec![("#Rust", Target::Tag("Rust".into())), ("@alice.test", Target::Mention("alice.test".into()))]
+    )]
+    #[case(
+        "#rust(@alice.test)",
+        vec![("#rust", Target::Tag("rust".into())), ("@alice.test", Target::Mention("alice.test".into()))]
+    )]
+    #[case(
+        "#\u{30bf}\u{30b0}\u{3001}https://example.com/a",
+        vec![("#\u{30bf}\u{30b0}", Target::Tag("\u{30bf}\u{30b0}".into())), ("https://example.com/a", Target::Link("https://example.com/a".into()))]
+    )]
+    // A handle that is not one, and a tag that only looks like the start of
+    // a link, are left alone.
+    #[case("#rust@notahandle", vec![("#rust@notahandle", Target::Tag("rust@notahandle".into()))])]
+    #[case("#webhttp", vec![("#webhttp", Target::Tag("webhttp".into()))])]
+    #[case("#@alice.test", vec![("#@alice.test", Target::Tag("@alice.test".into()))])]
+    fn a_tag_ends_where_a_mention_or_a_link_begins(
+        #[case] text: &str,
+        #[case] want: Vec<(&str, Target)>,
+    ) {
+        let want: Vec<(String, Target)> = want
+            .into_iter()
+            .map(|(t, target)| (t.to_string(), target))
+            .collect();
+        assert_eq!(targets(text), want);
     }
 
     #[test]

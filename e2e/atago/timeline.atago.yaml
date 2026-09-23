@@ -962,6 +962,67 @@ scenarios:
                 - { path: "$.record.facets[0].index.byteEnd", equals: 20 }
                 - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
 
+  - name: a tag glued to a mention sends both, the tag ending where the mention begins
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            # Japanese has no spaces, so the mention follows the tag straight
+            # away, inside a bracket.
+            - send: "#Rust【@alice.test】が良い"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.identity.resolveHandle
+            count: 1
+            query: { name: handle, equals: "alice.test" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "#Rust【@alice.test】が良い" }
+                # The tag is the word, and the handle is a mention of its
+                # own: "【" is 3 bytes, so the mention runs from 8 to 19.
+                - { path: "$.record.facets", length: 2 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 0 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 5 }
+                - { path: "$.record.facets[0].features[0].tag", equals: "Rust" }
+                - { path: "$.record.facets[1].index.byteStart", equals: 8 }
+                - { path: "$.record.facets[1].index.byteEnd", equals: 19 }
+                - { path: "$.record.facets[1].features[0].did", equals: "did:plc:alice" }
+
   - name: a bare domain links with https in front, and a file name stays text
     mock_servers:
       - name: api
