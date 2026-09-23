@@ -2,6 +2,7 @@
 [![E2E](https://github.com/nao1215/bluesky-terminal-client/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/bluesky-terminal-client/actions/workflows/e2e.yml)
 ![Coverage](https://raw.githubusercontent.com/nao1215/octocovs-central-repo/main/badges/nao1215/bluesky-terminal-client/coverage.svg)
 [![tested with atago](https://img.shields.io/badge/tested%20with-atago-7c3aed?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMuNiA0LjIgMTEuOSAxMmwtOC4zIDcuOC0xLjktMi4yTDcuOSAxMiAxLjcgNi40eiIvPjxyZWN0IGZpbGw9IiNmZmYiIHg9IjEyLjYiIHk9IjE3LjIiIHdpZHRoPSI5LjciIGhlaWdodD0iMi44IiByeD0iMS40Ii8%2BPC9zdmc%2B&logoColor=white)](https://github.com/nao1215/atago)
+[![measured with himorime](https://img.shields.io/badge/measured%20with-himorime-d9480f?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCI%2BPHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBkPSJNNC4yIDE4LjVBOSA5IDAgMSAxIDE5LjggMTguNSIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTEyIDE0LjUgMTYuNSA5Ii8%2BPGNpcmNsZSBmaWxsPSIjZmZmIiBjeD0iMTIiIGN5PSIxNC41IiByPSIyLjIiLz48L3N2Zz4=&logoColor=white)](https://github.com/nao1215/himorime)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 # bsky
@@ -195,9 +196,10 @@ Two other clients that run in a terminal, each good at different things. The tab
 just test   # unit tests
 just lint   # clippy
 just e2e    # end-to-end tests with atago
+just bench  # performance with himorime
 ```
 
-The end-to-end tests in [e2e/atago](e2e/atago) run the real binary with [atago](https://github.com/nao1215/atago) in a pseudo-terminal that answers like a kitty terminal, against mock Bluesky servers: what is drawn (pictures compared pixel for pixel), what is sent, and what is written to disk. The GIFs and screenshots above are recorded with [doc/record-demo.sh](doc/record-demo.sh). See [CONTRIBUTING.md](CONTRIBUTING.md).
+The end-to-end tests in [e2e/atago](e2e/atago) run the real binary with [atago](https://github.com/nao1215/atago) in a pseudo-terminal that answers like a kitty terminal, against mock Bluesky servers: what is drawn (pictures compared pixel for pixel), what is sent, and what is written to disk. The performance is measured with [himorime](https://github.com/nao1215/himorime) from [bench](bench), and every pull request is compared with its base. The GIFs and screenshots above are recorded with [doc/record-demo.sh](doc/record-demo.sh). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

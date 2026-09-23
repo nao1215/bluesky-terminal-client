@@ -36,6 +36,10 @@ audit:
 deny:
     cargo deny check
 
+# Measure performance with himorime (needs himorime and python3)
+bench *ARGS:
+    himorime run {{ARGS}} bench
+
 # Run the end-to-end suite with atago (builds bsky, needs atago on PATH)
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}

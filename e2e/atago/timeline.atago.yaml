@@ -1927,6 +1927,8 @@ scenarios:
             json: { error: "ExpiredToken", message: "Token has been revoked" }
           - method: POST
             path: /xrpc/com.atproto.server.createSession
+            # Long enough for "logging in…" to be seen before the answer.
+            delay: 300ms
             json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
     steps:
       - *session
@@ -1941,9 +1943,16 @@ scenarios:
                 contains: ["Log in to Bluesky", "the session has expired; log in again", "me.test", "${api.url}"]
             - send: "app-pass-1234"
             - send: { key: enter }
+            # This stand-in server refuses every token, the new one too, so
+            # once logged in the form comes back at once. The login is done
+            # when "logging in…" has gone; the new tokens are checked in the
+            # file below. ctrl+c quits from the form.
             - expect_screen:
-                contains: "logged in as @me.test"
-            - send: q
+                contains: "logging in…"
+            - expect_screen:
+                contains: "the session has expired; log in again"
+                not_contains: "logging in…"
+            - send: { key: ctrl-c }
       - assert:
           exit_code: 0
       - assert:

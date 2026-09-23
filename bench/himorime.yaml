@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nao1215/himorime/main/schema/himorime.schema.json
+#
+# bsky measured end to end with himorime (https://github.com/nao1215/himorime):
+# the process a user starts, from its first instruction to its exit.
+#
+#   himorime run bench                     measure the working tree
+#   himorime compare --against main bench  compare main with the working tree
+#
+# On a pull request, .github/workflows/bench.yml runs `himorime ci bench`:
+# the base of the pull request and its head are built and measured in
+# interleaved rounds on the same runner. See bench/README.md.
+#
+# No benchmark touches the network. The commands talk to bench/mock.py, a
+# stand-in server on 127.0.0.1 that answers at once with pages of 100 posts
+# of mixed text (Japanese, emoji, links), so what is measured is bsky's own
+# work: starting, reading the answers, laying out text.
+version: "1"
+
+name: bsky
+description: Start-up, the timeline, notifications, a thread and a search as text and JSON, and the client from start to its first post.
+
+build:
+  command: [sh, -c, 'cargo build --release --locked --quiet && cp "target/release/bsky$1" "$2"', sh, "${exe}", "${artifact}"]
+  cwd: ..
+
+defaults:
+  warmup: 2
+  runs: 20
+  env:
+    BSKY_CONFIG_DIR: "${workdir}/cfg"
+    BSKY_CACHE_DIR: "off"
+    TZ: UTC
+  metrics:
+    cpu: true
+    memory: true
+  regression:
+    confidence: 0.95
+    latency:
+      max_percent: 10
+      min_difference: 2ms
+    cpu_total:
+      max_percent: 15
+      min_difference: 2ms
+    peak_rss:
+      max_percent: 15
+      min_difference: 2MiB
+
+benchmarks:
+  - name: version
+    description: Starting bsky and exiting.
+    tags: [smoke]
+    commands:
+      bsky:
+        command: ["${artifact}", --version]
+
+  - name: timeline 100
+    description: The timeline, 100 posts, printed as text and as JSON lines.
+    setup: &serve
+      - command: [sh, "${root}/serve.sh", start, "${workdir}"]
+    cleanup: &stop
+      - command: [sh, "${root}/serve.sh", stop, "${workdir}"]
+    tags: [smoke]
+    baseline: text
+    commands:
+      text:
+        command: ["${artifact}", tl, -n, "100"]
+      json:
+        command: ["${artifact}", tl, -n, "100", --json]
+
+  - name: notifications 100
+    description: 100 reply notifications and the post they are about.
+    setup: *serve
+    cleanup: *stop
+    commands:
+      bsky:
+        command: ["${artifact}", notif, -n, "100"]
+
+  - name: thread 100
+    description: A post and its 100 replies.
+    setup: *serve
+    cleanup: *stop
+    commands:
+      bsky:
+        command: ["${artifact}", thread, "at://did:plc:a0/app.bsky.feed.post/p0"]
+
+  - name: search 100
+    description: A search that finds 100 posts.
+    setup: *serve
+    cleanup: *stop
+    commands:
+      bsky:
+        command: ["${artifact}", search, rust, -n, "100"]
+
+  - name: client first post
+    description: >-
+      The client from start to its first post on screen, then q, on a
+      pseudo-terminal: with a terminal and a server that answer at once, and
+      with a terminal that answers in 150 ms (ssh) and a server in 300 ms.
+      The measured process is bench/first_post.py, which runs the client,
+      answers for the terminal and serves the stand-in data.
+    tags: [smoke]
+    baseline: instant
+    commands:
+      instant:
+        command: [python3, "${root}/first_post.py", "${artifact}", "0", "0"]
+      over-ssh:
+        command: [python3, "${root}/first_post.py", "${artifact}", "150", "300"]

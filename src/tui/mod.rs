@@ -37,6 +37,9 @@ use worker::Worker;
 const TICK: Duration = Duration::from_millis(50);
 /// How long the loop waits while a video plays.
 const VIDEO_TICK: Duration = Duration::from_millis(5);
+/// How long the loop waits for a key while answers or pictures are on
+/// their way, which are shown as soon as they come.
+const ANSWER_TICK: Duration = Duration::from_millis(5);
 /// Most input events handled before the screen is drawn again. Keys that
 /// arrive faster than a frame draws (a held j) are applied together, so the
 /// selection keeps up with the key instead of trailing behind it.
@@ -53,6 +56,14 @@ pub fn run(
 ) -> Result<()> {
     terminal::ensure_interactive()?;
     let depth = theme::color_depth(|k| std::env::var(k).ok());
+    // The first lists are asked for before the terminal is: its answer
+    // takes a round trip (over ssh, as long as the network's), and the
+    // server's answers need nothing from it.
+    let worker = Worker::spawn(session.clone(), accounts.clone());
+    let (mut app, jobs) = App::new(session, service);
+    for job in jobs {
+        worker.send(app.stamp(&job), job);
+    }
 
     let mut term = ratatui::try_init()
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot set up the terminal: {e}")))?;
@@ -65,17 +76,19 @@ pub fn run(
     };
     let _ = execute!(io::stdout(), EnableBracketedPaste);
     let result = event_loop(
-        &mut term, picker, session, accounts, settings, depth, service,
+        &mut term, picker, &mut app, &worker, accounts, settings, depth, service,
     );
     let _ = execute!(io::stdout(), DisableBracketedPaste);
     ratatui::restore();
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn event_loop(
     term: &mut ratatui::DefaultTerminal,
     picker: Option<ratatui_image::picker::Picker>,
-    session: Option<Session>,
+    app: &mut App,
+    worker: &Worker,
     accounts: AccountStore,
     settings: SettingsStore,
     depth: theme::ColorDepth,
@@ -103,8 +116,6 @@ fn event_loop(
     } else {
         make_images(&picker, crate::config::cache_dir(&env, &loaded).0)
     };
-    let worker = Worker::spawn(session.clone(), accounts.clone());
-    let (mut app, jobs) = App::new(session, service);
     for s in accounts.list().unwrap_or_default() {
         app.accounts.push((&s).into());
     }
@@ -114,9 +125,6 @@ fn event_loop(
         app.pictures = false;
     } else if !images.shows() {
         app.without_pictures();
-    }
-    for job in jobs {
-        worker.send(app.stamp(&job), job);
     }
 
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
@@ -129,13 +137,20 @@ fn event_loop(
                 let _ = io::Write::write_all(&mut out, delete.as_bytes());
                 let _ = io::Write::flush(&mut out);
             }
-            term.draw(|f| view::draw(f, &mut app, &mut images))
+            term.draw(|f| view::draw(f, app, &mut images))
                 .map_err(io_err)?;
             dirty = false;
         }
         // A playing video's pictures come every 67 ms; waiting a whole tick
-        // for keys would show them late and unevenly.
-        let mut wait = if images.playing() { VIDEO_TICK } else { TICK };
+        // for keys would show them late and unevenly. An answer or a picture
+        // on its way is shown as it comes, not at the end of the tick.
+        let mut wait = if images.playing() {
+            VIDEO_TICK
+        } else if app.pending > 0 || images.loading() {
+            ANSWER_TICK
+        } else {
+            TICK
+        };
         for _ in 0..EVENTS_PER_FRAME {
             if app.quit {
                 break;
@@ -154,7 +169,7 @@ fn event_loop(
             }
             // Before the next key: the worker acts as the account chosen
             // before anything is asked of it.
-            for job in account_changes(&mut app, &worker, &accounts) {
+            for job in account_changes(app, worker, &accounts) {
                 worker.send(app.stamp(&job), job);
             }
             dirty = true;

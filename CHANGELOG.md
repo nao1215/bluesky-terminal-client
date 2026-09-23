@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- The first posts appear sooner. The timeline is asked for before the terminal is asked what it can draw, so the two round trips overlap: with a terminal that answers in 150 ms, as over ssh, and a server in 300 ms, the first post is on screen after 308 ms instead of 509 ms. An answer from the server is also shown as it comes rather than at the next 50 ms tick (55 ms to 8 ms with a local server).
 - Every key in the `?` help is described on one line on an 80-column terminal; the long descriptions were shortened.
 
 ### Fixed
@@ -37,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - The `.` list offered "open the profile" on the Profile tab, where Enter opens nothing, and "follow" on your own post or profile, which `f` refuses.
 - On a profile opened from the Columns tab, the key hints said Esc goes to your profile; it goes back to the columns, and the hint says so.
 - After `M` or `B`, the notifications of that account left the list but still counted on the Notifications tab.
+- When the session had expired, each request of the start that found it out brought up the login form again, emptying the password being typed. The form the first one brings up stays; and after logging in again, an answer to a request sent before no longer asks for a login.
 
 ## [0.4.0] - 2026-09-24
 
