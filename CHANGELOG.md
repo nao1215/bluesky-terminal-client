@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
 ### Added
 
 - A Chat tab (`6`) for direct messages: the conversations with their unread counts (also on the tab's title), a conversation's messages, the newest just above the box to write in and the older ones read on scrolling up (`i`, `enter` sends). A conversation is marked read when it is opened, not when the list is loaded, and the tab reads the server again every 15 seconds while it is shown. `m` on someone's profile opens the conversation with them, starting it if needed. An app password made without access to direct messages is told how to make one that has it. On the command line, `bsky chat` lists the conversations, `bsky chat <actor>` prints the messages with them, and `bsky chat <actor> <text>` sends one.
