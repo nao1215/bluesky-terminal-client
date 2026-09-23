@@ -140,9 +140,13 @@ scenarios:
             # One second of video: it plays, then ends on its last picture.
             - expect_screen:
                 contains: ["1/1", "A test pattern", "■ ended  r plays it again", "r replay"]
-                # Several pictures of it, however many a slow machine draws
-                # (a late one is skipped for the newest).
-                images: { min_count: 3 }
+                # At least one picture of it. How many reach the screen
+                # depends on the machine: a late one is skipped for the
+                # newest, and a Windows runner or an instrumented build draws
+                # only one or two of a one-second video. That it played to
+                # the end is what "■ ended" says, and the segment counts
+                # below say it was fetched.
+                images: { min_count: 1 }
             - send: r
             - expect_screen:
                 contains: "■ ended"
@@ -228,7 +232,8 @@ scenarios:
             - expect_screen:
                 contains: ["1/1", "A test pattern", "■ ended  r plays it again"]
                 not_contains: "cannot load the video"
-                images: { min_count: 3 }
+                # One picture at least; how many depends on the machine.
+                images: { min_count: 1 }
             - send: { key: esc }
             - expect_screen:
                 contains: "Odd playlist"
