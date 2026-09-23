@@ -40,6 +40,8 @@ Pictures and videos need a terminal that can draw images:
 
 On a terminal that answers none of them bsky runs as text: each post says how many pictures it has, with their descriptions, or that it has a video, nothing is downloaded to be drawn, and `Space` opens the post on bsky.app in your web browser. Behind a multiplexer that hides the answer, name the protocol with `BSKY_GRAPHICS=kitty`, `sixel`, or `iterm2`.
 
+![the timeline as text: each reply with the posts above it, and space opens the post in the browser](doc/img/text.png)
+
 ## What it does
 
 - Timeline of the accounts you follow and your own posts, without reposts. A reply comes with the posts above it; `v` opens the whole thread.
@@ -56,7 +58,11 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 - A settings screen (`s` on your own Profile tab) for the theme, pictures, and where bsky keeps things.
 - A terminal smaller than 24x8 cells says so, and names the size it needs and the size it has, instead of drawing a screen too cramped to read.
 
-![the timeline with the list that . opens: reply, like, repost, quote, view, open, thread, copy, profile, unfollow](doc/img/actions.png)
+| `v`: a post's thread | `/`: search, here for accounts |
+|:--:|:--:|
+| ![a thread of three posts, the selected reply at the bottom](doc/img/thread.png) | ![accounts found for "bluesky", the one you follow marked](doc/img/search.png) |
+| `.`: what the keys do to a post | `e`: edit your profile |
+| ![the timeline with the list that . opens: reply, like, repost, quote, view, open, thread, copy, profile, unfollow](doc/img/actions.png) | ![the profile editor over your profile: display name, description, and a new avatar](doc/img/editor.png) |
 
 ## Pictures and videos
 
@@ -69,6 +75,8 @@ Videos come from Bluesky's HLS stream and are decoded by OpenH264, which is buil
 ## Posting pictures and videos
 
 `n` writes a post; `Ctrl+O` in it opens a folder browser that previews pictures and describes videos. Attach up to four pictures, or one video or animated GIF, and give each alt text with `Tab`.
+
+![the composer's picture browser: a folder with a video and a picture, the picture previewed with its size](doc/img/compose.png)
 
 bsky turns each photo upright, scales it under Bluesky's size limit, and leaves the camera's metadata (location included) on your disk. Videos go through Bluesky's video service, as the official app does; an account whose email is not confirmed yet is told so before anything is uploaded.
 
