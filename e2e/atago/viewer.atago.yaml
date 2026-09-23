@@ -645,7 +645,8 @@ scenarios:
   # The download folder can be chosen on the settings screen, in a browser
   # that lists folders only; the next d saves there. It opens at the folder
   # set now: settings.json names one here, so where it opens does not depend
-  # on the platform's own download folder.
+  # on the platform's own download folder. The name is relative to where
+  # bsky runs: a Windows path would need its backslashes escaped in JSON.
   - name: a download folder chosen on the settings screen is where d saves
     mock_servers:
       - name: api
@@ -676,7 +677,7 @@ scenarios:
       - fixture:
           file: cfg/settings.json
           content: |
-            {"download_dir": "${workdir}/first", "theme": "nord"}
+            {"download_dir": "first", "theme": "nord"}
       - fixture: { file: first/keep.txt, content: "the folder settings.json names" }
       - fixture: { file: first-写真👨‍👩‍👧/keep.txt, content: "the folder to choose" }
       - pty:
