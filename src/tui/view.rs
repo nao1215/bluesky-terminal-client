@@ -22,7 +22,7 @@ use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
 use crate::tui::player::State;
-use crate::tui::text::{format_time, truncate, wrap};
+use crate::tui::text::{drawable, format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
 use crate::tui::worker::NotifItem;
@@ -654,18 +654,42 @@ fn ref_post_line(p: &RefPost, width: usize, t: &Theme) -> Line<'static> {
     Line::styled(truncate(&text, width), t.dim())
 }
 
+/// `line` cut to `width` columns as one piece: whole grapheme clusters up
+/// to the cut and one ellipsis there, in the style of the span it cuts.
 fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
-    let mut left = width;
-    let mut spans = Vec::new();
-    for span in line.spans {
-        if left == 0 {
-            break;
-        }
-        let text = truncate(&span.content, left);
-        left = left.saturating_sub(text.width());
-        spans.push(Span::styled(text, span.style));
+    let spans: Vec<(String, Style)> = line
+        .spans
+        .into_iter()
+        .map(|s| (drawable(&s.content).into_owned(), s.style))
+        .collect();
+    if spans.iter().map(|(t, _)| t.width()).sum::<usize>() <= width {
+        return Line::from(
+            spans
+                .into_iter()
+                .map(|(t, s)| Span::styled(t, s))
+                .collect::<Vec<_>>(),
+        );
     }
-    Line::from(spans)
+    // One column is kept for the ellipsis.
+    let mut left = width.saturating_sub(1);
+    let mut out = Vec::new();
+    for (text, style) in spans {
+        let mut kept = String::new();
+        for g in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
+            let gw = g.width();
+            if gw > left {
+                if width > 0 {
+                    kept.push('…');
+                }
+                out.push(Span::styled(kept, style));
+                return Line::from(out);
+            }
+            kept.push_str(g);
+            left -= gw;
+        }
+        out.push(Span::styled(kept, style));
+    }
+    Line::from(out)
 }
 
 fn embed_lines(embed: &Embed, width: usize, t: &Theme) -> Vec<Line<'static>> {
@@ -2711,6 +2735,33 @@ mod tests {
                 "{key} {what}:\n{screen}"
             );
         }
+    }
+
+    // A header is cut as one line: one ellipsis where it stops, even when
+    // a wide character leaves a single column, and one whenever anything
+    // after the cut is dropped.
+    #[rstest::rstest]
+    #[case(&["日本語", " @alice"], 4, "日…")]
+    #[case(&["日本語", " @alice"], 5, "日本…")]
+    #[case(&["Alice", " @alice"], 5, "Alic…")]
+    #[case(&["Alice", " @alice"], 12, "Alice @alice")]
+    #[case(&["👨‍👩‍👧👨‍👩‍👧", " @a"], 3, "👨‍👩‍👧…")]
+    #[case(&["🇯🇵 name", " · 2026"], 8, "🇯🇵 name…")]
+    fn a_cut_header_ends_in_one_ellipsis(
+        #[case] spans: &[&str],
+        #[case] width: usize,
+        #[case] want: &str,
+    ) {
+        let line = Line::from(
+            spans
+                .iter()
+                .map(|s| Span::raw(s.to_string()))
+                .collect::<Vec<_>>(),
+        );
+        let cut = truncate_line(line, width);
+        let text: String = cut.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, want);
+        assert!(text.width() <= width, "{text:?} is wider than {width}");
     }
 
     #[test]

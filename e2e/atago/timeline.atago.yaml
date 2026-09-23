@@ -818,6 +818,38 @@ scenarios:
       - assert:
           exit_code: 0
 
+  # A tab and a CR in the text are drawn as spaces and a line break rather
+  # than vanishing, and a name too long for a narrow screen ends in one "…".
+  - name: tabs and a long wide name are drawn as they were laid out
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "日本語の名前がとても長いアカウント", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "name\tscore\ralice\t10", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 20
+          cols: 30
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["name    score", "alice    10", "…"]
+                not_contains: ["namescore", "……"]
+            - send: q
+      - assert:
+          exit_code: 0
+
   - name: a new post carries link, tag and mention facets at UTF-8 byte offsets
     mock_servers:
       - name: api

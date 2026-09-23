@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A download is never named after a device Windows reserves (`CON`, `NUL`, `COM1`...), never ends in a dot or has an empty extension, and a `#` part of the URL no longer ends up in the name.
 - One post with a field of the wrong type (a count that is null or a string, an avatar or a like that is a number, a missing handle) no longer fails the whole timeline, feed, search, thread, or notifications page it is on; the post shows as if the field were missing, and an item that is not a post at all is left out.
 - A picture whose alt text is null, or whose aspect ratio is written as strings, no longer hides every picture of its post, and a video whose aspect ratio has fractions is shown.
+- Tabs in a post are drawn as spaces and a CR as a line break, instead of vanishing and gluing the words together; the profile editor and the search box lay out text from the server with CRLF or tabs the way they draw it, so the cursor stays where the text is.
+- A name or header cut on a narrow screen ends in a single `…`: a wide character no longer leaves `……`, and a name that fills the width exactly no longer drops the rest of the header without one.
 
 ## [0.1.0] - 2026-09-22
 
