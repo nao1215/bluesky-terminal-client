@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - A terminal without kitty graphics, sixel, or iTerm2 inline images gets the client as text instead of being refused with exit status 2. Posts say how many pictures they carry, with their descriptions, or that they have a video; no avatar column is kept and nothing is downloaded to be drawn; `Space` opens the post on bsky.app in the web browser, and the key hints and `?` help say so and leave the viewer out. Exit status 2 now only means bsky was not started in an interactive terminal.
 
+### Fixed
+
+- A video whose playlist names its files the scheme-relative (`//host/path`), absolute-path, query-only, or `..` way plays and saves. Those forms used to be joined to the playlist's address as text, which asked the server for a path that does not exist, so the video showed only its thumbnail with a warning.
+
 ## [0.1.1] - 2026-09-23
 
 ### Changed

@@ -7,21 +7,144 @@
 //! segment the program's first video stream. Audio is skipped.
 
 /// A URL as a playlist line names it, relative to the playlist at `base`.
+///
+/// Reference resolution as RFC 3986 section 5.2 defines it, so that the
+/// scheme-relative, absolute-path, query-only and dot-segment forms a
+/// playlist may use all point at the same file a browser would fetch.
 pub fn resolve(base: &str, rel: &str) -> String {
-    if rel.starts_with("https://") || rel.starts_with("http://") {
+    if has_scheme(rel) {
         return rel.to_string();
     }
-    let base = base.split(['?', '#']).next().unwrap_or(base);
-    if let Some(path) = rel.strip_prefix('/') {
-        // The scheme and host of the base, then the absolute path.
-        let after_scheme = base.find("://").map_or(0, |i| i + 3);
-        let host_end = base[after_scheme..]
-            .find('/')
-            .map_or(base.len(), |i| after_scheme + i);
-        return format!("{}/{path}", &base[..host_end]);
+    let b = Parts::of(base);
+    let r = Parts::of(rel);
+    let (authority, path, query) = if r.authority.is_some() {
+        (r.authority, remove_dot_segments(r.path), r.query)
+    } else if r.path.is_empty() {
+        // An empty path keeps the base's path, and its query too unless the
+        // reference brings one of its own.
+        (b.authority, b.path.to_string(), r.query.or(b.query))
+    } else if r.path.starts_with('/') {
+        (b.authority, remove_dot_segments(r.path), r.query)
+    } else {
+        (
+            b.authority,
+            remove_dot_segments(&merge(&b, r.path)),
+            r.query,
+        )
+    };
+    let mut out = String::with_capacity(base.len() + rel.len());
+    out.push_str(b.scheme);
+    if let Some(authority) = authority {
+        out.push_str("//");
+        out.push_str(authority);
     }
-    let dir = base.rfind('/').map_or(base, |i| &base[..=i]);
-    format!("{dir}{rel}")
+    out.push_str(&path);
+    if let Some(query) = query {
+        out.push('?');
+        out.push_str(query);
+    }
+    if let Some(fragment) = r.fragment {
+        out.push('#');
+        out.push_str(fragment);
+    }
+    out
+}
+
+/// The pieces of a URL that reference resolution works on. `scheme` keeps
+/// its colon so that it can be written back out as it came in.
+struct Parts<'a> {
+    scheme: &'a str,
+    authority: Option<&'a str>,
+    path: &'a str,
+    query: Option<&'a str>,
+    fragment: Option<&'a str>,
+}
+
+impl<'a> Parts<'a> {
+    fn of(url: &'a str) -> Self {
+        let (scheme, rest) = if has_scheme(url) {
+            let end = url.find(':').unwrap_or(0) + 1;
+            url.split_at(end)
+        } else {
+            ("", url)
+        };
+        let (rest, fragment) = split_once(rest, '#');
+        let (rest, query) = split_once(rest, '?');
+        let (authority, path) = match rest.strip_prefix("//") {
+            Some(after) => {
+                let end = after.find('/').unwrap_or(after.len());
+                (Some(&after[..end]), &after[end..])
+            }
+            None => (None, rest),
+        };
+        Self {
+            scheme,
+            authority,
+            path,
+            query,
+            fragment,
+        }
+    }
+}
+
+/// `text` up to `sep`, and what follows it when it is there.
+fn split_once(text: &str, sep: char) -> (&str, Option<&str>) {
+    match text.split_once(sep) {
+        Some((before, after)) => (before, Some(after)),
+        None => (text, None),
+    }
+}
+
+/// Whether `url` starts with a scheme, which is what tells an absolute URL
+/// from a reference. Schemes are case-insensitive, so `HTTPS:` counts.
+fn has_scheme(url: &str) -> bool {
+    let Some(end) = url.find(':') else {
+        return false;
+    };
+    let scheme = &url[..end];
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(char::is_alphabetic)
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// RFC 3986 section 5.3's merge: the base's path up to its last slash, then
+/// the relative path. A base that has a host but no path gains the root.
+fn merge(base: &Parts<'_>, path: &str) -> String {
+    if base.authority.is_some() && base.path.is_empty() {
+        return format!("/{path}");
+    }
+    let dir = base.path.rfind('/').map_or("", |i| &base.path[..=i]);
+    format!("{dir}{path}")
+}
+
+/// RFC 3986 section 5.2.4: drop the `.` and `..` segments a path carries.
+fn remove_dot_segments(path: &str) -> String {
+    // The leading slash of an absolute path is kept aside so that a `..` too
+    // many cannot eat the root.
+    let rest = path.strip_prefix('/');
+    let mut out: Vec<&str> = Vec::new();
+    let mut trailing_slash = false;
+    for segment in rest.unwrap_or(path).split('/') {
+        match segment {
+            "." => trailing_slash = true,
+            ".." => {
+                out.pop();
+                trailing_slash = true;
+            }
+            _ => {
+                out.push(segment);
+                trailing_slash = false;
+            }
+        }
+    }
+    let mut joined = out.join("/");
+    if trailing_slash && !joined.is_empty() && !joined.ends_with('/') {
+        joined.push('/');
+    }
+    match rest {
+        Some(_) => format!("/{joined}"),
+        None => joined,
+    }
 }
 
 /// The stream to play from a master playlist: the one with the least
@@ -266,6 +389,34 @@ mod tests {
         "https://cdn.test/e.ts",
         "https://cdn.test/e.ts"
     )]
+    #[case(
+        "https://v.test/a/b.m3u8",
+        "//cdn.test/x/seg0.ts",
+        "https://cdn.test/x/seg0.ts"
+    )]
+    #[case("https://v.test/a/b.m3u8", "../c/seg0.ts", "https://v.test/c/seg0.ts")]
+    #[case("https://v.test/a/b.m3u8", "./seg0.ts", "https://v.test/a/seg0.ts")]
+    #[case("https://v.test/a/b/c.m3u8", "../../d.ts", "https://v.test/d.ts")]
+    #[case("https://v.test/a/b.m3u8", "../../../d.ts", "https://v.test/d.ts")]
+    #[case("https://v.test/a/b.m3u8?x=1", "?y=2", "https://v.test/a/b.m3u8?y=2")]
+    #[case("https://v.test", "seg0.ts", "https://v.test/seg0.ts")]
+    #[case("https://v.test", "/seg0.ts", "https://v.test/seg0.ts")]
+    #[case(
+        "HTTPS://cdn.test/s.ts",
+        "HTTPS://cdn.test/s.ts",
+        "HTTPS://cdn.test/s.ts"
+    )]
+    #[case(
+        "https://v.test/a/b.m3u8",
+        "HTTPS://cdn.test/s.ts",
+        "HTTPS://cdn.test/s.ts"
+    )]
+    #[case("https://v.test/a/b.m3u8", "", "https://v.test/a/b.m3u8")]
+    #[case("https://v.test/a/b.m3u8?x=1", "", "https://v.test/a/b.m3u8?x=1")]
+    #[case("https://v.test/a/b.m3u8?x=1", "c.ts", "https://v.test/a/c.ts")]
+    #[case("https://v.test/a/b.m3u8#f", "c.ts", "https://v.test/a/c.ts")]
+    #[case("https://v.test/a/", "..", "https://v.test/")]
+    #[case("https://v.test/a/b.m3u8", "/../c.ts", "https://v.test/c.ts")]
     fn playlist_lines_resolve_against_the_playlist(
         #[case] base: &str,
         #[case] rel: &str,
