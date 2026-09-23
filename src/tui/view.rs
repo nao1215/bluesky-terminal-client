@@ -2441,6 +2441,61 @@ mod tests {
         assert!(narrow.contains("▣ 2 pictures: 家族👨‍👩‍👧…"), "{narrow}");
     }
 
+    /// Without pictures nothing is drawn where an avatar would be: the
+    /// empty box used to be painted over the text that starts there, so the
+    /// first cells of a name lost their bold and the first letters of the
+    /// post took the placeholder's color.
+    #[test]
+    fn without_pictures_an_avatar_leaves_the_text_over_it_alone() {
+        use ratatui::style::Modifier;
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.without_pictures();
+        let post: Post = serde_json::from_value(json!({
+            "uri": "at://p/1", "cid": "c",
+            "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "家族👨\u{200d}👩\u{200d}👧 Alice",
+                       "avatar": "https://a/alice.jpg"},
+            "record": {"text": "emphasizes design", "createdAt": "2026-09-22T00:00:00Z"},
+        }))
+        .unwrap();
+        app.handle_event(Event::Timeline(Ok(vec![post].into())));
+        let mut images = Images::none();
+        let mut term = Terminal::new(TestBackend::new(60, 12)).unwrap();
+        term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+        let buf = term.backend().buffer().clone();
+        // The name starts at column 3, the text on the row under it.
+        let (y, x) = (1..12u16)
+            .find_map(|y| {
+                (0..60u16)
+                    .find(|&x| buf[(x, y)].symbol() == "家")
+                    .map(|x| (y, x))
+            })
+            .expect("the name");
+        // Every cell that starts a character of the name, the family emoji
+        // included, is bold and in the same color as "Alice" further on.
+        let alice = (x..60).find(|&c| buf[(c, y)].symbol() == "A").unwrap();
+        let want = buf[(alice, y)].clone();
+        for c in x..alice {
+            let cell = &buf[(c, y)];
+            if cell.symbol().is_empty() || cell.symbol() == " " {
+                continue;
+            }
+            assert!(
+                cell.modifier.contains(Modifier::BOLD),
+                "{:?} at {c} is not bold",
+                cell.symbol()
+            );
+            assert_eq!(cell.fg, want.fg, "{:?} at {c}", cell.symbol());
+        }
+        let body = buf[(x, y + 1)].clone();
+        assert_eq!(body.symbol(), "e");
+        assert_eq!(
+            body.fg,
+            buf[(x + 4, y + 1)].fg,
+            "the first letters keep the text's color"
+        );
+        assert_eq!(body.modifier, buf[(x + 4, y + 1)].modifier);
+    }
+
     #[test]
     fn timeline_scrolls_to_keep_the_selection_visible() {
         let (mut app, _) = App::new(Some(session()), "x");

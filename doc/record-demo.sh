@@ -10,6 +10,12 @@
 #   doc/record-demo.sh actions  doc/img/actions.png: `.` open on a post
 #   doc/record-demo.sh settings doc/img/settings.png: the settings screen over
 #                               your profile and its two buttons
+#   doc/record-demo.sh thread   doc/img/thread.png: v on a post
+#   doc/record-demo.sh search   doc/img/search.png: accounts found for "bluesky"
+#   doc/record-demo.sh editor   doc/img/editor.png: the profile editor, not saved
+#   doc/record-demo.sh compose  doc/img/compose.png: the picture browser of the
+#                               composer, over sample pictures; nothing is sent
+#   doc/record-demo.sh text     doc/img/text.png: the timeline with pictures off
 #
 # Needs kitty, xdotool, and ffmpeg, and an X11 display (Xwayland is fine):
 # kitty runs as an X11 window so ffmpeg can capture it, and the keys are sent
@@ -44,7 +50,7 @@ start() {
     -o font_family="DejaVu Sans Mono" -o font_size=11 \
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
     -o cursor_blink_interval=0 -o window_padding_width=0 \
-    --listen-on "$SOCK" --class bsdemo --title bsky \
+    --listen-on "$SOCK" --class bsdemo --title bsky --directory "${START_DIR:-$(pwd)}" \
     env PATH="$BIN:$PATH" COLORTERM=truecolor bsky &
   KPID=$!
   W=""
@@ -217,6 +223,84 @@ settings() {
   quit
 }
 
+thread() {
+  use_theme bluesky
+  start 1120 700
+  ready "♡"
+  send "v"
+  ready "♡"
+  sleep 1
+  shot "$OUT/thread.png"
+  quit
+}
+
+search() {
+  use_theme bluesky
+  start 1120 700
+  ready "♡"
+  send "/"
+  sleep 0.6
+  typed bluesky
+  send "\r"
+  ready "♡"
+  # The accounts found, with who you follow marked.
+  send "t"
+  ready "following"
+  sleep 1
+  shot "$OUT/search.png"
+  quit
+}
+
+# Opened and closed: nothing is saved.
+editor() {
+  use_theme bluesky
+  start 1120 700
+  ready "♡"
+  send "4"
+  ready "followers"
+  send "e"
+  ready "New avatar"
+  sleep 1
+  shot "$OUT/editor.png"
+  send "\x1b"
+  sleep 1
+  quit
+}
+
+# The composer and its picture browser, over a folder of sample pictures;
+# the post is never sent.
+compose() {
+  use_theme bluesky
+  mkdir -p "$WORK/pictures"
+  cp doc/img/theme-dracula.png "$WORK/pictures/terminal.png"
+  cp e2e/atago/testdata/clip.mp4 "$WORK/pictures/clip.mp4"
+  START_DIR="$WORK/pictures" start 1120 700
+  ready "♡"
+  send "n"
+  sleep 0.5
+  typed "Pictures from the terminal"
+  send "\x0f"
+  ready "Attach pictures"
+  send "j"
+  sleep 2
+  shot "$OUT/compose.png"
+  send "\x1b"
+  sleep 0.5
+  send "\x1b"
+  sleep 1
+  quit
+}
+
+# The client as text, as on a terminal that draws no pictures.
+text() {
+  printf '{"theme": "bluesky", "pictures": "off"}\n' > "$CFG/settings.json"
+  start 1120 700
+  ready "♡"
+  sleep 1
+  shot "$OUT/text.png"
+  quit
+}
+
 bs_config_dir() {
   if [ -n "${BSKY_CONFIG_DIR:-}" ]; then echo "$BSKY_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bsky"; fi
 }
@@ -238,6 +322,11 @@ case "${1:-demo}" in
   themes) themes ;;
   actions) actions ;;
   settings) settings ;;
-  all) demo; viewer; themes; actions; settings ;;
-  *) echo "usage: $0 [demo|viewer|themes|actions|settings|all]" >&2; exit 2 ;;
+  thread) thread ;;
+  search) search ;;
+  editor) editor ;;
+  compose) compose ;;
+  text) text ;;
+  all) demo; viewer; themes; actions; settings; thread; search; editor; compose; text ;;
+  *) echo "usage: $0 [demo|viewer|themes|actions|settings|thread|search|editor|compose|text|all]" >&2; exit 2 ;;
 esac
