@@ -33,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Without pictures (on a terminal that cannot draw them, or with pictures off in the settings), the first letters of a name and of a post's text keep their weight and color. The empty place of the avatar was painted over them.
 - `d` saves a picture with the extension of what it is (png, jpg, gif, webp), and does not save what is not a picture. The name used to come from the picture's address as it was, so a post whose picture address ended in `.exe` saved a file named `.exe` with whatever the server sent.
 - The theme picker opened with `T` closes back to the list. After a picker opened from the settings screen was closed by the session expiring, the next one opened the settings screen when it closed.
+- A delete asked with `D` is called off when the session expires before the `y`. The login form took the keys meanwhile, and the first `y` after logging in again deleted the post.
+- The list `.` opens acts only on the post it was opened on. When that post left the list while it was open (a reload without it), the selection moved to another post, and the list's keys acted on that one.
+- A theme being previewed in the picker goes back to the one in use when the session expires and the picker closes, as Esc does. It used to stay on screen as if chosen, though `settings.json` did not hold it.
 
 ## [0.2.0] - 2026-09-23
 
