@@ -72,7 +72,7 @@ scenarios:
     steps:
       - &session
         fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -1819,7 +1819,7 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc-2" }
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             json:
               - { path: "$.accessJwt", equals: "acc-2" }
               - { path: "$.refreshJwt", equals: "ref-2" }
@@ -1885,7 +1885,7 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc-2" }
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             json: { path: "$.refreshJwt", equals: "ref-2" }
 
   - name: a refresh token the server refuses brings back the login form
@@ -1932,7 +1932,7 @@ scenarios:
                 - { path: "$.password", equals: "app-pass-1234" }
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             json: { path: "$.refreshJwt", equals: "ref-new" }
 
   - name: a draft is still there after the session expires while it is sent and the login form comes back

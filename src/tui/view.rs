@@ -147,6 +147,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Actions { selected, .. }) => {
             draw_actions(frame, area, &actions, *selected, &t)
         }
+        Some(Overlay::Accounts { selected }) => {
+            let me = app.session.as_ref().map(|s| s.did.clone());
+            draw_account_list(frame, area, &app.accounts, *selected, me.as_deref(), &t)
+        }
         Some(Overlay::Settings { selected, edit }) => {
             let typing = match edit {
                 Some(SettingEdit::Text(input)) => Some(&*input),
@@ -564,9 +568,76 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::styled(label, style));
         spans.push(Span::raw(" "));
     }
-    // The account's handle is on the Profile tab; up here a long one would
-    // be cut off.
+    // With several accounts, the one in use is named at the right, where
+    // it fits whole; with one it is on the Profile tab, and nowhere else.
+    let used: usize = spans.iter().map(|s| s.content.width()).sum();
+    if app.accounts.len() > 1
+        && let Some(s) = &app.session
+    {
+        let name = format!("@{} ", s.handle);
+        let room = usize::from(area.width).saturating_sub(used);
+        if name.width() < room {
+            spans.push(Span::raw(" ".repeat(room - name.width())));
+            spans.push(Span::styled(name, t.accent()));
+        }
+    }
     frame.render_widget(Line::from(spans), area);
+}
+
+/// The account list `A` opens: every logged-in account, the one in use
+/// marked, and what the keys do.
+fn draw_account_list(
+    frame: &mut Frame,
+    area: Rect,
+    accounts: &[crate::tui::app::Account],
+    selected: usize,
+    me: Option<&str>,
+    t: &Theme,
+) {
+    let inner = popup(
+        frame,
+        area,
+        ACTIONS_W,
+        accounts.len().max(1) as u16 + 4,
+        "Accounts",
+        t,
+    );
+    let width = usize::from(inner.width);
+    let mut lines: Vec<Line> = accounts
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let marker = if i == selected { "▶ " } else { "  " };
+            let used = if me == Some(a.did.as_str()) {
+                "  in use"
+            } else {
+                ""
+            };
+            let name = truncate(
+                &format!("@{}", a.handle),
+                width.saturating_sub(marker.width() + used.width()),
+            );
+            let style = if i == selected {
+                t.base().bold()
+            } else {
+                t.base()
+            };
+            Line::from(vec![
+                Span::styled(marker, t.accent().bold()),
+                Span::styled(name, style),
+                Span::styled(used, t.accent()),
+            ])
+        })
+        .collect();
+    if accounts.is_empty() {
+        lines.push(Line::styled("  no account yet", t.dim()));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        truncate(" a log in another  x log out", width),
+        t.dim(),
+    ));
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The keys that work in the current view, packed into as many rows of
@@ -1737,7 +1808,12 @@ fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
         rows[9],
     );
     frame.render_widget(
-        Paragraph::new(" enter next/submit  tab switch field  esc quit").style(t.dim()),
+        Paragraph::new(if form.adding {
+            " enter next/submit  tab switch field  esc back"
+        } else {
+            " enter next/submit  tab switch field  esc quit"
+        })
+        .style(t.dim()),
         rows[10],
     );
 }
@@ -2877,6 +2953,25 @@ mod tests {
                 }),
             ),
             (
+                "accounts",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.accounts = vec![
+                        crate::tui::app::Account {
+                            did: "did:plc:me".into(),
+                            handle: "me.test".into(),
+                        },
+                        crate::tui::app::Account {
+                            did: "did:plc:x".into(),
+                            handle: "家族👨\u{200d}👩\u{200d}👧-🇯🇵-1️⃣-a-very-long-handle.example"
+                                .into(),
+                        },
+                    ];
+                    a.handle_key(ch('A'));
+                    a
+                }),
+            ),
+            (
                 "login",
                 Box::new(|| {
                     let (a, _) = App::new(None, "https://bsky.social");
@@ -3049,6 +3144,47 @@ mod tests {
         let screen = render_text_only(&mut app, 40, 12);
         assert!(screen.contains("▶ Download folder"), "{screen}");
         assert!(screen.contains("写真👨\u{200d}👩\u{200d}👧"), "{screen}");
+    }
+
+    #[test]
+    fn the_account_list_marks_the_one_in_use_and_the_tabs_name_it() {
+        use crate::tui::app::Account;
+        let (mut app, _) = App::new(Some(session()), "x");
+        let me = Account {
+            did: "did:plc:me".into(),
+            handle: "me.test".into(),
+        };
+        // One account: the tab bar names nobody.
+        app.accounts = vec![me.clone()];
+        let screen = render(&mut app, 100, 24);
+        assert!(
+            !screen.lines().next().unwrap().contains("@me.test"),
+            "{screen}"
+        );
+        app.accounts.push(Account {
+            did: "did:plc:w".into(),
+            handle: "work.example".into(),
+        });
+        let screen = render(&mut app, 100, 24);
+        assert!(
+            screen.lines().next().unwrap().ends_with("@me.test"),
+            "{screen}"
+        );
+        // Too narrow for the name whole: left out, not cut.
+        let narrow = render(&mut app, 60, 24);
+        assert!(!narrow.lines().next().unwrap().contains("@me"), "{narrow}");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('A'),
+        ));
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains(" Accounts "), "{screen}");
+        assert!(screen.contains("▶ @me.test  in use"), "{screen}");
+        assert!(screen.contains("  @work.example"), "{screen}");
+        assert!(screen.contains("a log in another  x log out"), "{screen}");
+        assert!(
+            screen.contains("enter use  a add  x log out  esc close"),
+            "{screen}"
+        );
     }
 
     /// The key column is 18 cells wide, which leaves nothing for the
@@ -4247,7 +4383,7 @@ mod state_fuzz {
         const CHARS: &[char] = &[
             'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
             'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']', 's', '.', 'c',
-            'Q', 'i', 'h',
+            'Q', 'i', 'h', 'A',
         ];
         let codes = [
             KeyCode::Esc,

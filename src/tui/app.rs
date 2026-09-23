@@ -367,6 +367,9 @@ pub struct LoginForm {
     pub focus: usize,
     pub pending: bool,
     pub error: Option<String>,
+    /// Logging in another account from the account list: Esc goes back to
+    /// the account in use rather than quitting.
+    pub adding: bool,
 }
 
 impl LoginForm {
@@ -382,6 +385,25 @@ impl LoginForm {
             focus: 1,
             pending: false,
             error: None,
+            adding: false,
+        }
+    }
+}
+
+/// A logged-in account, as the account list shows it. The tokens stay in
+/// its file: the one in use is read again when it is switched to, since a
+/// refresh may have rotated them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Account {
+    pub did: String,
+    pub handle: String,
+}
+
+impl From<&Session> for Account {
+    fn from(s: &Session) -> Self {
+        Self {
+            did: s.did.clone(),
+            handle: s.handle.clone(),
         }
     }
 }
@@ -409,6 +431,10 @@ pub enum Overlay {
         /// The post (or account) it was opened on: the list acts on that
         /// one only.
         about: Option<String>,
+    },
+    /// The logged-in accounts, opened with `A`.
+    Accounts {
+        selected: usize,
     },
     /// The settings screen, opened with `s` on your own profile; `edit` is
     /// the setting being changed, when one is.
@@ -521,6 +547,16 @@ pub struct App {
     pub pictures: bool,
     /// The variables that fix a setting for this run.
     pub env: Environment,
+    /// Every logged-in account, by handle.
+    pub accounts: Vec<Account>,
+    /// The account the list asked to switch to, for the event loop, which
+    /// reads its session and gives it to the worker before anything is
+    /// loaded for it.
+    account_switch: Option<String>,
+    /// The account the list asked to log out, for the event loop.
+    account_logout: Option<String>,
+    /// The account `x` asked about, waiting for the `y` that logs it out.
+    pub confirm_logout: Option<String>,
     /// Pictures turned on (`true`) or off on the settings screen, for the
     /// event loop, which owns the terminal and the pictures, to act on.
     pictures_change: Option<bool>,
@@ -647,6 +683,10 @@ impl App {
             quit: false,
             pictures: true,
             env: Environment::default(),
+            accounts: Vec::new(),
+            account_switch: None,
+            account_logout: None,
+            confirm_logout: None,
             pictures_change: None,
             settings_return: None,
             save_note: None,
@@ -800,6 +840,7 @@ impl App {
                 | Overlay::Themes { .. }
                 | Overlay::Viewer { .. }
                 | Overlay::Actions { .. }
+                | Overlay::Accounts { .. }
                 | Overlay::Settings { .. },
             ) => {}
             None if self.tab == Tab::Search && self.search.editing => {
@@ -989,6 +1030,8 @@ impl App {
             return Vec::new();
         }
         match key.code {
+            // Adding an account goes back to the one in use.
+            KeyCode::Esc if form.adding => self.login = None,
             KeyCode::Esc => self.quit = true,
             KeyCode::Tab | KeyCode::Down => form.focus = (form.focus + 1) % 3,
             KeyCode::BackTab | KeyCode::Up => form.focus = (form.focus + 2) % 3,
@@ -1037,6 +1080,10 @@ impl App {
             Overlay::Settings { selected, .. } => {
                 let selected = *selected;
                 return self.settings_key(key, selected);
+            }
+            Overlay::Accounts { selected } => {
+                let selected = *selected;
+                self.accounts_key(key, selected);
             }
             Overlay::Help { scroll } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
@@ -1423,6 +1470,10 @@ impl App {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('T') => self.open_theme_picker(),
+            KeyCode::Char('A') => {
+                let at = self.current_account_index().unwrap_or(0);
+                self.overlay = Some(Overlay::Accounts { selected: at });
+            }
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
             KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
@@ -1587,6 +1638,149 @@ impl App {
         self.pictures = false;
         if self.status.is_none() {
             self.info("this terminal cannot show pictures; bsky runs without them");
+        }
+    }
+
+    /// Where the account in use is in the account list.
+    fn current_account_index(&self) -> Option<usize> {
+        let did = &self.session.as_ref()?.did;
+        self.accounts.iter().position(|a| a.did == *did)
+    }
+
+    /// Put `session`'s account in the list, or bring its handle up to date.
+    fn remember_account(&mut self, session: &Session) {
+        let account = Account::from(session);
+        match self.accounts.iter_mut().find(|a| a.did == account.did) {
+            Some(a) => *a = account,
+            None => self.accounts.push(account),
+        }
+        self.accounts.sort_by(|a, b| {
+            (a.handle.to_lowercase(), &a.did).cmp(&(b.handle.to_lowercase(), &b.did))
+        });
+    }
+
+    /// A key on the account list.
+    fn accounts_key(&mut self, key: KeyEvent, selected: usize) {
+        let n = self.accounts.len().max(1);
+        let selected = selected.min(n - 1);
+        // The question x asked takes the next key, as D's does.
+        if let Some(did) = self.confirm_logout.take() {
+            if key.code == KeyCode::Char('y') {
+                self.overlay = None;
+                self.info("logging out…");
+                self.account_logout = Some(did);
+            } else {
+                self.info("still logged in");
+            }
+            return;
+        }
+        let at = |selected| Some(Overlay::Accounts { selected });
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => self.overlay = at((selected + 1) % n),
+            KeyCode::Char('k') | KeyCode::Up => self.overlay = at((selected + n - 1) % n),
+            KeyCode::Esc | KeyCode::Char('q' | 'A') => self.overlay = None,
+            KeyCode::Enter => {
+                self.overlay = None;
+                if let Some(a) = self.accounts.get(selected).cloned()
+                    && Some(selected) != self.current_account_index()
+                {
+                    self.info(format!("switching to @{}…", a.handle));
+                    self.account_switch = Some(a.did);
+                }
+            }
+            KeyCode::Char('a') => {
+                self.overlay = None;
+                let service = self
+                    .session
+                    .as_ref()
+                    .map(|s| s.service.clone())
+                    .unwrap_or_else(|| crate::api::DEFAULT_SERVICE.to_string());
+                let mut form = LoginForm::new(&service);
+                form.adding = true;
+                self.login = Some(form);
+            }
+            KeyCode::Char('x') => {
+                if let Some(a) = self.accounts.get(selected).cloned() {
+                    self.info(format!(
+                        "press y to log out @{}, any other key to stay logged in",
+                        a.handle
+                    ));
+                    self.confirm_logout = Some(a.did);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Why an account could not be switched to or logged out.
+    pub fn account_error(&mut self, why: String) {
+        self.error(why);
+    }
+
+    /// The account the list asked to switch to, for the event loop.
+    pub fn take_account_switch(&mut self) -> Option<String> {
+        self.account_switch.take()
+    }
+
+    /// The account the list asked to log out, for the event loop.
+    pub fn take_account_logout(&mut self) -> Option<String> {
+        self.account_logout.take()
+    }
+
+    /// Use `session`'s account from now on: what was loaded for the one
+    /// before goes, as it does when another account logs in, and the new
+    /// one's lists are asked for. The event loop has given the worker the
+    /// session already, so nothing is asked of the account before.
+    pub fn switched_to(&mut self, session: Session) -> Vec<Job> {
+        let other = self.session.as_ref().is_none_or(|s| s.did != session.did);
+        self.remember_account(&session);
+        self.info(format!("now @{}", session.handle));
+        self.login = None;
+        if !other {
+            self.session = Some(session);
+            return Vec::new();
+        }
+        self.forget_account();
+        self.account_since = self.sent + 1;
+        self.session = Some(session);
+        let jobs = self.startup_jobs();
+        self.pending += jobs.len();
+        jobs
+    }
+
+    /// The account `did` was logged out; `next` is the one in use now, if
+    /// any is left. Without one, the login form comes back.
+    pub fn logged_out(&mut self, did: &str, next: Option<Session>) -> Vec<Job> {
+        let handle = self
+            .accounts
+            .iter()
+            .find(|a| a.did == did)
+            .map(|a| a.handle.clone())
+            .unwrap_or_default();
+        self.accounts.retain(|a| a.did != did);
+        let was_current = self.session.as_ref().is_some_and(|s| s.did == did);
+        if !was_current {
+            self.info(format!("logged out @{handle}"));
+            return Vec::new();
+        }
+        match next {
+            Some(s) => {
+                let jobs = self.switched_to(s);
+                let now = self
+                    .session
+                    .as_ref()
+                    .map(|s| s.handle.clone())
+                    .unwrap_or_default();
+                self.info(format!("logged out @{handle}; now @{now}"));
+                jobs
+            }
+            None => {
+                let service = self.session.take().map(|s| s.service).unwrap_or_default();
+                self.forget_account();
+                self.account_since = self.sent + 1;
+                self.login = Some(LoginForm::new(&service));
+                Vec::new()
+            }
         }
     }
 
@@ -2465,6 +2659,7 @@ impl App {
         // Whatever was being typed belonged to the account left behind.
         self.overlay = None;
         self.confirm_delete = None;
+        self.confirm_logout = None;
         self.timeline = List::default();
         self.feeds.clear();
         self.feed = 0;
@@ -2553,6 +2748,7 @@ impl App {
         match event {
             Event::LoggedIn(Ok(session)) => {
                 self.info(format!("logged in as @{}", session.handle));
+                self.remember_account(&session);
                 if self.session.as_ref().is_some_and(|s| s.did != session.did) {
                     self.forget_account();
                     self.account_since = self.sent + 1;
@@ -3803,6 +3999,132 @@ mod tests {
             ..session()
         })));
         assert!(app.overlay.is_none());
+    }
+
+    fn work() -> Session {
+        Session {
+            did: "did:plc:work".into(),
+            handle: "work.example".into(),
+            ..session()
+        }
+    }
+
+    /// Logged in as two accounts, using the first.
+    fn two_accounts() -> App {
+        let mut app = logged_in();
+        app.accounts = vec![Account::from(&session()), Account::from(&work())];
+        app
+    }
+
+    #[test]
+    fn the_account_list_switches_to_another_account_and_drops_the_first_ones_lists() {
+        let mut app = two_accounts();
+        let reload = press(&mut app, key('R'))[0];
+        app.handle_key(key('A'));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Accounts { selected: 0 })
+        ));
+        // Enter on the one in use changes nothing.
+        app.handle_key(code(KeyCode::Enter));
+        assert_eq!(app.take_account_switch(), None);
+        app.handle_key(key('A'));
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        assert_eq!(app.take_account_switch().as_deref(), Some("did:plc:work"));
+        // The event loop gives the worker the session, then:
+        let jobs = app.switched_to(work());
+        assert!(
+            matches!(
+                jobs[..],
+                [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
+            ),
+            "{jobs:?}"
+        );
+        assert_eq!(app.session.as_ref().unwrap().did, "did:plc:work");
+        assert!(
+            app.timeline.items.is_empty(),
+            "the first account's timeline is gone"
+        );
+        // A reload the first account asked for is not shown for the second.
+        app.handle_answer(
+            reload,
+            Event::Timeline(Ok(vec![post("at://a/p/1", "did:plc:alice", true)].into())),
+        );
+        assert!(app.timeline.items.is_empty());
+    }
+
+    #[test]
+    fn x_logs_an_account_out_only_after_a_y() {
+        let mut app = two_accounts();
+        app.handle_key(key('A'));
+        app.handle_key(key('j'));
+        app.handle_key(key('x'));
+        app.handle_key(key('n'));
+        assert_eq!(app.take_account_logout(), None);
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("still logged in")
+        );
+        app.handle_key(key('x'));
+        app.handle_key(key('y'));
+        assert_eq!(app.take_account_logout().as_deref(), Some("did:plc:work"));
+        assert!(app.overlay.is_none());
+        // Not the one in use: nothing else changes.
+        let jobs = app.logged_out("did:plc:work", Some(session()));
+        assert!(jobs.is_empty());
+        assert_eq!(app.accounts, vec![Account::from(&session())]);
+        assert_eq!(app.timeline.items.len(), 2);
+    }
+
+    #[test]
+    fn logging_out_the_account_in_use_moves_to_the_next_or_to_the_login_form() {
+        let mut app = two_accounts();
+        let jobs = app.logged_out("did:plc:me", Some(work()));
+        assert!(matches!(jobs[..], [Job::Timeline, ..]), "{jobs:?}");
+        assert_eq!(app.session.as_ref().unwrap().did, "did:plc:work");
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("logged out @me.test; now @work.example")
+        );
+        let jobs = app.logged_out("did:plc:work", None);
+        assert!(jobs.is_empty());
+        assert!(app.session.is_none());
+        let form = app.login.as_ref().expect("login form");
+        assert!(
+            !form.adding,
+            "the last account out: esc quits, as at the start"
+        );
+    }
+
+    #[test]
+    fn another_account_is_logged_in_from_the_list_and_esc_goes_back() {
+        let mut app = two_accounts();
+        app.handle_key(key('A'));
+        app.handle_key(key('a'));
+        let form = app.login.as_ref().expect("login form");
+        assert!(form.adding);
+        assert_eq!(form.fields[0].text(), "https://pds.test");
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.login.is_none());
+        assert!(!app.quit);
+        // Logged in: the account joins the list, and is the one in use.
+        app.handle_key(key('A'));
+        app.handle_key(key('a'));
+        app.handle_event(Event::LoggedIn(Ok(Session {
+            did: "did:plc:third".into(),
+            handle: "aaa.test".into(),
+            ..session()
+        })));
+        let handles: Vec<_> = app.accounts.iter().map(|a| a.handle.as_str()).collect();
+        assert_eq!(handles, ["aaa.test", "me.test", "work.example"]);
+        assert_eq!(app.session.as_ref().unwrap().did, "did:plc:third");
     }
 
     fn expire(app: &mut App) {

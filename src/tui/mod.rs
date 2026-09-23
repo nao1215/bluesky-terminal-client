@@ -24,7 +24,7 @@ use crossterm::event::{
 };
 use crossterm::execute;
 
-use crate::config::{SessionStore, SettingsStore};
+use crate::config::{AccountStore, Session, SettingsStore};
 use crate::error::{Error, Kind, Result};
 use crate::terminal;
 use app::App;
@@ -41,11 +41,15 @@ const VIDEO_TICK: Duration = Duration::from_millis(5);
 const EVENTS_PER_FRAME: usize = 64;
 
 /// Run the client until the user quits.
-pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Result<()> {
+/// `session` is the account to start as, if any; `accounts` holds every
+/// logged-in one.
+pub fn run(
+    accounts: AccountStore,
+    session: Option<Session>,
+    settings: SettingsStore,
+    service: &str,
+) -> Result<()> {
     terminal::ensure_interactive()?;
-    // Read the session before touching the terminal so a broken file is
-    // reported on a normal screen.
-    let session = store.load()?;
     let depth = theme::color_depth(|k| std::env::var(k).ok());
 
     let mut term = ratatui::try_init()
@@ -58,7 +62,9 @@ pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Resul
         }
     };
     let _ = execute!(io::stdout(), EnableBracketedPaste);
-    let result = event_loop(&mut term, picker, session, store, settings, depth, service);
+    let result = event_loop(
+        &mut term, picker, session, accounts, settings, depth, service,
+    );
     let _ = execute!(io::stdout(), DisableBracketedPaste);
     ratatui::restore();
     result
@@ -67,8 +73,8 @@ pub fn run(store: SessionStore, settings: SettingsStore, service: &str) -> Resul
 fn event_loop(
     term: &mut ratatui::DefaultTerminal,
     picker: Option<ratatui_image::picker::Picker>,
-    session: Option<crate::config::Session>,
-    store: SessionStore,
+    session: Option<Session>,
+    accounts: AccountStore,
     settings: SettingsStore,
     depth: theme::ColorDepth,
     service: &str,
@@ -95,8 +101,11 @@ fn event_loop(
     } else {
         make_images(&picker, crate::config::cache_dir(&env, &loaded).0)
     };
-    let worker = Worker::spawn(session.clone(), store);
+    let worker = Worker::spawn(session.clone(), accounts.clone());
     let (mut app, jobs) = App::new(session, service);
+    for s in accounts.list().unwrap_or_default() {
+        app.accounts.push((&s).into());
+    }
     app.env = env;
     app.apply_settings(loaded, depth, warning);
     if off {
@@ -140,6 +149,11 @@ fn event_loop(
                 }
                 TermEvent::Paste(text) => app.handle_paste(&text),
                 _ => {}
+            }
+            // Before the next key: the worker acts as the account chosen
+            // before anything is asked of it.
+            for job in account_changes(&mut app, &worker, &accounts) {
+                worker.send(app.stamp(&job), job);
             }
             dirty = true;
             // Only what is already waiting; the next frame is not held back.
@@ -191,6 +205,42 @@ fn event_loop(
         }
     }
     Ok(())
+}
+
+/// Switch to, or log out, the account the account list asked for: the
+/// session is read from its file (a refresh may have rotated its tokens
+/// since it was last used), the worker is given it, and then the app asks
+/// for the account's lists, which are returned for the loop to send.
+fn account_changes(app: &mut App, worker: &Worker, accounts: &AccountStore) -> Vec<worker::Job> {
+    let mut jobs = Vec::new();
+    if let Some(did) = app.take_account_switch() {
+        match accounts.find(&did) {
+            Ok(Some(session)) => {
+                let _ = accounts.set_current(&session.did);
+                worker.use_account(session.clone());
+                jobs.extend(app.switched_to(session));
+            }
+            Ok(None) => app.account_error(format!("{did} is not logged in any more")),
+            Err(e) => app.account_error(e.message().to_string()),
+        }
+    }
+    if let Some(did) = app.take_account_logout() {
+        let result = accounts.remove(&did).and_then(|_| accounts.current());
+        match result {
+            Ok(next) => {
+                let was_current = app.session.as_ref().is_some_and(|s| s.did == did);
+                if was_current {
+                    match &next {
+                        Some(s) => worker.use_account(s.clone()),
+                        None => worker.use_no_account(),
+                    }
+                }
+                jobs.extend(app.logged_out(&did, next));
+            }
+            Err(e) => app.account_error(e.message().to_string()),
+        }
+    }
+    jobs
 }
 
 /// Bluesky's picture server, to connect to at the start, for a service

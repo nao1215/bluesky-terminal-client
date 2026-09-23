@@ -294,17 +294,22 @@ pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     dir: PathBuf,
+    file: String,
 }
 
 impl SessionStore {
-    /// A store rooted at `dir`; nothing is touched until a read or write.
+    /// The `session.json` of `dir`, where versions before several accounts
+    /// kept the one login; nothing is touched until a read or write.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            file: SESSION_FILE.to_string(),
+        }
     }
 
     /// Path of the session file.
     pub fn path(&self) -> PathBuf {
-        self.dir.join(SESSION_FILE)
+        self.dir.join(&self.file)
     }
 
     /// Load the saved session; `Ok(None)` when there is none yet.
@@ -343,6 +348,169 @@ impl SessionStore {
             Err(e) => Err(Error::io(format!("cannot remove {}: {e}", path.display()))),
         }
     }
+}
+
+const ACCOUNTS_DIR: &str = "accounts";
+const ACCOUNTS_FILE: &str = "accounts.json";
+
+/// Which account is in use, kept in `accounts.json`. No secrets.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+struct Current {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current: Option<String>,
+    /// Keys a newer version wrote, kept on saving.
+    #[serde(flatten)]
+    other: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The logged-in accounts of one config directory: a session file per
+/// account under `accounts/`, and `accounts.json` naming the one in use.
+///
+/// Each account's tokens are in a file of their own, so a refresh of one
+/// rewrites that file alone: two accounts refreshing at once cannot lose
+/// each other's rotated tokens.
+#[derive(Debug, Clone)]
+pub struct AccountStore {
+    dir: PathBuf,
+}
+
+impl AccountStore {
+    /// The accounts of the config directory `dir`. A `session.json` left by
+    /// a version with one login becomes the first account and the current
+    /// one, once; if it cannot be moved it is left where it is and used as
+    /// it was. One that cannot be read is reported, and left alone.
+    pub fn open(dir: impl Into<PathBuf>) -> Result<Self> {
+        let store = Self { dir: dir.into() };
+        store.adopt_old_session()?;
+        Ok(store)
+    }
+
+    fn adopt_old_session(&self) -> Result<()> {
+        let old = SessionStore::new(&self.dir);
+        let Some(session) = old.load()? else {
+            return Ok(());
+        };
+        if self.store_for(&session.did).save(&session).is_ok() {
+            let _ = self.write_current(Some(&session.did));
+            let _ = old.clear();
+        }
+        Ok(())
+    }
+
+    fn accounts_dir(&self) -> PathBuf {
+        self.dir.join(ACCOUNTS_DIR)
+    }
+
+    /// The session file of the account `did`, for a client to save its
+    /// refreshed tokens to.
+    pub fn store_for(&self, did: &str) -> SessionStore {
+        SessionStore {
+            dir: self.accounts_dir(),
+            file: format!("{}.json", file_stem(did)),
+        }
+    }
+
+    /// Every account, by handle.
+    pub fn list(&self) -> Result<Vec<Session>> {
+        let dir = self.accounts_dir();
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", dir.display()))),
+        };
+        let mut all = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(stem) = name.strip_suffix(".json") else {
+                continue;
+            };
+            let store = SessionStore {
+                dir: dir.clone(),
+                file: format!("{stem}.json"),
+            };
+            if let Some(s) = store.load()? {
+                all.push(s);
+            }
+        }
+        all.sort_by(|a, b| {
+            (a.handle.to_lowercase(), &a.did).cmp(&(b.handle.to_lowercase(), &b.did))
+        });
+        Ok(all)
+    }
+
+    /// The account in use: the one `accounts.json` names, else the first.
+    pub fn current(&self) -> Result<Option<Session>> {
+        let all = self.list()?;
+        let named = self.read_current().current;
+        Ok(named
+            .and_then(|did| all.iter().find(|s| s.did == did).cloned())
+            .or_else(|| all.into_iter().next()))
+    }
+
+    /// The account `who` names: its DID, its handle, or `@handle`, in any
+    /// case.
+    pub fn find(&self, who: &str) -> Result<Option<Session>> {
+        let who = who.trim().trim_start_matches('@');
+        Ok(self
+            .list()?
+            .into_iter()
+            .find(|s| s.did == who || s.handle.eq_ignore_ascii_case(who)))
+    }
+
+    /// Make `did` the account in use.
+    pub fn set_current(&self, did: &str) -> Result<()> {
+        self.write_current(Some(did))
+    }
+
+    /// Save an account's session, making it the one in use.
+    pub fn save(&self, session: &Session) -> Result<()> {
+        self.store_for(&session.did).save(session)?;
+        self.set_current(&session.did)
+    }
+
+    /// Log the account `did` out: its session file goes. When it was the
+    /// one in use, the next one by handle is. Returns whether it existed.
+    pub fn remove(&self, did: &str) -> Result<bool> {
+        let existed = self.store_for(did).clear()?;
+        if self.read_current().current.as_deref() == Some(did) {
+            let next = self.list()?.into_iter().next().map(|s| s.did);
+            self.write_current(next.as_deref())?;
+        }
+        Ok(existed)
+    }
+
+    fn read_current(&self) -> Current {
+        fs::read(self.dir.join(ACCOUNTS_FILE))
+            .ok()
+            .and_then(|d| serde_json::from_slice(&d).ok())
+            .unwrap_or_default()
+    }
+
+    fn write_current(&self, did: Option<&str>) -> Result<()> {
+        let mut c = self.read_current();
+        c.current = did.map(str::to_string);
+        fs::create_dir_all(&self.dir)
+            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        let path = self.dir.join(ACCOUNTS_FILE);
+        let mut json = serde_json::to_vec_pretty(&c).expect("accounts serialize");
+        json.push(b'\n');
+        write_private(&path, &json)
+            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+    }
+}
+
+/// A DID as a file name on every system: `did:plc:abc` has colons, which
+/// Windows does not allow, and `did:web` may have `%`.
+fn file_stem(did: &str) -> String {
+    did.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// Write `data` to `path` so that a crash leaves either the old file or the
@@ -606,6 +774,108 @@ mod tests {
         let dir = platform_config_dir(platform.path());
         assert!(!dir.exists());
         assert!(platform.path().join("bs").exists());
+    }
+
+    fn account(did: &str, handle: &str) -> Session {
+        Session {
+            did: did.into(),
+            handle: handle.into(),
+            ..sample()
+        }
+    }
+
+    #[test]
+    fn the_one_login_of_before_becomes_the_first_account_once() {
+        let dir = tempfile::tempdir().unwrap();
+        SessionStore::new(dir.path()).save(&sample()).unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        assert_eq!(store.current().unwrap(), Some(sample()));
+        assert!(!dir.path().join(SESSION_FILE).exists(), "moved");
+        // Opening again changes nothing.
+        let store = AccountStore::open(dir.path()).unwrap();
+        assert_eq!(store.list().unwrap(), vec![sample()]);
+    }
+
+    #[test]
+    fn accounts_are_listed_by_handle_and_found_by_handle_or_did() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        assert_eq!(store.current().unwrap(), None);
+        store
+            .save(&account("did:plc:work", "Work.example"))
+            .unwrap();
+        store
+            .save(&account("did:web:me.example%3A8080", "alice.test"))
+            .unwrap();
+        let handles: Vec<_> = store
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|s| s.handle)
+            .collect();
+        assert_eq!(handles, ["alice.test", "Work.example"]);
+        // The last one saved is in use.
+        assert_eq!(store.current().unwrap().unwrap().handle, "alice.test");
+        assert_eq!(
+            store.find("@work.EXAMPLE").unwrap().unwrap().did,
+            "did:plc:work"
+        );
+        assert_eq!(
+            store.find("did:plc:work").unwrap().unwrap().handle,
+            "Work.example"
+        );
+        assert_eq!(store.find("nobody.test").unwrap(), None);
+        store.set_current("did:plc:work").unwrap();
+        assert_eq!(store.current().unwrap().unwrap().did, "did:plc:work");
+        // File names hold no colon or percent sign.
+        for e in fs::read_dir(dir.path().join(ACCOUNTS_DIR)).unwrap() {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            assert!(!name.contains(':') && !name.contains('%'), "{name}");
+        }
+    }
+
+    #[test]
+    fn logging_one_account_out_keeps_the_other_and_moves_on_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        let a = account("did:plc:a", "a.test");
+        let b = account("did:plc:b", "b.test");
+        store.save(&a).unwrap();
+        store.save(&b).unwrap();
+        assert!(store.remove("did:plc:b").unwrap());
+        assert_eq!(store.current().unwrap(), Some(a.clone()));
+        assert_eq!(store.list().unwrap(), vec![a]);
+        assert!(!store.remove("did:plc:b").unwrap());
+        assert!(store.remove("did:plc:a").unwrap());
+        assert_eq!(store.current().unwrap(), None);
+    }
+
+    #[test]
+    fn a_refresh_rewrites_only_its_own_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        store.save(&account("did:plc:a", "a.test")).unwrap();
+        store.save(&account("did:plc:b", "b.test")).unwrap();
+        let mut refreshed = account("did:plc:a", "a.test");
+        refreshed.refresh_jwt = "rotated".into();
+        store.store_for("did:plc:a").save(&refreshed).unwrap();
+        let all = store.list().unwrap();
+        assert_eq!(all[0].refresh_jwt, "rotated");
+        assert_eq!(all[1].refresh_jwt, "refresh");
+        // The one in use stays the one in use.
+        assert_eq!(store.current().unwrap().unwrap().did, "did:plc:b");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn account_files_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        store.save(&account("did:plc:a", "a.test")).unwrap();
+        let path = store.store_for("did:plc:a").path();
+        let mode = fs::metadata(path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     #[test]

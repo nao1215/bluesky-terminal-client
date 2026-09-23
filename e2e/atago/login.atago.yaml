@@ -69,7 +69,7 @@ scenarios:
             header: { name: Authorization, equals: "Bearer acc-1" }
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             json:
               - { path: "$.service", equals: "${api.url}" }
               - { path: "$.did", equals: "did:plc:me" }
@@ -79,7 +79,7 @@ scenarios:
       # The password itself is never stored, only the tokens.
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             not_contains: "app-pass-1234"
 
   - name: a saved session skips the login screen on the next start
@@ -91,7 +91,7 @@ scenarios:
             json: { feed: [] }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc-9", "refreshJwt": "ref-9"}
       - pty:
@@ -167,7 +167,7 @@ scenarios:
             count: 0
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             exists: false
 
   - name: an empty field is caught before anything is sent
@@ -229,3 +229,200 @@ scenarios:
             created: []
             modified: []
             deleted: []
+
+  # Several accounts. Each has its own server here, so what each sees and
+  # which token each sends shows which account is in use.
+  - name: a second account is logged in from the account list, and A switches between them
+    mock_servers:
+      - name: home
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/h1
+                    cid: cid-h1
+                    author: { did: did:plc:me, handle: me.test, displayName: Me }
+                    record: { text: "Seen by the personal account 👨‍👩‍👧", createdAt: "2026-09-20T10:00:00.000Z" }
+      - name: work
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:work", handle: "work.example", accessJwt: "acc-work", refreshJwt: "ref-work" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:work/app.bsky.feed.post/w1
+                    cid: cid-w1
+                    author: { did: did:plc:work, handle: work.example, displayName: Work }
+                    record: { text: "Seen by the work account 🇯🇵", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      # A login of a version with one account: it becomes the first account.
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${home.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &accounts_env
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Seen by the personal account 👨‍👩‍👧"
+            - send: A
+            - expect_screen:
+                contains: [" Accounts ", "▶ @me.test  in use", "a log in another  x log out"]
+            - send: a
+            # The form starts on the handle, with the service in use above it.
+            - expect_screen:
+                contains: ["Log in to Bluesky", "esc back"]
+            - send: { key: backtab }
+            - send: { key: ctrl-u }
+            - send: "${work.url}"
+            - send: { key: tab }
+            - send: "work.example"
+            - send: { key: tab }
+            - send: "app-pass-work"
+            - send: { key: enter }
+            # The new account is in use, and the tabs name it now that there
+            # are two.
+            - expect_screen:
+                contains: ["Seen by the work account 🇯🇵", "@work.example"]
+                not_contains: ["Seen by the personal account", "Log in to Bluesky"]
+            - send: A
+            - expect_screen:
+                contains: ["@me.test", "▶ @work.example  in use"]
+            - send: k
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Seen by the personal account 👨‍👩‍👧", "@me.test"]
+                not_contains: "Seen by the work account"
+            - send: q
+      - assert:
+          exit_code: 0
+      # Each server was read with its own account's token.
+      - assert:
+          mock: { name: home, path: /xrpc/app.bsky.feed.getTimeline, header: { name: Authorization, equals: "Bearer acc" } }
+      - assert:
+          mock: { name: work, path: /xrpc/app.bsky.feed.getTimeline, count: 1, header: { name: Authorization, equals: "Bearer acc-work" } }
+      - assert:
+          mock: { name: home, path: /xrpc/app.bsky.feed.getTimeline, count: 2 }
+      # One file per account, owner-only; the old file is gone, and the
+      # account last switched to is the one in use.
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            json: { path: "$.accessJwt", equals: "acc" }
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_work.json
+            json:
+              - { path: "$.accessJwt", equals: "acc-work" }
+              - { path: "$.service", equals: "${work.url}" }
+      - assert:
+          file:
+            path: cfg/accounts.json
+            json: { path: "$.current", equals: "did:plc:me" }
+      - assert:
+          file:
+            path: cfg/session.json
+            exists: false
+
+  - name: -a starts on the account it names without changing the one in use, and an unknown one is a usage error
+    mock_servers:
+      - name: work
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:work/app.bsky.feed.post/w1
+                    cid: cid-w1
+                    author: { did: did:plc:work, handle: work.example, displayName: Work }
+                    record: { text: "Seen by the work account", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - &two_accounts_me
+        fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "http://127.0.0.1:9", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - &two_accounts_work
+        fixture:
+          file: cfg/accounts/did_plc_work.json
+          content: |
+            {"service": "${work.url}", "did": "did:plc:work", "handle": "work.example", "accessJwt": "acc-work", "refreshJwt": "ref-work"}
+      - &two_accounts_current
+        fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "did:plc:me"}
+      - pty:
+          command: bsky -a @Work.Example
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *accounts_env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Seen by the work account", "@work.example"]
+            - send: q
+      - assert:
+          exit_code: 0
+          changes:
+            modified: []
+            deleted: []
+      - run:
+          command: bsky -a nobody.test
+          env: *accounts_env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "error: nobody.test is not logged in"
+              - "hint: logged in: @me.test, @work.example"
+
+  - name: logout logs one account out and keeps the other, and --all logs every one out
+    steps:
+      - *two_accounts_me
+      - *two_accounts_work
+      - *two_accounts_current
+      - run:
+          command: bsky logout -a work.example
+          env: *accounts_env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out @work.example\n"
+          changes:
+            created: []
+            modified: []
+            deleted: [cfg/accounts/did_plc_work.json]
+      - run:
+          command: bsky logout --all
+          env: *accounts_env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out @me.test\n"
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            exists: false
+      - run:
+          command: bsky logout
+          env: *accounts_env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "not logged in\n"

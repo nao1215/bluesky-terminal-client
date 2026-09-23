@@ -34,6 +34,7 @@ scenarios:
               - "0 success, 1 usage error, 2 not an interactive terminal"
               - "3 local file error. Network and server errors are shown in the client"
               - "--service <URL>"
+              - "-a, --account <HANDLE>"
               - "logout"
 
   - name: version names the binary and a semantic version
@@ -163,7 +164,7 @@ scenarios:
                     embed: { $type: app.bsky.embed.video#view, playlist: "${api.url}/v/playlist.m3u8", thumbnail: "${api.url}/img/v.png", alt: "a cat" }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -192,6 +193,8 @@ scenarios:
             - expect_screen:
                 contains: "opened https://bsky.app/profile/did:plc:alice/post/p1"
             - send: "?"
+            # The Posts section, where space is, below the Global one.
+            - send: { key: pagedown }
             - expect_screen:
                 contains: "open the post in the web browser"
                 not_contains: "Viewer"
@@ -346,7 +349,7 @@ scenarios:
                     indexedAt: "2026-09-20T10:00:05.000Z"
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -392,7 +395,7 @@ scenarios:
             json: { feed: [] }
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:

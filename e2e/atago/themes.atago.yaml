@@ -22,7 +22,7 @@ scenarios:
     steps:
       - &session
         fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - pty:
@@ -62,7 +62,7 @@ scenarios:
       # The session file is untouched by a theme change.
       - assert:
           file:
-            path: cfg/session.json
+            path: cfg/accounts/did_plc_me.json
             json: { path: "$.accessJwt", equals: "acc" }
 
   # The theme row of the settings screen opens the same picker, which goes
@@ -313,7 +313,7 @@ scenarios:
   - name: logout leaves the settings alone
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: '{"service": "https://pds.example", "did": "did:plc:me", "handle": "me.test", "accessJwt": "a", "refreshJwt": "r"}'
       - fixture:
           file: cfg/settings.json
@@ -328,4 +328,4 @@ scenarios:
           changes:
             created: []
             modified: []
-            deleted: [cfg/session.json]
+            deleted: [cfg/accounts/did_plc_me.json]

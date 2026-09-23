@@ -24,6 +24,7 @@ pub const HELP: &[Section] = &[
             ("1 2 3 4", "Timeline, Search, Notifications, Profile"),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
+            ("A", "accounts: switch, add, log out"),
             ("?", "this help"),
             ("q ctrl+c", "quit"),
         ],
@@ -170,6 +171,17 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Accounts",
+        keys: &[
+            ("A", "the logged-in accounts, the one in use marked"),
+            ("j k", "move"),
+            ("enter", "use the selected account"),
+            ("a", "log in another account"),
+            ("x", "log the selected account out: y confirms"),
+            ("esc", "close"),
+        ],
+    },
+    Section {
         title: "Settings",
         keys: &[
             ("s", "open them, on the Profile tab of your own profile"),
@@ -229,11 +241,11 @@ pub fn hints(app: &App) -> Vec<Hint> {
 }
 
 fn view_hints(app: &App) -> Vec<Hint> {
-    if app.login.is_some() {
+    if let Some(form) = &app.login {
         return vec![
             ("enter", "next / log in"),
             ("tab", "switch field"),
-            ("esc", "quit"),
+            ("esc", if form.adding { "back" } else { "quit" }),
         ];
     }
     match &app.overlay {
@@ -259,6 +271,15 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
         Some(Overlay::Actions { .. }) => {
             return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
+        }
+        Some(Overlay::Accounts { .. }) => {
+            return vec![
+                ("j k", "move"),
+                ("enter", "use"),
+                ("a", "add"),
+                ("x", "log out"),
+                ("esc", "close"),
+            ];
         }
         Some(Overlay::Settings {
             edit: Some(SettingEdit::Folder(_)),

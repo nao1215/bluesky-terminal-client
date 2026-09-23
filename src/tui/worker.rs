@@ -16,7 +16,7 @@ use crate::api::types::{
     FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
 };
 use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, PostMedia, PostVideo, ProfileEdit};
-use crate::config::{Session, SessionStore};
+use crate::config::{AccountStore, Session};
 use crate::error::{Error, Result};
 use crate::media;
 use crate::timeline;
@@ -287,22 +287,27 @@ const READERS: usize = 4;
 
 /// Handle to the running worker.
 pub struct Worker {
+    /// The account every job acts as, shared by every thread.
+    client: Arc<Mutex<Option<Client>>>,
+    accounts: AccountStore,
     writes: Sender<(u64, Job)>,
     reads: Sender<(u64, Job)>,
     rx: Receiver<(u64, Event)>,
 }
 
 impl Worker {
-    /// Start the worker. `session` is the saved login, if any.
-    pub fn spawn(session: Option<Session>, store: SessionStore) -> Self {
-        let client = Arc::new(Mutex::new(
-            session.map(|s| Client::new(s, Some(store.clone()))),
-        ));
+    /// Start the worker. `session` is the account to act as, if any; its
+    /// refreshed tokens are saved to its file in `accounts`.
+    pub fn spawn(session: Option<Session>, accounts: AccountStore) -> Self {
+        let client = Arc::new(Mutex::new(session.map(|s| {
+            let store = accounts.store_for(&s.did);
+            Client::new(s, Some(store))
+        })));
         let (ev_tx, ev_rx) = channel::<(u64, Event)>();
         let (writes, write_rx) = channel::<(u64, Job)>();
         let mut state = State {
             client: Arc::clone(&client),
-            store: store.clone(),
+            accounts: accounts.clone(),
             editor_base: None,
         };
         let events = ev_tx.clone();
@@ -318,7 +323,7 @@ impl Worker {
         for _ in 0..READERS {
             let mut state = State {
                 client: Arc::clone(&client),
-                store: store.clone(),
+                accounts: accounts.clone(),
                 editor_base: None,
             };
             let jobs = Arc::clone(&read_rx);
@@ -335,10 +340,26 @@ impl Worker {
             });
         }
         Self {
+            client,
+            accounts,
             writes,
             reads,
             rx: ev_rx,
         }
+    }
+
+    /// Act as `session` from the next job on. Done here, before any job for
+    /// the account is sent, rather than as a job: reads run beside each
+    /// other, and one could start before a job that switched.
+    pub fn use_account(&self, session: Session) {
+        let store = self.accounts.store_for(&session.did);
+        *self.client.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some(Client::new(session, Some(store)));
+    }
+
+    /// Act as nobody: every job fails until an account is used or logged in.
+    pub fn use_no_account(&self) {
+        *self.client.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
     /// Queue a job; its answer comes back with the same `seq`.
@@ -371,7 +392,7 @@ fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
 struct State {
     /// Shared by every thread; a login replaces it for all of them.
     client: Arc<Mutex<Option<Client>>>,
-    store: SessionStore,
+    accounts: AccountStore,
     /// The profile record the open editor was filled from (`Some(None)` when
     /// the account has none yet); saving edits exactly this version.
     editor_base: Option<Option<Record>>,
@@ -495,9 +516,11 @@ impl State {
 
     fn login(&mut self, service: &str, identifier: &str, password: &str) -> Result<Session> {
         let session = api::login(service, identifier, password)?;
-        self.store.save(&session)?;
-        *self.client.lock().unwrap_or_else(PoisonError::into_inner) =
-            Some(Client::new(session.clone(), Some(self.store.clone())));
+        self.accounts.save(&session)?;
+        *self.client.lock().unwrap_or_else(PoisonError::into_inner) = Some(Client::new(
+            session.clone(),
+            Some(self.accounts.store_for(&session.did)),
+        ));
         Ok(session)
     }
 
