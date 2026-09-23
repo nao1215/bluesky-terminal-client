@@ -2658,6 +2658,36 @@ mod tests {
         );
     }
 
+    /// A terminal that draws no pictures says what a quote carries, the
+    /// same way it does for a post's own pictures.
+    #[test]
+    fn a_quote_of_a_picture_post_says_what_it_carries_as_text() {
+        let post: Post = serde_json::from_value(json!({
+            "uri": "at://p/q", "cid": "c",
+            "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice"},
+            "record": {"text": "look at this", "createdAt": "2026-09-22T00:00:00Z"},
+            "embed": {"$type": "app.bsky.embed.record#view", "record": {
+                "$type": "app.bsky.embed.record#viewRecord",
+                "uri": "at://did:plc:bob/app.bsky.feed.post/q", "cid": "cq",
+                "author": {"did": "did:plc:bob", "handle": "bob.test"},
+                "value": {"text": "from the top"},
+                "embeds": [{"$type": "app.bsky.embed.images#view", "images": [
+                    {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": "山の頂上👨\u{200d}👩\u{200d}👧"}
+                ]}]
+            }}
+        }))
+        .unwrap();
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.without_pictures();
+        app.handle_event(Event::Timeline(Ok(vec![post].into())));
+        let screen = render_text_only(&mut app, 80, 24);
+        assert!(screen.contains("❝ @bob.test: from the top"), "{screen}");
+        assert!(
+            screen.contains("▣ 1 picture: 山の頂上👨\u{200d}👩\u{200d}👧"),
+            "{screen}"
+        );
+    }
+
     /// A quote post says whose post it quotes. Beside a picture the quote
     /// used to be dropped, and a quote of a post that is gone or blocked
     /// showed nothing at all, which reads as an empty post.

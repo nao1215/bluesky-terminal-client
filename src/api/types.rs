@@ -239,7 +239,14 @@ pub enum Embed {
         alt: Option<String>,
     },
     #[serde(rename = "app.bsky.embed.record#view")]
-    Record { record: Value },
+    Record {
+        record: Value,
+        /// The quoted post's own picture or video, read once when the post
+        /// is read: a quote of a picture post draws that picture, and the
+        /// drawing asks for it on every frame.
+        #[serde(skip)]
+        quoted_media: Option<Box<Embed>>,
+    },
     #[serde(rename = "app.bsky.embed.recordWithMedia#view")]
     RecordWithMedia {
         media: Box<Embed>,
@@ -283,8 +290,40 @@ impl Embed {
                 .into_iter()
                 .collect(),
             Embed::RecordWithMedia { media, .. } => media.images(),
-            Embed::Record { .. } | Embed::Other => Vec::new(),
+            // A plain quote draws what the quoted post drew.
+            Embed::Record { quoted_media, .. } => quoted_media
+                .as_deref()
+                .map(Embed::images)
+                .unwrap_or_default(),
+            Embed::Other => Vec::new(),
         }
+    }
+
+    /// Take the quoted post's own media as this embed's own. `viewRecord`
+    /// carries the embeds of the post it quotes as raw JSON; they are read
+    /// here, once, when the post arrives. Only a picture or a video, and
+    /// only one post deep, so a quote of a quote does not reach through to
+    /// a third post's pictures.
+    fn with_quoted_media(mut self) -> Self {
+        if let Embed::Record {
+            record,
+            quoted_media,
+        } = &mut self
+        {
+            *quoted_media = record
+                .get("embeds")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|e| serde_json::from_value::<Embed>(e.clone()).ok())
+                .map(|e| match e {
+                    Embed::RecordWithMedia { media, .. } => *media,
+                    other => other,
+                })
+                .find(|e| matches!(e, Embed::Images { .. } | Embed::Video { .. }))
+                .map(Box::new);
+        }
+        self
     }
 
     /// The post (or feed, or list) this embed quotes, as the server sent
@@ -292,7 +331,7 @@ impl Embed {
     /// plain quote and that one answer here.
     pub fn quoted(&self) -> Option<&Value> {
         match self {
-            Embed::Record { record } => Some(record),
+            Embed::Record { record, .. } => Some(record),
             Embed::RecordWithMedia { record, .. } => record.get("record"),
             _ => None,
         }
@@ -350,6 +389,12 @@ impl Embed {
                 aspect: aspect(*aspect_ratio),
             }],
             Embed::RecordWithMedia { media, .. } => media.media(),
+            // The viewer opens the quoted post's pictures too: they are
+            // what the row drew.
+            Embed::Record { quoted_media, .. } => quoted_media
+                .as_deref()
+                .map(Embed::media)
+                .unwrap_or_default(),
             _ => Vec::new(),
         }
     }
@@ -522,7 +567,9 @@ where
 {
     // A malformed embed must not hide the post it belongs to.
     let value = Option::<Value>::deserialize(de)?;
-    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
+    Ok(value
+        .and_then(|v| serde_json::from_value::<Embed>(v).ok())
+        .map(Embed::with_quoted_media))
 }
 
 impl Post {
@@ -916,6 +963,91 @@ mod tests {
         }))
         .unwrap();
         assert!(e.quoted().is_none());
+    }
+
+    /// A quote of a post that has a picture shows that picture, the way
+    /// the quoted post itself would, and the viewer opens it.
+    #[test]
+    fn a_quote_shows_the_quoted_post_s_picture() {
+        let quote = |embeds: serde_json::Value| -> Post {
+            post(json!({
+                "uri": "at://a/p/1", "cid": "c",
+                "author": {"did": "d", "handle": "alice.test"},
+                "record": {"text": "look"},
+                "embed": {"$type": "app.bsky.embed.record#view", "record": {
+                    "$type": "app.bsky.embed.record#viewRecord",
+                    "uri": "at://b/p/q", "cid": "cq",
+                    "author": {"did": "db", "handle": "bob.test"},
+                    "value": {"text": "the quoted words"},
+                    "embeds": embeds,
+                }}
+            }))
+        };
+        let e = quote(json!([{"$type": "app.bsky.embed.images#view", "images": [
+            {"thumb": "https://cdn/q", "fullsize": "https://cdn/qfull", "alt": "山",
+             "aspectRatio": {"width": 4, "height": 3}}
+        ]}]))
+        .embed
+        .unwrap();
+        assert_eq!(e.images()[0].url, "https://cdn/q");
+        assert_eq!(e.images()[0].aspect, Some((4, 3)));
+        assert!(
+            matches!(&e.media()[..], [Media::Image { url, alt, .. }]
+                     if url == "https://cdn/qfull" && alt == "山"),
+            "{:?}",
+            e.media()
+        );
+        // A quoted post with a video gives the video.
+        let e = quote(json!([{"$type": "app.bsky.embed.video#view",
+                              "playlist": "https://v/p.m3u8", "alt": "a cat"}]))
+        .embed
+        .unwrap();
+        assert!(
+            matches!(&e.media()[..], [Media::Video { playlist, .. }] if playlist == "https://v/p.m3u8"),
+            "{:?}",
+            e.media()
+        );
+        // A quoted post with only words has nothing to draw.
+        let e = quote(json!([])).embed.unwrap();
+        assert!(e.images().is_empty());
+        assert!(e.media().is_empty());
+        // A quote of a quote does not reach through two posts.
+        let e = quote(json!([{"$type": "app.bsky.embed.record#view", "record": {
+            "$type": "app.bsky.embed.record#viewRecord",
+            "author": {"handle": "carol.test"}, "value": {"text": "deeper"},
+            "embeds": [{"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://cdn/deep", "fullsize": "https://cdn/deep", "alt": ""}
+            ]}]
+        }}]))
+        .embed
+        .unwrap();
+        assert!(e.images().is_empty());
+    }
+
+    /// A quote that carries a picture of its own draws that one: the row
+    /// shows what the post added, not what it quotes.
+    #[test]
+    fn a_quote_with_its_own_picture_draws_its_own() {
+        let p = post(json!({
+            "uri": "at://a/p/1", "cid": "c",
+            "author": {"did": "d", "handle": "alice.test"},
+            "record": {"text": "look"},
+            "embed": {"$type": "app.bsky.embed.recordWithMedia#view",
+                "record": {"$type": "app.bsky.embed.record#view", "record": {
+                    "$type": "app.bsky.embed.record#viewRecord",
+                    "author": {"handle": "bob.test"}, "value": {"text": "quoted"},
+                    "embeds": [{"$type": "app.bsky.embed.images#view", "images": [
+                        {"thumb": "https://cdn/theirs", "fullsize": "https://cdn/theirs", "alt": ""}
+                    ]}]
+                }},
+                "media": {"$type": "app.bsky.embed.images#view", "images": [
+                    {"thumb": "https://cdn/mine", "fullsize": "https://cdn/mine", "alt": ""}
+                ]}
+            }
+        }));
+        let e = p.embed.unwrap();
+        assert_eq!(e.images().len(), 1);
+        assert_eq!(e.images()[0].url, "https://cdn/mine");
     }
 
     #[test]
