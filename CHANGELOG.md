@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Removing a like, a repost, or a follow deletes only that kind of record in your own account. When the server named a like, repost, or follow that was another record, such as one of your posts, bsky deleted that record; it now shows an error and sends nothing.
 - A post whose record another client wrote with a damaged reply field (a reply without its CIDs) or a time that is not a string is shown with its text instead of blank, and a reply to it names that post as root and parent.
+- `d` saves under a new name when anything already has the chosen one, a link to nothing included. It used to write through such a link, creating or replacing the file the link pointed to outside the download folder, and a file created between the check and the write was overwritten.
+- A download is never named after a device Windows reserves (`CON`, `NUL`, `COM1`...), never ends in a dot or has an empty extension, and a `#` part of the URL no longer ends up in the name.
 
 ## [0.1.0] - 2026-09-22
 
