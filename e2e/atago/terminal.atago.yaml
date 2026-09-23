@@ -380,3 +380,45 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+
+  # On a narrow terminal the help puts each description under its keys
+  # instead of cutting it to the few cells left beside them.
+  - name: the help is readable on a narrow terminal
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 16
+          cols: 26
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from"
+            - send: "?"
+            - expect_screen:
+                contains:
+                  - "1 2 3 4"
+                  - "Timeline, Search,"
+                  - "Notifications,"
+                  - "esc/q/? close"
+                stable_for: 300ms
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "esc/q/? close"
+            - send: q
+      - assert:
+          exit_code: 0
