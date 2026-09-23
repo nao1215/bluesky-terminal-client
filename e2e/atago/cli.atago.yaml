@@ -545,3 +545,118 @@ scenarios:
             json:
               - { path: "$.status", equals: 1 }
               - { path: "$.error", equals: "no account is logged in" }
+
+  # BSKY_ACCOUNT, set in a shell for the commands, names the account to act
+  # as; logging that account in, or listing the accounts, does not need it
+  # logged in already.
+  - name: an account named by BSKY_ACCOUNT can be logged in, and accounts lists them all the same
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:new", handle: "new.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
+    steps:
+      - *session
+      - run:
+          command: bsky accounts
+          env: &env_new
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_ACCOUNT: new.test
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "* @me.test  did:plc:me\n"
+      - run:
+          command: bsky login new.test --password-stdin --service ${api.url}
+          env: *env_new
+          stdin: "app-pass-cli\n"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged in as @new.test\n"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.server.createSession, count: 1 }
+
+  - name: with --json a usage error and logout print JSON too
+    steps:
+      - *session
+      - run:
+          command: bsky --json like
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "hint: run `bsky --help` for usage"
+          stdout:
+            json:
+              - { path: "$.status", equals: 1 }
+              - { path: "$.hint", equals: "run `bsky --help` for usage" }
+      - run:
+          command: bsky logout --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.loggedOut[0].handle", equals: "me.test" }
+              - { path: "$.loggedOut[0].did", equals: "did:plc:me" }
+      - run:
+          command: bsky logout --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.loggedOut", equals: [] }
+
+  # A page of the timeline can be mostly reposts, which are not printed; -n
+  # goes on to the next page for its count. (The mock answers every page
+  # with the same one, so the post comes once and the reading stops there.)
+  - name: timeline -n reads further pages until it has that many posts
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              cursor: page2
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:me, handle: me.test }
+                    record: { text: "First page", createdAt: "2026-09-20T07:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/r1
+                    cid: cid-r1
+                    author: { did: did:plc:dave, handle: dave.test }
+                    record: { text: "A repost", createdAt: "2026-09-20T06:30:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:alice, handle: alice.test } }
+                - post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/r2
+                    cid: cid-r2
+                    author: { did: did:plc:dave, handle: dave.test }
+                    record: { text: "Another repost", createdAt: "2026-09-20T06:20:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:alice, handle: alice.test } }
+                - post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/r3
+                    cid: cid-r3
+                    author: { did: did:plc:dave, handle: dave.test }
+                    record: { text: "A third repost", createdAt: "2026-09-20T06:10:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:alice, handle: alice.test } }
+    steps:
+      - *session
+      - run:
+          command: bsky tl -n 2
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @me.test · 2026-09-20 07:00
+              First page
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:me/app.bsky.feed.post/p1
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2, query: { name: cursor, equals: "page2" } }

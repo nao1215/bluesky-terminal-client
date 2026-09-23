@@ -86,10 +86,15 @@ fn run(cli: Cli) -> Result<()> {
     let service = api::normalize_service(&cli.service)?;
     let dir = config::config_dir()?;
     match cli.command {
-        Some(Command::Logout { all }) => logout(&dir, cli.account.as_deref(), all),
+        Some(Command::Logout { all }) => logout(&dir, cli.account.as_deref(), all, cli.json),
         Some(Command::Other(cmd)) => {
             let accounts = AccountStore::open(&dir)?;
-            let session = chosen_account(&accounts, cli.account.as_deref())?;
+            // Logging in and listing the accounts act as no account, so an
+            // account named that is not logged in (yet) is no error there.
+            let session = match cmd {
+                cli::Command::Login { .. } | cli::Command::Accounts => accounts.current()?,
+                _ => chosen_account(&accounts, cli.account.as_deref())?,
+            };
             let ctx = cli::Ctx {
                 dir: &dir,
                 accounts: &accounts,
@@ -130,28 +135,45 @@ fn chosen_account(accounts: &AccountStore, who: Option<&str>) -> Result<Option<S
 }
 
 /// `bsky logout`: the account in use, the one `-a` names, or all of them.
-fn logout(dir: &std::path::Path, who: Option<&str>, all: bool) -> Result<()> {
-    // A session.json of a version with one login, readable or not, is that
-    // one login: it goes, and nothing else is touched.
+fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Result<()> {
+    // A session.json of a version with one login, readable or not, is one
+    // more login: it goes, before the accounts are read (which would take it
+    // in as an account), and the accounts asked for go too.
     let old = SessionStore::new(dir);
-    if who.is_none() && old.path().exists() {
+    let old_gone = who.is_none() && old.path().exists();
+    if old_gone {
         old.clear()?;
-        println!("logged out");
-        return Ok(());
     }
     let accounts = AccountStore::open(dir)?;
     let chosen: Vec<Session> = if all {
         accounts.list()?
+    } else if old_gone {
+        Vec::new()
     } else {
         chosen_account(&accounts, who)?.into_iter().collect()
     };
-    if chosen.is_empty() {
-        println!("not logged in");
-        return Ok(());
-    }
-    for s in chosen {
+    for s in &chosen {
         accounts.remove(&s.did)?;
-        println!("logged out @{}", s.handle);
+    }
+    if json {
+        let gone: Vec<serde_json::Value> = chosen
+            .iter()
+            .map(|s| serde_json::json!({"did": s.did, "handle": s.handle}))
+            .collect();
+        println!("{}", serde_json::json!({ "loggedOut": gone }));
+    } else if chosen.is_empty() {
+        println!(
+            "{}",
+            if old_gone {
+                "logged out"
+            } else {
+                "not logged in"
+            }
+        );
+    } else {
+        for s in &chosen {
+            println!("logged out @{}", s.handle);
+        }
     }
     Ok(())
 }
@@ -168,6 +190,10 @@ fn main() -> ExitCode {
             let err = Error::new(Kind::Usage, first_line(&e.to_string()))
                 .with_hint("run `bsky --help` for usage");
             eprintln!("{err}");
+            // The flags were not read, so --json is looked for by hand.
+            if std::env::args_os().skip(1).any(|a| a == "--json") {
+                print_json_error(&err);
+            }
             return ExitCode::from(Kind::Usage.exit_code());
         }
     };
@@ -178,16 +204,21 @@ fn main() -> ExitCode {
             let _ = writeln!(std::io::stderr(), "{err}");
             let status = err.kind().exit_code();
             if json {
-                let v = serde_json::json!({
-                    "error": err.message(),
-                    "hint": err.hint(),
-                    "status": status,
-                });
-                println!("{v}");
+                print_json_error(&err);
             }
             ExitCode::from(status)
         }
     }
+}
+
+/// An error as --json prints it on stdout.
+fn print_json_error(err: &Error) {
+    let v = serde_json::json!({
+        "error": err.message(),
+        "hint": err.hint(),
+        "status": err.kind().exit_code(),
+    });
+    println!("{v}");
 }
 
 /// clap's message without its `error: ` prefix and trailing usage block.

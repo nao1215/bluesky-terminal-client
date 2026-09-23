@@ -270,25 +270,54 @@ fn timeline(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
     let client = ctx.client()?;
     let did = client.did().to_string();
     // As the client shows it: posts by the accounts followed and your own,
-    // not reposts.
-    let raw = collect(
-        &client,
-        "app.bsky.feed.getTimeline",
-        &[],
-        "feed",
-        limit.saturating_mul(2).max(limit),
-    )?;
-    let kept: Vec<(Value, Post)> = raw
-        .into_iter()
-        .filter_map(|v| {
-            let item: FeedItem = serde_json::from_value(v.clone()).ok()?;
-            let followed = crate::timeline::followed_posts(vec![item], &did);
-            followed.into_iter().next().map(|p| (v, p))
-        })
-        .take(limit)
-        .collect();
+    // not reposts. A page can be mostly reposts, so pages are read until
+    // `limit` posts are kept or there are no more.
+    let mut kept: Vec<(Value, Post)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        if kept.len() >= limit {
+            break;
+        }
+        let page = (limit - kept.len()).clamp(1, 100).to_string();
+        let mut q: Vec<(&str, &str)> = vec![("limit", &page)];
+        if let Some(c) = &cursor {
+            q.push(("cursor", c));
+        }
+        let v = client.get_value("app.bsky.feed.getTimeline", &q)?;
+        let got = v
+            .get("feed")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let next = v.get("cursor").and_then(Value::as_str).map(str::to_string);
+        let empty = got.is_empty();
+        for raw in got {
+            let Ok(item) = serde_json::from_value::<FeedItem>(raw.clone()) else {
+                continue;
+            };
+            let Some(p) = crate::timeline::followed_posts(vec![item], &did)
+                .into_iter()
+                .next()
+            else {
+                continue;
+            };
+            if seen.insert(p.uri.clone()) {
+                kept.push((raw, p));
+            }
+        }
+        if empty || next.is_none() || next == cursor {
+            break;
+        }
+        cursor = next;
+    }
+    kept.truncate(limit);
     print_posts(ctx, out, kept.iter().map(|(v, p)| (v, p.clone())))
 }
+
+/// How many pages the timeline reads at most for one `-n`: a timeline of
+/// nothing but reposts would otherwise be read to its end.
+const MAX_PAGES: usize = 20;
 
 fn custom_feed(ctx: &Ctx, out: &mut dyn Write, feed: &str, limit: usize) -> Result<()> {
     let client = ctx.client()?;
