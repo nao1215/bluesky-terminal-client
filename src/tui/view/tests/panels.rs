@@ -257,31 +257,26 @@ fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
     let narrow = render(&mut app, MIN_W, 16);
     assert!(narrow.contains("1 2 3 4"), "{narrow}");
     // The words are whole and on their own rows, not cut to four cells.
-    assert!(narrow.contains("Timeline,"), "{narrow}");
-    assert!(narrow.contains("Search,"), "{narrow}");
+    assert!(narrow.contains("the tabs,"), "{narrow}");
+    assert!(narrow.contains("Timeline to"), "{narrow}");
     assert!(!narrow.contains("Time\n"), "{narrow}");
     // The two columns come back where they fit, and a description too
     // long for its column wraps rather than losing its end.
     let forty = render(&mut app, 40, 16);
     assert!(
-        forty.contains("1 2 3 4 5 6    Timeline, Search,"),
+        forty.contains("1 2 3 4 5 6    the tabs, Timeline"),
         "{forty}"
     );
     assert!(
         forty
             .lines()
-            .any(|l| l.contains("Notifications,") && !l.contains("1 2 3 4")),
+            .any(|l| l.trim_matches('│').trim() == "to Chat"),
         "{forty}"
     );
-    assert!(
-        forty
-            .lines()
-            .any(|l| l.trim_matches('│').trim() == "Profile, Columns,"),
-        "{forty}"
-    );
+    // Wide enough, every description is one line.
     let wide = render(&mut app, 80, 24);
     assert!(
-        wide.contains("1 2 3 4 5 6    Timeline, Search, Notifications,"),
+        wide.contains("1 2 3 4 5 6    the tabs, Timeline to Chat"),
         "{wide}"
     );
 }

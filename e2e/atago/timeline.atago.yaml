@@ -2113,7 +2113,6 @@ scenarios:
             - send: { key: pagedown }
             - send: { key: pagedown }
             - send: { key: pagedown }
-            - send: { key: pagedown }
             - expect_screen:
                 contains: "edit your profile"
             # Wait for the window itself to go before the next key, or Esc

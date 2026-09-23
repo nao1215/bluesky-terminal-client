@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Mute and block accounts. `M` mutes the author of the selected post, or the account whose profile is shown, and `M` again unmutes; `B` blocks after a `y` that confirms it, and `B` again unblocks. Their posts and notifications leave the lists on screen at once, and a profile says "muted" or "blocked". Both are in the `.` list with what they would do now. On the command line: `bsky mute`, `unmute`, `mutes`, `block`, `unblock` and `blocks`.
 
+### Changed
+
+- Every key in the `?` help is described on one line on an 80-column terminal; the long descriptions were shortened.
+
 ### Fixed
 
 - `bsky logout` and `bsky logout --all` stopped after removing a `session.json` an earlier version wrote, and left the accounts logged in. Both now log out that file and the accounts they name.

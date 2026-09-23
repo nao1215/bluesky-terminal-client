@@ -21,10 +21,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            (
-                "1 2 3 4 5 6",
-                "Timeline, Search, Notifications, Profile, Columns, Chat",
-            ),
+            ("1 2 3 4 5 6", "the tabs, Timeline to Chat"),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
             ("A", "accounts: switch, add, log out"),
@@ -44,10 +41,7 @@ pub const HELP: &[Section] = &[
     },
     Section {
         title: "Timeline",
-        keys: &[(
-            "[ ]",
-            "previous / next feed: Following, then the feeds you pinned",
-        )],
+        keys: &[("[ ]", "previous / next feed: Following, pinned")],
     },
     Section {
         title: "Posts",
@@ -57,33 +51,15 @@ pub const HELP: &[Section] = &[
             ("l", "like / remove like"),
             ("b", "repost / remove repost"),
             ("f", "follow / unfollow the selected account"),
-            (
-                "M",
-                "mute / unmute the selected account: their posts leave your lists",
-            ),
-            (
-                "B",
-                "block / unblock the selected account: y confirms a block",
-            ),
-            ("v", "open the thread: the posts above it and every reply"),
-            (
-                "space",
-                "view the post's pictures or video full screen, or open its link",
-            ),
-            (
-                "o",
-                "open the post's link in the web browser, or the post itself",
-            ),
-            (
-                ".",
-                "everything these keys do to the selected post, as a list",
-            ),
+            ("M", "mute / unmute the selected account"),
+            ("B", "block / unblock the account: y confirms"),
+            ("v", "open the thread with every reply"),
+            ("space", "view pictures or video, or open the link"),
+            ("o", "open the link, or the post, in the browser"),
+            (".", "list what the keys do to the post"),
             ("Q", "quote the selected post in a new post"),
             ("c", "copy the post's address to the clipboard"),
-            (
-                "D",
-                "delete your own post: y confirms, any other key keeps it",
-            ),
+            ("D", "delete your own post: y confirms"),
             ("enter", "open the selected account's profile"),
         ],
     },
@@ -99,11 +75,11 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Search",
         keys: &[
-            ("type", "an empty search box has focus when you arrive"),
+            ("type", "the search box has focus when you arrive"),
             ("enter", "search, then move through the results"),
             ("/ i", "type in the search box again"),
             ("ctrl+t t", "search posts or accounts"),
-            ("f", "follow / unfollow the account, or the post's author"),
+            ("f", "follow / unfollow the account or author"),
             ("esc", "leave the search box"),
         ],
     },
@@ -111,7 +87,7 @@ pub const HELP: &[Section] = &[
         title: "Notifications",
         keys: &[
             ("enter", "open the profile of who it is from"),
-            ("r l b", "reply, like, repost a reply, mention, or quote"),
+            ("r l b", "reply, like, repost a reply or mention"),
             ("v", "open the thread it is about"),
             ("R", "load new notifications"),
         ],
@@ -120,16 +96,10 @@ pub const HELP: &[Section] = &[
         title: "Profile",
         keys: &[
             ("e", "edit your profile"),
-            (
-                "m",
-                "message the account shown, starting the conversation if needed",
-            ),
-            (
-                "s",
-                "settings: theme, pictures, and where bsky keeps things",
-            ),
+            ("m", "message the account shown"),
+            ("s", "settings: theme, pictures, folders"),
             ("f", "follow / unfollow the account shown"),
-            ("M B", "mute / block the account shown, or undo it"),
+            ("M B", "mute / block the account shown"),
             ("esc", "back to the list it was opened from"),
         ],
     },
@@ -137,18 +107,9 @@ pub const HELP: &[Section] = &[
         title: "Composer and profile editor",
         keys: &[
             ("ctrl+s", "send the post / save the profile"),
-            (
-                "ctrl+o",
-                "attach pictures (up to 4) or one video / choose a new avatar",
-            ),
-            (
-                "tab",
-                "next field: an attachment's alt text, the next profile field",
-            ),
-            (
-                "ctrl+x",
-                "remove the attachment being described, or the last one",
-            ),
+            ("ctrl+o", "attach pictures or a video / an avatar"),
+            ("tab", "next field, or a picture's alt text"),
+            ("ctrl+x", "remove the attachment"),
             ("ctrl+u", "clear to the start of the line"),
             ("esc", "close without sending"),
         ],
@@ -156,7 +117,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "File browser",
         keys: &[
-            ("j k", "move; a picture is previewed, a video described"),
+            ("j k", "move; pictures are previewed"),
             ("enter l", "open the folder / choose the file"),
             ("space", "mark pictures to choose together with enter"),
             ("h backspace", "the folder above"),
@@ -170,10 +131,7 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("← → h l", "previous / next picture"),
             ("r", "play the video again"),
-            (
-                "d",
-                "download it to the download folder (Downloads/bsky, or the one in the settings)",
-            ),
+            ("d", "save it in the download folder"),
             ("esc q", "back to where you were"),
         ],
     },
@@ -190,33 +148,27 @@ pub const HELP: &[Section] = &[
         title: "Columns",
         keys: &[
             ("← → H L", "the column to the left / right"),
-            (
-                "+",
-                "add a column: Following, a pinned feed, notifications, your posts, a search",
-            ),
+            ("+", "add a column: a feed, alerts, a search"),
             ("< >", "move the column left / right"),
             ("x", "remove the column: y confirms"),
             ("R", "load the column again"),
-            ("", "the keys of a post act on the column's selected post"),
+            ("", "post keys act on the column's post"),
         ],
     },
     Section {
         title: "Chat",
         keys: &[
             ("enter", "open the conversation; it is marked read"),
-            (
-                "i enter",
-                "write a message; enter sends it, esc stops writing",
-            ),
+            ("i enter", "write a message; enter sends it"),
             ("j k g G", "read further back / forward"),
             ("esc", "back to the conversations"),
-            ("", "read again every 15 seconds while the tab is shown"),
+            ("", "read again every 15 s while shown"),
         ],
     },
     Section {
         title: "Accounts",
         keys: &[
-            ("A", "the logged-in accounts, the one in use marked"),
+            ("A", "the accounts, the one in use marked"),
             ("j k", "move"),
             ("enter", "use the selected account"),
             ("a", "log in another account"),
@@ -227,17 +179,11 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Settings",
         keys: &[
-            ("s", "open them, on the Profile tab of your own profile"),
+            ("s", "open them from your own Profile tab"),
             ("j k", "move"),
-            (
-                "enter space",
-                "change it: a theme, pictures off or on, a folder, an address",
-            ),
-            (
-                "x",
-                "a setting kept in settings.json goes back to its default",
-            ),
-            ("", "a setting a BSKY_ variable fixes says so and stays"),
+            ("enter space", "change the selected setting"),
+            ("x", "put the setting back to its default"),
+            ("", "a setting a BSKY_ variable sets stays"),
             ("esc", "close"),
         ],
     },
@@ -257,10 +203,7 @@ pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
                 .keys
                 .iter()
                 .map(|&(k, d)| match (pictures, s.title, k) {
-                    (false, "Posts", "space") => (
-                        k,
-                        "open the post in the web browser: on bsky.app when it has pictures or video, else its link",
-                    ),
+                    (false, "Posts", "space") => (k, "open the post or its link in the browser"),
                     (false, "File browser", "j k") => (k, "move; a video is described"),
                     _ => (k, d),
                 })
@@ -539,7 +482,7 @@ pub fn actions(app: &App) -> Vec<Hint> {
                 if account.muted() {
                     "unmute them"
                 } else {
-                    "mute them: their posts leave your lists"
+                    "mute them"
                 },
             ));
             v.push((

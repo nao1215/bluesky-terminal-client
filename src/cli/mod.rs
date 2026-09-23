@@ -100,8 +100,7 @@ pub enum Command {
     Follow { actor: String },
     /// Unfollow an account.
     Unfollow { actor: String },
-    /// Mute an account: its posts leave your timeline, feeds, and
-    /// notifications. Only you know.
+    /// Mute an account.
     Mute { actor: String },
     /// Unmute an account.
     Unmute { actor: String },
@@ -110,8 +109,7 @@ pub enum Command {
         #[arg(short = 'n', long, default_value_t = 50)]
         limit: usize,
     },
-    /// Block an account: neither of you sees the other's posts. A block is
-    /// public.
+    /// Block an account.
     Block { actor: String },
     /// Unblock an account.
     Unblock { actor: String },

@@ -197,11 +197,11 @@ scenarios:
             # The Posts section, where space is, below the Global one.
             - send: { key: pagedown }
             - expect_screen:
-                contains: "open the post in the web browser"
+                contains: "open the post or its link in the browser"
                 not_contains: "Viewer"
             - send: { key: esc }
             - expect_screen:
-                not_contains: "open the post in the web browser"
+                not_contains: "open the post or its link in the browser"
             - send: q
       - assert:
           exit_code: 0
@@ -416,8 +416,8 @@ scenarios:
             - expect_screen:
                 contains:
                   - "1 2 3 4"
-                  - "Timeline, Search,"
-                  - "Notifications,"
+                  - "the tabs,"
+                  - "to Chat"
                   - "esc/q/? close"
                 stable_for: 300ms
             - send: { key: esc }
