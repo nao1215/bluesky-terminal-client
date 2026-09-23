@@ -1,6 +1,7 @@
 //! A directory browser for choosing pictures and videos from the user's
 //! disk. It lists folders and those files only, and the view previews the
-//! selected one beside the list.
+//! selected one beside the list. In its folder mode it lists folders only,
+//! and chooses the one it is in.
 
 use std::collections::HashMap;
 use std::fs;
@@ -60,6 +61,9 @@ pub struct Browser {
     pub videos: bool,
     /// A message about the last key, such as "no room for more".
     pub note: Option<String>,
+    /// Whether a folder is chosen rather than files: only folders are
+    /// listed, and Space chooses the one shown.
+    pub folders: bool,
     /// What each file looked at so far is, read from its header once.
     pub info: HashMap<PathBuf, media::Info>,
 }
@@ -77,8 +81,17 @@ impl Browser {
             room: room.max(1),
             videos,
             note: None,
+            folders: false,
             info: HashMap::new(),
         };
+        b.read(None);
+        b
+    }
+
+    /// Open at `dir` to choose a folder.
+    pub fn folder(dir: &Path) -> Self {
+        let mut b = Self::open(dir, 1, false);
+        b.folders = true;
         b.read(None);
         b
     }
@@ -129,7 +142,8 @@ impl Browser {
                     };
                     let kind = if meta.is_dir() {
                         EntryKind::Dir
-                    } else if meta.is_file()
+                    } else if !self.folders
+                        && meta.is_file()
                         && (is_image_name(&name) || (self.videos && is_video_name(&name)))
                     {
                         EntryKind::Media
@@ -235,6 +249,7 @@ impl Browser {
                     self.enter(home, None);
                 }
             }
+            KeyCode::Char(' ') if self.folders => return Action::Choose(vec![self.dir.clone()]),
             KeyCode::Char(' ') => self.toggle_mark(),
             KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => {
                 let Some(e) = self.current().cloned() else {
@@ -407,5 +422,23 @@ mod tests {
         let b = Browser::open(&dir.path().join("missing"), 4, false);
         assert!(b.error.as_deref().unwrap().starts_with("cannot read"));
         assert_eq!(names(&b), [".."], "the way out is still there");
+    }
+
+    #[test]
+    fn a_folder_is_chosen_where_the_browser_is_and_files_are_not_listed() {
+        let dir = tree();
+        let mut b = Browser::folder(&dir.path().join("pics"));
+        // Only the folder above and the folder in it; the pictures are not.
+        assert_eq!(names(&b), ["..", "Zoo"]);
+        assert_eq!(b.key(code(KeyCode::Enter)), Action::None);
+        assert_eq!(names(&b), [".."]);
+        assert_eq!(
+            b.key(key(' ')),
+            Action::Choose(vec![
+                std::path::absolute(dir.path().join("pics").join("Zoo")).unwrap()
+            ])
+        );
+        b.key(key('h'));
+        assert_eq!(b.dir, std::path::absolute(dir.path().join("pics")).unwrap());
     }
 }

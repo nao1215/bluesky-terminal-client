@@ -55,7 +55,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 
 ## Pictures and videos
 
-`Space` on a post shows its pictures full screen at their own shape, or plays its video (without sound). `←` `→` go through several pictures, `r` plays the video again, `d` saves it in `Downloads/bsky`, and `Esc` goes back. On a post with only a link, `Space` (or `o` anywhere) opens it in your web browser.
+`Space` on a post shows its pictures full screen at their own shape, or plays its video (without sound). `←` `→` go through several pictures, `r` plays the video again, `d` saves it in `Downloads/bsky` (or the folder chosen in the settings), and `Esc` goes back. On a post with only a link, `Space` (or `o` anywhere) opens it in your web browser.
 
 ![a picture and a video of a profile's posts, full screen](doc/img/viewer.gif)
 
@@ -101,7 +101,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 
 ## Configuration
 
-`s` on your own Profile tab opens the settings: the theme, pictures on or off, and where bsky keeps downloads and pictures. They are kept in `settings.json`; a variable below that is set wins over it, and the screen says so.
+`s` on your own Profile tab opens the settings: the theme, pictures on or off, the download folder, the picture cache, the video service, and the browser. They are kept in `settings.json` and take effect at once; a variable below that is set wins over it, and the screen says so. `x` puts a setting back to its default.
 
 | Variable | Meaning |
 |----------|---------|

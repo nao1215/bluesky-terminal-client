@@ -16,6 +16,7 @@ pub mod view;
 pub mod worker;
 
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crossterm::event::{
@@ -78,9 +79,8 @@ fn event_loop(
     let off = loaded.pictures_off() && env.graphics.is_none();
     // The picker is kept even with pictures off, so they can be turned
     // back on without asking the terminal again while keys are read.
-    let make_images = |picker: &Option<ratatui_image::picker::Picker>| {
-        let cache = crate::config::cache_dir()
-            .map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
+    let make_images = |picker: &Option<ratatui_image::picker::Picker>, cache: Option<PathBuf>| {
+        let cache = cache.map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
         let images = match picker {
             Some(picker) => Images::new(picker.clone(), cache),
             None => Images::none(),
@@ -93,7 +93,7 @@ fn event_loop(
     let mut images = if off {
         Images::none()
     } else {
-        make_images(&picker)
+        make_images(&picker, crate::config::cache_dir(&env, &loaded).0)
     };
     let worker = Worker::spawn(session.clone(), store);
     let (mut app, jobs) = App::new(session, service);
@@ -167,7 +167,7 @@ fn event_loop(
                 let _ = io::Write::flush(&mut out);
             }
             images = if on {
-                make_images(&picker)
+                make_images(&picker, app.cache_dir())
             } else {
                 Images::none()
             };

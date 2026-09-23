@@ -5,7 +5,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::api::types::Media;
-use crate::tui::app::{App, Overlay, SearchMode, Tab};
+use crate::tui::app::{App, Overlay, SearchMode, SettingEdit, Tab};
 
 /// A key and what it does.
 pub type Hint = (&'static str, &'static str);
@@ -153,7 +153,10 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("← → h l", "previous / next picture"),
             ("r", "play the video again"),
-            ("d", "download it to the download folder (Downloads/bsky)"),
+            (
+                "d",
+                "download it to the download folder (Downloads/bsky, or the one in the settings)",
+            ),
             ("esc q", "back to where you were"),
         ],
     },
@@ -173,7 +176,11 @@ pub const HELP: &[Section] = &[
             ("j k", "move"),
             (
                 "enter space",
-                "change it: choose a theme, turn pictures off or back on",
+                "change it: a theme, pictures off or on, a folder, an address",
+            ),
+            (
+                "x",
+                "a setting kept in settings.json goes back to its default",
             ),
             ("", "a setting a BSKY_ variable fixes says so and stays"),
             ("esc", "close"),
@@ -253,8 +260,32 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Actions { .. }) => {
             return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
         }
-        Some(Overlay::Settings { .. }) => {
-            return vec![("j k", "move"), ("enter", "change"), ("esc", "close")];
+        Some(Overlay::Settings {
+            edit: Some(SettingEdit::Folder(_)),
+            ..
+        }) => {
+            return vec![
+                ("enter", "open"),
+                ("space", "choose this folder"),
+                ("h", "up"),
+                ("esc", "cancel"),
+            ];
+        }
+        Some(Overlay::Settings {
+            edit: Some(SettingEdit::Text(_)),
+            ..
+        }) => return vec![("enter", "keep"), ("esc", "cancel")],
+        Some(Overlay::Settings { selected, .. }) => {
+            let mut v = vec![("j k", "move"), ("enter", "change")];
+            if app
+                .settings_rows()
+                .get(*selected)
+                .is_some_and(|r| r.resettable)
+            {
+                v.push(("x", "default"));
+            }
+            v.push(("esc", "close"));
+            return v;
         }
         Some(Overlay::Viewer { media, index, .. }) => {
             let mut v = Vec::new();

@@ -719,6 +719,14 @@ scenarios:
             - send: j
             - expect_screen:
                 contains: "set by BSKY_DOWNLOAD_DIR for this run"
+                not_contains: "x default"
+            # Neither enter nor x changes it.
+            - send: { key: enter }
+            - send: x
+            - expect_screen:
+                contains: "set by BSKY_DOWNLOAD_DIR for this run"
+                not_contains: "Choose a folder"
+                stable_for: 300ms
             - send: { key: esc }
             - expect_screen:
                 not_contains: "Picture cache"

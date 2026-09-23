@@ -508,10 +508,74 @@ scenarios:
                 contains: "Read this article"
             - send: o
             - expect_screen:
-                contains: [" Error ", "cannot open the link", "no-such-browser", "hint: set BSKY_BROWSER to the program that opens"]
+                contains: [" Error ", "cannot open the link", "no-such-browser", "hint: set BSKY_BROWSER, or Browser on the settings screen"]
             - send: q
       - assert:
           exit_code: 0
+
+  - name: a browser typed on the settings screen opens the links
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/l1
+                    cid: cid-l1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Read this article", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.external#view
+                      external: { uri: "https://example.com/article", title: "An article", description: "" }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Read this article"
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: k
+            - expect_screen:
+                contains: ["▶ Browser", "the default; enter types the program that opens links"]
+            - send: { key: enter }
+            - send: "${workdir}/ブラウザ🦊"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["browser: ", "ブラウザ🦊", "x goes back to the default"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - send: o
+            # The program named on the screen is the one tried.
+            - expect_screen:
+                contains: [" Error ", "cannot open the link", "ブラウザ🦊"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.browser", matches: 'ブラウザ🦊$' }
 
   - name: without BSKY_DOWNLOAD_DIR a picture is saved under the home download folder
     # The platform download folder is the home one on Linux and macOS, so
@@ -575,3 +639,108 @@ scenarios:
           dir: { path: home/Downloads/bsky, count: 1, contains: [full.png] }
       - assert:
           image: { path: home/Downloads/bsky/full.png, width: 100, height: 100 }
+
+  # The download folder can be chosen on the settings screen, in a browser
+  # that lists folders only; the next d saves there. It opens at the folder
+  # set now: settings.json names one here, so where it opens does not depend
+  # on the platform's own download folder.
+  - name: a download folder chosen on the settings screen is where d saves
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p9
+                    cid: cid-p9
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "One photo", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/t.png", fullsize: "${api.url}/img/full.png", alt: "The lake", aspectRatio: { width: 1, height: 1 } }
+          - { method: GET, path: /img/t.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/full.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: |
+            {"download_dir": "${workdir}/first", "theme": "nord"}
+      - fixture: { file: first/keep.txt, content: "the folder settings.json names" }
+      - fixture: { file: first-写真👨‍👩‍👧/keep.txt, content: "the folder to choose" }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "One photo"
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: j
+            - send: j
+            - expect_screen:
+                contains: ["▶ Download folder", "x goes back to the default"]
+            - send: { key: enter }
+            # Folders only, opened at the one set now.
+            - expect_screen:
+                matches: '[/\\]first\s'
+                contains: ["Choose a folder", "space choose this folder"]
+                not_contains: "keep.txt"
+            # Up, where the selection is on the folder it came from; the
+            # next one is the folder to choose.
+            - send: h
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "first-写真👨‍👩‍👧"
+            - send: " "
+            - expect_screen:
+                contains: "download folder: "
+                not_contains: "Choose a folder"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - send: " "
+            - expect_screen:
+                contains: ["1/1", "The lake"]
+            - send: d
+            - expect_screen:
+                contains: "saved "
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          dir: { path: "first-写真👨‍👩‍👧", contains: [full.png] }
+      - assert:
+          image: { path: "first-写真👨‍👩‍👧/full.png", width: 100, height: 100 }
+      - assert:
+          dir: { path: first, count: 1 }
+      # The folder is kept, beside what the file already held.
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.download_dir", matches: 'first-写真👨‍👩‍👧$' }
+              - { path: "$.theme", equals: "nord" }

@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `c` copies the selected post's address on bsky.app to the clipboard, through the terminal itself (OSC 52), so it works over ssh and in tmux with `set-clipboard on`.
 - A terminal smaller than 24 columns by 8 rows shows what size bsky needs and what size the terminal is, instead of a screen with shreds of the tabs, a post, and the key hints on it. The client comes back as soon as the window is made bigger.
 - A settings screen, opened with `s` on your own Profile tab, where two buttons say it and the profile editor exist. The theme can be chosen there, and pictures turned off (posts then say what they carry, as on a terminal that cannot draw them) or back on without a restart; both are kept in `settings.json`. The download folder, picture cache, video service and browser are shown with where their values come from. A setting that a `BSKY_` variable fixes says so and is not changed.
+- The download folder, the picture cache, the video service and the browser can be changed on the settings screen: the folders are chosen in a browser that lists folders only, and a folder that cannot be written is refused with the reason; the service and the browser are typed. Each takes effect at once and is kept in `settings.json`, and `x` puts it back to its default. A `BSKY_` variable that is set still wins.
 
 ### Changed
 

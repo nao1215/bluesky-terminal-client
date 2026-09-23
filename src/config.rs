@@ -8,7 +8,8 @@
 //! - `session.json` holds the tokens of an app-password login, so it is
 //!   written with owner-only permissions on Unix. `bsky logout` removes it.
 //! - `settings.json` holds preferences (the color theme, pictures on or
-//!   off). It is written only when a preference is changed, and a broken
+//!   off, and the folders, video service and browser of the settings
+//!   screen). It is written only when a preference is changed, and a broken
 //!   one is ignored with a warning rather than stopping bsky.
 
 use std::fs;
@@ -34,6 +35,18 @@ pub struct Settings {
     /// can) or `"off"`. `BSKY_GRAPHICS` in the environment wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pictures: Option<String>,
+    /// Where `d` saves; `BSKY_DOWNLOAD_DIR` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_dir: Option<String>,
+    /// Where pictures are cached, or `"off"`; `BSKY_CACHE_DIR` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    /// The video service uploads go to; `BSKY_VIDEO_SERVICE` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_service: Option<String>,
+    /// The program that opens links; `BSKY_BROWSER` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
     /// Keys this version of bsky does not know, kept so that saving does not
     /// drop what a newer version wrote.
     #[serde(flatten)]
@@ -177,15 +190,37 @@ fn platform_config_dir(platform: &Path) -> PathBuf {
     dir
 }
 
+/// Where a setting's value comes from, in the order they win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// A `BSKY_` variable, for this run.
+    Env,
+    /// `settings.json`.
+    File,
+    /// Nothing named one.
+    Default,
+}
+
+/// The variable when it is set, else the file's value, each with where it
+/// came from. The one place the order is decided, so the settings screen and
+/// what bsky does cannot disagree.
+fn pick<'a>(env: &'a Option<String>, file: &'a Option<String>) -> Option<(&'a str, Source)> {
+    let set = |v: &'a Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    set(env)
+        .map(|v| (v, Source::Env))
+        .or_else(|| set(file).map(|v| (v, Source::File)))
+}
+
 /// Environment variable naming the folder downloads are saved in.
 pub const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
 
-/// Where the viewer's `d` saves pictures and videos: `bsky` in the platform
-/// download folder (`~/Downloads/bsky`), or `BSKY_DOWNLOAD_DIR`.
-pub fn download_dir() -> Option<PathBuf> {
-    match std::env::var_os(DOWNLOAD_DIR_ENV).filter(|v| !v.is_empty()) {
-        Some(v) => Some(PathBuf::from(v)),
-        None => default_download_dir(),
+/// Where the viewer's `d` saves pictures and videos: `BSKY_DOWNLOAD_DIR`,
+/// else the settings, else `bsky` in the platform download folder
+/// (`~/Downloads/bsky`).
+pub fn download_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
+    match pick(&env.download_dir, &settings.download_dir) {
+        Some((v, from)) => (Some(PathBuf::from(v)), from),
+        None => (default_download_dir(), Source::Default),
     }
 }
 
@@ -200,37 +235,59 @@ pub fn default_download_dir() -> Option<PathBuf> {
 /// Environment variable naming the video service to upload videos to.
 pub const VIDEO_SERVICE_ENV: &str = "BSKY_VIDEO_SERVICE";
 
-/// The video service: `BSKY_VIDEO_SERVICE`, else Bluesky's.
-pub fn video_service() -> String {
-    std::env::var(VIDEO_SERVICE_ENV)
-        .ok()
-        .map(|v| v.trim().trim_end_matches('/').to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| crate::api::DEFAULT_VIDEO_SERVICE.to_string())
+/// The video service: `BSKY_VIDEO_SERVICE`, else the settings, else
+/// Bluesky's.
+pub fn video_service(env: &Environment, settings: &Settings) -> (String, Source) {
+    match pick(&env.video_service, &settings.video_service) {
+        Some((v, from)) => (v.trim_end_matches('/').to_string(), from),
+        None => (
+            crate::api::DEFAULT_VIDEO_SERVICE.to_string(),
+            Source::Default,
+        ),
+    }
 }
 
 /// Environment variable naming the cache directory; `off` keeps no cache.
 pub const CACHE_DIR_ENV: &str = "BSKY_CACHE_DIR";
 
 /// Where downloaded pictures are kept between runs, or `None` for no cache:
-/// `BSKY_CACHE_DIR` when set (`off` turns the cache off), else `bsky` in the
-/// platform cache directory.
-pub fn cache_dir() -> Option<PathBuf> {
-    cache_dir_from(std::env::var_os(CACHE_DIR_ENV), dirs::cache_dir())
+/// `BSKY_CACHE_DIR`, else the settings (`off` in either keeps none), else
+/// `bsky` in the platform cache folder.
+pub fn cache_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
+    cache_dir_from(env, settings, dirs::cache_dir())
 }
 
-/// The picture cache when nothing names another: `bsky` in the platform
-/// cache folder.
-pub fn default_cache_dir() -> Option<PathBuf> {
-    cache_dir_from(None, dirs::cache_dir())
-}
-
-fn cache_dir_from(var: Option<std::ffi::OsString>, platform: Option<PathBuf>) -> Option<PathBuf> {
-    match var {
-        Some(v) if v == "off" => None,
-        Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
-        _ => platform.map(|d| d.join("bsky")),
+fn cache_dir_from(
+    env: &Environment,
+    settings: &Settings,
+    platform: Option<PathBuf>,
+) -> (Option<PathBuf>, Source) {
+    match pick(&env.cache_dir, &settings.cache_dir) {
+        Some(("off", from)) => (None, from),
+        Some((v, from)) => (Some(PathBuf::from(v)), from),
+        None => (platform.map(|d| d.join("bsky")), Source::Default),
     }
+}
+
+/// The program that opens links: `BSKY_BROWSER`, else the settings, else
+/// `None` for the system's own (see [`crate::browser`]).
+pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Source) {
+    match pick(&env.browser, &settings.browser) {
+        Some((v, from)) => (Some(v.to_string()), from),
+        None => (None, Source::Default),
+    }
+}
+
+/// Whether bsky can write into `dir`, creating it when it is not there yet:
+/// a folder chosen for downloads or the cache is tried at once, so a bad one
+/// is refused with the reason rather than at the next download.
+pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
+    let fail = |e: std::io::Error| format!("cannot write to {}: {e}", dir.display());
+    fs::create_dir_all(dir).map_err(fail)?;
+    let probe = dir.join(format!(".bsky-write-test-{}", std::process::id()));
+    fs::write(&probe, b"").map_err(fail)?;
+    let _ = fs::remove_file(&probe);
+    Ok(())
 }
 
 /// Reads and writes the session file inside one directory.
@@ -332,23 +389,147 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
 mod tests {
     use super::*;
 
+    fn env(var: &str) -> Environment {
+        Environment {
+            download_dir: Some(format!("{var}/downloads")),
+            cache_dir: Some(format!("{var}/cache")),
+            video_service: Some(format!("https://{var}.example/")),
+            browser: Some(format!("{var}-browser")),
+            graphics: None,
+        }
+    }
+
+    fn file(val: &str) -> Settings {
+        Settings {
+            download_dir: Some(format!("{val}/downloads")),
+            cache_dir: Some(format!("{val}/cache")),
+            video_service: Some(format!("https://{val}.example")),
+            browser: Some(format!("{val}-browser")),
+            ..Settings::default()
+        }
+    }
+
     #[test]
-    fn the_cache_directory_follows_the_environment() {
+    fn the_environment_wins_over_the_file_which_wins_over_the_default() {
+        let none = (Environment::default(), Settings::default());
+        let only_file = (Environment::default(), file("写真👨\u{200d}👩\u{200d}👧"));
+        let both = (env("var"), file("file"));
+        let only_env = (env("var"), Settings::default());
+
+        assert_eq!(
+            download_dir(&none.0, &none.1),
+            (default_download_dir(), Source::Default)
+        );
+        assert_eq!(
+            download_dir(&only_file.0, &only_file.1),
+            (
+                Some(PathBuf::from("写真👨\u{200d}👩\u{200d}👧/downloads")),
+                Source::File
+            )
+        );
+        assert_eq!(
+            download_dir(&both.0, &both.1),
+            (Some(PathBuf::from("var/downloads")), Source::Env)
+        );
+        assert_eq!(
+            download_dir(&only_env.0, &only_env.1),
+            (Some(PathBuf::from("var/downloads")), Source::Env)
+        );
+
         let platform = Some(PathBuf::from("/c"));
         assert_eq!(
-            cache_dir_from(None, platform.clone()),
-            Some(PathBuf::from("/c").join("bsky"))
+            cache_dir_from(&none.0, &none.1, platform.clone()),
+            (Some(PathBuf::from("/c").join("bsky")), Source::Default)
         );
         assert_eq!(
-            cache_dir_from(Some("".into()), platform.clone()),
-            Some(PathBuf::from("/c").join("bsky"))
+            cache_dir_from(&none.0, &none.1, None),
+            (None, Source::Default)
         );
         assert_eq!(
-            cache_dir_from(Some("/mine".into()), platform.clone()),
-            Some(PathBuf::from("/mine"))
+            cache_dir_from(&only_file.0, &only_file.1, platform.clone()),
+            (
+                Some(PathBuf::from("写真👨\u{200d}👩\u{200d}👧/cache")),
+                Source::File
+            )
         );
-        assert_eq!(cache_dir_from(Some("off".into()), platform), None);
-        assert_eq!(cache_dir_from(None, None), None);
+        assert_eq!(
+            cache_dir_from(&both.0, &both.1, platform.clone()),
+            (Some(PathBuf::from("var/cache")), Source::Env)
+        );
+
+        assert_eq!(
+            video_service(&none.0, &none.1),
+            (
+                crate::api::DEFAULT_VIDEO_SERVICE.to_string(),
+                Source::Default
+            )
+        );
+        assert_eq!(video_service(&only_file.0, &only_file.1).1, Source::File);
+        // A trailing slash is dropped, whoever wrote it.
+        assert_eq!(
+            video_service(&both.0, &both.1),
+            ("https://var.example".to_string(), Source::Env)
+        );
+
+        assert_eq!(browser(&none.0, &none.1), (None, Source::Default));
+        assert_eq!(
+            browser(&only_file.0, &only_file.1),
+            (
+                Some("写真👨\u{200d}👩\u{200d}👧-browser".to_string()),
+                Source::File
+            )
+        );
+        assert_eq!(
+            browser(&both.0, &both.1),
+            (Some("var-browser".to_string()), Source::Env)
+        );
+    }
+
+    #[test]
+    fn off_keeps_no_cache_from_the_environment_or_the_file() {
+        let platform = Some(PathBuf::from("/c"));
+        let off_env = Environment {
+            cache_dir: Some("off".into()),
+            ..Environment::default()
+        };
+        assert_eq!(
+            cache_dir_from(&off_env, &file("f"), platform.clone()),
+            (None, Source::Env)
+        );
+        let off_file = Settings {
+            cache_dir: Some("off".into()),
+            ..Settings::default()
+        };
+        assert_eq!(
+            cache_dir_from(&Environment::default(), &off_file, platform),
+            (None, Source::File)
+        );
+    }
+
+    #[test]
+    fn a_blank_value_in_the_file_is_the_default() {
+        let blank = Settings {
+            download_dir: Some("  ".into()),
+            browser: Some(String::new()),
+            ..Settings::default()
+        };
+        let none = Environment::default();
+        assert_eq!(download_dir(&none, &blank).1, Source::Default);
+        assert_eq!(browser(&none, &blank), (None, Source::Default));
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_written_is_refused_with_the_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let new = dir.path().join("写真👨\u{200d}👩\u{200d}👧").join("bsky");
+        assert_eq!(check_writable(&new), Ok(()));
+        assert!(new.is_dir(), "created");
+        assert_eq!(fs::read_dir(&new).unwrap().count(), 0, "nothing left");
+        // A file where the folder would be.
+        let file = dir.path().join("a-file");
+        fs::write(&file, "x").unwrap();
+        let err = check_writable(&file.join("sub")).unwrap_err();
+        assert!(err.starts_with("cannot write to "), "{err}");
     }
 
     #[test]

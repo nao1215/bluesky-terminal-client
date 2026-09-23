@@ -407,9 +407,11 @@ pub enum Overlay {
     Actions {
         selected: usize,
     },
-    /// The settings screen, opened with `s` on your own profile.
+    /// The settings screen, opened with `s` on your own profile; `edit` is
+    /// the setting being changed, when one is.
     Settings {
         selected: usize,
+        edit: Option<SettingEdit>,
     },
     /// A post's pictures and video, full screen, `index` the one shown;
     /// `replay` counts `r` presses, each playing the video from the start.
@@ -429,6 +431,17 @@ pub struct SettingRow {
     pub note: String,
     /// Whether the screen can change it.
     pub editable: bool,
+    /// Whether `x` puts it back to the default: its value is in the file.
+    pub resettable: bool,
+}
+
+/// A setting being changed on the settings screen.
+#[derive(Debug, Clone)]
+pub enum SettingEdit {
+    /// A folder, chosen in the folder browser.
+    Folder(Box<Browser>),
+    /// A line of text: a web address, or a program.
+    Text(TextInput),
 }
 
 /// A one-line message in the status row. It is transient: it clears after
@@ -772,6 +785,10 @@ impl App {
                 e.fields[e.focus].insert_str(text)
             }
             Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}
+            Some(Overlay::Settings {
+                edit: Some(SettingEdit::Text(input)),
+                ..
+            }) => input.insert_str(text),
             Some(
                 Overlay::Help { .. }
                 | Overlay::Themes { .. }
@@ -1006,10 +1023,12 @@ impl App {
             return self.actions_key(key, selected);
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // Read before the overlay is borrowed: a post with a video needs it.
+        let video_service = self.video_service();
         match self.overlay.as_mut().unwrap() {
             // Taken above, before this borrow.
             Overlay::Actions { .. } => {}
-            Overlay::Settings { selected } => {
+            Overlay::Settings { selected, .. } => {
                 let selected = *selected;
                 return self.settings_key(key, selected);
             }
@@ -1035,7 +1054,8 @@ impl App {
                 KeyCode::Char('d') => {
                     let item = media[*index].clone();
                     self.info("downloading…");
-                    return vec![Job::Download(item)];
+                    let dir = self.download_dir();
+                    return vec![Job::Download { media: item, dir }];
                 }
                 KeyCode::Right | KeyCode::Char('l' | 'j') => {
                     *index = (*index + 1).min(media.len() - 1)
@@ -1054,10 +1074,13 @@ impl App {
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(n - 1),
                     KeyCode::Enter => {
-                        self.overlay = self
-                            .settings_return
-                            .take()
-                            .map(|selected| Overlay::Settings { selected });
+                        self.overlay =
+                            self.settings_return
+                                .take()
+                                .map(|selected| Overlay::Settings {
+                                    selected,
+                                    edit: None,
+                                });
                         self.settings.theme = Some(THEMES[selected].name.to_string());
                         if self.settings_writable {
                             self.settings_to_save = Some(self.settings.clone());
@@ -1071,10 +1094,13 @@ impl App {
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
-                        self.overlay = self
-                            .settings_return
-                            .take()
-                            .map(|selected| Overlay::Settings { selected });
+                        self.overlay =
+                            self.settings_return
+                                .take()
+                                .map(|selected| Overlay::Settings {
+                                    selected,
+                                    edit: None,
+                                });
                         self.set_theme(previous);
                         None
                     }
@@ -1163,6 +1189,7 @@ impl App {
                                 reply,
                                 quote,
                                 media,
+                                video_service,
                             }];
                         }
                     }
@@ -1427,7 +1454,10 @@ impl App {
                     && self.profile.actor.is_none()
                     && self.threads.is_empty() =>
             {
-                self.overlay = Some(Overlay::Settings { selected: 0 });
+                self.overlay = Some(Overlay::Settings {
+                    selected: 0,
+                    edit: None,
+                });
             }
             KeyCode::Enter if !self.threads.is_empty() => {
                 if let Some(author) = self.selected_post().map(|p| p.author) {
@@ -1568,19 +1598,48 @@ impl App {
         self.pictures_change.take()
     }
 
+    /// Where `d` saves, as the environment and the settings decide.
+    pub fn download_dir(&self) -> Option<PathBuf> {
+        crate::config::download_dir(&self.env, &self.settings).0
+    }
+
+    /// Where pictures are cached, or `None` for no cache.
+    pub fn cache_dir(&self) -> Option<PathBuf> {
+        crate::config::cache_dir(&self.env, &self.settings).0
+    }
+
+    /// The video service uploads go to.
+    fn video_service(&self) -> String {
+        crate::config::video_service(&self.env, &self.settings).0
+    }
+
+    /// The program that opens links, or `None` for the system's.
+    fn browser(&self) -> Option<String> {
+        crate::config::browser(&self.env, &self.settings).0
+    }
+
+    /// A job that opens `url` in the browser the settings name.
+    fn open_url(&self, url: String) -> Job {
+        Job::OpenLink {
+            url,
+            browser: self.browser(),
+        }
+    }
+
     /// What the settings screen lists, in order.
     pub fn settings_rows(&self) -> Vec<SettingRow> {
-        use crate::config;
+        use crate::config::{self, Source};
         let fixed = |var: &str| format!("set by {var} for this run");
-        let unset = |var: &str| format!("set {var} before starting bsky to change it");
-        let path =
-            |p: Option<PathBuf>| p.map_or_else(|| "none".to_string(), |p| p.display().to_string());
+        let path = |p: Option<PathBuf>, none: &str| {
+            p.map_or_else(|| none.to_string(), |p| p.display().to_string())
+        };
         let theme = if self.color_depth == ColorDepth::None {
             SettingRow {
                 name: "Theme",
                 value: THEMES[self.theme_index].name.to_string(),
                 note: "colors are off because NO_COLOR is set".into(),
                 editable: false,
+                resettable: false,
             }
         } else {
             SettingRow {
@@ -1588,6 +1647,7 @@ impl App {
                 value: THEMES[self.theme_index].name.to_string(),
                 note: "enter chooses one from the list, as T does".into(),
                 editable: true,
+                resettable: false,
             }
         };
         let pictures = match &self.env.graphics {
@@ -1596,12 +1656,14 @@ impl App {
                 value: v.clone(),
                 note: fixed(crate::terminal::GRAPHICS_ENV),
                 editable: false,
+                resettable: false,
             },
             None if self.settings.pictures_off() => SettingRow {
                 name: "Pictures",
                 value: "off".into(),
                 note: "enter draws them again where the terminal can".into(),
                 editable: true,
+                resettable: false,
             },
             None => SettingRow {
                 name: "Pictures",
@@ -1612,71 +1674,114 @@ impl App {
                     "this terminal cannot show them".into()
                 },
                 editable: true,
+                resettable: false,
             },
         };
-        let from_env = |name, var: &'static str, set: &Option<String>, default: String| match set {
-            Some(v) => SettingRow {
+        // A row whose value may come from a variable, the file, or bsky.
+        let row = |name, var: &'static str, value: String, from: Source, change: &str| {
+            let note = match from {
+                Source::Env => fixed(var),
+                Source::File => format!("{change}; x goes back to the default"),
+                Source::Default => format!("the default; {change}"),
+            };
+            SettingRow {
                 name,
-                value: v.clone(),
-                note: fixed(var),
-                editable: false,
-            },
-            None => SettingRow {
-                name,
-                value: default,
-                note: unset(var),
-                editable: false,
-            },
+                value,
+                note,
+                editable: from != Source::Env,
+                resettable: from == Source::File,
+            }
         };
+        let (download, download_from) = config::download_dir(&self.env, &self.settings);
+        let (cache, cache_from) = config::cache_dir(&self.env, &self.settings);
+        let (video, video_from) = config::video_service(&self.env, &self.settings);
+        let (browser, browser_from) = config::browser(&self.env, &self.settings);
         vec![
             theme,
             pictures,
-            from_env(
+            row(
                 "Download folder",
                 config::DOWNLOAD_DIR_ENV,
-                &self.env.download_dir,
-                path(config::default_download_dir()),
+                path(download, "none"),
+                download_from,
+                "enter chooses another folder",
             ),
-            from_env(
+            row(
                 "Picture cache",
                 config::CACHE_DIR_ENV,
-                &self.env.cache_dir,
-                path(config::default_cache_dir()),
+                path(cache, "off"),
+                cache_from,
+                "enter chooses another folder",
             ),
-            from_env(
+            row(
                 "Video service",
                 config::VIDEO_SERVICE_ENV,
-                &self.env.video_service,
-                crate::api::DEFAULT_VIDEO_SERVICE.to_string(),
+                video,
+                video_from,
+                "enter types another address",
             ),
-            from_env(
+            row(
                 "Browser",
                 crate::browser::BROWSER_ENV,
-                &self.env.browser,
-                crate::browser::system_opener().to_string(),
+                browser.unwrap_or_else(|| crate::browser::system_opener().to_string()),
+                browser_from,
+                "enter types the program that opens links",
             ),
         ]
     }
 
-    /// A key on the settings screen.
+    /// A key on the settings screen, or on the folder browser or the line
+    /// of text it opened.
     fn settings_key(&mut self, key: KeyEvent, selected: usize) -> Vec<Job> {
+        if let Some(Overlay::Settings {
+            edit: Some(edit), ..
+        }) = &mut self.overlay
+        {
+            let chosen = match edit {
+                SettingEdit::Folder(b) => match b.key(key) {
+                    Action::None => return Vec::new(),
+                    Action::Close => None,
+                    Action::Choose(mut dirs) => Some(dirs.pop().map(|d| d.display().to_string())),
+                },
+                SettingEdit::Text(input) => match key.code {
+                    KeyCode::Esc => None,
+                    KeyCode::Enter => Some(Some(input.text())),
+                    _ => {
+                        input.handle_key(key);
+                        return Vec::new();
+                    }
+                },
+            };
+            match chosen {
+                Some(value) => self.set_setting(selected, value.unwrap_or_default()),
+                None => self.close_edit(selected),
+            }
+            return Vec::new();
+        }
         let n = self.settings_rows().len();
+        let moved = |selected| {
+            Some(Overlay::Settings {
+                selected,
+                edit: None,
+            })
+        };
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.overlay = Some(Overlay::Settings {
-                    selected: (selected + 1) % n,
-                });
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.overlay = Some(Overlay::Settings {
-                    selected: (selected + n - 1) % n,
-                });
-            }
+            KeyCode::Char('j') | KeyCode::Down => self.overlay = moved((selected + 1) % n),
+            KeyCode::Char('k') | KeyCode::Up => self.overlay = moved((selected + n - 1) % n),
             KeyCode::Esc | KeyCode::Char('q' | 's') => self.overlay = None,
             KeyCode::Enter | KeyCode::Char(' ') => self.change_setting(selected),
+            KeyCode::Char('x') => self.reset_setting(selected),
             _ => {}
         }
         Vec::new()
+    }
+
+    /// Back to the list, on the row that was being changed.
+    fn close_edit(&mut self, selected: usize) {
+        self.overlay = Some(Overlay::Settings {
+            selected,
+            edit: None,
+        });
     }
 
     /// Enter on a row of the settings screen.
@@ -1688,10 +1793,11 @@ impl App {
             self.info(row.note);
             return;
         }
-        match row.name {
+        let edit = match row.name {
             "Theme" => {
                 self.open_theme_picker();
                 self.settings_return = Some(selected);
+                return;
             }
             "Pictures" => {
                 let off = !self.settings.pictures_off();
@@ -1701,17 +1807,111 @@ impl App {
                 if off {
                     self.pictures = false;
                 }
-                if self.settings_writable {
-                    self.settings_to_save = Some(self.settings.clone());
-                    self.save_note = Some(format!("pictures: {value}"));
-                } else {
-                    self.error(format!(
-                        "pictures: {value} for this session only; settings.json could not be \
-                         read, so it is not overwritten (fix or remove it to save)"
-                    ));
+                self.save_settings(format!("pictures: {value}"));
+                return;
+            }
+            "Download folder" => SettingEdit::Folder(Box::new(Browser::folder(
+                &self.folder_start(self.download_dir()),
+            ))),
+            "Picture cache" => SettingEdit::Folder(Box::new(Browser::folder(
+                &self.folder_start(self.cache_dir()),
+            ))),
+            "Video service" => SettingEdit::Text(TextInput::single(&self.video_service())),
+            "Browser" => SettingEdit::Text(TextInput::single(&self.browser().unwrap_or_default())),
+            _ => return,
+        };
+        self.overlay = Some(Overlay::Settings {
+            selected,
+            edit: Some(edit),
+        });
+    }
+
+    /// Where the folder browser opens: at the folder set now, or the
+    /// nearest folder above it that is there, else where pictures are
+    /// browsed from.
+    fn folder_start(&self, now: Option<PathBuf>) -> PathBuf {
+        now.as_deref()
+            .and_then(|p| p.ancestors().find(|a| a.is_dir()))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| browse_start(&self.browse_from))
+    }
+
+    /// `x`: a setting kept in `settings.json` goes back to its default.
+    fn reset_setting(&mut self, selected: usize) {
+        let Some(row) = self.settings_rows().into_iter().nth(selected) else {
+            return;
+        };
+        if !row.resettable {
+            return;
+        }
+        self.set_setting(selected, String::new());
+    }
+
+    /// Keep `value` for the setting on row `selected`; an empty value is
+    /// the default. A folder is refused, with the reason, when it cannot be
+    /// written, and a video service that is not a web address is refused.
+    fn set_setting(&mut self, selected: usize, value: String) {
+        let Some(row) = self.settings_rows().into_iter().nth(selected) else {
+            return;
+        };
+        let value = value.trim().to_string();
+        let folder = matches!(row.name, "Download folder" | "Picture cache");
+        if folder
+            && !value.is_empty()
+            && let Err(why) = crate::config::check_writable(std::path::Path::new(&value))
+        {
+            // The browser stays open for another choice.
+            self.error(why);
+            return;
+        }
+        if row.name == "Video service"
+            && !value.is_empty()
+            && !(value.starts_with("https://") || value.starts_with("http://"))
+        {
+            self.error("the video service is a web address, such as https://video.bsky.app");
+            return;
+        }
+        let kept = (!value.is_empty()).then(|| value.clone());
+        match row.name {
+            "Download folder" => self.settings.download_dir = kept,
+            "Picture cache" => {
+                self.settings.cache_dir = kept;
+                // The pictures are kept in the new folder from now on.
+                if self.pictures {
+                    self.pictures_change = Some(true);
                 }
             }
-            _ => {}
+            "Video service" => self.settings.video_service = kept,
+            "Browser" => self.settings.browser = kept,
+            _ => return,
+        }
+        self.close_edit(selected);
+        let shown = self
+            .settings_rows()
+            .into_iter()
+            .nth(selected)
+            .map(|r| r.value)
+            .unwrap_or_default();
+        let name = row.name.to_lowercase();
+        self.save_settings(if value.is_empty() {
+            format!("{name}: back to the default, {shown}")
+        } else {
+            format!("{name}: {shown}")
+        });
+    }
+
+    /// Save the settings as they are now, saying `note` once they are
+    /// written. An unreadable `settings.json` is not overwritten: the change
+    /// holds for this run, and the reason is shown.
+    fn save_settings(&mut self, note: String) {
+        if self.settings_writable {
+            self.settings_to_save = Some(self.settings.clone());
+            self.save_note = Some(note);
+        } else {
+            self.error(format!(
+                "{note} for this session only; settings.json could not be read, so it is \
+                 not overwritten (fix or remove it to save)"
+            ));
         }
     }
 
@@ -1728,7 +1928,7 @@ impl App {
         }
         if !self.pictures {
             return match post.web_url() {
-                Some(url) => vec![Job::OpenLink(url)],
+                Some(url) => vec![self.open_url(url)],
                 None => self.open_link(false),
             };
         }
@@ -1754,7 +1954,7 @@ impl App {
             .next()
             .or_else(|| or_post.then(|| post.web_url()).flatten());
         match url {
-            Some(url) => vec![Job::OpenLink(url)],
+            Some(url) => vec![self.open_url(url)],
             None => {
                 self.info("this post has no pictures, video, or link");
                 Vec::new()
@@ -3950,7 +4150,7 @@ mod tests {
             app.handle_key(key('j'));
         }
         assert!(
-            matches!(app.overlay, Some(Overlay::Settings { selected }) if selected == at),
+            matches!(app.overlay, Some(Overlay::Settings { selected, .. }) if selected == at),
             "{:?}",
             app.overlay
         );
@@ -3966,7 +4166,7 @@ mod tests {
         app.handle_key(key('s'));
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 0 })
+            Some(Overlay::Settings { selected: 0, .. })
         ));
         app.handle_key(code(KeyCode::Esc));
         assert!(app.overlay.is_none());
@@ -3997,12 +4197,12 @@ mod tests {
         app.handle_key(key('k'));
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 5 })
+            Some(Overlay::Settings { selected: 5, .. })
         ));
         app.handle_key(key('j'));
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 0 })
+            Some(Overlay::Settings { selected: 0, .. })
         ));
     }
 
@@ -4025,7 +4225,7 @@ mod tests {
         // The screen stays open, and says what it is now.
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 1 })
+            Some(Overlay::Settings { selected: 1, .. })
         ));
         assert_eq!(app.settings_rows()[1].value, "off");
 
@@ -4079,7 +4279,7 @@ mod tests {
         app.handle_key(code(KeyCode::Enter));
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 0 })
+            Some(Overlay::Settings { selected: 0, .. })
         ));
         let saved = app.take_settings_save().expect("settings to save");
         assert_eq!(saved.theme.as_deref(), Some(THEMES[1].name));
@@ -4090,7 +4290,7 @@ mod tests {
         app.handle_key(code(KeyCode::Esc));
         assert!(matches!(
             app.overlay,
-            Some(Overlay::Settings { selected: 0 })
+            Some(Overlay::Settings { selected: 0, .. })
         ));
         assert_eq!(app.theme_index, 1);
         // T on its own still closes to the list.
@@ -4098,6 +4298,269 @@ mod tests {
         app.handle_key(key('T'));
         app.handle_key(code(KeyCode::Esc));
         assert!(app.overlay.is_none());
+    }
+
+    /// A picture post, open in the viewer.
+    fn viewing_a_picture(app: &mut App) {
+        app.handle_key(key('1'));
+        app.handle_event(Event::Timeline(Ok(vec![with_pictures(
+            "at://did:plc:alice/app.bsky.feed.post/p1",
+            json!({"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": ""}]}),
+        )]
+        .into())));
+        app.handle_key(key(' '));
+        assert!(app.viewer_open());
+    }
+
+    #[test]
+    fn a_folder_chosen_on_the_screen_is_kept_and_d_saves_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let chosen = dir.path().join("写真👨\u{200d}👩\u{200d}👧 🇯🇵");
+        std::fs::create_dir(&chosen).unwrap();
+        let mut app = logged_in();
+        let mut settings = Settings::default();
+        settings.other.insert("future".into(), json!(1));
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        app.browse_from = Some(dir.path().to_path_buf());
+        settings_on(&mut app, "Download folder");
+        app.handle_key(code(KeyCode::Enter));
+        let Some(Overlay::Settings {
+            edit: Some(SettingEdit::Folder(b)),
+            ..
+        }) = &mut app.overlay
+        else {
+            panic!("{:?}", app.overlay)
+        };
+        // Into the folder, then choose it.
+        b.dir = dir.path().to_path_buf();
+        app.handle_key(code(KeyCode::Char('~')));
+        let Some(Overlay::Settings {
+            edit: Some(SettingEdit::Folder(b)),
+            ..
+        }) = &mut app.overlay
+        else {
+            panic!()
+        };
+        **b = Browser::folder(&chosen);
+        app.handle_key(key(' '));
+        assert!(
+            matches!(
+                app.overlay,
+                Some(Overlay::Settings {
+                    selected: 2,
+                    edit: None
+                })
+            ),
+            "{:?}",
+            app.overlay
+        );
+        let want = std::path::absolute(&chosen).unwrap();
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.download_dir, Some(want.display().to_string()));
+        assert_eq!(saved.other.get("future"), Some(&json!(1)));
+        app.settings_saved(Ok(()));
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .starts_with("download folder: "),
+            "{:?}",
+            app.status
+        );
+        let row = &app.settings_rows()[2];
+        assert_eq!(row.value, want.display().to_string());
+        assert!(row.resettable);
+        assert!(
+            row.note.contains("x goes back to the default"),
+            "{}",
+            row.note
+        );
+        // The next d saves into it.
+        app.handle_key(code(KeyCode::Esc));
+        viewing_a_picture(&mut app);
+        let jobs = app.handle_key(key('d'));
+        assert!(
+            matches!(&jobs[..], [Job::Download { dir: Some(d), .. }] if *d == want),
+            "{jobs:?}"
+        );
+        // x puts it back.
+        app.handle_key(code(KeyCode::Esc));
+        settings_on(&mut app, "Download folder");
+        app.handle_key(key('x'));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.download_dir, None);
+        assert!(!app.settings_rows()[2].resettable);
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_written_is_refused_and_the_browser_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a-file");
+        std::fs::write(&file, "x").unwrap();
+        let mut app = logged_in();
+        settings_on(&mut app, "Picture cache");
+        app.handle_key(code(KeyCode::Enter));
+        let Some(Overlay::Settings {
+            edit: Some(SettingEdit::Folder(b)),
+            ..
+        }) = &mut app.overlay
+        else {
+            panic!()
+        };
+        // A folder under a file cannot be made.
+        b.dir = file.join("sub");
+        app.handle_key(key(' '));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings {
+                edit: Some(SettingEdit::Folder(_)),
+                ..
+            })
+        ));
+        assert!(app.take_settings_save().is_none());
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.error && s.text.starts_with("cannot write to ")),
+            "{:?}",
+            app.status
+        );
+        // Esc leaves the browser for the list, with nothing changed.
+        app.handle_key(code(KeyCode::Esc));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings {
+                selected: 3,
+                edit: None
+            })
+        ));
+    }
+
+    #[test]
+    fn a_new_picture_cache_rebuilds_the_pictures() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = logged_in();
+        settings_on(&mut app, "Picture cache");
+        app.handle_key(code(KeyCode::Enter));
+        let Some(Overlay::Settings {
+            edit: Some(SettingEdit::Folder(b)),
+            ..
+        }) = &mut app.overlay
+        else {
+            panic!()
+        };
+        b.dir = dir.path().to_path_buf();
+        app.handle_key(key(' '));
+        assert_eq!(app.cache_dir(), Some(dir.path().to_path_buf()));
+        assert_eq!(app.take_pictures_change(), Some(true));
+        // Without pictures there is nothing to rebuild.
+        app.pictures = false;
+        app.handle_key(key('x'));
+        assert_eq!(app.take_pictures_change(), None);
+    }
+
+    #[test]
+    fn the_video_service_and_the_browser_are_typed_and_go_with_their_jobs() {
+        let mut app = logged_in();
+        settings_on(&mut app, "Video service");
+        app.handle_key(code(KeyCode::Enter));
+        // The field starts with what is set now.
+        let Some(Overlay::Settings {
+            edit: Some(SettingEdit::Text(input)),
+            ..
+        }) = &app.overlay
+        else {
+            panic!()
+        };
+        assert_eq!(input.text(), crate::api::DEFAULT_VIDEO_SERVICE);
+        app.handle_key(ctrl('u'));
+        type_str(&mut app, "ftp://nope");
+        app.handle_key(code(KeyCode::Enter));
+        assert!(app.status.as_ref().is_some_and(|s| s.error), "refused");
+        assert!(app.take_settings_save().is_none());
+        app.handle_key(ctrl('u'));
+        app.handle_paste("https://video.example/");
+        app.handle_key(code(KeyCode::Enter));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(
+            saved.video_service.as_deref(),
+            Some("https://video.example/")
+        );
+        // Kept without the slash, as the variable is.
+        assert_eq!(app.settings_rows()[4].value, "https://video.example");
+
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        type_str(&mut app, "my browser 🦊");
+        app.handle_key(code(KeyCode::Enter));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.browser.as_deref(), Some("my browser 🦊"));
+        app.handle_key(code(KeyCode::Esc));
+
+        // The jobs carry them.
+        app.handle_key(key('1'));
+        app.handle_event(Event::Timeline(Ok(vec![post(
+            "at://did:plc:bob/app.bsky.feed.post/p2",
+            "did:plc:bob",
+            true,
+        )]
+        .into())));
+        let jobs = app.handle_key(key('o'));
+        assert!(
+            matches!(&jobs[..], [Job::OpenLink { browser: Some(b), .. }] if b == "my browser 🦊"),
+            "{jobs:?}"
+        );
+        app.handle_key(key('n'));
+        type_str(&mut app, "hello");
+        let jobs = app.handle_key(ctrl('s'));
+        assert!(
+            matches!(&jobs[..], [Job::Post { video_service, .. }] if video_service == "https://video.example"),
+            "{jobs:?}"
+        );
+
+        app.handle_event(Event::Posted {
+            reply_to: None,
+            result: Ok(()),
+        });
+
+        // Esc in the field keeps what was there; an empty field is the
+        // default.
+        settings_on(&mut app, "Browser");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(ctrl('u'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.take_settings_save().is_none());
+        assert_eq!(app.settings_rows()[5].value, "my browser 🦊");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(ctrl('u'));
+        app.handle_key(code(KeyCode::Enter));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.browser, None);
+        assert_eq!(
+            app.settings_rows()[5].value,
+            crate::browser::system_opener()
+        );
+    }
+
+    #[test]
+    fn a_setting_a_variable_fixes_cannot_be_changed_or_reset() {
+        let mut app = logged_in();
+        app.env.browser = Some("firefox".into());
+        app.settings.browser = Some("chromium".into());
+        let row = &app.settings_rows()[5];
+        assert_eq!(row.value, "firefox");
+        assert!(!row.editable && !row.resettable);
+        settings_on(&mut app, "Browser");
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(key('x'));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { edit: None, .. })
+        ));
+        assert!(app.take_settings_save().is_none());
+        assert_eq!(app.browser().as_deref(), Some("firefox"));
     }
 
     #[test]
@@ -4317,13 +4780,13 @@ mod tests {
         .into())));
         let jobs = app.handle_key(key('o'));
         assert!(
-            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://example.com/a"),
+            matches!(&jobs[..], [Job::OpenLink { url: u, .. }] if u == "https://example.com/a"),
             "{jobs:?}"
         );
         app.handle_key(key('j'));
         let jobs = app.handle_key(key('o'));
         assert!(
-            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://bsky.app/profile/did:plc:bob/post/p2"),
+            matches!(&jobs[..], [Job::OpenLink { url: u, .. }] if u == "https://bsky.app/profile/did:plc:bob/post/p2"),
             "{jobs:?}"
         );
         // Space still opens the viewer, and says so when there is nothing
@@ -4365,14 +4828,14 @@ mod tests {
         .into())));
         let jobs = app.handle_key(key(' '));
         assert!(
-            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://bsky.app/profile/did:plc:alice/post/p1"),
+            matches!(&jobs[..], [Job::OpenLink { url: u, .. }] if u == "https://bsky.app/profile/did:plc:alice/post/p1"),
             "{jobs:?}"
         );
         assert!(app.overlay.is_none());
         app.handle_key(key('j'));
         let jobs = app.handle_key(key(' '));
         assert!(
-            matches!(&jobs[..], [Job::OpenLink(u)] if u == "https://example.com/a"),
+            matches!(&jobs[..], [Job::OpenLink { url: u, .. }] if u == "https://example.com/a"),
             "{jobs:?}"
         );
     }
