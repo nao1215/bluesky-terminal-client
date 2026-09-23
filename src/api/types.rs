@@ -66,8 +66,7 @@ pub struct ReplyRef {
 }
 
 /// The fields of an `app.bsky.feed.post` record bsky shows.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PostRecord {
     pub text: String,
     pub created_at: Option<String>,
@@ -409,8 +408,18 @@ where
 
 impl Post {
     /// The record decoded into the fields bsky shows.
+    ///
+    /// Each field is read on its own: any client writes records and the
+    /// AppView passes them on as written, so a reply without its CIDs or a
+    /// time that is not a string leaves the text shown, not a blank post.
     pub fn record(&self) -> PostRecord {
-        serde_json::from_value(self.raw_record.clone()).unwrap_or_default()
+        let r = &self.raw_record;
+        let text = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
+        PostRecord {
+            text: text("text").unwrap_or_default(),
+            created_at: text("createdAt"),
+            reply: r.get("reply").and_then(|v| ReplyRef::deserialize(v).ok()),
+        }
     }
 
     /// The web links of the post, in order: its link card, then the links in
@@ -733,6 +742,45 @@ mod tests {
         }));
         assert_eq!(p.embed, None);
         assert_eq!(p.record().text, "x");
+    }
+
+    // Records are written by any client and the AppView passes them on as
+    // they are: one bad field must not blank the whole post.
+    #[rstest::rstest]
+    #[case::reply_without_cids(json!({"root": {"uri": "at://top"}, "parent": {"uri": "at://top"}}))]
+    #[case::reply_as_a_string(json!("at://top"))]
+    #[case::reply_null(json!(null))]
+    fn a_post_with_a_damaged_reply_keeps_its_text_and_time(#[case] reply: Value) {
+        let text = "家族 👨‍👩‍👧 と 🇯🇵 へ 1️⃣ ❤️ e\u{301} שלום";
+        let p = post(json!({
+            "uri": "at://mid", "cid": "c2", "author": {},
+            "record": {"text": text, "createdAt": "2026-09-20T10:00:00Z", "reply": reply}
+        }));
+        let r = p.record();
+        assert_eq!(r.text, text);
+        assert_eq!(r.created_at.as_deref(), Some("2026-09-20T10:00:00Z"));
+        assert_eq!(r.reply, None);
+        // Answering it starts from the post itself, as for a top post.
+        let reply = p.reply_ref();
+        assert_eq!(
+            (reply.root.uri.as_str(), reply.parent.uri.as_str()),
+            ("at://mid", "at://mid")
+        );
+    }
+
+    #[test]
+    fn a_post_whose_time_is_not_a_string_keeps_its_text_and_reply() {
+        let p = post(json!({
+            "uri": "at://mid", "cid": "c2", "author": {},
+            "record": {"text": "still here", "createdAt": 1_758_000_000, "reply": {
+                "root": {"uri": "at://top", "cid": "c1"},
+                "parent": {"uri": "at://top", "cid": "c1"}
+            }}
+        }));
+        let r = p.record();
+        assert_eq!(r.text, "still here");
+        assert_eq!(r.created_at, None);
+        assert_eq!(r.reply.map(|x| x.root.uri).as_deref(), Some("at://top"));
     }
 
     #[test]

@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Fixed
 
 - Removing a like, a repost, or a follow deletes only that kind of record in your own account. When the server named a like, repost, or follow that was another record, such as one of your posts, bsky deleted that record; it now shows an error and sends nothing.
+- A post whose record another client wrote with a damaged reply field (a reply without its CIDs) or a time that is not a string is shown with its text instead of blank, and a reply to it names that post as root and parent.
 
 ## [0.1.0] - 2026-09-22
 
