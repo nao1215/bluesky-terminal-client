@@ -516,16 +516,7 @@ impl State {
 
     /// An account's own posts: reposts are left out, as on the timeline.
     fn author_feed(&mut self, did: &str, cursor: Option<&str>) -> Result<Page<Post>> {
-        let r = self.client()?.author_feed(did, cursor)?;
-        Ok(Page {
-            items: r
-                .feed
-                .into_iter()
-                .filter(|i| i.reason.is_none())
-                .map(|i| i.post)
-                .collect(),
-            cursor: r.cursor,
-        })
+        Ok(author_page(self.client()?.author_feed(did, cursor)?))
     }
 
     /// A page of notifications, joined with the posts they are about.
@@ -579,10 +570,21 @@ impl State {
         })
     }
 
+    /// The profile and its posts, asked for at once: getAuthorFeed takes a
+    /// handle as well as a DID, so it need not wait for the profile.
     fn open_profile(&mut self, actor: &str) -> Result<(Profile, Page<Post>)> {
-        let profile = self.client()?.profile(actor)?;
-        let posts = self.author_feed(&profile.did, None)?;
-        Ok((profile, posts))
+        let client = self.client()?;
+        let (profile, posts) = thread::scope(|s| {
+            let posts = s.spawn(|| client.author_feed(actor, None));
+            let profile = client.profile(actor);
+            let posts = posts.join().unwrap_or_else(|_| {
+                Err(Error::api(
+                    "app.bsky.feed.getAuthorFeed: the request thread failed",
+                ))
+            });
+            (profile, posts)
+        });
+        Ok((profile?, author_page(posts?)))
     }
 
     fn more(&mut self, feed: &Feed, cursor: &str) -> Result<MorePage> {
@@ -697,6 +699,19 @@ impl State {
         // reads again when it opens.
         self.editor_base = None;
         Ok(())
+    }
+}
+
+/// A page of an account's posts without its reposts, as on the timeline.
+fn author_page(r: crate::api::types::AuthorFeed) -> Page<Post> {
+    Page {
+        items: r
+            .feed
+            .into_iter()
+            .filter(|i| i.reason.is_none())
+            .map(|i| i.post)
+            .collect(),
+        cursor: r.cursor,
     }
 }
 
