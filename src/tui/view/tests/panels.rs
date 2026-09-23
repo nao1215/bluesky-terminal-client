@@ -285,3 +285,49 @@ fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
         "{wide}"
     );
 }
+
+/// A conversation shorter than the screen sits just above the input
+/// line, newest last, as it does once it fills the screen.
+#[test]
+fn a_short_conversation_sits_above_the_input_line() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.handle_key(KeyEvent::from(KeyCode::Char('6')));
+    let convo: crate::api::types::Convo = serde_json::from_value(json!({
+        "id": "c", "rev": "r",
+        "members": [{"did": "did:plc:me", "handle": "me.test"},
+                    {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice"}],
+        "muted": false, "unreadCount": 0
+    }))
+    .unwrap();
+    app.handle_event(Event::Convos {
+        cursor: None,
+        result: Ok(vec![convo].into()),
+    });
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+    app.handle_event(Event::Messages {
+        convo_id: "c".into(),
+        cursor: None,
+        result: Ok(vec![crate::api::types::ChatMessage {
+            id: "m".into(),
+            text: "see you at 7 🌤".into(),
+            sender: "did:plc:a".into(),
+            sent_at: "2026-09-22T00:00:00Z".into(),
+            ..Default::default()
+        }]
+        .into()),
+    });
+    let screen = render(&mut app, 80, 20);
+    let rows: Vec<&str> = screen.lines().collect();
+    let input = rows
+        .iter()
+        .position(|r| r.contains("i write a message"))
+        .expect(&screen);
+    assert!(rows[input - 1].contains("see you at 7 🌤"), "{screen}");
+    assert!(rows[input - 2].contains("Alice"), "{screen}");
+    assert!(
+        rows[1].contains("Alice"),
+        "the title stays on top: {screen}"
+    );
+    assert!(rows[2].trim().is_empty(), "{screen}");
+}
