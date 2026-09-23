@@ -7,6 +7,9 @@
 #   doc/record-demo.sh viewer   doc/img/viewer.gif: a picture and a video of
 #                               your profile's posts, full screen
 #   doc/record-demo.sh themes   doc/img/theme-*.png: the timeline in a few themes
+#   doc/record-demo.sh actions  doc/img/actions.png: `.` open on a post
+#   doc/record-demo.sh settings doc/img/settings.png: the settings screen over
+#                               your profile and its two buttons
 #
 # Needs kitty, xdotool, and ffmpeg, and an X11 display (Xwayland is fine):
 # kitty runs as an X11 window so ffmpeg can capture it, and the keys are sent
@@ -186,6 +189,34 @@ themes() {
   done
 }
 
+actions() {
+  use_theme bluesky
+  start 1120 700
+  ready "♡"
+  send "j"
+  sleep 1
+  send "."
+  ready "Actions"
+  sleep 1
+  shot "$OUT/actions.png"
+  quit
+}
+
+# Only opened and looked at: nothing on the screen is changed.
+settings() {
+  use_theme bluesky
+  start 1120 700
+  ready "♡"
+  send "4"
+  ready "followers"
+  sleep 2
+  send "s"
+  ready "Picture cache"
+  sleep 1
+  shot "$OUT/settings.png"
+  quit
+}
+
 bs_config_dir() {
   if [ -n "${BSKY_CONFIG_DIR:-}" ]; then echo "$BSKY_CONFIG_DIR"; else echo "${XDG_CONFIG_HOME:-$HOME/.config}/bsky"; fi
 }
@@ -205,6 +236,8 @@ case "${1:-demo}" in
   demo) demo ;;
   viewer) viewer ;;
   themes) themes ;;
-  all) demo; viewer; themes ;;
-  *) echo "usage: $0 [demo|viewer|themes|all]" >&2; exit 2 ;;
+  actions) actions ;;
+  settings) settings ;;
+  all) demo; viewer; themes; actions; settings ;;
+  *) echo "usage: $0 [demo|viewer|themes|actions|settings|all]" >&2; exit 2 ;;
 esac
