@@ -1,7 +1,7 @@
 //! UI state and what every key does. Nothing here touches the terminal or
 //! the network: keys and finished jobs go in, [`Job`]s come out.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -461,6 +461,75 @@ pub struct App {
     /// could not be read, since writing would lose what it holds.
     pub settings_writable: bool,
     pub quit: bool,
+    /// Jobs numbered so far by [`App::stamp`].
+    sent: u64,
+    /// The numbers of the reads sent and not yet answered.
+    reads_out: BTreeSet<u64>,
+    /// Likes, reposts, and follows confirmed while reads were out, with the
+    /// number of the last job sent when each was confirmed.
+    written: Vec<(u64, Written)>,
+    /// The number of the newest first page applied to each list.
+    first_pages: HashMap<String, u64>,
+    /// Reads sent before this number belong to the account before a login.
+    account_since: u64,
+}
+
+/// A write the server confirmed, as it shows on a post or an account.
+#[derive(Debug, Clone)]
+enum Written {
+    Like { post: String, uri: Option<String> },
+    Repost { post: String, uri: Option<String> },
+    Follow { did: String, uri: Option<String> },
+}
+
+impl Written {
+    fn of(event: &Event) -> Option<Self> {
+        Some(match event {
+            Event::Liked {
+                post_uri,
+                result: Ok(uri),
+            } => Written::Like {
+                post: post_uri.clone(),
+                uri: Some(uri.clone()),
+            },
+            Event::Unliked {
+                post_uri,
+                result: Ok(()),
+            } => Written::Like {
+                post: post_uri.clone(),
+                uri: None,
+            },
+            Event::Reposted {
+                post_uri,
+                result: Ok(uri),
+            } => Written::Repost {
+                post: post_uri.clone(),
+                uri: Some(uri.clone()),
+            },
+            Event::Unreposted {
+                post_uri,
+                result: Ok(()),
+            } => Written::Repost {
+                post: post_uri.clone(),
+                uri: None,
+            },
+            Event::Followed {
+                did,
+                result: Ok(uri),
+            } => Written::Follow {
+                did: did.clone(),
+                uri: Some(uri.clone()),
+            },
+            Event::Unfollowed {
+                did,
+                result: Ok(()),
+            } => Written::Follow {
+                did: did.clone(),
+                uri: None,
+            },
+            _ => return None,
+        })
+    }
 }
 
 impl App {
@@ -501,6 +570,11 @@ impl App {
             settings_to_save: None,
             settings_writable: true,
             quit: false,
+            sent: 0,
+            reads_out: BTreeSet::new(),
+            written: Vec::new(),
+            first_pages: HashMap::new(),
+            account_since: 0,
         };
         let jobs = if app.session.is_some() {
             app.startup_jobs()
@@ -641,11 +715,133 @@ impl App {
     }
 
     /// Handle a finished job.
+    #[cfg(test)]
     pub fn handle_event(&mut self, event: Event) -> Vec<Job> {
+        // As if asked for just now: nothing sent since can be newer.
+        self.answer(None, event)
+    }
+
+    /// Number a job as it goes to the worker. The answer comes back with
+    /// the same number, which tells what was sent after it.
+    pub fn stamp(&mut self, job: &Job) -> u64 {
+        self.sent += 1;
+        if job.reads() {
+            self.reads_out.insert(self.sent);
+        }
+        self.sent
+    }
+
+    /// Handle the answer to the job sent as `seq`.
+    pub fn handle_answer(&mut self, seq: u64, event: Event) -> Vec<Job> {
+        self.answer(Some(seq), event)
+    }
+
+    /// Reads run beside each other and beside writes, so answers come in any
+    /// order. A read's answer is dropped when it was asked for by an earlier
+    /// account, or when a newer load of the same list has already answered;
+    /// the likes, reposts, and follows confirmed since it was asked for are
+    /// put back on what it brought.
+    fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
         self.pending = self.pending.saturating_sub(1);
+        let read = seq.filter(|s| self.reads_out.remove(s));
+        if let Some(seq) = read
+            && self.superseded(seq, &event)
+        {
+            self.forget_writes();
+            return Vec::new();
+        }
+        let written = Written::of(&event);
         let jobs = self.event(event);
+        if let Some(w) = written
+            && !self.reads_out.is_empty()
+        {
+            self.written.push((self.sent, w));
+        }
+        if let Some(seq) = read {
+            let since: Vec<Written> = self
+                .written
+                .iter()
+                .filter(|(at, _)| *at > seq)
+                .map(|(_, w)| w.clone())
+                .collect();
+            since.iter().for_each(|w| self.apply(w));
+        }
+        self.forget_writes();
         self.pending += jobs.len();
         jobs
+    }
+
+    /// Whether the read sent as `seq` has been overtaken: by a login as
+    /// another account, or by a newer first page of the same list.
+    fn superseded(&mut self, seq: u64, event: &Event) -> bool {
+        if seq < self.account_since {
+            return true;
+        }
+        let list = match event {
+            Event::Timeline(_) => "timeline".to_string(),
+            Event::CustomFeed { uri, .. } => format!("feed {uri}"),
+            Event::SearchPosts { .. } => "search posts".to_string(),
+            Event::SearchActors { .. } => "search accounts".to_string(),
+            Event::Profile(_) => "profile".to_string(),
+            Event::Notifications { .. } => "notifications".to_string(),
+            Event::Thread { uri, .. } => format!("thread {uri}"),
+            _ => return false,
+        };
+        let newest = self.first_pages.entry(list).or_insert(0);
+        if seq < *newest {
+            return true;
+        }
+        *newest = seq;
+        false
+    }
+
+    /// Writes older than every read still out can no longer be undone by one.
+    fn forget_writes(&mut self) {
+        match self.reads_out.first().copied() {
+            Some(oldest) => self.written.retain(|(at, _)| *at > oldest),
+            None => self.written.clear(),
+        }
+    }
+
+    /// Show a confirmed write again on whatever a late read brought.
+    fn apply(&mut self, w: &Written) {
+        match w {
+            Written::Like { post, uri } => self.set_like(post, uri.clone()),
+            Written::Repost { post, uri } => self.set_repost(post, uri.clone()),
+            Written::Follow { did, uri } => {
+                self.set_following(did, uri.clone());
+                if uri.is_none() {
+                    // The timeline shows followed accounts only.
+                    self.timeline.retain(|p| p.author.did != *did);
+                }
+            }
+        }
+    }
+
+    /// Mark the post liked (`Some`, the like's URI) or not, counting the
+    /// change only when its state changes: a reload may show it already.
+    fn set_like(&mut self, post: &str, like: Option<String>) {
+        self.each_post(post, |p| {
+            let v = p.viewer.get_or_insert_with(Default::default);
+            match (v.like.is_some(), like.is_some()) {
+                (false, true) => p.like_count += 1,
+                (true, false) => p.like_count = p.like_count.saturating_sub(1),
+                _ => {}
+            }
+            v.like = like.clone();
+        });
+    }
+
+    fn set_repost(&mut self, post: &str, repost: Option<String>) {
+        self.each_post(post, |p| {
+            let v = p.viewer.get_or_insert_with(Default::default);
+            match (v.repost.is_some(), repost.is_some()) {
+                (false, true) => p.repost_count += 1,
+                (true, false) => p.repost_count = p.repost_count.saturating_sub(1),
+                _ => {}
+            }
+            v.repost = repost.clone();
+        });
     }
 
     fn key(&mut self, key: KeyEvent) -> Vec<Job> {
@@ -1624,6 +1820,7 @@ impl App {
                 self.info(format!("logged in as @{}", session.handle));
                 if self.session.as_ref().is_some_and(|s| s.did != session.did) {
                     self.forget_account();
+                    self.account_since = self.sent + 1;
                 }
                 self.session = Some(session);
                 self.login = None;
@@ -1694,47 +1891,28 @@ impl App {
                 post_uri,
                 result: Ok(like),
             } => {
-                // A reload that ran beside the like may show it already.
-                self.each_post(&post_uri, |p| {
-                    let v = p.viewer.get_or_insert_with(Default::default);
-                    if v.like.replace(like.clone()).is_none() {
-                        p.like_count += 1;
-                    }
-                });
+                self.set_like(&post_uri, Some(like));
                 self.info("liked");
             }
             Event::Unliked {
                 post_uri,
                 result: Ok(()),
             } => {
-                self.each_post(&post_uri, |p| {
-                    if p.viewer.as_mut().and_then(|v| v.like.take()).is_some() {
-                        p.like_count = p.like_count.saturating_sub(1);
-                    }
-                });
+                self.set_like(&post_uri, None);
                 self.info("like removed");
             }
             Event::Reposted {
                 post_uri,
                 result: Ok(repost),
             } => {
-                self.each_post(&post_uri, |p| {
-                    let v = p.viewer.get_or_insert_with(Default::default);
-                    if v.repost.replace(repost.clone()).is_none() {
-                        p.repost_count += 1;
-                    }
-                });
+                self.set_repost(&post_uri, Some(repost));
                 self.info("reposted");
             }
             Event::Unreposted {
                 post_uri,
                 result: Ok(()),
             } => {
-                self.each_post(&post_uri, |p| {
-                    if p.viewer.as_mut().and_then(|v| v.repost.take()).is_some() {
-                        p.repost_count = p.repost_count.saturating_sub(1);
-                    }
-                });
+                self.set_repost(&post_uri, None);
                 self.info("repost removed");
             }
             Event::More {
@@ -2074,6 +2252,105 @@ mod tests {
         p.like_count = if liked { 3 } else { 2 };
         p.repost_count = u64::from(reposted);
         p
+    }
+
+    /// Press a key and number its jobs the way the event loop does as it
+    /// sends them.
+    fn press(app: &mut App, k: KeyEvent) -> Vec<u64> {
+        let jobs = app.handle_key(k);
+        jobs.iter().map(|j| app.stamp(j)).collect()
+    }
+
+    // A reload sent before a like, answered after it, holds the post as it
+    // was: shown as is, the like would look undone and the next l would like
+    // the post a second time.
+    #[test]
+    fn a_reload_sent_before_a_like_does_not_undo_it() {
+        let mut app = logged_in();
+        let reload = press(&mut app, key('R'))[0];
+        let like = press(&mut app, key('l'))[0];
+        app.handle_answer(
+            like,
+            Event::Liked {
+                post_uri: "at://a/p/1".into(),
+                result: Ok("at://did:plc:me/app.bsky.feed.like/x".into()),
+            },
+        );
+        app.handle_answer(
+            reload,
+            Event::Timeline(Ok(vec![reloaded(false, false)].into())),
+        );
+        let p = &app.timeline.items[0];
+        assert_eq!(p.like_uri(), Some("at://did:plc:me/app.bsky.feed.like/x"));
+        assert_eq!(p.like_count, 3);
+        let jobs = app.handle_key(key('l'));
+        assert!(matches!(&jobs[..], [Job::Unlike { .. }]), "{jobs:?}");
+    }
+
+    #[test]
+    fn a_reload_sent_before_an_unfollow_does_not_bring_the_account_back() {
+        let mut app = logged_in();
+        let reload = press(&mut app, key('R'))[0];
+        let unfollow = press(&mut app, key('f'))[0];
+        app.handle_answer(
+            unfollow,
+            Event::Unfollowed {
+                did: "did:plc:alice".into(),
+                result: Ok(()),
+            },
+        );
+        app.handle_answer(
+            reload,
+            Event::Timeline(Ok(vec![
+                post("at://a/p/1", "did:plc:alice", true),
+                post("at://b/p/2", "did:plc:bob", true),
+            ]
+            .into())),
+        );
+        let authors: Vec<_> = app
+            .timeline
+            .items
+            .iter()
+            .map(|p| p.author.did.as_str())
+            .collect();
+        assert_eq!(authors, ["did:plc:bob"]);
+    }
+
+    // Two loads of one list in flight: the one sent last is what shows,
+    // whichever answers last.
+    #[test]
+    fn an_older_first_page_does_not_replace_a_newer_one() {
+        let mut app = logged_in();
+        let first = press(&mut app, key('R'))[0];
+        let second = press(&mut app, key('R'))[0];
+        app.handle_answer(
+            second,
+            Event::Timeline(Ok(vec![
+                post("at://me/p/new", "did:plc:me", false),
+                post("at://a/p/1", "did:plc:alice", true),
+            ]
+            .into())),
+        );
+        app.handle_answer(
+            first,
+            Event::Timeline(Ok(vec![post("at://a/p/1", "did:plc:alice", true)].into())),
+        );
+        assert_eq!(app.timeline.items[0].uri, "at://me/p/new");
+    }
+
+    #[test]
+    fn a_page_asked_for_by_the_last_account_is_dropped() {
+        let mut app = logged_in();
+        let reload = press(&mut app, key('R'))[0];
+        let mut other = session();
+        other.did = "did:plc:other".into();
+        let login = app.stamp(&Job::UpdateSeen(String::new()));
+        app.handle_answer(login, Event::LoggedIn(Ok(other)));
+        app.handle_answer(
+            reload,
+            Event::Timeline(Ok(vec![post("at://a/p/1", "did:plc:alice", true)].into())),
+        );
+        assert!(app.timeline.items.is_empty());
     }
 
     // Reads run beside writes, so a reload can show a like or repost before

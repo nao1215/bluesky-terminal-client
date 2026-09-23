@@ -496,6 +496,65 @@ scenarios:
             path: /xrpc/com.atproto.repo.deleteRecord
             count: 0
 
+  # R asks for the timeline again and l likes the post at once. The like is
+  # answered first; the reload, read before the like, comes 2 s later without
+  # it. The post stays liked, and l then removes the like instead of liking
+  # the post a second time.
+  - name: a reload that answers after a like does not undo it
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            delay: 2s
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Liked while reloading", createdAt: "2026-09-20T10:00:00.000Z" }
+                    likeCount: 2
+          - *create_record
+          - *delete_record
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen:
+                contains: ["Liked while reloading", "♡ 2"]
+            - send: R
+            - send: l
+            - expect_screen:
+                contains: ["♥ 3", "liked"]
+            # Long enough for the reload to have come in.
+            - expect_screen:
+                contains: "♥ 3"
+                stable_for: 3s
+            - send: l
+            - expect_screen:
+                contains: ["♡ 2", "like removed"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json: { path: "$.rkey", equals: "new1" }
+
   - name: b reposts a post, and b again removes the repost
     mock_servers:
       - name: api
