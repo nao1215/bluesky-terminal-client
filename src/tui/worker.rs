@@ -242,7 +242,7 @@ impl Job {
     /// Whether the job only reads, so it may run beside other jobs and out
     /// of order with them. The profile editor's load stays in order: the
     /// save that follows it writes exactly the version it read.
-    fn reads(&self) -> bool {
+    pub fn reads(&self) -> bool {
         matches!(
             self,
             Job::Timeline
@@ -267,9 +267,9 @@ const READERS: usize = 4;
 
 /// Handle to the running worker.
 pub struct Worker {
-    writes: Sender<Job>,
-    reads: Sender<Job>,
-    rx: Receiver<Event>,
+    writes: Sender<(u64, Job)>,
+    reads: Sender<(u64, Job)>,
+    rx: Receiver<(u64, Event)>,
 }
 
 impl Worker {
@@ -278,8 +278,8 @@ impl Worker {
         let client = Arc::new(Mutex::new(
             session.map(|s| Client::new(s, Some(store.clone()))),
         ));
-        let (ev_tx, ev_rx) = channel::<Event>();
-        let (writes, write_rx) = channel::<Job>();
+        let (ev_tx, ev_rx) = channel::<(u64, Event)>();
+        let (writes, write_rx) = channel::<(u64, Job)>();
         let mut state = State {
             client: Arc::clone(&client),
             store: store.clone(),
@@ -287,13 +287,13 @@ impl Worker {
         };
         let events = ev_tx.clone();
         thread::spawn(move || {
-            for job in write_rx {
-                if events.send(state.run(job)).is_err() {
+            for (seq, job) in write_rx {
+                if events.send((seq, state.run(job))).is_err() {
                     break;
                 }
             }
         });
-        let (reads, read_rx) = channel::<Job>();
+        let (reads, read_rx) = channel::<(u64, Job)>();
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
             let mut state = State {
@@ -307,8 +307,8 @@ impl Worker {
                 loop {
                     // Held only while waiting for a job, not while running it.
                     let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                    let Ok(job) = job else { break };
-                    if events.send(state.run(job)).is_err() {
+                    let Ok((seq, job)) = job else { break };
+                    if events.send((seq, state.run(job))).is_err() {
                         break;
                     }
                 }
@@ -321,8 +321,8 @@ impl Worker {
         }
     }
 
-    /// Queue a job.
-    pub fn send(&self, job: Job) {
+    /// Queue a job; its answer comes back with the same `seq`.
+    pub fn send(&self, seq: u64, job: Job) {
         // The worker only stops when the UI drops it, so a send cannot fail
         // while the UI is still running.
         let lane = if job.reads() {
@@ -330,11 +330,11 @@ impl Worker {
         } else {
             &self.writes
         };
-        let _ = lane.send(job);
+        let _ = lane.send((seq, job));
     }
 
-    /// A finished job, if any.
-    pub fn try_recv(&self) -> Option<Event> {
+    /// A finished job and the `seq` it was sent with, if any.
+    pub fn try_recv(&self) -> Option<(u64, Event)> {
         self.rx.try_recv().ok()
     }
 }

@@ -81,7 +81,9 @@ fn event_loop(
     let (mut app, jobs) = App::new(session, service);
     let (loaded, warning) = settings.load();
     app.apply_settings(loaded, depth, warning);
-    jobs.into_iter().for_each(|j| worker.send(j));
+    for job in jobs {
+        worker.send(app.stamp(&job), job);
+    }
 
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
     let mut input = events::Input::new().map_err(io_err)?;
@@ -109,7 +111,9 @@ fn event_loop(
             };
             match ev {
                 TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
-                    app.handle_key(k).into_iter().for_each(|j| worker.send(j));
+                    for job in app.handle_key(k) {
+                        worker.send(app.stamp(&job), job);
+                    }
                 }
                 TermEvent::Paste(text) => app.handle_paste(&text),
                 _ => {}
@@ -124,10 +128,10 @@ fn event_loop(
             app.settings_saved(settings.save(&s));
             dirty = true;
         }
-        while let Some(ev) = worker.try_recv() {
-            app.handle_event(ev)
-                .into_iter()
-                .for_each(|j| worker.send(j));
+        while let Some((seq, ev)) = worker.try_recv() {
+            for job in app.handle_answer(seq, ev) {
+                worker.send(app.stamp(&job), job);
+            }
             dirty = true;
         }
         if images.poll() {
