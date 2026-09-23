@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Changed
 
 - Loading runs beside other loads and beside likes, posts, and uploads. A thread, a profile, a search, or the next page no longer waits behind the notifications and feeds loaded at the start, a slow page, or a video being uploaded, and a like is sent while a load is still waiting. With every answer taking 400 ms, opening a thread right after the timeline appears went from 2.4 s to 0.9 s.
+- A profile asks for the account and its posts at once instead of one after the other. With every answer taking 400 ms, opening a profile from the timeline went from 1.3 s to 0.9 s.
 
 ### Fixed
 
