@@ -879,9 +879,34 @@ fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
             all
         }
     };
+    let name = match media {
+        Media::Image { .. } => picture_name(&download_name(media), &bytes)?,
+        Media::Video { .. } => download_name(media),
+    };
     std::fs::create_dir_all(dir)
         .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
-    save_new(dir, &download_name(media), &bytes)
+    save_new(dir, &name, &bytes)
+}
+
+/// `name` with the extension of the picture `bytes` hold. The server's
+/// address names the file, but only the bytes say what it is: a picture at
+/// an address ending in `.exe` must not be saved as a program, and what is
+/// not a picture at all is not saved.
+fn picture_name(name: &str, bytes: &[u8]) -> Result<String> {
+    use image::ImageFormat;
+    let ext = match image::guess_format(bytes) {
+        Ok(ImageFormat::Png) => "png",
+        Ok(ImageFormat::Jpeg) => "jpg",
+        Ok(ImageFormat::Gif) => "gif",
+        Ok(ImageFormat::WebP) => "webp",
+        _ => {
+            return Err(Error::api(format!(
+                "{name} is not a picture bsky can save; nothing was written"
+            )));
+        }
+    };
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    Ok(format!("{stem}.{ext}"))
 }
 
 /// Write `bytes` to a new file in `dir` named `name`, or `name (1)`... A
@@ -981,6 +1006,41 @@ mod tests {
             aspect: None,
         };
         assert_eq!(download_name(&video), "bafkreivid.ts");
+    }
+
+    fn encoded(format: image::ImageFormat) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut out, format)
+            .unwrap();
+        out.into_inner()
+    }
+
+    // A picture is saved with the extension of what it is, not of what its
+    // address says: a post's picture at an address ending in .exe was
+    // saved as an .exe, with whatever bytes the server sent.
+    #[rstest::rstest]
+    #[case::exe_that_is_a_png("setup.exe", image::ImageFormat::Png, "setup.png")]
+    #[case::jpeg_named_png("photo.png", image::ImageFormat::Jpeg, "photo.jpg")]
+    #[case::gif("anim.jpg", image::ImageFormat::Gif, "anim.gif")]
+    #[case::webp("bafkreiabc.jpg", image::ImageFormat::WebP, "bafkreiabc.webp")]
+    #[case::no_dot("picture", image::ImageFormat::Png, "picture.png")]
+    fn a_picture_is_saved_as_what_it_is(
+        #[case] name: &str,
+        #[case] format: image::ImageFormat,
+        #[case] want: &str,
+    ) {
+        assert_eq!(picture_name(name, &encoded(format)).unwrap(), want);
+    }
+
+    #[rstest::rstest]
+    #[case::program(b"MZ\x90\x00 a program".as_slice())]
+    #[case::script(b"#!/bin/sh\nrm -rf ~\n".as_slice())]
+    #[case::html(b"<html>not found</html>".as_slice())]
+    #[case::empty(b"".as_slice())]
+    fn what_is_not_a_picture_is_not_saved(#[case] bytes: &[u8]) {
+        let err = picture_name("setup.exe", bytes).unwrap_err();
+        assert!(err.message().contains("is not a picture"), "{err}");
     }
 
     #[rstest::rstest]

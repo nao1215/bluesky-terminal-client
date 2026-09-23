@@ -65,6 +65,74 @@ scenarios:
             path: cfg/session.json
             json: { path: "$.accessJwt", equals: "acc" }
 
+  # The theme row of the settings screen opens the same picker, which goes
+  # back to the settings screen when it closes, applied or cancelled; T on
+  # its own still goes back to the list.
+  - name: the settings screen chooses a theme in the picker and comes back to it
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - expect_screen:
+                contains: ["▶ Theme            bluesky", "enter chooses one from the list, as T does"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["▶ bluesky", "1/42  enter apply"]
+            - send: j
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["▶ Theme            bluesky-light", "theme: bluesky-light", "Picture cache"]
+                not_contains: "enter apply"
+            # Cancelled, the picker also comes back, with the theme as it was.
+            - send: { key: enter }
+            - expect_screen:
+                contains: "▶ bluesky-light"
+            - send: j
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["▶ Theme            bluesky-light", "Picture cache"]
+                not_contains: "enter apply"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            # T from the list closes back to the list.
+            - send: T
+            - expect_screen:
+                contains: "enter apply"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: ["enter apply", "Picture cache"]
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.theme", equals: "bluesky-light" }
+
   - name: previewing and cancelling writes nothing
     mock_servers:
       - name: api

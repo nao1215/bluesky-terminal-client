@@ -1659,6 +1659,90 @@ scenarios:
                 - { path: "$.collection", equals: "app.bsky.graph.follow" }
                 - { path: "$.rkey", equals: "fa" }
 
+  # A write is never tried again by itself: a gateway error on a like may
+  # come after the server made the like, and a second try would make two.
+  # Reads are tried once more (see the failing timeline below); writes are
+  # not, and the post stays as it was.
+  - name: a like, a repost and a delete the server fails with 502 are each sent once
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            status: 502
+            body: "bad gateway"
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            status: 502
+            body: "bad gateway"
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["♡ 2   ⟳ 1", "My own post"]
+            - send: l
+            - expect_screen:
+                contains: [" Error ", "com.atproto.repo.createRecord failed: HTTP 502"]
+            # Any key closes the error box; right does nothing else here.
+            - send: { key: right }
+            - expect_screen:
+                contains: "♡ 2   ⟳ 1"
+                not_contains: [" Error ", "♥ 3"]
+            - send: b
+            - expect_screen:
+                contains: [" Error ", "com.atproto.repo.createRecord failed: HTTP 502"]
+            - send: { key: right }
+            - expect_screen:
+                contains: "♡ 2   ⟳ 1"
+                not_contains: [" Error ", "⟳ 2"]
+            - send: G
+            - send: D
+            - expect_screen:
+                contains: "press y to delete this post"
+            - send: y
+            - expect_screen:
+                contains: [" Error ", "com.atproto.repo.deleteRecord failed: HTTP 502"]
+            - send: { key: right }
+            # The post is still there, and a second y does not delete it.
+            - expect_screen:
+                contains: "My own post"
+                not_contains: " Error "
+            - send: y
+            - expect_screen:
+                contains: "My own post"
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 2 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            body:
+              json: { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.rkey", equals: "p4" }
+
   - name: a failing timeline is reported and the client keeps running
     mock_servers:
       - name: api
