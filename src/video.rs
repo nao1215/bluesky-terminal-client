@@ -229,6 +229,11 @@ fn tkhd_dims(b: &[u8]) -> Option<(u32, u32)> {
     Some(if a == 0 && c != 0 { (h, w) } else { (w, h) })
 }
 
+/// The other boxes a QuickTime file may open with. It had no `ftyp` box
+/// before 2001, and cameras and editors still write files without one, so a
+/// file whose first box is one of these is a QuickTime movie.
+const QUICKTIME_FIRST: &[&[u8; 4]] = &[b"moov", b"mdat", b"free", b"skip", b"wide", b"pnot"];
+
 /// Guess a video's MIME type from its first bytes.
 pub fn sniff_mime(b: &[u8]) -> Option<&'static str> {
     match b {
@@ -250,6 +255,13 @@ pub fn sniff_mime(b: &[u8]) -> Option<&'static str> {
         [_, _, _, _, b'f', b't', b'y', b'p', ..] => Some("video/mp4"),
         [0x1a, 0x45, 0xdf, 0xa3, ..] => Some("video/webm"),
         [0, 0, 1, 0xba | 0xb3, ..] => Some("video/mpeg"),
+        // A box whose size covers at least its own header, of a kind a file
+        // opens with. The size keeps text and other formats out.
+        [s0, s1, s2, s3, kind @ ..] if kind.len() >= 4 => {
+            let size = u32::from_be_bytes([*s0, *s1, *s2, *s3]);
+            let first: &[u8; 4] = kind[..4].try_into().ok()?;
+            (size >= 8 && QUICKTIME_FIRST.contains(&first)).then_some("video/quicktime")
+        }
         _ => None,
     }
 }
@@ -379,6 +391,25 @@ mod tests {
         assert_eq!(parse_moov(&moov).dims, Some((1080, 1920)));
     }
 
+    // was: a QuickTime file whose first box is not ftyp (what QuickTime
+    // wrote before 2001, and what some cameras and editors still write) was
+    // refused as not a video at all.
+    #[test]
+    fn a_quicktime_file_without_an_ftyp_box_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clip.mov");
+        let audio = bx(b"trak", &tkhd(0, 0, false));
+        let video = bx(b"trak", &tkhd(640, 480, false));
+        let moov = [mvhd(600, 6000), audio, video].concat();
+        let mut file = bx(b"wide", &[]);
+        file.extend(bx(b"mdat", &vec![0u8; 5000]));
+        file.extend(bx(b"moov", &moov));
+        std::fs::write(&path, &file).unwrap();
+        assert_eq!(sniff_mime(&file), Some("video/quicktime"));
+        let p = prepare(&path).unwrap();
+        assert_eq!((p.mime, p.dims), ("video/quicktime", Some((640, 480))));
+    }
+
     #[test]
     fn a_file_without_a_header_gives_nothing() {
         assert_eq!(read_moov(&mut Cursor::new(b"not a video at all")), None);
@@ -391,6 +422,19 @@ mod tests {
     #[case(b"\x1a\x45\xdf\xa3\x01".as_slice(), Some("video/webm"))]
     #[case(b"\0\0\x01\xba\x44".as_slice(), Some("video/mpeg"))]
     #[case(b"GIF89a".as_slice(), None)]
+    // A QuickTime file older than the ftyp box starts with one of its other
+    // top-level boxes.
+    #[case(b"\0\0\x13\x88mdat\0\0".as_slice(), Some("video/quicktime"))]
+    #[case(b"\0\0\0\x68moov\0\0".as_slice(), Some("video/quicktime"))]
+    #[case(b"\0\0\0\x08wide".as_slice(), Some("video/quicktime"))]
+    #[case(b"\0\0\0\x10free\0\0\0\0\0\0\0\0".as_slice(), Some("video/quicktime"))]
+    #[case(b"\0\0\0\x0cskip\0\0\0\0".as_slice(), Some("video/quicktime"))]
+    #[case(b"\0\0\0\x14pnot\0\0\0\0\0\0\0\0\0\0\0\0".as_slice(), Some("video/quicktime"))]
+    // A box size smaller than the header itself, or a first box that is not
+    // one a file starts with, is not a video.
+    #[case(b"\0\0\0\x04mdat".as_slice(), None)]
+    #[case(b"\0\0\0\x20trak\0\0".as_slice(), None)]
+    #[case(b"\0\0\0\x20abcd\0\0".as_slice(), None)]
     fn video_types_are_sniffed(#[case] bytes: &[u8], #[case] want: Option<&str>) {
         assert_eq!(sniff_mime(bytes), want);
     }
