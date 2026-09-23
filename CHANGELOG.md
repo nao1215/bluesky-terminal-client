@@ -13,13 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
-- `R` in a thread keeps the reply that was selected instead of moving back to the post the thread was opened on, so the next `l`, `t`, or `r` acts on the reply you were reading.
+- `R` in a thread keeps the reply that was selected instead of moving back to the post the thread was opened on, so the next `l`, `b`, or `r` acts on the reply you were reading.
 - A video a little over three minutes long says it runs 3:01, not the 3:00 that is allowed.
 - A failed save of the session file leaves no `session.json.<pid>.tmp` behind holding the tokens.
 - An invalid service URL is quoted in the error the way it was typed.
-
-### Fixed
-
 - A video whose playlist names its files the scheme-relative (`//host/path`), absolute-path, query-only, or `..` way plays and saves. Those forms used to be joined to the playlist's address as text, which asked the server for a path that does not exist, so the video showed only its thumbnail with a warning.
 
 ## [0.1.1] - 2026-09-23
