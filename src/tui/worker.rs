@@ -738,62 +738,71 @@ fn fetch_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
 
 /// The file name a Bluesky media URL suggests: `<cid>.<ext>` for
 /// `.../plain/<did>/<cid>@jpeg`, `<cid>.ts` for a video's
-/// `.../watch/<did>/<cid>/playlist.m3u8`.
+/// `.../watch/<did>/<cid>/playlist.m3u8`. Only ASCII letters, digits, `-`,
+/// `_`, and inner dots are kept, and a name Windows reserves for a device
+/// (`CON`, `NUL`, `COM1`...) becomes the fallback, so the name works on
+/// every system and never leaves the download folder.
 fn download_name(media: &Media) -> String {
-    let clean = |s: &str| {
-        s.chars()
-            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-            .collect::<String>()
-    };
-    match media {
-        Media::Image { url, .. } => {
-            let last = url
-                .split('?')
-                .next()
-                .unwrap_or(url)
-                .rsplit('/')
-                .next()
-                .unwrap_or("");
-            let (stem, ext) = match last.split_once('@') {
-                Some((stem, ext)) => (stem, ext),
-                None => last.rsplit_once('.').unwrap_or((last, "jpg")),
-            };
-            let ext = if ext == "jpeg" { "jpg" } else { ext };
-            let stem = clean(stem);
-            let stem = if stem.is_empty() {
-                "picture".into()
-            } else {
-                stem
-            };
-            format!("{stem}.{}", clean(ext))
-        }
+    let (last, fallback) = match media {
+        Media::Image { url, .. } => (url_path(url).rsplit('/').next().unwrap_or(""), "picture"),
         Media::Video { playlist, .. } => {
-            let path = playlist.split('?').next().unwrap_or(playlist);
-            let stem = path.rsplit('/').nth(1).map(clean).unwrap_or_default();
-            let stem = if stem.is_empty() {
-                "video".into()
-            } else {
-                stem
-            };
-            format!("{stem}.ts")
+            (url_path(playlist).rsplit('/').nth(1).unwrap_or(""), "video")
         }
-    }
+    };
+    let (stem, ext) = match media {
+        Media::Video { .. } => (last, "ts"),
+        Media::Image { .. } => match last.split_once('@') {
+            Some(parts) => parts,
+            None => last.rsplit_once('.').unwrap_or((last, "jpg")),
+        },
+    };
+    let ext = match clean_name(ext).to_ascii_lowercase().as_str() {
+        "" => "jpg".to_string(),
+        "jpeg" => "jpg".to_string(),
+        e => e.to_string(),
+    };
+    let stem = clean_name(stem);
+    let stem = if stem.is_empty() || is_reserved_name(&stem) {
+        fallback.to_string()
+    } else {
+        stem
+    };
+    format!("{stem}.{ext}")
 }
 
-/// A path in `dir` for `name` that is not taken: `name`, then `name (1)`...
-fn free_path(dir: &std::path::Path, name: &str) -> PathBuf {
+/// A URL without its query and fragment.
+fn url_path(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
+}
+
+/// `s` with only the characters a file name keeps everywhere, and without
+/// dots at either end (Windows drops trailing ones; leading ones hide it).
+fn clean_name(s: &str) -> String {
+    let kept: String = s
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .collect();
+    kept.trim_matches('.').to_string()
+}
+
+/// Whether Windows reserves `stem` for a device, whatever follows its first
+/// dot: `nul.txt` opens the device as `nul` does.
+fn is_reserved_name(stem: &str) -> bool {
+    let base = stem.split('.').next().unwrap_or(stem).to_ascii_uppercase();
+    matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((base.starts_with("COM") || base.starts_with("LPT"))
+            && base.len() == 4
+            && base.as_bytes()[3].is_ascii_digit())
+}
+
+/// The names to try for `name` in `dir`: `name`, then `name (1)`...
+fn candidate_path(dir: &std::path::Path, name: &str, i: usize) -> PathBuf {
     let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
-    (0..)
-        .map(|i| {
-            let n = match (i, ext.is_empty()) {
-                (0, _) => name.to_string(),
-                (i, true) => format!("{stem} ({i})"),
-                (i, false) => format!("{stem} ({i}).{ext}"),
-            };
-            dir.join(n)
-        })
-        .find(|p| !p.exists())
-        .expect("some name is free")
+    dir.join(match (i, ext.is_empty()) {
+        (0, _) => name.to_string(),
+        (i, true) => format!("{stem} ({i})"),
+        (i, false) => format!("{stem} ({i}).{ext}"),
+    })
 }
 
 /// Save a picture (full size) or a video (its best variant, the segments
@@ -828,10 +837,34 @@ fn download(media: &Media) -> Result<PathBuf> {
     };
     std::fs::create_dir_all(&dir)
         .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
-    let path = free_path(&dir, &download_name(media));
-    std::fs::write(&path, bytes)
-        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
-    Ok(path)
+    save_new(&dir, &download_name(media), &bytes)
+}
+
+/// Write `bytes` to a new file in `dir` named `name`, or `name (1)`... A
+/// name is taken when anything is there, a link to nothing included: the
+/// file is created only if it does not exist (`create_new`), so nothing is
+/// overwritten or written through a link, even if it appears meanwhile.
+fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    use std::io::Write;
+    for i in 0..10_000 {
+        let path = candidate_path(dir, name, i);
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(Error::io(format!("cannot write {}: {e}", path.display()))),
+        };
+        file.write_all(bytes)
+            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
+        return Ok(path);
+    }
+    Err(Error::io(format!(
+        "{} has too many files named like {name}",
+        dir.display()
+    )))
 }
 
 /// Read a new avatar and encode it the way post pictures are: upright,
@@ -906,13 +939,67 @@ mod tests {
         assert_eq!(download_name(&video), "bafkreivid.ts");
     }
 
+    #[rstest::rstest]
+    #[case::reserved_on_windows("https://cdn.test/plain/did:plc:x/CON@jpeg", "picture.jpg")]
+    #[case::reserved_with_a_dot("https://cdn.test/x/nul.", "picture.jpg")]
+    #[case::no_extension("https://cdn.test/plain/did:plc:x/abc@", "abc.jpg")]
+    #[case::only_dots("https://cdn.test/plain/did:plc:x/..@..", "picture.jpg")]
+    #[case::fragment("https://cdn.test/plain/did:plc:x/abc@png#a/b", "abc.png")]
+    #[case::emoji_and_cjk("https://cdn.test/x/写真👨‍👩‍👧.png", "picture.png")]
+    fn a_download_name_is_safe_on_every_system(#[case] url: &str, #[case] want: &str) {
+        let media = Media::Image {
+            url: url.into(),
+            thumb: String::new(),
+            alt: String::new(),
+            aspect: None,
+        };
+        assert_eq!(download_name(&media), want);
+    }
+
+    #[rstest::rstest]
+    #[case::reserved("https://video.test/watch/did/COM1/playlist.m3u8", "video.ts")]
+    #[case::dot_dot("https://video.test/watch/did/../playlist.m3u8", "video.ts")]
+    #[case::fragment("https://video.test/watch/did/cid/playlist.m3u8#a/b", "cid.ts")]
+    fn a_video_download_name_is_safe_on_every_system(#[case] url: &str, #[case] want: &str) {
+        let media = Media::Video {
+            playlist: url.into(),
+            thumbnail: None,
+            alt: String::new(),
+            aspect: None,
+        };
+        assert_eq!(download_name(&media), want);
+    }
+
+    // A name already taken by a link, even one to nothing, is not written
+    // through: that would create or replace the file it points to.
+    #[cfg(unix)]
+    #[test]
+    fn a_download_never_writes_through_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside.txt");
+        let downloads = dir.path().join("dl");
+        std::fs::create_dir(&downloads).unwrap();
+        std::os::unix::fs::symlink(&outside, downloads.join("a.jpg")).unwrap();
+        let saved = save_new(&downloads, "a.jpg", b"picture").unwrap();
+        assert_eq!(saved, downloads.join("a (1).jpg"));
+        assert!(!outside.exists(), "wrote through the link");
+        assert_eq!(std::fs::read(saved).unwrap(), b"picture");
+    }
+
     #[test]
     fn a_taken_name_gets_a_number() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(free_path(dir.path(), "a.jpg"), dir.path().join("a.jpg"));
-        std::fs::write(dir.path().join("a.jpg"), "").unwrap();
-        std::fs::write(dir.path().join("a (1).jpg"), "").unwrap();
-        assert_eq!(free_path(dir.path(), "a.jpg"), dir.path().join("a (2).jpg"));
+        std::fs::write(dir.path().join("a.jpg"), "old").unwrap();
+        std::fs::write(dir.path().join("a (1).jpg"), "old").unwrap();
+        let saved = save_new(dir.path(), "a.jpg", b"new").unwrap();
+        assert_eq!(saved, dir.path().join("a (2).jpg"));
+        assert_eq!(std::fs::read(dir.path().join("a.jpg")).unwrap(), b"old");
+        let first = save_new(dir.path(), "b", b"x").unwrap();
+        assert_eq!(first, dir.path().join("b"));
+        assert_eq!(
+            save_new(dir.path(), "b", b"x").unwrap(),
+            dir.path().join("b (1)")
+        );
     }
 
     #[test]
