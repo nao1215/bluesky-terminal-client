@@ -248,3 +248,39 @@ fn search_keys_do_not_reach_behind_a_thread() {
     assert!(app.handle_key(key('t')).is_empty());
     assert_eq!(app.search.mode, SearchMode::Posts);
 }
+
+// A reload of the timeline (R, or after posting) brings its first page. The
+// posts loaded further down stay, and so does the selection: the next l
+// likes the post that was selected, not the first one.
+#[test]
+fn reloading_the_timeline_keeps_the_pages_loaded_and_the_selection() {
+    let mut app = timeline_with(50, Some("c1"));
+    for _ in 0..45 {
+        app.handle_key(key('j'));
+    }
+    let more: Vec<Post> = (50..60)
+        .map(|i| post(&format!("at://p/{i}"), "did:plc:alice", true))
+        .collect();
+    app.handle_event(Event::More {
+        feed: Feed::Timeline,
+        cursor: "c1".into(),
+        result: Ok(MorePage::Posts(page(more, Some("c2")))),
+    });
+    for _ in 0..10 {
+        app.handle_key(key('j'));
+    }
+    let chosen = app.timeline.current().unwrap().uri.clone();
+    assert_eq!(chosen, "at://p/55");
+    app.handle_key(key('R'));
+    let first: Vec<Post> = (0..50)
+        .map(|i| post(&format!("at://p/{i}"), "did:plc:alice", true))
+        .collect();
+    app.handle_event(Event::Timeline(Ok(page(first, Some("c1b")))));
+    assert_eq!(app.timeline.items.len(), 60);
+    assert_eq!(app.timeline.current().unwrap().uri, chosen);
+    let jobs = app.handle_key(key('l'));
+    assert!(
+        matches!(&jobs[..], [Job::Like { subject }] if subject.uri == chosen),
+        "{jobs:?}"
+    );
+}

@@ -184,3 +184,28 @@ fn m_on_an_account_muted_by_a_list_mutes_it_yourself() {
         "{jobs:?}"
     );
 }
+
+// The count on the Notifications tab goes down with the notifications a
+// mute takes out of the list.
+#[test]
+fn a_mute_takes_its_notifications_out_of_the_unread_count() {
+    let mut app = notifications_tab();
+    let before = app.unread;
+    let did = app.notifications.current().unwrap().n.author.did.clone();
+    let theirs = app
+        .notifications
+        .items
+        .iter()
+        .filter(|i| i.n.author.did == did && !i.n.is_read)
+        .count();
+    assert!(
+        theirs > 0,
+        "the test needs an unread notification of theirs"
+    );
+    app.handle_event(Event::Muted {
+        did: did.clone(),
+        on: true,
+        result: Ok(()),
+    });
+    assert_eq!(app.unread, before - theirs);
+}

@@ -292,6 +292,10 @@ impl App {
                         e.saving = true;
                         let [display_name, description, avatar_text] =
                             e.fields.clone().map(|f| f.text());
+                        let changed =
+                            |text: String, loaded: &String| (text != *loaded).then_some(text);
+                        let display_name = changed(display_name, &e.loaded[0]);
+                        let description = changed(description, &e.loaded[1]);
                         let avatar = match &e.avatar_chosen {
                             Some(p) if avatar_text == p.display().to_string() => Some(p.clone()),
                             _ if avatar_text.trim().is_empty() => None,

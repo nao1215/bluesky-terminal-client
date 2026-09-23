@@ -1489,6 +1489,12 @@ scenarios:
             - send: { key: ctrl-s }
             - expect_screen:
                 contains: ["the post is empty", "New post"]
+            # The first Esc closes the error box, the second the window. The
+            # box goes first, or the two read as Alt+Esc.
+            - send: { key: esc }
+            - expect_screen:
+                contains: "New post"
+                not_contains: "any key closes this"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "New post"
@@ -1628,6 +1634,11 @@ scenarios:
                   - "ctrl+s send"
             # A key right after Esc would read as Alt+key, so wait for the
             # composer to close first.
+            # The first Esc closes the error box, the second the window. The
+            # box goes first, or the two read as Alt+Esc.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "any key closes this"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "keep this draft"

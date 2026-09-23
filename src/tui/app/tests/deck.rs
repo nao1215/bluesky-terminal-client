@@ -153,3 +153,19 @@ fn a_deleted_post_leaves_every_column_and_each_account_has_its_own_columns() {
     app.switched_to(session());
     assert_eq!(app.columns.sources(), [columns::Source::Following]);
 }
+
+// A profile opened from a column says Esc goes back to the columns, which
+// is where it goes.
+#[test]
+fn a_profile_opened_from_a_column_says_esc_goes_back_to_the_columns() {
+    let mut app = columns_with(
+        &[columns::Source::Following],
+        vec![post("at://a/p/1", "did:plc:alice", true)],
+    );
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tab, Tab::Profile);
+    let hints = crate::tui::keys::hints(&app);
+    assert!(hints.contains(&("esc", "back to columns")), "{hints:?}");
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.tab, Tab::Columns);
+}

@@ -76,10 +76,18 @@ impl TextInput {
 
     /// Insert text at the cursor (newlines are dropped in single-line fields).
     pub fn insert_str(&mut self, s: &str) {
+        let mut after_break = false;
         for c in drawable(s).chars() {
+            // One line takes a pasted paragraph as one line: a run of line
+            // breaks is a space, so the words on either side stay apart.
             if c == '\n' && !self.multiline {
+                if !after_break {
+                    self.insert(' ');
+                }
+                after_break = true;
                 continue;
             }
+            after_break = false;
             self.insert(c);
         }
     }
@@ -266,6 +274,26 @@ mod tests {
 
     use super::*;
 
+    // A field of one line (alt text, a display name) takes a pasted
+    // paragraph as one line: its line breaks become spaces, rather than the
+    // words on either side running together.
+    #[rstest::rstest]
+    #[case("A dog\nrunning", "A dog running")]
+    #[case("A dog\r\n\r\nrunning", "A dog running")]
+    #[case("犬が\n走る 🐕", "犬が 走る 🐕")]
+    #[case("trailing\n", "trailing ")]
+    fn a_paste_into_one_line_turns_line_breaks_into_spaces(
+        #[case] paste: &str,
+        #[case] want: &str,
+    ) {
+        let mut input = TextInput::single("");
+        input.insert_str(paste);
+        assert_eq!(input.text(), want);
+        let mut multi = TextInput::multi("");
+        multi.insert_str("a\nb");
+        assert_eq!(multi.text(), "a\nb");
+    }
+
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
@@ -298,10 +326,10 @@ mod tests {
     }
 
     #[test]
-    fn paste_drops_newlines_in_single_line_fields() {
+    fn paste_turns_newlines_into_a_space_in_single_line_fields() {
         let mut t = TextInput::single("");
         t.insert_str("abc\r\ndef");
-        assert_eq!(t.text(), "abcdef");
+        assert_eq!(t.text(), "abc def");
     }
 
     #[test]
