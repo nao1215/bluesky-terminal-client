@@ -213,3 +213,37 @@ fn a_thread_reloading_under_another_still_takes_its_answer() {
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.threads[0].list.items.len(), 3);
 }
+
+// A like, a follow, or a notifications "seen" the first account made lands
+// after the switch; it is that account's, not the second's, so none of the
+// second account's lists show it: the post it liked is not liked for the
+// second account, and its l still likes.
+#[test]
+fn a_write_the_first_account_made_changes_nothing_of_the_second_ones() {
+    let mut app = two_accounts();
+    let like = press(&mut app, key('l'))[0];
+    app.handle_key(key('A'));
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.take_account_switch().as_deref(), Some("did:plc:work"));
+    let jobs = app.switched_to(work());
+    let seqs: Vec<u64> = jobs.iter().map(|j| app.stamp(j)).collect();
+    app.handle_answer(
+        like,
+        Event::Liked {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/l1".into()),
+        },
+    );
+    app.handle_answer(
+        seqs[0],
+        Event::Timeline(Ok(vec![post("at://a/p/1", "did:plc:alice", true)].into())),
+    );
+    let p = app
+        .timeline
+        .items
+        .first()
+        .expect("the second account's timeline");
+    assert!(p.like_uri().is_none(), "liked for the second account");
+    assert!(matches!(app.handle_key(key('l'))[..], [Job::Like { .. }]));
+}

@@ -242,6 +242,8 @@ pub enum Event {
     },
     MessageSent {
         convo_id: String,
+        /// The text sent, as the box held it.
+        text: String,
         result: Result<ChatMessage>,
     },
     ConvoFor {
@@ -349,8 +351,8 @@ pub struct Worker {
     /// The account every job acts as, shared by every thread.
     client: Arc<Mutex<Option<Client>>>,
     accounts: AccountStore,
-    writes: Sender<(u64, Job)>,
-    reads: Sender<(u64, Job)>,
+    writes: Sender<(u64, Job, Option<Client>)>,
+    reads: Sender<(u64, Job, Option<Client>)>,
     rx: Receiver<(u64, Event)>,
 }
 
@@ -363,25 +365,28 @@ impl Worker {
             Client::new(s, Some(store))
         })));
         let (ev_tx, ev_rx) = channel::<(u64, Event)>();
-        let (writes, write_rx) = channel::<(u64, Job)>();
+        let (writes, write_rx) = channel::<(u64, Job, Option<Client>)>();
         let mut state = State {
             client: Arc::clone(&client),
+            acting: None,
             accounts: accounts.clone(),
             editor_base: None,
         };
         let events = ev_tx.clone();
         thread::spawn(move || {
-            for (seq, job) in write_rx {
+            for (seq, job, acting) in write_rx {
+                state.acting = acting;
                 if events.send((seq, state.run(job))).is_err() {
                     break;
                 }
             }
         });
-        let (reads, read_rx) = channel::<(u64, Job)>();
+        let (reads, read_rx) = channel::<(u64, Job, Option<Client>)>();
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
             let mut state = State {
                 client: Arc::clone(&client),
+                acting: None,
                 accounts: accounts.clone(),
                 editor_base: None,
             };
@@ -391,7 +396,8 @@ impl Worker {
                 loop {
                     // Held only while waiting for a job, not while running it.
                     let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                    let Ok((seq, job)) = job else { break };
+                    let Ok((seq, job, acting)) = job else { break };
+                    state.acting = acting;
                     if events.send((seq, state.run(job))).is_err() {
                         break;
                     }
@@ -421,8 +427,15 @@ impl Worker {
         *self.client.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
-    /// Queue a job; its answer comes back with the same `seq`.
+    /// Queue a job; its answer comes back with the same `seq`. It acts as
+    /// the account in use now, even when it waits behind a slow write
+    /// while another account is switched to.
     pub fn send(&self, seq: u64, job: Job) {
+        let acting = self
+            .client
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         // The worker only stops when the UI drops it, so a send cannot fail
         // while the UI is still running.
         let lane = if job.reads() {
@@ -430,7 +443,7 @@ impl Worker {
         } else {
             &self.writes
         };
-        let _ = lane.send((seq, job));
+        let _ = lane.send((seq, job, acting));
     }
 
     /// A finished job and the `seq` it was sent with, if any.
@@ -451,6 +464,8 @@ fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
 struct State {
     /// Shared by every thread; a login replaces it for all of them.
     client: Arc<Mutex<Option<Client>>>,
+    /// The account in use when the running job was sent, which it acts as.
+    acting: Option<Client>,
     accounts: AccountStore,
     /// The profile record the open editor was filled from (`Some(None)` when
     /// the account has none yet); saving edits exactly this version.
@@ -459,9 +474,7 @@ struct State {
 
 impl State {
     fn client(&self) -> Result<Client> {
-        self.client
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        self.acting
             .clone()
             .ok_or_else(|| Error::api("not logged in"))
     }
@@ -534,6 +547,7 @@ impl State {
             Job::SendMessage { convo_id, text } => Event::MessageSent {
                 result: self.client().and_then(|c| c.send_message(&convo_id, &text)),
                 convo_id,
+                text,
             },
             Job::ConvoFor { did } => Event::ConvoFor {
                 result: self.client().and_then(|c| c.convo_for(&did)),

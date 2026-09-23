@@ -253,8 +253,9 @@ fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
                 Err(fail())
             },
         },
-        Job::SendMessage { convo_id, .. } => Event::MessageSent {
+        Job::SendMessage { convo_id, text } => Event::MessageSent {
             convo_id,
+            text,
             result: if ok {
                 *next_id += 1;
                 Ok(message(&format!("m{next_id}")))

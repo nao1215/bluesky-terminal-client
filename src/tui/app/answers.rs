@@ -32,6 +32,20 @@ impl App {
             self.forget_writes();
             return Vec::new();
         }
+        // A write the account before made (it is sent as that account) is
+        // not the one in use's: a like shown on its lists would be undone
+        // with a record it does not own. A download or a link opened
+        // belongs to no account.
+        if let Some(seq) = seq
+            && seq < self.account_since
+            && !matches!(
+                event,
+                Event::Downloaded(_) | Event::Opened { .. } | Event::LoggedIn(_)
+            )
+        {
+            self.forget_writes();
+            return Vec::new();
+        }
         let written = Written::of(&event);
         let jobs = self.event(event);
         if let Some(w) = written
@@ -502,12 +516,22 @@ impl App {
                 cursor,
                 result,
             } => self.messages_page(&convo_id, cursor, result),
-            Event::MessageSent { convo_id, result } => {
+            Event::MessageSent {
+                convo_id,
+                text,
+                result,
+            } => {
                 let open = self.chat.open.as_mut().filter(|o| o.convo.id == convo_id);
                 match (open, result) {
                     (Some(o), Ok(m)) => {
                         o.sending = false;
-                        o.input = TextInput::single("");
+                        // Only what was sent leaves the box: what was typed
+                        // after Enter, or a new draft in the conversation
+                        // opened again, stays.
+                        let draft = o.input.text();
+                        if let Some(rest) = draft.strip_prefix(&text) {
+                            o.input = TextInput::single(rest.trim_start());
+                        }
                         let last = m.clone();
                         o.sent(m);
                         if let Some(c) =

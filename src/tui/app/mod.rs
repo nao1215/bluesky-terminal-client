@@ -173,6 +173,35 @@ impl<T: Keyed> List<T> {
         self.error = None;
     }
 
+    /// Put a first page read again at the top of the list, and keep what
+    /// was loaded after it: the items further down, the cursor that goes on
+    /// from them, and the selection wherever it was.
+    fn renew(&mut self, page: Page<T>) {
+        let fresh: HashSet<String> = page.items.iter().map(|i| i.key().to_string()).collect();
+        let selected = self.current().map(|i| i.key().to_string());
+        // A first page without a cursor is the whole list.
+        let whole = page.cursor.is_none();
+        let rest: Vec<T> = std::mem::take(&mut self.items)
+            .into_iter()
+            .filter(|i| !whole && !fresh.contains(i.key()))
+            .collect();
+        let (cursor, pending) = if rest.is_empty() {
+            (page.cursor, false)
+        } else {
+            (self.cursor.take(), self.more_pending)
+        };
+        self.items = page.items.into_iter().chain(rest).collect();
+        self.cursor = cursor;
+        self.more_pending = pending;
+        self.selected = selected
+            .and_then(|k| self.items.iter().position(|i| i.key() == k))
+            .unwrap_or(0);
+        self.offset = self.offset.min(self.selected);
+        self.loaded = true;
+        self.loading = false;
+        self.error = None;
+    }
+
     /// The cursor to fetch from when the selection is near the end, a next
     /// page exists, and none is on its way. Marks the page as asked for.
     fn want_more(&mut self) -> Option<String> {

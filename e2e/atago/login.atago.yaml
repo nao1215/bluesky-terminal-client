@@ -426,3 +426,91 @@ scenarios:
           exit_code: 0
           stdout:
             equals: "not logged in\n"
+
+  # Writes run one after another, so a like can wait behind a slow write
+  # while the account is switched. It is still sent as the account in use
+  # when it was pressed, never as the one switched to.
+  - name: a write waiting behind a slow one is sent as the account it was pressed on, after a switch
+    mock_servers:
+      - name: home
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/a1
+                    cid: cid-a1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: "at://did:plc:me/app.bsky.graph.follow/f1" } }
+                    record: { text: "Liked and reposted from home 🇯🇵", createdAt: "2026-09-20T10:00:00.000Z" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            delay: 3s
+            json: { uri: "at://did:plc:me/app.bsky.feed.like/l1", cid: "cid-l1" }
+      - name: work
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:work/app.bsky.feed.post/w1
+                    cid: cid-w1
+                    author: { did: did:plc:work, handle: work.example, displayName: Work }
+                    record: { text: "Seen by the work account", createdAt: "2026-09-20T10:00:00.000Z" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:work/app.bsky.feed.repost/r1", cid: "cid-r1" }
+    steps:
+      - fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${home.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - *two_accounts_work
+      - *two_accounts_current
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *accounts_env
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: "Liked and reposted from home 🇯🇵"
+            # The like takes three seconds; the repost waits behind it.
+            - send: l
+            - send: b
+            - send: A
+            - expect_screen:
+                contains: "▶ @me.test  in use"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "Seen by the work account"
+            # Both writes are answered, by the first account's server.
+            - expect_screen:
+                contains: "Seen by the work account"
+                not_contains: "loading…"
+                timeout: 10s
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: home
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 2
+            header: { name: Authorization, equals: "Bearer acc" }
+      - assert:
+          mock:
+            name: home
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 2
+            body:
+              json: { path: "$.repo", equals: "did:plc:me" }
+      - assert:
+          mock:
+            name: work
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 0
