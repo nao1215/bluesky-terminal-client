@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Mute and block accounts. `M` mutes the author of the selected post, or the account whose profile is shown, and `M` again unmutes; `B` blocks after a `y` that confirms it, and `B` again unblocks. Their posts and notifications leave the lists on screen at once, and a profile says "muted" or "blocked". Both are in the `.` list with what they would do now. On the command line: `bsky mute`, `unmute`, `mutes`, `block`, `unblock` and `blocks`.
 - `bsky likes POST` and `bsky reposts POST` print who liked and who reposted a post; `bsky lists [ACTOR]` prints the lists an account made (name, purpose, number of members, description, URI), and `bsky list LIST` a list's members. A list is named by its at:// URI or its bsky.app address.
+- `bsky report TARGET --reason spam|violation|misleading|sexual|rude|other [--comment TEXT]` reports a post or an account to Bluesky's moderators. `bsky app-passwords` lists the account's app passwords, `bsky app-passwords add NAME [--privileged]` makes one and prints its password once, and `bsky app-passwords revoke NAME` revokes one; a session made with an app password is told to log in with the account's password for these.
 
 ### Changed
 
