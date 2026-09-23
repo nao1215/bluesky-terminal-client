@@ -1988,10 +1988,21 @@ impl App {
                 };
                 match result {
                     Ok(node) => {
+                        // A reload keeps the row that was selected, as every
+                        // other list does; only a first load jumps to the
+                        // post the thread was opened on.
+                        let was = th
+                            .list
+                            .items
+                            .get(th.list.selected)
+                            .map(|r| r.key().to_string());
                         let (rows, focus) = thread_rows::flatten(node);
+                        th.list.selected = was
+                            .and_then(|key| rows.iter().position(|r| r.key() == key))
+                            .unwrap_or(focus);
                         th.list.items = rows;
-                        th.list.selected = focus;
-                        th.list.offset = 0;
+                        // The view scrolls the selection into sight from here.
+                        th.list.offset = th.list.offset.min(th.list.selected);
                         th.list.loaded = true;
                     }
                     Err(e) => {
@@ -3428,6 +3439,53 @@ mod tests {
         app.handle_key(key('v'));
         app.handle_key(key('2'));
         assert!(app.threads.is_empty());
+    }
+
+    // was: R set the selection back to the focused post, so the next key
+    // acted on it instead of the reply that was picked.
+    #[test]
+    fn reloading_a_thread_keeps_the_selected_reply() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        });
+        app.handle_key(key('j'));
+        app.handle_key(key('j'));
+        assert_eq!(app.threads[0].list.selected, 3, "the second reply");
+        app.handle_key(key('R'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        });
+        assert_eq!(app.threads[0].list.selected, 3);
+        let jobs = app.handle_key(key('l'));
+        assert!(
+            matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://r2"),
+            "{jobs:?}"
+        );
+    }
+
+    #[test]
+    fn reloading_a_thread_whose_selected_reply_is_gone_goes_back_to_the_post() {
+        let mut app = logged_in();
+        app.handle_key(key('v'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        });
+        app.handle_key(key('j'));
+        app.handle_key(key('j'));
+        app.handle_key(key('R'));
+        app.handle_event(Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        });
+        assert_eq!(
+            app.threads[0].list.selected, 1,
+            "the opened post, below its parent"
+        );
     }
 
     #[test]

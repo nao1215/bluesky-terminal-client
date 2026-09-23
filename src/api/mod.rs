@@ -64,21 +64,26 @@ pub fn agent() -> ureq::Agent {
         .into()
 }
 
-/// Validate and normalize a service URL: http(s) scheme, no trailing slash.
+/// Validate and normalize a service URL: an http(s) scheme and a host, in
+/// lower case and without a trailing slash. A PDS answers XRPC at the root
+/// of its host, so a path, a query, or a fragment is refused rather than
+/// left to make every request go to an address that does not exist.
 pub fn normalize_service(url: &str) -> Result<String> {
-    let url = url.trim().trim_end_matches('/');
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"));
-    match rest {
-        Some(host) if !host.is_empty() && !host.contains(char::is_whitespace) => {
-            Ok(url.to_string())
-        }
-        _ => Err(
-            Error::new(Kind::Usage, format!("invalid service URL {url:?}"))
-                .with_hint("pass an http:// or https:// URL, e.g. --service https://bsky.social"),
-        ),
+    let typed = url.trim();
+    let invalid = || {
+        Error::new(Kind::Usage, format!("invalid service URL {typed:?}")).with_hint(
+            "pass an http:// or https:// URL with no path, e.g. --service https://bsky.social",
+        )
+    };
+    let (scheme, rest) = typed.split_once("://").ok_or_else(invalid)?;
+    if !scheme.eq_ignore_ascii_case("https") && !scheme.eq_ignore_ascii_case("http") {
+        return Err(invalid());
     }
+    let host = rest.trim_end_matches('/');
+    if host.is_empty() || host.contains(char::is_whitespace) || host.contains(['/', '?', '#']) {
+        return Err(invalid());
+    }
+    Ok(format!("{}://{host}", scheme.to_ascii_lowercase()))
 }
 
 /// Bluesky's Discover feed, shown when the account pinned no feed.
@@ -1088,6 +1093,10 @@ mod tests {
     #[rstest]
     #[case("https://bsky.social/", "https://bsky.social")]
     #[case(" http://127.0.0.1:8080 ", "http://127.0.0.1:8080")]
+    #[case("https://bsky.social//", "https://bsky.social")]
+    // A scheme is case-insensitive, and is kept in lower case.
+    #[case("HTTPS://bsky.social", "https://bsky.social")]
+    #[case("Http://127.0.0.1:8080/", "http://127.0.0.1:8080")]
     fn service_urls_are_normalized(#[case] input: &str, #[case] want: &str) {
         assert_eq!(normalize_service(input).unwrap(), want);
     }
@@ -1097,8 +1106,24 @@ mod tests {
     #[case("ftp://x")]
     #[case("https://")]
     #[case("https://a b")]
+    // Anything after the host would end up in front of /xrpc/...
+    #[case("https://bsky.social/xrpc")]
+    #[case("https://bsky.social/pds/")]
+    #[case("https://bsky.social?x=1")]
+    #[case("https://bsky.social#f")]
+    #[case("https://?")]
+    #[case("https:///")]
+    #[case("https://#")]
     fn bad_service_urls_are_usage_errors(#[case] input: &str) {
         assert_eq!(normalize_service(input).unwrap_err().kind(), Kind::Usage);
+    }
+
+    // was: the message showed the URL after a trailing slash was cut, so
+    // `https:///` was reported as `https:`.
+    #[test]
+    fn a_bad_service_url_is_quoted_as_it_was_typed() {
+        let e = normalize_service(" https:/// ").unwrap_err();
+        assert!(e.message().contains(r#""https:///""#), "{e}");
     }
 
     #[test]

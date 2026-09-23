@@ -71,6 +71,33 @@ scenarios:
               - 'error: invalid service URL "bsky.social"'
               - "hint: pass an http:// or https:// URL"
 
+  - name: a service URL with more than a host is a usage error, quoted as it was typed
+    steps:
+      - run:
+          command: bsky --service https://bsky.social/xrpc
+      - assert:
+          exit_code: 1
+          stdout:
+            empty: true
+          stderr:
+            contains:
+              - 'error: invalid service URL "https://bsky.social/xrpc"'
+              - "hint: pass an http:// or https:// URL with no path"
+      - run:
+          command: bsky --service "https://bsky.social?x=1"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'error: invalid service URL "https://bsky.social?x=1"'
+      # The URL is shown whole: a trailing slash used to be cut off first,
+      # which reported this one as "https:".
+      - run:
+          command: bsky --service https:///
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'error: invalid service URL "https:///"'
+
   - name: BSKY_SERVICE is checked like --service
     steps:
       - run:
