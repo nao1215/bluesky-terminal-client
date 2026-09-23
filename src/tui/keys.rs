@@ -463,20 +463,27 @@ pub fn actions(app: &App) -> Vec<Hint> {
         {
             v.push(("m", "message them"));
         }
-        v.push(("enter", "open the profile"));
-        v.push((
-            "f",
-            if account
-                .viewer
-                .as_ref()
-                .is_some_and(|x| x.following.is_some())
-            {
-                "unfollow"
-            } else {
-                "follow"
-            },
-        ));
-        if app.session.as_ref().is_none_or(|s| s.did != account.did) {
+        // On the Profile tab the profile is open already, and Enter opens
+        // nothing.
+        if app.tab != Tab::Profile || !app.threads.is_empty() {
+            v.push(("enter", "open the profile"));
+        }
+        let yourself = app.session.as_ref().is_some_and(|s| s.did == account.did);
+        if !yourself {
+            v.push((
+                "f",
+                if account
+                    .viewer
+                    .as_ref()
+                    .is_some_and(|x| x.following.is_some())
+                {
+                    "unfollow"
+                } else {
+                    "follow"
+                },
+            ));
+        }
+        if !yourself {
             v.push((
                 "M",
                 if account.muted() {
@@ -527,6 +534,7 @@ fn back_label(from: Option<Tab>) -> &'static str {
         Some(Tab::Search) => "back to search",
         Some(Tab::Timeline) => "back to timeline",
         Some(Tab::Notifications) => "back to notifications",
+        Some(Tab::Columns) => "back to columns",
         _ => "my profile",
     }
 }

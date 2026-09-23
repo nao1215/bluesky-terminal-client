@@ -88,8 +88,8 @@ fn profile_editor_loads_then_saves_the_fields() {
                 avatar,
             },
         ] => {
-            assert_eq!(display_name, "Me Myself");
-            assert_eq!(description, "old bio\nline2");
+            assert_eq!(display_name.as_deref(), Some("Me Myself"));
+            assert_eq!(description.as_deref(), Some("old bio\nline2"));
             assert_eq!(avatar, &None);
         }
         other => panic!("{other:?}"),

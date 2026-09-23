@@ -218,6 +218,11 @@ scenarios:
             - expect_screen:
                 contains: ["1 p1.png", "4 broken.png"]
                 stable_for: 300ms
+            # The first Esc closes the error box, the second the window. The
+            # box goes first, or the two read as Alt+Esc.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "any key closes this"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "New post"

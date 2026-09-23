@@ -373,6 +373,7 @@ impl App {
             saving: false,
             browser: None,
             avatar_chosen: None,
+            loaded: Default::default(),
         }));
         vec![Job::LoadProfileEditor]
     }

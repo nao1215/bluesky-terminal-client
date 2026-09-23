@@ -1075,8 +1075,12 @@ impl Client {
         if !value.is_object() {
             value = json!({"$type": "app.bsky.actor.profile"});
         }
-        set_or_remove(&mut value, "displayName", &edit.display_name);
-        set_or_remove(&mut value, "description", &edit.description);
+        if let Some(name) = &edit.display_name {
+            set_or_remove(&mut value, "displayName", name);
+        }
+        if let Some(description) = &edit.description {
+            set_or_remove(&mut value, "description", description);
+        }
         if let Some((bytes, mime)) = &edit.avatar {
             value["avatar"] = self.upload_blob(bytes, mime)?;
         }
@@ -1102,8 +1106,9 @@ impl Client {
 /// The fields the profile editor changes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileEdit {
-    pub display_name: String,
-    pub description: String,
+    /// `None` leaves the field as the record has it.
+    pub display_name: Option<String>,
+    pub description: Option<String>,
     /// New avatar bytes and MIME type; `None` keeps the current avatar.
     pub avatar: Option<(Vec<u8>, String)>,
 }

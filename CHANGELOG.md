@@ -29,6 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Checking that a chosen download or cache folder can be written followed a link left at the name of its test file and emptied the file the link pointed to. The test file is always a new one.
 - A command piped into a reader that stops early, as `bsky tl | head -1` does, exited 3 with "Broken pipe", and with `--json` it panicked. It stops writing and exits 0.
 - `bsky unmute` on an account muted by one of your mute lists said "unmuted" and changed nothing, and `M` in the client did the same. It now says which list mutes them, and `bsky mute` and `M` add your own mute. A profile says "muted by the list" with its name.
+- Esc pressed to close an error over the composer or the profile editor also closed the window and threw the draft away. It closes the error only; Esc again closes the window.
+- Text pasted while a post was being sent, or while the profile editor loaded or saved, showed in the box and was lost when the answer came. A paste then is not taken.
+- A paste of several lines into a field of one line (alt text, a display name, the search box) ran the words on either side of each line break together. Each run of line breaks is a space now.
+- Saving the profile after changing only the avatar, or nothing, rewrote the display name and description as the editor shows them: a tab another client wrote became spaces. A field that was not changed is left as it was.
+- After R, or after posting, the Timeline dropped the posts loaded below its first page and the selection went back to the top, so the next `l` or `b` acted on the first post. The posts loaded stay, and so does the selection.
+- The `.` list offered "open the profile" on the Profile tab, where Enter opens nothing, and "follow" on your own post or profile, which `f` refuses.
+- On a profile opened from the Columns tab, the key hints said Esc goes to your profile; it goes back to the columns, and the hint says so.
+- After `M` or `B`, the notifications of that account left the list but still counted on the Notifications tab.
 
 ## [0.4.0] - 2026-09-24
 

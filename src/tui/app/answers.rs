@@ -249,6 +249,15 @@ impl App {
         for list in notifications {
             list.retain(|item| item.n.author.did != did);
         }
+        // The count on the tab is of the notifications there are.
+        let gone_unread = self.unread.saturating_sub(
+            self.notifications
+                .items
+                .iter()
+                .filter(|i| !i.n.is_read)
+                .count(),
+        );
+        self.unread -= gone_unread.min(self.unread);
     }
 
     /// Change what the viewer is to `did` (follow, mute, block) everywhere
@@ -479,7 +488,7 @@ impl App {
                 {
                     self.status = None;
                 }
-                self.timeline.set(posts);
+                self.timeline.renew(posts);
             }
             Event::PinnedFeeds(Ok(infos)) => self.set_pinned_feeds(infos),
             // The following timeline still works; the feeds just do not show.
@@ -795,6 +804,7 @@ impl App {
                         Ok(fields) => {
                             e.fields[0] = TextInput::single(&fields.display_name);
                             e.fields[1] = TextInput::multi(&fields.description);
+                            e.loaded = [e.fields[0].text(), e.fields[1].text()];
                             e.loading = false;
                         }
                         Err(err) => {

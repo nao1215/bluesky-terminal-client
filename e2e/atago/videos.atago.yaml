@@ -549,6 +549,11 @@ scenarios:
             # chosen instead.
             - expect_screen:
                 contains: ["Too long", "1 too-long.mp4 (video 3:00)"]
+            # The first Esc closes the error box, the second the window. The
+            # box goes first, or the two read as Alt+Esc.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "any key closes this"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "New post"

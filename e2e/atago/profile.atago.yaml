@@ -327,6 +327,11 @@ scenarios:
             # The editor stays open with the input, and says why.
             - expect_screen:
                 contains: ["notes.txt is not a picture bsky can read", "╭ Edit profile"]
+            # The first Esc closes the error box, the second the window. The
+            # box goes first, or the two read as Alt+Esc.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "any key closes this"
             - send: { key: esc }
             - expect_screen:
                 not_contains: "╭ Edit profile"

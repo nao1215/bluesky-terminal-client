@@ -282,3 +282,33 @@ fn a_failed_post_keeps_the_draft() {
     assert_eq!(c.input.text(), "draft");
     assert!(!c.sending);
 }
+
+// The actions list offers only what its key does there: no "open the
+// profile" on the Profile tab, where Enter opens nothing, and no follow on
+// your own post or profile, which f refuses.
+#[test]
+fn the_actions_list_offers_nothing_its_key_refuses() {
+    let mut app = logged_in();
+    app.handle_event(Event::Timeline(Ok(vec![post(
+        "at://did:plc:me/app.bsky.feed.post/1",
+        "did:plc:me",
+        false,
+    )]
+    .into())));
+    let keys: Vec<&str> = crate::tui::keys::actions(&app)
+        .iter()
+        .map(|(k, _)| *k)
+        .collect();
+    assert!(!keys.contains(&"f"), "{keys:?}");
+    app.handle_key(key('4'));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({"did": "did:plc:me", "handle": "me.test"})).unwrap(),
+        Vec::new().into(),
+    ))));
+    let keys: Vec<&str> = crate::tui::keys::actions(&app)
+        .iter()
+        .map(|(k, _)| *k)
+        .collect();
+    assert!(!keys.contains(&"enter"), "{keys:?}");
+    assert!(!keys.contains(&"f"), "{keys:?}");
+}

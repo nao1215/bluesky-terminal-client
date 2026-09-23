@@ -179,8 +179,10 @@ impl<T: Keyed> List<T> {
     fn renew(&mut self, page: Page<T>) {
         let fresh: HashSet<String> = page.items.iter().map(|i| i.key().to_string()).collect();
         let selected = self.current().map(|i| i.key().to_string());
-        // A first page without a cursor is the whole list.
-        let whole = page.cursor.is_none();
+        // A first page without a cursor is the whole list. One that shares
+        // nothing with the list is not its top either: posts between them
+        // would never be loaded, so it starts the list again.
+        let whole = page.cursor.is_none() || !self.items.iter().any(|i| fresh.contains(i.key()));
         let rest: Vec<T> = std::mem::take(&mut self.items)
             .into_iter()
             .filter(|i| !whole && !fresh.contains(i.key()))
@@ -409,6 +411,11 @@ pub struct EditProfile {
     /// The avatar chosen in the browser. The field shows its name; this keeps
     /// the path itself, which may not be text that round-trips.
     pub avatar_chosen: Option<PathBuf>,
+    /// The display name and description as the editor showed them when
+    /// they came: a field still equal to its own is not sent, so text the
+    /// editor shows differently (a tab, a line break in the name) is not
+    /// rewritten when only another field was changed.
+    pub loaded: [String; 2],
 }
 
 impl EditProfile {
@@ -856,6 +863,18 @@ impl App {
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Job> {
         if self.status.as_ref().is_some_and(|s| s.error) {
             self.status = None;
+            // Esc that closes the box over the composer or the profile
+            // editor only closes the box: there it would also throw the
+            // draft away. Other keys go on, so typing goes on.
+            if key.code == KeyCode::Esc
+                && matches!(
+                    self.overlay,
+                    Some(Overlay::Compose(_) | Overlay::EditProfile(_))
+                )
+                && self.login.is_none()
+            {
+                return Vec::new();
+            }
         }
         let jobs = self.key(key);
         self.pending += jobs.len();
@@ -869,8 +888,12 @@ impl App {
             return;
         }
         match &mut self.overlay {
-            Some(Overlay::Compose(c)) if c.browser.is_none() => c.field().insert_str(text),
-            Some(Overlay::EditProfile(e)) if e.browser.is_none() => {
+            // Not while the post is on its way or the profile loads or is
+            // saved: the answer would drop what was pasted.
+            Some(Overlay::Compose(c)) if c.browser.is_none() && !c.sending => {
+                c.field().insert_str(text)
+            }
+            Some(Overlay::EditProfile(e)) if e.browser.is_none() && !e.loading && !e.saving => {
                 e.fields[e.focus].insert_str(text)
             }
             Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}

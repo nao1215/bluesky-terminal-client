@@ -141,9 +141,10 @@ pub enum Job {
         url: String,
         browser: Option<String>,
     },
+    /// A field that is `None` is left as the record has it.
     SaveProfile {
-        display_name: String,
-        description: String,
+        display_name: Option<String>,
+        description: Option<String>,
         /// A new avatar picture; `None` keeps the current one.
         avatar: Option<PathBuf>,
     },
@@ -851,8 +852,8 @@ impl State {
 
     fn save_profile(
         &mut self,
-        display_name: String,
-        description: String,
+        display_name: Option<String>,
+        description: Option<String>,
         avatar: Option<&std::path::Path>,
     ) -> Result<()> {
         let avatar = avatar.map(read_avatar).transpose()?;

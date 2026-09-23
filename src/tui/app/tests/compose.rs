@@ -143,6 +143,7 @@ fn a_profile_editor_survives_the_session_expiring_while_it_is_saved() {
         saving: true,
         browser: None,
         avatar_chosen: None,
+        loaded: Default::default(),
     }));
     app.handle_event(Event::ProfileSaved(Err(Error::api(
         "com.atproto.server.refreshSession failed: ExpiredToken: Token has expired",
@@ -280,6 +281,7 @@ fn the_avatar_is_chosen_in_the_browser() {
         saving: false,
         browser: None,
         avatar_chosen: None,
+        loaded: Default::default(),
     }));
     app.handle_key(ctrl('o'));
     app.handle_key(key('G'));
@@ -349,4 +351,76 @@ fn notifications_loaded_at_start_are_seen_only_when_their_tab_is() {
     assert!(matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-22T01:00:00.000Z"));
     app.handle_key(key('1'));
     assert!(app.handle_key(key('3')).is_empty(), "marked once");
+}
+
+// The error box closes on any key. In the composer Esc only closes it:
+// it would otherwise throw the draft away too.
+#[test]
+fn a_key_that_closes_an_error_leaves_the_draft_alone() {
+    let mut app = logged_in();
+    app.handle_key(key('n'));
+    let long: String = "家族👨\u{200d}👩\u{200d}👧 ".repeat(80);
+    app.handle_paste(&long);
+    assert!(app.handle_key(ctrl('s')).is_empty());
+    assert!(app.status.as_ref().is_some_and(|s| s.error));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.status.is_none(), "the error is closed");
+    let Some(Overlay::Compose(c)) = &app.overlay else {
+        panic!("the draft was thrown away")
+    };
+    assert_eq!(c.input.text(), long);
+    // With the box closed, Esc closes the composer as before.
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.overlay.is_none());
+}
+
+// A paste while the post is on its way would show in the box and be lost
+// when the answer closes it; it is not taken.
+#[test]
+fn a_paste_while_the_post_is_sent_is_not_taken() {
+    let mut app = logged_in();
+    app.handle_key(key('n'));
+    type_str(&mut app, "hello");
+    assert_eq!(app.handle_key(ctrl('s')).len(), 1);
+    app.handle_paste(" world 🇯🇵");
+    let Some(Overlay::Compose(c)) = &app.overlay else {
+        panic!()
+    };
+    assert_eq!(c.input.text(), "hello");
+}
+
+// A profile the editor did not change is not rewritten: a description
+// with a tab, as another client wrote it, is sent back only when edited.
+#[test]
+fn the_profile_editor_sends_only_the_fields_that_were_changed() {
+    let mut app = logged_in();
+    app.handle_key(key('4'));
+    app.handle_key(key('e'));
+    app.handle_paste("pasted while loading");
+    app.handle_event(Event::ProfileEditor(Ok(
+        crate::tui::worker::ProfileFields {
+            display_name: "Me 🌸".into(),
+            description: "col1\tcol2\n".into(),
+        },
+    )));
+    let Some(Overlay::EditProfile(e)) = &app.overlay else {
+        panic!()
+    };
+    assert_eq!(
+        e.fields[0].text(),
+        "Me 🌸",
+        "the paste while loading was not taken"
+    );
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(
+        matches!(
+            &jobs[..],
+            [Job::SaveProfile {
+                display_name: None,
+                description: None,
+                avatar: None
+            }]
+        ),
+        "{jobs:?}"
+    );
 }
