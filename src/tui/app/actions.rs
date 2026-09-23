@@ -1,0 +1,378 @@
+//! The keys of a post and an account: view, open, reply, like, repost, quote, copy, delete, follow, and the actions list.
+
+use super::*;
+
+impl App {
+    /// Open the selected post's pictures (or video) full screen; a post
+    /// with none but a link opens the link. A terminal that cannot show
+    /// them opens the post on bsky.app, where they can be seen.
+    pub(super) fn open_viewer(&mut self) -> Vec<Job> {
+        let Some(post) = self.post_to_view() else {
+            return Vec::new();
+        };
+        let media = post.embed.as_ref().map(|e| e.media()).unwrap_or_default();
+        if media.is_empty() {
+            return self.open_link(false);
+        }
+        if !self.pictures {
+            return match post.web_url() {
+                Some(url) => vec![self.open_url(url)],
+                None => self.open_link(false),
+            };
+        }
+        self.overlay = Some(Overlay::Viewer {
+            media,
+            index: 0,
+            replay: 0,
+        });
+        Vec::new()
+    }
+
+    /// Open the selected post's first link in the web browser. `or_post`
+    /// falls back to the post's own page on bsky.app, where its replies
+    /// are: that is what `o` does, so the key always leads somewhere.
+    /// Space does not, since a browser is not what it offers.
+    pub(super) fn open_link(&mut self, or_post: bool) -> Vec<Job> {
+        let Some(post) = self.post_to_view() else {
+            return Vec::new();
+        };
+        let url = post
+            .links()
+            .into_iter()
+            .next()
+            .or_else(|| or_post.then(|| post.web_url()).flatten());
+        match url {
+            Some(url) => vec![self.open_url(url)],
+            None => {
+                self.info("this post has no pictures, video, or link");
+                Vec::new()
+            }
+        }
+    }
+
+    pub(super) fn open_thread(&mut self) -> Vec<Job> {
+        // A like or repost opens the thread of the post it is about.
+        let post = self.post_to_view();
+        let Some(post) = post else {
+            return Vec::new();
+        };
+        self.threads.push(ThreadView {
+            uri: post.uri.clone(),
+            ..ThreadView::default()
+        });
+        vec![Job::Thread(post.uri)]
+    }
+
+    pub(super) fn refresh(&mut self) -> Vec<Job> {
+        if let Some(th) = self.threads.last_mut() {
+            th.list.loaded = false;
+            th.error = None;
+            return vec![Job::Thread(th.uri.clone())];
+        }
+        match self.tab {
+            Tab::Timeline => {
+                self.info("refreshing…");
+                match self.current_feed() {
+                    Feed::Custom(uri) => {
+                        self.feed_list().begin();
+                        vec![Job::CustomFeed(uri)]
+                    }
+                    _ => vec![Job::Timeline],
+                }
+            }
+            Tab::Search => self.run_search(),
+            Tab::Profile => self.open_profile(self.profile.actor.clone()),
+            Tab::Notifications => self.load_notifications(),
+            Tab::Columns => {
+                let id = self.columns.focused().map(|c| c.id);
+                id.map(|id| self.load_column(id))
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            }
+            Tab::Chat => self.read_chat(),
+        }
+    }
+
+    pub(super) fn reply(&mut self) -> Vec<Job> {
+        if let Some(post) = self.selected_post() {
+            let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
+            self.overlay = Some(Overlay::Compose(Compose::new(Some((
+                post.reply_ref(),
+                post.author.handle.clone(),
+                excerpt,
+            )))));
+        }
+        Vec::new()
+    }
+
+    /// Claim `key` for a like or follow; false when one is already in flight.
+    pub(super) fn claim(&mut self, key: String) -> bool {
+        if self.in_flight.insert(key) {
+            true
+        } else {
+            self.info("still waiting for the server…");
+            false
+        }
+    }
+
+    pub(super) fn toggle_like(&mut self) -> Vec<Job> {
+        let Some(post) = self.selected_post() else {
+            return Vec::new();
+        };
+        if !self.claim(format!("like:{}", post.uri)) {
+            return Vec::new();
+        }
+        match post.like_uri() {
+            Some(like) => vec![Job::Unlike {
+                post_uri: post.uri.clone(),
+                like_uri: like.to_string(),
+            }],
+            None => vec![Job::Like {
+                subject: post.strong_ref(),
+            }],
+        }
+    }
+
+    /// A key while the actions list is open: move, run the chosen entry, or
+    /// run the key itself, which is what it would have done anyway.
+    pub(super) fn actions_key(
+        &mut self,
+        key: KeyEvent,
+        selected: usize,
+        about: Option<String>,
+    ) -> Vec<Job> {
+        // The selection moved off the post the list was opened on (a reload
+        // without it, say): what it offers is not about that post any more.
+        if self.actions_subject() != about {
+            self.overlay = None;
+            self.info("the post the list was about is no longer selected; press . again");
+            return Vec::new();
+        }
+        let entries = keys::actions(self);
+        let n = entries.len().max(1);
+        let selected = selected.min(n - 1);
+        let run = |app: &mut Self, name: &'static str| {
+            app.overlay = None;
+            app.main_key(keys::action_key(name))
+        };
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.overlay = Some(Overlay::Actions {
+                    selected: (selected + 1) % n,
+                    about,
+                });
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.overlay = Some(Overlay::Actions {
+                    selected: (selected + n - 1) % n,
+                    about,
+                });
+            }
+            KeyCode::Esc | KeyCode::Char('.' | 'q') => self.overlay = None,
+            KeyCode::Enter => {
+                return match entries.get(selected) {
+                    Some(&(name, _)) => run(self, name),
+                    None => {
+                        self.overlay = None;
+                        Vec::new()
+                    }
+                };
+            }
+            code => {
+                if let Some(&(name, _)) = entries
+                    .iter()
+                    .find(|(name, _)| keys::action_key(name).code == code)
+                {
+                    return run(self, name);
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// `.`: what the keys of this view do to the selected post, as a list.
+    /// Nothing to act on means nothing to show.
+    pub(super) fn open_actions(&mut self) {
+        if keys::actions(self).is_empty() {
+            return;
+        }
+        self.overlay = Some(Overlay::Actions {
+            selected: 0,
+            about: self.actions_subject(),
+        });
+    }
+
+    /// What the actions list acts on: the selected post, or, where the keys
+    /// act on an account alone, that account.
+    pub(super) fn actions_subject(&self) -> Option<String> {
+        self.shown_post()
+            .map(|p| p.uri.clone())
+            .or_else(|| self.shown_account().map(|a| a.did.clone()))
+    }
+
+    /// `Q`: a new post that quotes the selected one.
+    pub(super) fn quote(&mut self) {
+        if let Some(post) = self.selected_post() {
+            let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
+            self.overlay = Some(Overlay::Compose(Compose::quoting((
+                post.strong_ref(),
+                post.author.handle.clone(),
+                excerpt,
+            ))));
+        }
+    }
+
+    /// `c`: the selected post's address on bsky.app, for the terminal's
+    /// clipboard. It is the address `o` opens, so the two keys agree.
+    pub(super) fn copy_link(&mut self) {
+        let Some(post) = self.post_to_view() else {
+            return;
+        };
+        match post.web_url() {
+            Some(url) => {
+                self.info(format!("copied {url}"));
+                self.to_copy = Some(url);
+            }
+            None => self.info("this post has no address to copy"),
+        }
+    }
+
+    /// Text waiting to go to the terminal's clipboard, taken by the event
+    /// loop that owns the terminal.
+    pub fn take_copy(&mut self) -> Option<String> {
+        self.to_copy.take()
+    }
+
+    /// `D`: ask before deleting the selected post. Only your own, and only
+    /// with a second key, since a deleted post cannot be brought back.
+    pub(super) fn ask_delete(&mut self) {
+        let Some(post) = self.selected_post() else {
+            return;
+        };
+        let mine = self
+            .session
+            .as_ref()
+            .is_some_and(|s| s.did == post.author.did);
+        if !mine {
+            self.info("you can only delete your own posts");
+            return;
+        }
+        if self.in_flight.contains(&format!("delete:{}", post.uri)) {
+            self.info("still waiting for the server…");
+            return;
+        }
+        self.info("press y to delete this post, any other key to keep it");
+        self.confirm_delete = Some(post.uri);
+    }
+
+    pub(super) fn toggle_repost(&mut self) -> Vec<Job> {
+        let Some(post) = self.selected_post() else {
+            return Vec::new();
+        };
+        if !self.claim(format!("repost:{}", post.uri)) {
+            return Vec::new();
+        }
+        match post.repost_uri() {
+            Some(uri) => vec![Job::Unrepost {
+                post_uri: post.uri.clone(),
+                repost_uri: uri.to_string(),
+            }],
+            None => vec![Job::Repost {
+                subject: post.strong_ref(),
+            }],
+        }
+    }
+
+    pub(super) fn toggle_follow(&mut self) -> Vec<Job> {
+        let Some(account) = self.selected_account() else {
+            return Vec::new();
+        };
+        if self.session.as_ref().is_some_and(|s| s.did == account.did) {
+            self.error("you cannot follow yourself");
+            return Vec::new();
+        }
+        if !self.claim(format!("follow:{}", account.did)) {
+            return Vec::new();
+        }
+        match account.following_uri() {
+            Some(uri) => vec![Job::Unfollow {
+                did: account.did.clone(),
+                follow_uri: uri.to_string(),
+            }],
+            None => vec![Job::Follow {
+                did: account.did.clone(),
+            }],
+        }
+    }
+
+    /// `e`: the profile editor, which waits for the record it starts from.
+    pub(super) fn edit_profile(&mut self) -> Vec<Job> {
+        if self.profile.actor.is_some() {
+            self.error("you can only edit your own profile (Esc returns to it)");
+            return Vec::new();
+        }
+        self.overlay = Some(Overlay::EditProfile(EditProfile {
+            fields: [
+                TextInput::single(""),
+                TextInput::multi(""),
+                TextInput::single(""),
+            ],
+            focus: 0,
+            loading: true,
+            saving: false,
+            browser: None,
+            avatar_chosen: None,
+        }));
+        vec![Job::LoadProfileEditor]
+    }
+
+    /// Show the next (`1`) or previous (`-1`) feed, going round, and load
+    /// it the first time it is shown.
+    pub(super) fn switch_feed(&mut self, delta: isize) -> Vec<Job> {
+        if self.feeds.is_empty() {
+            return Vec::new();
+        }
+        let count = self.feeds.len() as isize + 1;
+        self.feed = (self.feed as isize + delta).rem_euclid(count) as usize;
+        let feed = self.current_feed();
+        let list = self.feed_list();
+        match feed {
+            Feed::Custom(uri) if !list.loaded && !list.loading => {
+                list.begin();
+                vec![Job::CustomFeed(uri)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Take the pinned feeds, keeping what was loaded of a feed still
+    /// pinned, and the feed shown when it still is.
+    pub(super) fn set_pinned_feeds(&mut self, infos: Vec<crate::api::types::FeedInfo>) {
+        let shown = self.current_feed();
+        let mut old: Vec<CustomFeed> = std::mem::take(&mut self.feeds);
+        self.feeds = infos
+            .into_iter()
+            .map(
+                |info| match old.iter().position(|f| f.info.uri == info.uri) {
+                    Some(i) => CustomFeed {
+                        info,
+                        list: std::mem::take(&mut old[i].list),
+                    },
+                    None => CustomFeed {
+                        info,
+                        list: List::default(),
+                    },
+                },
+            )
+            .collect();
+        self.feed = match shown {
+            Feed::Custom(uri) => self
+                .feeds
+                .iter()
+                .position(|f| f.info.uri == uri)
+                .map_or(0, |i| i + 1),
+            _ => 0,
+        };
+    }
+}

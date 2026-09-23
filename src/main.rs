@@ -3,6 +3,7 @@
 mod api;
 mod browser;
 mod cli;
+mod clock;
 mod compose;
 mod config;
 mod error;
