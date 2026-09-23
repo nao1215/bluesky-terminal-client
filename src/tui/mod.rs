@@ -72,20 +72,36 @@ fn event_loop(
     depth: theme::ColorDepth,
     service: &str,
 ) -> Result<()> {
-    let cache =
-        crate::config::cache_dir().map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
-    let mut images = match picker {
-        Some(picker) => Images::new(picker, cache),
-        None => Images::none(),
+    let env = crate::config::Environment::read();
+    let (loaded, warning) = settings.load();
+    // The file turns pictures off unless BSKY_GRAPHICS asks for them.
+    let off = loaded.pictures_off() && env.graphics.is_none();
+    // The picker is kept even with pictures off, so they can be turned
+    // back on without asking the terminal again while keys are read.
+    let make_images = |picker: &Option<ratatui_image::picker::Picker>| {
+        let cache = crate::config::cache_dir()
+            .map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
+        let images = match picker {
+            Some(picker) => Images::new(picker.clone(), cache),
+            None => Images::none(),
+        };
+        if let Some(cdn) = picture_server(service) {
+            images.connect(cdn);
+        }
+        images
     };
-    if let Some(cdn) = picture_server(service) {
-        images.connect(cdn);
-    }
+    let mut images = if off {
+        Images::none()
+    } else {
+        make_images(&picker)
+    };
     let worker = Worker::spawn(session.clone(), store);
     let (mut app, jobs) = App::new(session, service);
-    let (loaded, warning) = settings.load();
+    app.env = env;
     app.apply_settings(loaded, depth, warning);
-    if !images.shows() {
+    if off {
+        app.pictures = false;
+    } else if !images.shows() {
         app.without_pictures();
     }
     for job in jobs {
@@ -140,6 +156,25 @@ fn event_loop(
         // network: a theme applied just before q must not wait behind one.
         if let Some(s) = app.take_settings_save() {
             app.settings_saved(settings.save(&s));
+            dirty = true;
+        }
+        if let Some(on) = app.take_pictures_change() {
+            // The pictures on screen go with the Images that drew them:
+            // kitty's copies are deleted, and every cell is drawn again.
+            if let Some(delete) = images.delete_all() {
+                let mut out = io::stdout();
+                let _ = io::Write::write_all(&mut out, delete.as_bytes());
+                let _ = io::Write::flush(&mut out);
+            }
+            images = if on {
+                make_images(&picker)
+            } else {
+                Images::none()
+            };
+            if on {
+                app.pictures_back(images.shows());
+            }
+            term.clear().map_err(io_err)?;
             dirty = true;
         }
         while let Some((seq, ev)) = worker.try_recv() {

@@ -94,12 +94,14 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `Space` `o` | View pictures or video (as text: open the post in the browser), open the link or the post |
 | `Enter` | The author's profile (`Esc` comes back) |
 | `/` | Search (`t` switches posts and accounts) |
-| `e` | Edit your profile |
+| `e` `s` | Edit your profile, settings (on your own Profile tab) |
 | `T` | Themes |
 | `R` | Refresh |
 | `?` `q` | Help, quit |
 
 ## Configuration
+
+`s` on your own Profile tab opens the settings: the theme, pictures on or off, and where bsky keeps downloads and pictures. They are kept in `settings.json`; a variable below that is set wins over it, and the screen says so.
 
 | Variable | Meaning |
 |----------|---------|

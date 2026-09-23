@@ -108,6 +108,10 @@ pub const HELP: &[Section] = &[
         title: "Profile",
         keys: &[
             ("e", "edit your profile"),
+            (
+                "s",
+                "settings: theme, pictures, and where bsky keeps things",
+            ),
             ("f", "follow / unfollow the account shown"),
             ("esc", "back to the list it was opened from"),
         ],
@@ -160,6 +164,19 @@ pub const HELP: &[Section] = &[
             ("g G pgdn pgup", "first / last / ten further"),
             ("enter", "use it and remember it"),
             ("esc", "go back to the theme you had"),
+        ],
+    },
+    Section {
+        title: "Settings",
+        keys: &[
+            ("s", "open them, on the Profile tab of your own profile"),
+            ("j k", "move"),
+            (
+                "enter space",
+                "change it: choose a theme, turn pictures off or back on",
+            ),
+            ("", "a setting a BSKY_ variable fixes says so and stays"),
+            ("esc", "close"),
         ],
     },
     Section {
@@ -236,6 +253,9 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Actions { .. }) => {
             return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
         }
+        Some(Overlay::Settings { .. }) => {
+            return vec![("j k", "move"), ("enter", "change"), ("esc", "close")];
+        }
         Some(Overlay::Viewer { media, index, .. }) => {
             let mut v = Vec::new();
             if media.len() > 1 {
@@ -307,6 +327,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("j k", "move"),
                 (".", "actions"),
                 ("e", "edit profile"),
+                ("s", "settings"),
                 ("R", "reload"),
             ];
             // Your own profile, opened from a list: Esc still goes back.

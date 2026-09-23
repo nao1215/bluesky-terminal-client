@@ -64,7 +64,7 @@ scenarios:
                   - "Old Name"
                   - "@me.test"
                   - "12 followers  3 following  42 posts"
-                  - "this is you (e to edit)"
+                  - "this is you  [ e Edit profile ]  [ s Settings ]"
                   - "old bio"
                   - "My first post"
                 not_contains: "(f to toggle)"
@@ -118,18 +118,18 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             # The editor starts from the stored record, not from the view.
             - expect_screen:
-                contains: ["Edit profile", "Display name", "Old Name", "old bio", "New avatar (path, or ctrl+o to browse; optional)"]
+                contains: ["╭ Edit profile", "Display name", "Old Name", "old bio", "New avatar (path, or ctrl+o to browse; optional)"]
             # Ctrl+U clears the field; the description is left as it is.
             - send: { key: ctrl-u }
             - send: "新しい名前"
             - send: { key: ctrl-s }
             - expect_screen:
                 contains: "profile updated"
-                not_contains: "Edit profile"
+                not_contains: "╭ Edit profile"
             - send: q
       - assert:
           exit_code: 0
@@ -192,7 +192,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
@@ -250,7 +250,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
@@ -314,7 +314,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
@@ -326,10 +326,10 @@ scenarios:
             - send: { key: ctrl-s }
             # The editor stays open with the input, and says why.
             - expect_screen:
-                contains: ["notes.txt is not a picture bsky can read", "Edit profile"]
+                contains: ["notes.txt is not a picture bsky can read", "╭ Edit profile"]
             - send: { key: esc }
             - expect_screen:
-                not_contains: "Edit profile"
+                not_contains: "╭ Edit profile"
             - send: q
       - assert:
           exit_code: 0
@@ -364,7 +364,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             - expect_screen:
                 contains: "New avatar (path, or ctrl+o to browse; optional)"
@@ -413,7 +413,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             # The avatar field appears once the stored record has loaded; "old
             # bio" alone would also match the profile behind the editor.
@@ -427,11 +427,11 @@ scenarios:
                 contains: [" Error ", "the profile was changed elsewhere", "the current version"]
             - send: { key: right }
             - expect_screen:
-                contains: ["Old Name!", "Edit profile"]
+                contains: ["Old Name!", "╭ Edit profile"]
                 not_contains: " Error "
             - send: { key: esc }
             - expect_screen:
-                not_contains: "Edit profile"
+                not_contains: "╭ Edit profile"
             - send: q
       - assert:
           exit_code: 0
@@ -573,3 +573,164 @@ scenarios:
             path: /xrpc/app.bsky.feed.getAuthorFeed
             count: 2
             query: { name: cursor, equals: "author-page-2" }
+
+  # The settings screen: s on your own profile. Pictures turned off there
+  # are off at once and after a restart; auto brings them back without one.
+  - name: pictures turned off on the settings screen stay off, and auto brings them back
+    mock_servers:
+      - name: api
+        routes:
+          - &picture_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Photo from the mountains", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed: { $type: app.bsky.embed.images#view, images: [ { thumb: "${api.url}/img/photo.png", fullsize: "${api.url}/img/photo.png", alt: "山の頂上👨‍👩‍👧", aspectRatio: { width: 4, height: 3 } } ] }
+          - *own_profile
+          - *own_feed
+          - &img_photo { method: GET, path: /img/photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+                images: { count: 1 }
+            - send: "4"
+            - expect_screen:
+                contains: ["this is you  [ e Edit profile ]  [ s Settings ]", "s settings"]
+            - send: s
+            - expect_screen:
+                contains: [" Settings ", "▶ Theme", "Pictures         auto", "Download folder", "Picture cache", "Video service", "Browser", "j k move  enter change  esc close"]
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Pictures         off", "pictures: off"]
+            # Wait for the window itself to go before the next key, or Esc
+            # followed by 1 reads as Alt+1.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            # The post says what it carries instead of drawing it. The
+            # picture sent before is still counted by the terminal, so that
+            # none is sent at all is checked on the next start.
+            - expect_screen:
+                contains: ["Photo from the mountains", "▣ 1 picture: 山の頂上👨‍👩‍👧", "space open in browser"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.pictures", equals: "off" }
+      # Started again with the same settings: still off, and no picture is
+      # sent until they are turned back on.
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "▣ 1 picture: 山の頂上👨‍👩‍👧"
+                not_contains: "cannot show pictures"
+                images: { count: 0 }
+                stable_for: 300ms
+            # Back to auto: the picture is drawn again, without a restart.
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - expect_screen:
+                contains: "Pictures         off"
+            - send: j
+            - send: " "
+            - expect_screen:
+                contains: ["Pictures         auto", "pictures: auto"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - expect_screen:
+                contains: "Photo from the mountains"
+                not_contains: "▣ 1 picture"
+                images: { count: 1 }
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.pictures", equals: "auto" }
+
+  - name: a setting a variable fixes is shown as set for this run and is not changed
+    mock_servers:
+      - name: api
+        routes:
+          - *picture_timeline
+          - *own_profile
+          - *own_feed
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_GRAPHICS: kitty
+            BSKY_DOWNLOAD_DIR: ${workdir}/saved
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+                images: { count: 1 }
+            - send: "4"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - expect_screen:
+                contains: ["Pictures         kitty", "saved"]
+            - send: j
+            - expect_screen:
+                contains: "set by BSKY_GRAPHICS for this run"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "Pictures         kitty"
+                not_contains: "pictures: off"
+            - send: j
+            - expect_screen:
+                contains: "set by BSKY_DOWNLOAD_DIR for this run"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - expect_screen:
+                contains: "Photo from the mountains"
+                images: { count: 1 }
+            - send: q
+      # Nothing was chosen, so nothing was written.
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            exists: false

@@ -7,9 +7,9 @@
 //!
 //! - `session.json` holds the tokens of an app-password login, so it is
 //!   written with owner-only permissions on Unix. `bsky logout` removes it.
-//! - `settings.json` holds preferences (the color theme). It is written only
-//!   when a preference is changed, and a broken one is ignored with a
-//!   warning rather than stopping bsky.
+//! - `settings.json` holds preferences (the color theme, pictures on or
+//!   off). It is written only when a preference is changed, and a broken
+//!   one is ignored with a warning rather than stopping bsky.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,10 +30,56 @@ pub struct Settings {
     /// Name of the color theme.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Whether pictures and video are drawn: `"auto"` (when the terminal
+    /// can) or `"off"`. `BSKY_GRAPHICS` in the environment wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pictures: Option<String>,
     /// Keys this version of bsky does not know, kept so that saving does not
     /// drop what a newer version wrote.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
+}
+
+impl Settings {
+    /// Whether the file turns pictures off.
+    pub fn pictures_off(&self) -> bool {
+        self.pictures.as_deref() == Some("off")
+    }
+}
+
+/// The variables that fix a setting for this run, read once at the start.
+/// A variable set here wins over `settings.json`, and the settings screen
+/// says so rather than fighting it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Environment {
+    /// `BSKY_GRAPHICS`
+    pub graphics: Option<String>,
+    /// `BSKY_DOWNLOAD_DIR`
+    pub download_dir: Option<String>,
+    /// `BSKY_CACHE_DIR`
+    pub cache_dir: Option<String>,
+    /// `BSKY_VIDEO_SERVICE`
+    pub video_service: Option<String>,
+    /// `BSKY_BROWSER`
+    pub browser: Option<String>,
+}
+
+impl Environment {
+    /// The variables as this process sees them; an empty one is not set.
+    pub fn read() -> Self {
+        Self::from_vars(|k| std::env::var(k).ok())
+    }
+
+    fn from_vars(get: impl Fn(&str) -> Option<String>) -> Self {
+        let get = |k: &str| get(k).filter(|v| !v.trim().is_empty());
+        Self {
+            graphics: get(crate::terminal::GRAPHICS_ENV),
+            download_dir: get(DOWNLOAD_DIR_ENV),
+            cache_dir: get(CACHE_DIR_ENV),
+            video_service: get(VIDEO_SERVICE_ENV),
+            browser: get(crate::browser::BROWSER_ENV),
+        }
+    }
 }
 
 /// Reads and writes `settings.json` inside one directory.
@@ -139,10 +185,16 @@ pub const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
 pub fn download_dir() -> Option<PathBuf> {
     match std::env::var_os(DOWNLOAD_DIR_ENV).filter(|v| !v.is_empty()) {
         Some(v) => Some(PathBuf::from(v)),
-        None => dirs::download_dir()
-            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
-            .map(|d| d.join("bsky")),
+        None => default_download_dir(),
     }
+}
+
+/// The download folder when nothing names another: `bsky` in the platform
+/// download folder.
+pub fn default_download_dir() -> Option<PathBuf> {
+    dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+        .map(|d| d.join("bsky"))
 }
 
 /// Environment variable naming the video service to upload videos to.
@@ -165,6 +217,12 @@ pub const CACHE_DIR_ENV: &str = "BSKY_CACHE_DIR";
 /// platform cache directory.
 pub fn cache_dir() -> Option<PathBuf> {
     cache_dir_from(std::env::var_os(CACHE_DIR_ENV), dirs::cache_dir())
+}
+
+/// The picture cache when nothing names another: `bsky` in the platform
+/// cache folder.
+pub fn default_cache_dir() -> Option<PathBuf> {
+    cache_dir_from(None, dirs::cache_dir())
 }
 
 fn cache_dir_from(var: Option<std::ffi::OsString>, platform: Option<PathBuf>) -> Option<PathBuf> {
@@ -291,6 +349,44 @@ mod tests {
         );
         assert_eq!(cache_dir_from(Some("off".into()), platform), None);
         assert_eq!(cache_dir_from(None, None), None);
+    }
+
+    #[test]
+    fn an_empty_variable_does_not_fix_a_setting() {
+        let env = Environment::from_vars(|k| match k {
+            "BSKY_GRAPHICS" => Some("kitty".into()),
+            "BSKY_DOWNLOAD_DIR" => Some("  ".into()),
+            "BSKY_BROWSER" => Some("".into()),
+            "BSKY_CACHE_DIR" => Some("off".into()),
+            _ => None,
+        });
+        assert_eq!(
+            env,
+            Environment {
+                graphics: Some("kitty".into()),
+                cache_dir: Some("off".into()),
+                ..Environment::default()
+            }
+        );
+    }
+
+    #[test]
+    fn pictures_off_is_kept_beside_the_theme_and_unknown_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path());
+        fs::write(store.path(), br#"{"theme":"nord","future":1}"#).unwrap();
+        let (mut settings, _) = store.load();
+        assert!(!settings.pictures_off());
+        settings.pictures = Some("off".into());
+        store.save(&settings).unwrap();
+        let (again, _) = store.load();
+        assert!(again.pictures_off());
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.path()).unwrap()).unwrap();
+        assert_eq!(
+            saved,
+            serde_json::json!({"theme": "nord", "pictures": "off", "future": 1})
+        );
     }
 
     fn sample() -> Session {

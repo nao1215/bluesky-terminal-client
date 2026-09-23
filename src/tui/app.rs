@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::api::post_length_problem;
 use crate::api::types::{Media, Post, Profile, ReplyRef, StrongRef};
-use crate::config::{Session, Settings};
+use crate::config::{Environment, Session, Settings};
 use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
 use crate::tui::files::{Action, Browser};
@@ -407,6 +407,10 @@ pub enum Overlay {
     Actions {
         selected: usize,
     },
+    /// The settings screen, opened with `s` on your own profile.
+    Settings {
+        selected: usize,
+    },
     /// A post's pictures and video, full screen, `index` the one shown;
     /// `replay` counts `r` presses, each playing the video from the start.
     Viewer {
@@ -414,6 +418,17 @@ pub enum Overlay {
         index: usize,
         replay: u32,
     },
+}
+
+/// One row of the settings screen: what the setting is, what it is set to,
+/// and where that comes from or what Enter does to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRow {
+    pub name: &'static str,
+    pub value: String,
+    pub note: String,
+    /// Whether the screen can change it.
+    pub editable: bool,
 }
 
 /// A one-line message in the status row. It is transient: it clears after
@@ -488,6 +503,16 @@ pub struct App {
     /// Whether the terminal shows pictures and video. Without them the
     /// lists are text, and `Space` opens a post's media on bsky.app.
     pub pictures: bool,
+    /// The variables that fix a setting for this run.
+    pub env: Environment,
+    /// Pictures turned on (`true`) or off on the settings screen, for the
+    /// event loop, which owns the terminal and the pictures, to act on.
+    pictures_change: Option<bool>,
+    /// The row of the settings screen the theme picker was opened from,
+    /// to go back to when it closes.
+    settings_return: Option<usize>,
+    /// What to say once the settings are written.
+    save_note: Option<String>,
     /// Jobs numbered so far by [`App::stamp`].
     sent: u64,
     /// The numbers of the reads sent and not yet answered.
@@ -605,6 +630,10 @@ impl App {
             settings_writable: true,
             quit: false,
             pictures: true,
+            env: Environment::default(),
+            pictures_change: None,
+            settings_return: None,
+            save_note: None,
             sent: 0,
             reads_out: BTreeSet::new(),
             written: Vec::new(),
@@ -665,8 +694,10 @@ impl App {
 
     /// The outcome of writing the settings.
     pub fn settings_saved(&mut self, result: crate::error::Result<()>) {
+        let note = self.save_note.take();
         match result {
-            Ok(()) => self.info(format!("theme: {}", THEMES[self.theme_index].name)),
+            Ok(()) => self
+                .info(note.unwrap_or_else(|| format!("theme: {}", THEMES[self.theme_index].name))),
             Err(e) => self.error(e.message().to_string()),
         }
     }
@@ -745,7 +776,8 @@ impl App {
                 Overlay::Help { .. }
                 | Overlay::Themes { .. }
                 | Overlay::Viewer { .. }
-                | Overlay::Actions { .. },
+                | Overlay::Actions { .. }
+                | Overlay::Settings { .. },
             ) => {}
             None if self.tab == Tab::Search && self.search.editing => {
                 self.search.input.insert_str(text)
@@ -977,6 +1009,10 @@ impl App {
         match self.overlay.as_mut().unwrap() {
             // Taken above, before this borrow.
             Overlay::Actions { .. } => {}
+            Overlay::Settings { selected } => {
+                let selected = *selected;
+                return self.settings_key(key, selected);
+            }
             Overlay::Help { scroll } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
                 KeyCode::Char('j') | KeyCode::Down => *scroll = scroll.saturating_add(1),
@@ -1018,7 +1054,10 @@ impl App {
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(n - 1),
                     KeyCode::Enter => {
-                        self.overlay = None;
+                        self.overlay = self
+                            .settings_return
+                            .take()
+                            .map(|selected| Overlay::Settings { selected });
                         self.settings.theme = Some(THEMES[selected].name.to_string());
                         if self.settings_writable {
                             self.settings_to_save = Some(self.settings.clone());
@@ -1032,7 +1071,10 @@ impl App {
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
-                        self.overlay = None;
+                        self.overlay = self
+                            .settings_return
+                            .take()
+                            .map(|selected| Overlay::Settings { selected });
                         self.set_theme(previous);
                         None
                     }
@@ -1380,6 +1422,13 @@ impl App {
             KeyCode::Char('b') => return self.toggle_repost(),
             KeyCode::Char('f') => return self.toggle_follow(),
             KeyCode::Char('e') if self.tab == Tab::Profile => return self.edit_profile(),
+            KeyCode::Char('s')
+                if self.tab == Tab::Profile
+                    && self.profile.actor.is_none()
+                    && self.threads.is_empty() =>
+            {
+                self.overlay = Some(Overlay::Settings { selected: 0 });
+            }
             KeyCode::Enter if !self.threads.is_empty() => {
                 if let Some(author) = self.selected_post().map(|p| p.author) {
                     self.threads.clear();
@@ -1502,6 +1551,167 @@ impl App {
         self.pictures = false;
         if self.status.is_none() {
             self.info("this terminal cannot show pictures; bsky runs without them");
+        }
+    }
+
+    /// The answer to pictures turned back on: whether the terminal draws
+    /// them after all.
+    pub fn pictures_back(&mut self, shown: bool) {
+        self.pictures = shown;
+        if !shown {
+            self.info("this terminal cannot show pictures; bsky runs without them");
+        }
+    }
+
+    /// Pictures turned on or off on the settings screen, for the event loop.
+    pub fn take_pictures_change(&mut self) -> Option<bool> {
+        self.pictures_change.take()
+    }
+
+    /// What the settings screen lists, in order.
+    pub fn settings_rows(&self) -> Vec<SettingRow> {
+        use crate::config;
+        let fixed = |var: &str| format!("set by {var} for this run");
+        let unset = |var: &str| format!("set {var} before starting bsky to change it");
+        let path =
+            |p: Option<PathBuf>| p.map_or_else(|| "none".to_string(), |p| p.display().to_string());
+        let theme = if self.color_depth == ColorDepth::None {
+            SettingRow {
+                name: "Theme",
+                value: THEMES[self.theme_index].name.to_string(),
+                note: "colors are off because NO_COLOR is set".into(),
+                editable: false,
+            }
+        } else {
+            SettingRow {
+                name: "Theme",
+                value: THEMES[self.theme_index].name.to_string(),
+                note: "enter chooses one from the list, as T does".into(),
+                editable: true,
+            }
+        };
+        let pictures = match &self.env.graphics {
+            Some(v) => SettingRow {
+                name: "Pictures",
+                value: v.clone(),
+                note: fixed(crate::terminal::GRAPHICS_ENV),
+                editable: false,
+            },
+            None if self.settings.pictures_off() => SettingRow {
+                name: "Pictures",
+                value: "off".into(),
+                note: "enter draws them again where the terminal can".into(),
+                editable: true,
+            },
+            None => SettingRow {
+                name: "Pictures",
+                value: "auto".into(),
+                note: if self.pictures {
+                    "enter turns them off: posts say what they carry".into()
+                } else {
+                    "this terminal cannot show them".into()
+                },
+                editable: true,
+            },
+        };
+        let from_env = |name, var: &'static str, set: &Option<String>, default: String| match set {
+            Some(v) => SettingRow {
+                name,
+                value: v.clone(),
+                note: fixed(var),
+                editable: false,
+            },
+            None => SettingRow {
+                name,
+                value: default,
+                note: unset(var),
+                editable: false,
+            },
+        };
+        vec![
+            theme,
+            pictures,
+            from_env(
+                "Download folder",
+                config::DOWNLOAD_DIR_ENV,
+                &self.env.download_dir,
+                path(config::default_download_dir()),
+            ),
+            from_env(
+                "Picture cache",
+                config::CACHE_DIR_ENV,
+                &self.env.cache_dir,
+                path(config::default_cache_dir()),
+            ),
+            from_env(
+                "Video service",
+                config::VIDEO_SERVICE_ENV,
+                &self.env.video_service,
+                crate::api::DEFAULT_VIDEO_SERVICE.to_string(),
+            ),
+            from_env(
+                "Browser",
+                crate::browser::BROWSER_ENV,
+                &self.env.browser,
+                crate::browser::system_opener().to_string(),
+            ),
+        ]
+    }
+
+    /// A key on the settings screen.
+    fn settings_key(&mut self, key: KeyEvent, selected: usize) -> Vec<Job> {
+        let n = self.settings_rows().len();
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.overlay = Some(Overlay::Settings {
+                    selected: (selected + 1) % n,
+                });
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.overlay = Some(Overlay::Settings {
+                    selected: (selected + n - 1) % n,
+                });
+            }
+            KeyCode::Esc | KeyCode::Char('q' | 's') => self.overlay = None,
+            KeyCode::Enter | KeyCode::Char(' ') => self.change_setting(selected),
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// Enter on a row of the settings screen.
+    fn change_setting(&mut self, selected: usize) {
+        let Some(row) = self.settings_rows().into_iter().nth(selected) else {
+            return;
+        };
+        if !row.editable {
+            self.info(row.note);
+            return;
+        }
+        match row.name {
+            "Theme" => {
+                self.open_theme_picker();
+                self.settings_return = Some(selected);
+            }
+            "Pictures" => {
+                let off = !self.settings.pictures_off();
+                let value = if off { "off" } else { "auto" };
+                self.settings.pictures = Some(value.into());
+                self.pictures_change = Some(!off);
+                if off {
+                    self.pictures = false;
+                }
+                if self.settings_writable {
+                    self.settings_to_save = Some(self.settings.clone());
+                    self.save_note = Some(format!("pictures: {value}"));
+                } else {
+                    self.error(format!(
+                        "pictures: {value} for this session only; settings.json could not be \
+                         read, so it is not overwritten (fix or remove it to save)"
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 
@@ -3725,6 +3935,192 @@ mod tests {
         app.handle_key(key('T'));
         assert!(app.overlay.is_none());
         assert!(app.status.as_ref().unwrap().text.contains("NO_COLOR"));
+    }
+
+    /// The settings screen, on the row named `name`.
+    fn settings_on(app: &mut App, name: &str) {
+        app.handle_key(key('4'));
+        app.handle_key(key('s'));
+        let at = app
+            .settings_rows()
+            .iter()
+            .position(|r| r.name == name)
+            .expect("a row of that name");
+        for _ in 0..at {
+            app.handle_key(key('j'));
+        }
+        assert!(
+            matches!(app.overlay, Some(Overlay::Settings { selected }) if selected == at),
+            "{:?}",
+            app.overlay
+        );
+    }
+
+    #[test]
+    fn s_opens_the_settings_only_on_your_own_profile() {
+        let mut app = logged_in();
+        // Not on another tab: s is nothing there.
+        app.handle_key(key('s'));
+        assert!(app.overlay.is_none());
+        app.handle_key(key('4'));
+        app.handle_key(key('s'));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 0 })
+        ));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none());
+        // Someone else's profile has no settings.
+        app.open_profile(Some("did:plc:alice".into()));
+        app.handle_key(key('s'));
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn the_settings_screen_names_every_setting() {
+        let mut app = logged_in();
+        let names: Vec<_> = app.settings_rows().iter().map(|r| r.name).collect();
+        assert_eq!(
+            names,
+            [
+                "Theme",
+                "Pictures",
+                "Download folder",
+                "Picture cache",
+                "Video service",
+                "Browser"
+            ]
+        );
+        app.handle_key(key('4'));
+        app.handle_key(key('s'));
+        // Moving wraps both ways.
+        app.handle_key(key('k'));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 5 })
+        ));
+        app.handle_key(key('j'));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 0 })
+        ));
+    }
+
+    #[test]
+    fn pictures_off_is_kept_and_asked_of_the_event_loop() {
+        let mut app = logged_in();
+        let mut settings = Settings::default();
+        settings.other.insert("future".into(), json!(1));
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        settings_on(&mut app, "Pictures");
+        app.handle_key(code(KeyCode::Enter));
+        assert!(!app.pictures, "the lists are text at once");
+        assert_eq!(app.take_pictures_change(), Some(false));
+        assert_eq!(app.take_pictures_change(), None);
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.pictures.as_deref(), Some("off"));
+        assert_eq!(saved.other.get("future"), Some(&json!(1)));
+        app.settings_saved(Ok(()));
+        assert_eq!(app.status.as_ref().unwrap().text, "pictures: off");
+        // The screen stays open, and says what it is now.
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 1 })
+        ));
+        assert_eq!(app.settings_rows()[1].value, "off");
+
+        // Back to auto: the event loop finds out whether the terminal
+        // draws them, and says.
+        app.handle_key(key(' '));
+        assert_eq!(app.take_pictures_change(), Some(true));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.pictures.as_deref(), Some("auto"));
+        app.pictures_back(true);
+        assert!(app.pictures);
+        app.pictures_back(false);
+        assert!(!app.pictures);
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("cannot show pictures")
+        );
+    }
+
+    #[test]
+    fn a_setting_the_environment_fixes_is_shown_and_not_changed() {
+        let mut app = logged_in();
+        app.env = crate::config::Environment {
+            graphics: Some("kitty".into()),
+            download_dir: Some("/tmp/写真👨\u{200d}👩\u{200d}👧".into()),
+            ..Default::default()
+        };
+        let rows = app.settings_rows();
+        assert_eq!(rows[1].note, "set by BSKY_GRAPHICS for this run");
+        assert!(!rows[1].editable);
+        assert_eq!(rows[2].value, "/tmp/写真👨\u{200d}👩\u{200d}👧");
+        assert_eq!(rows[2].note, "set by BSKY_DOWNLOAD_DIR for this run");
+        settings_on(&mut app, "Pictures");
+        app.handle_key(code(KeyCode::Enter));
+        assert!(app.pictures);
+        assert_eq!(app.take_pictures_change(), None);
+        assert!(app.take_settings_save().is_none());
+        assert!(app.status.as_ref().unwrap().text.contains("BSKY_GRAPHICS"));
+    }
+
+    #[test]
+    fn the_theme_row_opens_the_picker_and_comes_back_to_the_settings() {
+        let mut app = logged_in();
+        settings_on(&mut app, "Theme");
+        app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(app.overlay, Some(Overlay::Themes { .. })));
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 0 })
+        ));
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(saved.theme.as_deref(), Some(THEMES[1].name));
+        assert_eq!(app.settings_rows()[0].value, THEMES[1].name);
+        // Esc in the picker comes back too, with the theme as it was.
+        app.handle_key(code(KeyCode::Enter));
+        app.handle_key(key('j'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::Settings { selected: 0 })
+        ));
+        assert_eq!(app.theme_index, 1);
+        // T on its own still closes to the list.
+        app.handle_key(code(KeyCode::Esc));
+        app.handle_key(key('T'));
+        app.handle_key(code(KeyCode::Esc));
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn pictures_are_not_saved_over_an_unreadable_settings_file() {
+        let mut app = logged_in();
+        app.apply_settings(
+            Settings::default(),
+            ColorDepth::TrueColor,
+            Some("settings.json is not valid and was ignored".into()),
+        );
+        settings_on(&mut app, "Pictures");
+        app.handle_key(code(KeyCode::Enter));
+        // Off for this run, and the file is left as it is.
+        assert!(!app.pictures);
+        assert_eq!(app.take_pictures_change(), Some(false));
+        assert!(app.take_settings_save().is_none());
+        assert!(
+            app.status
+                .as_ref()
+                .unwrap()
+                .text
+                .contains("for this session only")
+        );
     }
 
     fn page(posts: Vec<Post>, cursor: Option<&str>) -> Page<Post> {

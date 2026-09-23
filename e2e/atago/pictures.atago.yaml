@@ -269,7 +269,7 @@ scenarios:
                 contains: "No posts from accounts you follow yet"
             - send: "4"
             - expect_screen:
-                contains: "this is you (e to edit)"
+                contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
             - expect_screen:
                 contains: ["New avatar (path, or ctrl+o to browse; optional)", "ctrl+o choose avatar"]
@@ -280,7 +280,7 @@ scenarios:
                 not_contains: ".hidden.png"
             - send: { key: esc }
             - expect_screen:
-                contains: "Edit profile"
+                contains: "╭ Edit profile"
                 not_contains: "Choose a picture"
             - send: { key: ctrl-o }
             - expect_screen:
@@ -291,7 +291,7 @@ scenarios:
             - send: G
             - send: { key: enter }
             - expect_screen:
-                contains: ["Edit profile", "me.png"]
+                contains: ["╭ Edit profile", "me.png"]
                 not_contains: "Choose a picture"
             - send: { key: ctrl-s }
             - expect_screen:
