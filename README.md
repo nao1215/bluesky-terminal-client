@@ -10,14 +10,25 @@ bsky is an unofficial [Bluesky](https://bsky.app) client for the terminal that s
 
 ![bsky in kitty: the timeline scrolled, the Discover feed, then a search for "github"](doc/img/demo.gif)
 
-## Try it
+## Install
+
+With Homebrew (macOS and Linux):
 
 ```sh
-cargo install --locked --git https://github.com/nao1215/bluesky-terminal-client
-bsky
+brew install nao1215/tap/bsky
 ```
 
-Log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them. Rust 1.90 or later builds it; the command is `bsky`.
+With Cargo (Rust 1.90 or later):
+
+```sh
+cargo install --locked bluesky-terminal-client
+```
+
+Or download a binary for Linux (x86_64, arm64), macOS (Intel, Apple silicon), or Windows (x86_64) from the [releases page](https://github.com/nao1215/bluesky-terminal-client/releases) and put `bsky` on your `PATH`.
+
+## Try it
+
+Run `bsky` and log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them.
 
 You need a terminal that can draw images:
 
