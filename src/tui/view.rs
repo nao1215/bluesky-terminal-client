@@ -4224,7 +4224,8 @@ mod state_fuzz {
     fn key(rng: &mut Rng) -> KeyEvent {
         const CHARS: &[char] = &[
             'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
-            'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']',
+            'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']', 's', '.', 'c',
+            'Q', 'i', 'h',
         ];
         let codes = [
             KeyCode::Esc,
@@ -4301,6 +4302,14 @@ mod state_fuzz {
             };
             let (mut app, jobs) = App::new(Some(session), "https://pds.test");
             app.browse_from = Some(dir.path().to_path_buf());
+            // The settings screen's folders stay fixed: choosing one tries
+            // to write in it, and a fuzz run must not write outside its own
+            // folder. Choosing them is tested on its own in app.rs.
+            let fixed = Some(dir.path().display().to_string());
+            app.env.download_dir = fixed.clone();
+            app.env.cache_dir = fixed;
+            // The post D asked about, which the y after it must delete.
+            let mut delete_asked: Option<String> = None;
             let mut next_id = 0u64;
             let mut pending: Vec<Event> = Vec::new();
             for job in jobs {
@@ -4318,18 +4327,79 @@ mod state_fuzz {
                 } else {
                     let k = key(&mut rng);
                     // What a like or repost must act on: the post selected
-                    // when the key is pressed, whatever arrives later.
-                    let target = app
-                        .overlay
-                        .is_none()
-                        .then(|| app.selected_post().map(|p| p.uri))
+                    // when the key is pressed, whatever arrives later. The
+                    // actions list runs the key on that same post.
+                    let on_list = matches!(app.overlay, None | Some(Overlay::Actions { .. }));
+                    let target = on_list
+                        .then(|| app.shown_post().map(|p| p.uri.clone()))
                         .flatten();
+                    let account = on_list
+                        .then(|| app.shown_account().map(|a| a.did.clone()))
+                        .flatten();
+                    let asked = delete_asked.take();
+                    let composing = matches!(app.overlay, Some(Overlay::Compose(_)));
                     let jobs = app.handle_key(k);
                     let writes = jobs.iter().filter(|j| is_write(j)).count();
                     assert!(
                         writes <= 1,
                         "seed {seed} step {step}: {k:?} sent {writes} writes: {jobs:?}"
                     );
+                    // Only the keys that write can: l b f, y after D, ctrl+s,
+                    // and enter in the actions list.
+                    let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+                    if writes > 0 {
+                        let writer = match k.code {
+                            KeyCode::Char('s') => ctrl,
+                            KeyCode::Char('l' | 'b' | 'f' | 'y') | KeyCode::Enter => !ctrl,
+                            _ => false,
+                        };
+                        assert!(
+                            writer,
+                            "seed {seed} step {step}: {k:?} is not a key that writes, and sent {jobs:?}"
+                        );
+                    }
+                    if app.confirm_delete.is_some() {
+                        assert_eq!(
+                            app.confirm_delete, target,
+                            "seed {seed} step {step}: D asked about another post than the selected one"
+                        );
+                        delete_asked = app.confirm_delete.clone();
+                    }
+                    // A reply or a quote opened now is of the selected post.
+                    if !composing && let Some(Overlay::Compose(c)) = &app.overlay {
+                        let of = c
+                            .reply
+                            .as_ref()
+                            .map(|r| r.0.parent.uri.clone())
+                            .or_else(|| c.quote.as_ref().map(|q| q.0.uri.clone()));
+                        if of.is_some() {
+                            assert_eq!(
+                                of, target,
+                                "seed {seed} step {step}: {k:?} answered another post than the selected one"
+                            );
+                        }
+                    }
+                    for job in &jobs {
+                        match job {
+                            Job::DeletePost { uri } => {
+                                assert_eq!(
+                                    Some(uri),
+                                    asked.as_ref(),
+                                    "seed {seed} step {step}: deleted a post D did not ask about"
+                                );
+                                assert!(
+                                    uri.starts_with("at://did:plc:me/"),
+                                    "seed {seed} step {step}: deleted someone else's post {uri}"
+                                );
+                            }
+                            Job::Follow { did } | Job::Unfollow { did, .. } => assert_eq!(
+                                Some(did),
+                                account.as_ref(),
+                                "seed {seed} step {step}: {k:?} followed another account than the one shown"
+                            ),
+                            _ => {}
+                        }
+                    }
                     for job in &jobs {
                         let acted_on = match job {
                             Job::Like { subject } | Job::Repost { subject } => Some(&subject.uri),
