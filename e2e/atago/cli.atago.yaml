@@ -1,0 +1,509 @@
+# The commands: Bluesky from scripts. Each runs as the account in use (or
+# the one -a names) against a mock server, and prints text for reading or,
+# with --json, the server's own objects. What each sends is checked the way
+# the client's writes are: once, with the body the client would send.
+version: "1"
+
+suite:
+  name: bsky commands
+
+secrets:
+  - app-pass-cli
+
+scenarios:
+  - name: timeline prints the posts the client shows, as text and as JSON lines
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "家族👨‍👩‍👧 Alice", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Photo from the mountains 🇯🇵\nsecond line", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed: { $type: app.bsky.embed.images#view, images: [ { thumb: "t", fullsize: "f", alt: "" } ] }
+                    likeCount: 2
+                    repostCount: 1
+                - post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/p3
+                    cid: cid-p3
+                    author: { did: did:plc:dave, handle: dave.test }
+                    record: { text: "Reposted content by dave", createdAt: "2026-09-20T08:00:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:alice, handle: alice.test } }
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/p4
+                    cid: cid-p4
+                    author: { did: did:plc:me, handle: me.test }
+                    record: { text: "My own post", createdAt: "2026-09-20T07:00:00.000Z" }
+    steps:
+      - &session
+        fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - run:
+          command: bsky tl -n 5
+          env: &env
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              家族👨‍👩‍👧 Alice @alice.test · 2026-09-20 10:00
+              Photo from the mountains 🇯🇵
+              second line
+              [1 picture]
+              ♡ 2  ⟳ 1  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/p1
+
+              @me.test · 2026-09-20 07:00
+              My own post
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:me/app.bsky.feed.post/p4
+      - run:
+          command: bsky timeline --json -n 1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{"post":\{.*"uri":"at://did:plc:alice/app.bsky.feed.post/p1".*\}\n$'
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, header: { name: Authorization, equals: "Bearer acc" } }
+
+  - name: post sends the record the composer would, and prints its URI or the server's answer as JSON
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:bob" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/new1", cid: "cid-new1" }
+    steps:
+      - *session
+      - run:
+          command: 'bsky post "日本語👍🏽 #タグ https://example.com @bob.test"'
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "at://did:plc:me/app.bsky.feed.post/new1\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.post" }
+                - { path: "$.record.text", equals: "日本語👍🏽 #タグ https://example.com @bob.test" }
+                - { path: "$.record.facets[0].index.byteStart", equals: 18 }
+                - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
+                - { path: "$.record.facets[1].features[0].uri", equals: "https://example.com" }
+                - { path: "$.record.facets[2].features[0].did", equals: "did:plc:bob" }
+      # From stdin, with --json: the server's answer.
+      - run:
+          command: bsky post - --json
+          env: *env
+          stdin: "from a pipe 🇯🇵\n"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.uri", equals: "at://did:plc:me/app.bsky.feed.post/new1" }
+              - { path: "$.cid", equals: "cid-new1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 2
+            body:
+              json: { path: "$.record.text", equals: "from a pipe 🇯🇵" }
+
+  - name: a post too long, or with pictures and a video, is refused before anything is sent
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/x", cid: "c" }
+    steps:
+      - *session
+      - fixture: { file: clip.mp4, from: testdata/clip.mp4 }
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: bsky post "two things" --image photo.png --video clip.mp4
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: a post can have up to 4 pictures or one video, not both"
+      - run:
+          command: 'bsky post "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"'
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: the post is 301 characters; the limit is 300"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: like and unlike take a bsky.app address, and a write the server fails is sent once
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "liked before" }
+                  viewer: { like: at://did:plc:me/app.bsky.feed.like/l1 }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            status: 502
+            body: "bad gateway"
+    steps:
+      - *session
+      # Already liked: like says so and sends nothing.
+      - run:
+          command: bsky like https://bsky.app/profile/alice.test/post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already liked: at://did:plc:me/app.bsky.feed.like/l1\n"
+      - run:
+          command: bsky unlike at://did:plc:alice/app.bsky.feed.post/p1 --json
+          env: *env
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "error: com.atproto.repo.deleteRecord failed: HTTP 502"
+          stdout:
+            json:
+              - { path: "$.status", equals: 4 }
+              - { path: "$.error", equals: "com.atproto.repo.deleteRecord failed: HTTP 502" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json: { path: "$.rkey", equals: "l1" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPosts, query: { name: uris, equals: "at://did:plc:alice/app.bsky.feed.post/p1" } }
+
+  - name: delete takes only your own post
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - run:
+          command: bsky delete at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: you can only delete your own posts"
+      - run:
+          command: bsky delete at://did:plc:me/app.bsky.feed.post/p9 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.deleted", equals: "at://did:plc:me/app.bsky.feed.post/p9" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.feed.post" }
+                - { path: "$.rkey", equals: "p9" }
+
+  - name: notifications are listed, and marked seen only with --seen
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            json:
+              notifications:
+                - uri: at://did:plc:bob/app.bsky.feed.post/r1
+                  cid: cid-r1
+                  author: { did: did:plc:bob, handle: bob.test, displayName: Bob }
+                  reason: reply
+                  record: { $type: app.bsky.feed.post, text: "Nice photo 👍🏽" }
+                  isRead: false
+                  indexedAt: "2026-09-21T09:00:00.000Z"
+                - uri: at://did:plc:carol/app.bsky.feed.like/k1
+                  cid: cid-k1
+                  author: { did: did:plc:carol, handle: carol.test }
+                  reason: like
+                  reasonSubject: at://did:plc:me/app.bsky.feed.post/p4
+                  record: { $type: app.bsky.feed.like }
+                  isRead: true
+                  indexedAt: "2026-09-21T08:00:00.000Z"
+          - method: POST
+            path: /xrpc/app.bsky.notification.updateSeen
+            json: {}
+    steps:
+      - *session
+      - run:
+          command: bsky notif
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              ● Bob @bob.test replied to you · 2026-09-21 09:00
+              Nice photo 👍🏽
+              at://did:plc:bob/app.bsky.feed.post/r1
+
+              @carol.test liked your post · 2026-09-21 08:00
+              at://did:plc:me/app.bsky.feed.post/p4
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.notification.updateSeen, count: 0 }
+      - run:
+          command: bsky notifications --seen --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 2
+            matches: '"reason":"like"'
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.notification.updateSeen
+            count: 1
+            body:
+              json: { path: "$.seenAt", equals: "2026-09-21T09:00:00.000Z" }
+
+  - name: profile, followers and a search for accounts print accounts as lines
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:bob, handle: bob.test, displayName: "Bob 🇯🇵", description: "hello\nworld", followersCount: 3, followsCount: 4, postsCount: 5 }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getFollowers
+            json:
+              subject: { did: did:plc:bob, handle: bob.test }
+              followers:
+                - { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                - { did: did:plc:erin, handle: erin.test }
+          - method: GET
+            path: /xrpc/app.bsky.actor.searchActors
+            json:
+              actors:
+                - { did: did:plc:erin, handle: erin.test, displayName: "エリン" }
+    steps:
+      - *session
+      - run:
+          command: bsky profile @bob.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "Bob 🇯🇵 @bob.test\ndid:plc:bob\n3 followers  4 following  5 posts\n\nhello\nworld\n"
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, query: { name: actor, equals: "bob.test" } }
+      - run:
+          command: bsky followers bob.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "Alice @alice.test  (following)  did:plc:alice\n@erin.test  did:plc:erin\n"
+      - run:
+          command: bsky search erin --accounts --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.handle", equals: "erin.test" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.searchActors, query: { name: q, equals: "erin" } }
+
+  - name: thread shows the posts above a reply and its replies indented
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:bob" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPostThread
+            json:
+              thread:
+                $type: app.bsky.feed.defs#threadViewPost
+                post:
+                  uri: at://did:plc:bob/app.bsky.feed.post/b1
+                  cid: c
+                  author: { did: did:plc:bob, handle: bob.test }
+                  record: { text: "Bob answers", createdAt: "2026-09-20T11:00:00.000Z" }
+                parent:
+                  $type: app.bsky.feed.defs#threadViewPost
+                  post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/a1
+                    cid: c
+                    author: { did: did:plc:alice, handle: alice.test }
+                    record: { text: "Alice asks", createdAt: "2026-09-20T10:00:00.000Z" }
+                replies:
+                  - $type: app.bsky.feed.defs#threadViewPost
+                    post:
+                      uri: at://did:plc:carol/app.bsky.feed.post/c1
+                      cid: c
+                      author: { did: did:plc:carol, handle: carol.test }
+                      record: { text: "Carol agrees", createdAt: "2026-09-20T12:00:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: bsky thread https://bsky.app/profile/bob.test/post/b1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @alice.test · 2026-09-20 10:00
+              Alice asks
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/a1
+
+              @bob.test · 2026-09-20 11:00
+              Bob answers
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:bob/app.bsky.feed.post/b1
+
+                @carol.test · 2026-09-20 12:00
+                Carol agrees
+                ♡ 0  ⟳ 0  ↩ 0
+                at://did:plc:carol/app.bsky.feed.post/c1
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, query: { name: uri, equals: "at://did:plc:bob/app.bsky.feed.post/b1" } }
+
+  - name: login reads the password from stdin, adds the account, and accounts lists it
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:new", handle: "new.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
+    steps:
+      - *session
+      - run:
+          command: bsky login new.test --password-stdin --service ${api.url}
+          env: *env
+          stdin: "app-pass-cli\n"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged in as @new.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.createSession
+            count: 1
+            body:
+              json:
+                - { path: "$.identifier", equals: "new.test" }
+                - { path: "$.password", equals: "app-pass-cli" }
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_new.json
+            json: { path: "$.accessJwt", equals: "acc-new" }
+      - run:
+          command: bsky accounts
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "  @me.test  did:plc:me\n* @new.test  did:plc:new\n"
+      - run:
+          command: bsky accounts --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 2
+            matches: '"current":true.*"handle":"new.test"|"handle":"new.test".*"current":true'
+
+  - name: feed takes a pinned feed by name, and an unknown name lists the pinned ones
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getPreferences
+            json:
+              preferences:
+                - $type: app.bsky.actor.defs#savedFeedsPrefV2
+                  items:
+                    - { id: "1", type: timeline, value: following, pinned: true }
+                    - { id: "2", type: feed, value: "at://did:plc:gen/app.bsky.feed.generator/cats", pinned: true }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeedGenerators
+            json:
+              feeds:
+                - { uri: "at://did:plc:gen/app.bsky.feed.generator/cats", displayName: "Cats 🐈", did: did:web:gen.test, creator: { did: did:plc:gen, handle: gen.test }, indexedAt: "2026-09-01T00:00:00.000Z" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getFeed
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:erin/app.bsky.feed.post/s1
+                    cid: cid-s1
+                    author: { did: did:plc:erin, handle: erin.test }
+                    record: { text: "A cat on a keyboard", createdAt: "2026-09-20T07:00:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: 'bsky feed "cats 🐈"'
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["A cat on a keyboard", "at://did:plc:erin/app.bsky.feed.post/s1"]
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getFeed, query: { name: feed, equals: "at://did:plc:gen/app.bsky.feed.generator/cats" } }
+      - run:
+          command: bsky feed dogs
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: ["error: no pinned feed is named \"dogs\"", "hint: pinned: Cats 🐈"]
+
+  - name: without an account a command is a usage error that says how to log in
+    steps:
+      - run:
+          command: bsky tl --json
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: ["error: no account is logged in", "hint: run `bsky login`"]
+          stdout:
+            json:
+              - { path: "$.status", equals: 1 }
+              - { path: "$.error", equals: "no account is logged in" }

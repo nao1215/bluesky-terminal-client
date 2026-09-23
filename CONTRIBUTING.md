@@ -35,7 +35,7 @@ Write a scenario for every behavior you add or change, including how it fails. W
 
 - Comments and documentation in English, explaining why rather than what.
 - Errors reach the user as `error:` plus, when there is a next step, `hint:`, with the exit code of their class (see `src/error.rs`).
-- Keep the command-line surface small: behavior belongs in the client, not in new subcommands or flags.
+- The client is what `bsky` opens, and its behavior belongs in keys, not flags. The commands (`bsky timeline`, `bsky post`...) are for scripts: each is one thing a script needs from Bluesky, lives in `src/cli`, calls the same API, account and post code as the client, supports `--json`, and comes with an E2E scenario in `e2e/atago/cli.atago.yaml`. A command that only repeats a key of the client without being useful to a script does not belong.
 
 ## Commits and pull requests
 

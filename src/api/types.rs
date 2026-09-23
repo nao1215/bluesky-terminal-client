@@ -801,6 +801,8 @@ pub struct SessionTokens {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatedRecord {
     pub uri: String,
+    #[serde(default)]
+    pub cid: String,
 }
 
 /// `com.atproto.repo.getRecord` output.
