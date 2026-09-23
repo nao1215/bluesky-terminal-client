@@ -15,12 +15,11 @@ use std::thread;
 use crate::api::types::{
     FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
 };
-use crate::api::{self, Client, MAX_AVATAR_BYTES, PostImage, PostMedia, PostVideo, ProfileEdit};
+use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
 use crate::config::{AccountStore, Session};
 use crate::error::{Error, Result};
 use crate::media;
 use crate::timeline;
-use crate::video;
 
 /// Work for the worker thread.
 #[derive(Debug, Clone)]
@@ -106,13 +105,7 @@ pub enum Job {
     },
 }
 
-/// A picture or video on the user's disk to attach to a post.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Attachment {
-    pub path: PathBuf,
-    /// Text describing it for people who cannot see it.
-    pub alt: String,
-}
+pub use crate::compose::Attachment;
 
 /// One page of a list and where the next page begins.
 #[derive(Debug, Clone, PartialEq)]
@@ -687,59 +680,8 @@ impl State {
         media: &[Attachment],
         video_service: &str,
     ) -> Result<()> {
-        let videos = media
-            .iter()
-            .filter(|a| media::inspect(&a.path).kind == media::Kind::Video)
-            .count();
-        let embed = match (media.len(), videos) {
-            (0, _) => PostMedia::None,
-            (1, 1) => {
-                let a = &media[0];
-                let v = video::prepare(&a.path)?;
-                let name = a
-                    .path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "video".into());
-                let blob = self.client()?.upload_video(
-                    video_service,
-                    &v.bytes,
-                    v.mime,
-                    &name,
-                    std::time::Duration::from_secs(1),
-                )?;
-                PostMedia::Video(PostVideo {
-                    blob,
-                    alt: a.alt.trim().to_string(),
-                    dims: v.dims,
-                })
-            }
-            (_, 0) => {
-                let prepared = media
-                    .iter()
-                    .map(|a| media::prepare(&a.path))
-                    .collect::<Result<Vec<_>>>()?;
-                let mut uploaded = Vec::with_capacity(media.len());
-                for (a, p) in media.iter().zip(prepared) {
-                    let blob = self.client()?.upload_blob(&p.bytes, p.mime)?;
-                    uploaded.push(PostImage {
-                        blob,
-                        alt: a.alt.trim().to_string(),
-                        width: p.width,
-                        height: p.height,
-                    });
-                }
-                PostMedia::Images(uploaded)
-            }
-            _ => {
-                return Err(Error::new(
-                    crate::error::Kind::Usage,
-                    "a post can have up to 4 pictures or one video, not both",
-                ));
-            }
-        };
-        self.client()?.create_post(text, reply, quote, &embed)?;
-        Ok(())
+        let client = self.client()?;
+        crate::compose::send_post(&client, text, reply, quote, media, video_service).map(|_| ())
     }
 
     fn save_profile(

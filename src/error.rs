@@ -10,10 +10,10 @@
 //! | 1    | usage     | unknown flag, malformed `--service` URL, unknown `BSKY_GRAPHICS` |
 //! | 2    | terminal  | stdin or stdout is not a terminal, no image protocol           |
 //! | 3    | local I/O | session file unreadable, corrupt, or unwritable                |
+//! | 4    | API       | a command's request failed on the network or the server said no |
 //!
-//! [`Kind::Api`] classifies network and server failures inside the client,
-//! which shows them and keeps running; no command exits with them today, so
-//! their code (4) is reserved rather than documented.
+//! Inside the client, [`Kind::Api`] failures are shown and it keeps running;
+//! a command exits with 4.
 
 use std::fmt;
 

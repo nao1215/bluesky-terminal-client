@@ -92,6 +92,20 @@ bsky turns each photo upright, scales it under Bluesky's size limit, and leaves 
 
 All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's palette), `ayu-dark`, `ayu-light`, `catppuccin-frappe`, `catppuccin-latte`, `catppuccin-macchiato`, `catppuccin-mocha`, `cobalt2`, `dracula`, `everforest`, `github-dark`, `github-light`, `gruvbox`, `gruvbox-light`, `horizon`, `iceberg`, `kanagawa`, `material`, `monokai`, `night-owl`, `nightfox`, `nord`, `oceanic-next`, `one-dark`, `one-light`, `palenight`, `papercolor-light`, `rose-pine`, `rose-pine-dawn`, `rose-pine-moon`, `solarized`, `solarized-light`, `synthwave-84`, `tokyo-night`, `tokyo-night-day`, `tokyo-night-storm`, `tomorrow-night`, `zenburn`, `monochrome`. On a 256-color terminal they use the nearest colors; `NO_COLOR` turns color off.
 
+## Command line
+
+Without a command `bsky` opens the client. The commands read and write Bluesky from scripts, as the account in use or the one `-a` names:
+
+```sh
+bsky tl -n 5                               # the timeline
+bsky post "hello from the terminal"        # a post; --image, --video, --reply, --quote
+bsky thread https://bsky.app/profile/alice.test/post/3abc
+bsky search rust --json | jq -r .uri       # the server's own objects, one per line
+bsky like at://did:plc:.../app.bsky.feed.post/3abc
+```
+
+`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, delete, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
+
 ## Keys
 
 | Key | Action |
@@ -131,7 +145,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `BSKY_VIDEO_SERVICE` | Video service for uploads (default `https://video.bsky.app`) |
 | `NO_COLOR` | No color |
 
-Exit status: 0 success, 1 usage error, 2 not an interactive terminal, 3 local file error. Server errors do not end bsky; they are shown in it and can be retried.
+Exit status: 0 success, 1 usage error, 2 not an interactive terminal, 3 local file error, 4 a command's network or server error. In the client, server errors do not end bsky; they are shown in it and can be retried.
 
 ## Contributing
 

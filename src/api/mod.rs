@@ -630,6 +630,11 @@ impl Client {
         Ok(session.access_jwt.clone())
     }
 
+    /// Any read, answered as the server wrote it: what `--json` prints.
+    pub fn get_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
+        self.get(nsid, query)
+    }
+
     /// `app.bsky.feed.getTimeline`.
     pub fn timeline(&self, cursor: Option<&str>) -> Result<Timeline> {
         let mut q = vec![("limit", "50")];

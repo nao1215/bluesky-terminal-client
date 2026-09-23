@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- Commands for scripts: `bsky timeline` (`tl`), `feed`, `thread`, `notifications` (`notif`), `search`, `profile`, `followers`, `follows`, `post`, `like`, `unlike`, `repost`, `unrepost`, `follow`, `unfollow`, `delete`, `login` and `accounts`. They run as the account in use or the one `-a` names, take a post's at:// URI or bsky.app address, and print text for reading or, with `--json`, the server's own objects (a write prints what the server answered, and an error is printed as JSON on stdout too). A post from `bsky post` is the same record the composer sends. A network or server error exits with status 4.
+
 - Several accounts can be logged in. `A` lists them with the one in use marked, switches to another (its timeline, notifications and profile, nothing of the one before), logs in another, and logs one out after a `y`. `bsky -a <handle>` (or `BSKY_ACCOUNT`) starts on an account without changing the one in use, `bsky logout` logs out the one in use or the one `-a` names, and `bsky logout --all` every one. Each account's tokens are in a file of their own under `accounts/` in the config folder; the `session.json` of earlier versions becomes the first account the first time this version starts, and an earlier version started afterwards finds no login.
 
 ## [0.3.0] - 2026-09-23
