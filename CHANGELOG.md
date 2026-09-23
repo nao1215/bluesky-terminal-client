@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A failed save of the session file leaves no `session.json.<pid>.tmp` behind holding the tokens.
 - An invalid service URL is quoted in the error the way it was typed.
 - A video whose playlist names its files the scheme-relative (`//host/path`), absolute-path, query-only, or `..` way plays and saves. Those forms used to be joined to the playlist's address as text, which asked the server for a path that does not exist, so the video showed only its thumbnail with a warning.
+- A post or a profile whose send fails because the session expired keeps what you typed: the composer or the profile editor is behind the login form, and after logging in as the same account it is there to send again. The draft used to be dropped when the login form came up. Logging in as another account drops it, as it drops the rest of that account's state.
 
 ## [0.1.1] - 2026-09-23
 

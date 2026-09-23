@@ -1620,6 +1620,67 @@ scenarios:
             path: cfg/session.json
             json: { path: "$.refreshJwt", equals: "ref-new" }
 
+  - name: a draft is still there after the session expires while it is sent and the login form comes back
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has expired" }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            status: 400
+            json: { error: "ExpiredToken", message: "Token has been revoked" }
+          - method: POST
+            path: /xrpc/com.atproto.server.createSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-new", refreshJwt: "ref-new" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "a draft worth keeping"
+            - send: { key: ctrl-s }
+            # The expired session brings the login form up over the composer.
+            - expect_screen:
+                contains: ["Log in to Bluesky", "the session has expired; log in again"]
+            - send: "app-pass-1234"
+            - send: { key: enter }
+            # Logged in again, the draft is still in the composer.
+            - expect_screen:
+                contains: ["New post", "a draft worth keeping"]
+                not_contains: "Log in to Bluesky"
+                stable_for: 300ms
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      # Sent once, and never again by itself: sending it is the user's to do.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "a draft worth keeping" }
+
   - name: the help lists the keys by section, scrolls, and closes only on purpose
     mock_servers:
       - name: api
