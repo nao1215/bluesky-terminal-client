@@ -657,6 +657,11 @@ pub struct App {
     first_pages: HashMap<String, u64>,
     /// Reads sent before this number belong to the account before a login.
     account_since: u64,
+    /// Jobs sent before this number were sent with tokens a later login
+    /// replaced: their finding that the session expired is old news.
+    session_since: u64,
+    /// The number of the job whose answer is being taken, if it has one.
+    answering: Option<u64>,
 }
 
 /// A write the server confirmed, as it shows on a post or an account.
@@ -804,6 +809,8 @@ impl App {
             written: Vec::new(),
             first_pages: HashMap::new(),
             account_since: 0,
+            session_since: 0,
+            answering: None,
         };
         let jobs = if app.session.is_some() {
             app.startup_jobs()

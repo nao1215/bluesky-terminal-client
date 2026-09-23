@@ -355,20 +355,25 @@ scenarios:
                 contains: "pics/"
             - send: j
             - send: { key: enter }
+            # The browser previews each picture it passes over; they are
+            # kept (sent once) for when they are shown again.
             - expect_screen:
                 contains: "alice.png"
+                images: { count: 1 }
             - send: " "
             - send: j
             - send: " "
             - expect_screen:
                 contains: "2 marked"
+                images: { count: 2 }
             - send: { key: enter }
-            # Both names, and no thumbnail drawn: there is no room for one.
+            # Both names, and no thumbnail drawn: there is no room for one,
+            # so nothing is sent besides the two previews.
             - expect_screen:
                 contains:
                   - "1 alice.png  alt:"
                   - "2 photo.png  alt:"
-                images: { count: 0 }
+                images: { count: 2 }
                 stable_for: 300ms
             - send: { key: ctrl-s }
             - expect_screen:

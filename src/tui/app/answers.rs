@@ -47,7 +47,9 @@ impl App {
             return Vec::new();
         }
         let written = Written::of(&event);
+        self.answering = seq;
         let jobs = self.event(event);
+        self.answering = None;
         if let Some(w) = written
             && !self.reads_out.is_empty()
         {
@@ -312,6 +314,13 @@ impl App {
     /// filled in with the account that was logged in.
     pub(super) fn fail(&mut self, e: &Error) {
         if e.message().starts_with("com.atproto.server.refreshSession") {
+            // The other requests out when the session expired come back
+            // with it too: the form the first brought up stays, with what
+            // has been typed into it; and once logged in again, an answer to
+            // a request sent before does not ask for a login again.
+            if self.login.is_some() || self.answering.is_some_and(|s| s < self.session_since) {
+                return;
+            }
             let (service, handle) = self
                 .session
                 .as_ref()
@@ -469,6 +478,7 @@ impl App {
                 }
                 self.session = Some(session);
                 self.login = None;
+                self.session_since = self.sent + 1;
                 if other {
                     self.load_columns();
                 }

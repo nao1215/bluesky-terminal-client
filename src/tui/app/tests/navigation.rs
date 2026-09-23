@@ -436,3 +436,51 @@ fn the_theme_picker_previews_and_esc_goes_back() {
         "cancelling saves nothing"
     );
 }
+
+// The requests of the start all find the session expired, and their
+// answers come one by one. The login form the first one brought up stays as
+// the user fills it: the next ones do not bring up an empty one over it.
+#[test]
+fn a_second_expired_answer_keeps_the_login_form_being_filled() {
+    let mut app = logged_in();
+    let expired = || {
+        Error::api("com.atproto.server.refreshSession failed: ExpiredToken: Token has been revoked")
+    };
+    app.handle_event(Event::Timeline(Err(expired())));
+    assert!(app.login.is_some());
+    type_str(&mut app, "app-pass-🔑-1234");
+    app.handle_event(Event::PinnedFeeds(Err(expired())));
+    app.handle_event(Event::Notifications {
+        seen_at: String::new(),
+        result: Err(expired()),
+    });
+    let form = app.login.as_ref().unwrap();
+    assert_eq!(form.fields[form.focus].text(), "app-pass-🔑-1234");
+}
+
+// Once logged in again, an answer to a request sent with the old tokens
+// that says the session expired is old news: it does not ask for a login
+// again.
+#[test]
+fn an_expired_answer_from_before_logging_in_again_is_old_news() {
+    let mut app = logged_in();
+    let expired = || {
+        Error::api("com.atproto.server.refreshSession failed: ExpiredToken: Token has been revoked")
+    };
+    // Two loads out with the old tokens.
+    let first = press(&mut app, key('R'));
+    let second = press(&mut app, key('R'));
+    assert_eq!((first.len(), second.len()), (1, 1));
+    app.handle_answer(first[0], Event::Timeline(Err(expired())));
+    assert!(app.login.is_some());
+    type_str(&mut app, "app-pass-1234");
+    let login = press(&mut app, code(KeyCode::Enter));
+    assert_eq!(login.len(), 1);
+    app.handle_answer(login[0], Event::LoggedIn(Ok(session())));
+    assert!(app.login.is_none());
+    app.handle_answer(second[0], Event::Timeline(Err(expired())));
+    assert!(
+        app.login.is_none(),
+        "an old answer brought the login form back"
+    );
+}
