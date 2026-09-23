@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A quote of a post that is not found, is from an account you cannot see, or was detached by its author says which of those it is, instead of showing nothing. A quote of a feed or a list is named too.
 - A quote of a post that carries a picture or a video shows it, and `Space` opens it full screen, the way the quoted post itself would. Only the quoted words were shown before. A quote that adds a picture of its own still shows that one.
 - A quote of a starter pack is named on one line with the pack's name, as a quote of a feed or a list is. It used to say the quoted post cannot be shown.
+- Without pictures (on a terminal that cannot draw them, or with pictures off in the settings), the first letters of a name and of a post's text keep their weight and color. The empty place of the avatar was painted over them.
 
 ## [0.2.0] - 2026-09-23
 

@@ -483,7 +483,9 @@ impl Images {
     /// them: a full-size picture over its thumbnail as soon as it arrives.
     pub fn draw_first(&mut self, frame: &mut Frame, area: Rect, urls: &[&str]) {
         let area = area.intersection(frame.area());
-        if area.width == 0 || area.height == 0 {
+        // Without pictures nothing goes in the box, not even a placeholder:
+        // the text may run under where it would have been.
+        if area.width == 0 || area.height == 0 || !self.shows {
             return;
         }
         let urls: Vec<&str> = urls.iter().copied().filter(|u| !u.is_empty()).collect();
@@ -519,7 +521,10 @@ impl Images {
     /// needed.
     pub fn draw(&mut self, frame: &mut Frame, area: Rect, url: &str) {
         let area = area.intersection(frame.area());
-        if area.width == 0 || area.height == 0 || url.is_empty() {
+        // Without pictures nothing goes in the box, not even an empty
+        // placeholder: its style would be painted over the text that starts
+        // where an avatar would have been.
+        if area.width == 0 || area.height == 0 || url.is_empty() || !self.shows {
             return;
         }
         let style = self.placeholder;
