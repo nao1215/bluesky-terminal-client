@@ -380,3 +380,70 @@ scenarios:
             body:
               json:
                 - { path: "$.record.embed.images", length: 2 }
+
+  # A quote that carries a picture of its own is one embed with both, which
+  # the lexicon calls recordWithMedia.
+  - name: a quote with a picture is sent as one embed carrying both
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/theirs
+                    cid: cid-theirs
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Bob wrote this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+          - *upload
+          - *create
+    steps:
+      - *session
+      - fixture:
+          file: pics/photo.png
+          from: testdata/photo.png
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 110
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Bob wrote this"
+            - send: Q
+            - expect_screen:
+                contains: "Quote @bob.test"
+            - send: "with a picture"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "pics/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "photo.png"
+            - send: " "
+            - send: { key: enter }
+            - expect_screen:
+                contains: "1 photo.png  alt:"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.recordWithMedia" }
+                - { path: "$.record.embed.record['$type']", equals: "app.bsky.embed.record" }
+                - { path: "$.record.embed.record.record.uri", equals: "at://did:plc:bob/app.bsky.feed.post/theirs" }
+                - { path: "$.record.embed.media['$type']", equals: "app.bsky.embed.images" }
+                - { path: "$.record.embed.media.images", length: 1 }

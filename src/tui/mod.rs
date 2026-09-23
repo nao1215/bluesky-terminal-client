@@ -1,6 +1,7 @@
 //! The interactive client: terminal setup, the event loop, and teardown.
 
 pub mod app;
+pub mod clipboard;
 pub mod events;
 pub mod files;
 pub mod images;
@@ -127,6 +128,13 @@ fn event_loop(
             dirty = true;
             // Only what is already waiting; the next frame is not held back.
             wait = Duration::ZERO;
+        }
+        // The clipboard belongs to the terminal, which the loop owns: the
+        // state machine only says what to put in it.
+        if let Some(text) = app.take_copy() {
+            let mut out = io::stdout();
+            let _ = io::Write::write_all(&mut out, clipboard::osc52(&text).as_bytes());
+            let _ = io::Write::flush(&mut out);
         }
         // Saved here rather than on the worker, whose jobs wait for the
         // network: a theme applied just before q must not wait behind one.

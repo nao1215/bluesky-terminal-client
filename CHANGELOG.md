@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- `Q` quotes the selected post: the composer says whose post it quotes, and the post that goes out carries it. A quote with pictures of its own is sent as one embed carrying both.
+- `D` deletes your own post, after a `y` that confirms it: any other key keeps the post. The hint row offers it only on a post of yours, and the deleted post goes from every list it was in.
+- `c` copies the selected post's address on bsky.app to the clipboard, through the terminal itself (OSC 52), so it works over ssh and in tmux with `set-clipboard on`.
 - A terminal smaller than 24 columns by 8 rows shows what size bsky needs and what size the terminal is, instead of a screen with shreds of the tabs, a post, and the key hints on it. The client comes back as soon as the window is made bigger.
 
 ### Changed
@@ -16,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- A mention or a link written in a parenthesis straight after an address, as text without spaces puts them (`(https://example.com/a:(@alice.test)`), is sent as its own facet. The handle used to be spelled into the link, so the post carried an address nobody can reach and mentioned nobody.
 - The composer on a screen too short for the thumbnails lists the pictures it will send. The rows the thumbnails would have taken were kept empty, so on a 26 by 10 terminal only the first picture was named and on a smaller one none were, while the post still carried them all.
 - The `?` help is readable on a narrow terminal: each description goes under its keys where there is no room beside them, and a description too long for its column wraps instead of losing its end. On a 26 column terminal every description used to be cut to four cells.
 - A quote post that carries a picture of its own says whose post it quotes. The quote was dropped, so such a post looked like an ordinary picture post.

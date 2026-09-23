@@ -765,6 +765,7 @@ impl Client {
         &self,
         text: &str,
         reply: Option<&ReplyRef>,
+        quote: Option<&StrongRef>,
         media: &PostMedia,
     ) -> Result<CreatedRecord> {
         let text = text.trim_end();
@@ -807,10 +808,28 @@ impl Client {
         if let Some(reply) = reply {
             record["reply"] = serde_json::to_value(reply).expect("reply serializes");
         }
-        match media {
-            PostMedia::None => {}
-            PostMedia::Images(images) => record["embed"] = images_embed(images),
-            PostMedia::Video(v) => record["embed"] = video_embed(v),
+        let media_embed = match media {
+            PostMedia::None => None,
+            PostMedia::Images(images) => Some(images_embed(images)),
+            PostMedia::Video(v) => Some(video_embed(v)),
+        };
+        // A quote with a picture is one embed carrying both, which is what
+        // the lexicon calls recordWithMedia.
+        record["embed"] = match (quote, media_embed) {
+            (None, None) => Value::Null,
+            (None, Some(media)) => media,
+            (Some(quote), None) => quote_embed(quote),
+            (Some(quote), Some(media)) => json!({
+                "$type": "app.bsky.embed.recordWithMedia",
+                "record": quote_embed(quote),
+                "media": media,
+            }),
+        };
+        if record["embed"].is_null() {
+            record
+                .as_object_mut()
+                .expect("a record object")
+                .remove("embed");
         }
         self.create_record("app.bsky.feed.post", record)
     }
@@ -819,6 +838,13 @@ impl Client {
     pub fn like(&self, subject: &StrongRef) -> Result<String> {
         let record = json!({"$type": "app.bsky.feed.like", "subject": subject, "createdAt": now()});
         Ok(self.create_record("app.bsky.feed.like", record)?.uri)
+    }
+
+    /// Delete one of the account's own posts. The URI must name a post in
+    /// the account's own repo; `own_rkey` refuses anything else, so a URI
+    /// from somewhere on the screen cannot delete another record.
+    pub fn delete_post(&self, uri: &str) -> Result<()> {
+        self.delete_record("app.bsky.feed.post", uri)
     }
 
     /// Remove a like by its record URI.
@@ -952,6 +978,11 @@ fn own_rkey<'a>(uri: &'a str, did: &str, collection: &str) -> Result<&'a str> {
         }
         _ => Err(foreign()),
     }
+}
+
+/// The `app.bsky.embed.record` that quotes a post.
+fn quote_embed(quote: &StrongRef) -> Value {
+    json!({"$type": "app.bsky.embed.record", "record": quote})
 }
 
 /// An uploaded image to attach to a post.

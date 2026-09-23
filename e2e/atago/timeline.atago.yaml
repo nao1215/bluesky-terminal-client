@@ -1031,6 +1031,60 @@ scenarios:
                 - { path: "$.record.facets[2].index.byteEnd", equals: 46 }
                 - { path: "$.record.facets[2].features[0].uri", equals: "https://example.com/a" }
 
+  # Text without spaces puts a mention right after an address, in a
+  # parenthesis the address did not open. The handle used to be spelled into
+  # the link, so the post carried an address nobody can reach and mentioned
+  # nobody.
+  - name: a mention in a parenthesis after a link is its own facet
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "見て(https://example.com/a:(@alice.test)"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.facets", length: 2 }
+                - { path: "$.record.facets[0].index.byteStart", equals: 7 }
+                - { path: "$.record.facets[0].index.byteEnd", equals: 28 }
+                - { path: "$.record.facets[0].features[0].uri", equals: "https://example.com/a" }
+                - { path: "$.record.facets[1].index.byteStart", equals: 30 }
+                - { path: "$.record.facets[1].index.byteEnd", equals: 41 }
+                - { path: "$.record.facets[1].features[0].did", equals: "did:plc:alice" }
+
   - name: a tag ends before full-width punctuation, and digits with punctuation are no tag
     mock_servers:
       - name: api
@@ -1894,6 +1948,8 @@ scenarios:
             - send: { key: pagedown }
             - send: { key: pagedown }
             - send: { key: pagedown }
+            - send: { key: pagedown }
+            - send: { key: pagedown }
             - expect_screen:
                 contains: "edit your profile"
             # Wait for the window itself to go before the next key, or Esc
@@ -2104,3 +2160,182 @@ scenarios:
       - assert:
           exit_code: 0
 
+
+  # Deleting takes two keys, and only works on your own post. What goes to
+  # the server is a deleteRecord for that post in your own repo.
+  - name: D deletes your own post after a y, and any other key keeps it
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/theirs
+                    cid: cid-theirs
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Bob wrote this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/mine
+                    cid: cid-mine
+                    author: { did: did:plc:me, handle: me.test, displayName: Me }
+                    record: { text: "My own post to delete", createdAt: "2026-09-20T09:00:00.000Z" }
+                    indexedAt: "2026-09-20T09:00:05.000Z"
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 24
+          cols: 90
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Bob wrote this", "My own post to delete"]
+                # Bob's post is selected: his is not deletable.
+                not_contains: "D delete"
+                stable_for: 300ms
+            - send: D
+            - expect_screen:
+                contains: "you can only delete your own posts"
+            # On my own post the hint row offers it.
+            - send: j
+            - expect_screen:
+                contains: "D delete"
+            - send: D
+            - expect_screen:
+                contains: "press y to delete this post"
+            # Any other key keeps the post, and that key does nothing else.
+            - send: k
+            - expect_screen:
+                contains: ["not deleted", "My own post to delete", "D delete"]
+            - send: D
+            - send: y
+            - expect_screen:
+                contains: "post deleted"
+                not_contains: "My own post to delete"
+                stable_for: 300ms
+            - send: q
+      - assert:
+          exit_code: 0
+      # One delete left, for that post, in my own repo.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            method: POST
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.feed.post" }
+                - { path: "$.rkey", equals: "mine" }
+
+  # c asks the terminal itself to hold the post's address (OSC 52), which is
+  # what works over ssh and in tmux.
+  - name: c puts the post's address in the terminal's clipboard
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/theirs
+                    cid: cid-theirs
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Bob wrote this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 24
+          cols: 90
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Bob wrote this", "c copy link"]
+                stable_for: 300ms
+            - send: c
+            - expect_screen:
+                contains: "copied https://bsky.app/profile/did:plc:bob/post/theirs"
+            - send: q
+      - assert:
+          exit_code: 0
+          stdout:
+            # OSC 52 for the clipboard, carrying that address in base64.
+            contains: "]52;c;aHR0cHM6Ly9ic2t5LmFwcC9wcm9maWxlL2RpZDpwbGM6Ym9iL3Bvc3QvdGhlaXJz"
+
+  # Q quotes the selected post: the composer says whose post it is, and the
+  # record that goes out carries that post by URI and CID.
+  - name: Q sends a post that quotes the selected one
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/theirs
+                    cid: cid-theirs
+                    author: { did: did:plc:bob, handle: bob.test, displayName: Bob, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fb } }
+                    record: { text: "Bob wrote this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/new", cid: "cid-new" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 24
+          cols: 90
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Bob wrote this", "Q quote"]
+                stable_for: 300ms
+            - send: Q
+            - expect_screen:
+                contains: ["Quote @bob.test", "❝ Bob wrote this", "ctrl+s send"]
+            - send: "worth reading 👍🏽"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "Quote @bob.test"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.text", equals: "worth reading 👍🏽" }
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.record" }
+                - { path: "$.record.embed.record.uri", equals: "at://did:plc:bob/app.bsky.feed.post/theirs" }
+                - { path: "$.record.embed.record.cid", equals: "cid-theirs" }

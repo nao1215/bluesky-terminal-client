@@ -8,14 +8,14 @@ use std::time::{Duration, Instant};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::api::post_length_problem;
-use crate::api::types::{Media, Post, Profile, ReplyRef};
+use crate::api::types::{Media, Post, Profile, ReplyRef, StrongRef};
 use crate::config::{Session, Settings};
 use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
 use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
-use crate::tui::thread::{self as thread_rows, ThreadRow};
+use crate::tui::thread::{self as thread_rows, RowKind, ThreadRow};
 use crate::tui::worker::{Attachment, Event, Feed, Job, MorePage, NotifItem, Page};
 
 /// The three top-level views.
@@ -255,6 +255,8 @@ pub struct Compose {
     pub input: TextInput,
     /// Reply target, the handle being answered, and an excerpt of the post.
     pub reply: Option<(ReplyRef, String, String)>,
+    /// Quoted post, the handle being quoted, and an excerpt of the post.
+    pub quote: Option<(StrongRef, String, String)>,
     pub sending: bool,
     /// Pictures (up to four) or one video to attach, in order.
     pub media: Vec<Attached>,
@@ -270,10 +272,19 @@ impl Compose {
         Self {
             input: TextInput::multi(""),
             reply,
+            quote: None,
             sending: false,
             media: Vec::new(),
             focus: 0,
             browser: None,
+        }
+    }
+
+    /// A new post that quotes `quote`.
+    fn quoting(quote: (StrongRef, String, String)) -> Self {
+        Self {
+            quote: Some(quote),
+            ..Self::new(None)
         }
     }
 
@@ -445,6 +456,12 @@ pub struct App {
     /// `follow:<did>`. A second press on the same target is refused until the
     /// first is answered, or two presses would create two records.
     pub in_flight: HashSet<String>,
+    /// The post `D` has asked about, waiting for the `y` that deletes it.
+    /// Deleting cannot be undone, so it takes a second key.
+    pub confirm_delete: Option<String>,
+    /// Text `c` has put up for the terminal's clipboard, which the event
+    /// loop writes: the state machine has no terminal of its own.
+    to_copy: Option<String>,
     /// The colors everything is drawn with: the chosen theme, adapted to what
     /// the terminal can show.
     pub theme: Theme,
@@ -483,6 +500,7 @@ enum Written {
     Like { post: String, uri: Option<String> },
     Repost { post: String, uri: Option<String> },
     Follow { did: String, uri: Option<String> },
+    Deleted { post: String },
 }
 
 impl Written {
@@ -530,6 +548,10 @@ impl Written {
                 did: did.clone(),
                 uri: None,
             },
+            Event::PostDeleted {
+                uri,
+                result: Ok(()),
+            } => Written::Deleted { post: uri.clone() },
             _ => return None,
         })
     }
@@ -565,6 +587,8 @@ impl App {
             status: None,
             pending: 0,
             in_flight: HashSet::new(),
+            confirm_delete: None,
+            to_copy: None,
             theme: THEMES[0],
             theme_index: 0,
             color_depth: ColorDepth::TrueColor,
@@ -819,6 +843,32 @@ impl App {
                     self.timeline.retain(|p| p.author.did != *did);
                 }
             }
+            // A page asked for before the delete still carries the post.
+            Written::Deleted { post } => self.remove_post(post),
+        }
+    }
+
+    /// Take a post out of every list it is in. A thread keeps its row, as
+    /// the placeholder for a post that is not there any more, so the replies
+    /// under it keep their place.
+    fn remove_post(&mut self, uri: &str) {
+        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
+        for list in [
+            &mut self.timeline,
+            &mut self.search.posts,
+            &mut self.profile.posts,
+        ]
+        .into_iter()
+        .chain(feeds)
+        {
+            list.retain(|p| p.uri != uri);
+        }
+        for th in &mut self.threads {
+            for row in &mut th.list.items {
+                if row.post().is_some_and(|p| p.uri == uri) {
+                    row.kind = RowKind::NotFound(uri.to_string());
+                }
+            }
         }
     }
 
@@ -1037,6 +1087,7 @@ impl App {
                         } else {
                             c.sending = true;
                             let reply = c.reply.as_ref().map(|(r, _, _)| r.clone());
+                            let quote = c.quote.as_ref().map(|(r, _, _)| r.clone());
                             let media = c
                                 .media
                                 .iter()
@@ -1045,7 +1096,12 @@ impl App {
                                     alt: a.alt.text(),
                                 })
                                 .collect();
-                            return vec![Job::Post { text, reply, media }];
+                            return vec![Job::Post {
+                                text,
+                                reply,
+                                quote,
+                                media,
+                            }];
                         }
                     }
                     _ => {
@@ -1254,6 +1310,20 @@ impl App {
     }
 
     fn main_key(&mut self, key: KeyEvent) -> Vec<Job> {
+        // The question D asked takes the next key, whatever it is: y
+        // deletes, and anything else calls it off rather than doing what
+        // that key usually does.
+        if let Some(uri) = self.confirm_delete.take() {
+            if key.code != KeyCode::Char('y') {
+                self.info("not deleted");
+                return Vec::new();
+            }
+            if !self.claim(format!("delete:{uri}")) {
+                return Vec::new();
+            }
+            self.info("deleting…");
+            return vec![Job::DeletePost { uri }];
+        }
         match key.code {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
@@ -1306,6 +1376,9 @@ impl App {
             KeyCode::Esc if !self.threads.is_empty() => {
                 self.threads.pop();
             }
+            KeyCode::Char('c') => self.copy_link(),
+            KeyCode::Char('Q') => self.quote(),
+            KeyCode::Char('D') => self.ask_delete(),
             KeyCode::Char('v') => return self.open_thread(),
             KeyCode::Char(' ') => return self.open_viewer(),
             KeyCode::Char('o') => return self.open_link(true),
@@ -1540,6 +1613,61 @@ impl App {
         }
     }
 
+    /// `Q`: a new post that quotes the selected one.
+    fn quote(&mut self) {
+        if let Some(post) = self.selected_post() {
+            let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
+            self.overlay = Some(Overlay::Compose(Compose::quoting((
+                post.strong_ref(),
+                post.author.handle.clone(),
+                excerpt,
+            ))));
+        }
+    }
+
+    /// `c`: the selected post's address on bsky.app, for the terminal's
+    /// clipboard. It is the address `o` opens, so the two keys agree.
+    fn copy_link(&mut self) {
+        let Some(post) = self.post_to_view() else {
+            return;
+        };
+        match post.web_url() {
+            Some(url) => {
+                self.info(format!("copied {url}"));
+                self.to_copy = Some(url);
+            }
+            None => self.info("this post has no address to copy"),
+        }
+    }
+
+    /// Text waiting to go to the terminal's clipboard, taken by the event
+    /// loop that owns the terminal.
+    pub fn take_copy(&mut self) -> Option<String> {
+        self.to_copy.take()
+    }
+
+    /// `D`: ask before deleting the selected post. Only your own, and only
+    /// with a second key, since a deleted post cannot be brought back.
+    fn ask_delete(&mut self) {
+        let Some(post) = self.selected_post() else {
+            return;
+        };
+        let mine = self
+            .session
+            .as_ref()
+            .is_some_and(|s| s.did == post.author.did);
+        if !mine {
+            self.info("you can only delete your own posts");
+            return;
+        }
+        if self.in_flight.contains(&format!("delete:{}", post.uri)) {
+            self.info("still waiting for the server…");
+            return;
+        }
+        self.info("press y to delete this post, any other key to keep it");
+        self.confirm_delete = Some(post.uri);
+    }
+
     fn toggle_repost(&mut self) -> Vec<Job> {
         let Some(post) = self.selected_post() else {
             return Vec::new();
@@ -1602,6 +1730,42 @@ impl App {
 
     /// Apply `f` to every copy of the post `uri` on screen.
     /// The list of the feed the Timeline tab shows.
+    /// Whether the selected post is the account's own: what `D` deletes,
+    /// and what the hint row offers it on.
+    pub fn own_post_selected(&self) -> bool {
+        let Some(did) = self.session.as_ref().map(|s| s.did.as_str()) else {
+            return false;
+        };
+        self.shown_post().is_some_and(|p| p.author.did == did)
+    }
+
+    /// The selected post, without taking a copy of it: what the hint row
+    /// asks about while it is drawn.
+    pub fn shown_post(&self) -> Option<&Post> {
+        if let Some(th) = self.threads.last() {
+            return th.list.current().and_then(ThreadRow::post);
+        }
+        if self.tab == Tab::Notifications {
+            return self.notifications.current().and_then(|i| i.post.as_ref());
+        }
+        let list = match self.tab {
+            Tab::Timeline => Some(self.shown_feed()),
+            Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
+            Tab::Profile => Some(&self.profile.posts),
+            _ => None,
+        };
+        list.and_then(List::current)
+    }
+
+    /// The list the Timeline tab shows: the following timeline, or the
+    /// pinned feed it has moved to.
+    fn shown_feed(&self) -> &List<Post> {
+        match self.feed.checked_sub(1).and_then(|i| self.feeds.get(i)) {
+            Some(f) => &f.list,
+            None => &self.timeline,
+        }
+    }
+
     pub fn feed_list(&mut self) -> &mut List<Post> {
         match self.feed.checked_sub(1).and_then(|i| self.feeds.get_mut(i)) {
             Some(f) => &mut f.list,
@@ -1852,6 +2016,9 @@ impl App {
             Event::Followed { did, .. } | Event::Unfollowed { did, .. } => {
                 self.in_flight.remove(&format!("follow:{did}"));
             }
+            Event::PostDeleted { uri, .. } => {
+                self.in_flight.remove(&format!("delete:{uri}"));
+            }
             _ => {}
         }
         match event {
@@ -2070,6 +2237,14 @@ impl App {
                 }
                 self.fail(&e);
             }
+            Event::PostDeleted {
+                uri,
+                result: Ok(()),
+            } => {
+                self.remove_post(&uri);
+                self.info("post deleted");
+            }
+            Event::PostDeleted { result: Err(e), .. } => self.fail(&e),
             Event::ProfileEditor(result) => {
                 // Only an editor still waiting takes the answer: a late one
                 // must not overwrite what the user has typed since.
@@ -2476,6 +2651,41 @@ mod tests {
         assert!(app.status.is_none(), "{:?}", app.status);
     }
 
+    /// Q quotes the selected post: the composer says whose post it quotes,
+    /// and what goes out carries that post by URI and CID.
+    #[test]
+    fn quote_sends_the_quoted_post_s_reference() {
+        let mut app = logged_in();
+        app.handle_key(key('j'));
+        app.handle_key(key('Q'));
+        let Some(Overlay::Compose(c)) = &app.overlay else {
+            panic!("{:?}", app.overlay)
+        };
+        assert_eq!(
+            c.quote
+                .as_ref()
+                .map(|(r, h, _)| (r.uri.as_str(), h.as_str())),
+            Some(("at://b/p/2", "did:plc:bob.test"))
+        );
+        assert!(c.reply.is_none());
+        type_str(&mut app, "worth reading");
+        let jobs = app.handle_key(ctrl('s'));
+        match &jobs[..] {
+            [
+                Job::Post {
+                    text, reply, quote, ..
+                },
+            ] => {
+                assert_eq!(text, "worth reading");
+                assert!(reply.is_none());
+                let q = quote.as_ref().expect("the quoted post");
+                assert_eq!(q.uri, "at://b/p/2");
+                assert_eq!(q.cid, "cid-at://b/p/2");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
     #[test]
     fn reply_sends_the_thread_reference() {
         let mut app = logged_in();
@@ -2489,6 +2699,7 @@ mod tests {
                     text,
                     reply: Some(r),
                     media,
+                    ..
                 },
             ] => {
                 assert_eq!(text, "hello");
@@ -2672,6 +2883,119 @@ mod tests {
         });
         assert!(app.feeds.iter().all(|f| f.list.items.is_empty()));
         assert_eq!(app.current_feed(), Feed::Timeline);
+    }
+
+    /// c puts the post's address where anything else can paste it. The
+    /// address is the one o opens, so the two keys agree.
+    #[test]
+    fn c_copies_the_post_s_address() {
+        let mut app = logged_in();
+        app.handle_event(Event::Timeline(Ok(vec![post(
+            "at://did:plc:bob/app.bsky.feed.post/theirs",
+            "did:plc:bob",
+            true,
+        )]
+        .into())));
+        assert!(app.handle_key(key('c')).is_empty());
+        assert_eq!(
+            app.take_copy().as_deref(),
+            Some("https://bsky.app/profile/did:plc:bob/post/theirs")
+        );
+        // Taken once: the loop does not write it again on the next frame.
+        assert!(app.take_copy().is_none());
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("copied https://bsky.app/profile")),
+            "{:?}",
+            app.status
+        );
+    }
+
+    /// Deleting cannot be undone, so it takes two keys: D asks, y sends,
+    /// and one delete leaves the server. The post goes from every list it
+    /// is in once the server confirms it.
+    #[test]
+    fn deleting_your_own_post_asks_first_and_sends_one_delete() {
+        let mut app = logged_in();
+        let mine = "at://did:plc:me/app.bsky.feed.post/mine";
+        app.handle_event(Event::Timeline(Ok(vec![
+            post(mine, "did:plc:me", false),
+            post("at://b/p/2", "did:plc:bob", true),
+        ]
+        .into())));
+        // Asking sends nothing.
+        let jobs = app.handle_key(key('D'));
+        assert!(jobs.is_empty(), "{jobs:?}");
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("press y to delete")),
+            "{:?}",
+            app.status
+        );
+        let jobs = app.handle_key(key('y'));
+        assert!(
+            matches!(&jobs[..], [Job::DeletePost { uri }] if uri == mine),
+            "{jobs:?}"
+        );
+        // A second D while the first is still out sends nothing more.
+        assert!(app.handle_key(key('D')).is_empty());
+        assert!(app.handle_key(key('y')).is_empty());
+        app.handle_event(Event::PostDeleted {
+            uri: mine.to_string(),
+            result: Ok(()),
+        });
+        assert_eq!(app.timeline.items.len(), 1);
+        assert_eq!(app.timeline.items[0].uri, "at://b/p/2");
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("deleted")),
+            "{:?}",
+            app.status
+        );
+    }
+
+    /// Another account's post is not deletable, and any key but y calls the
+    /// question off without doing what that key usually does.
+    #[test]
+    fn only_your_own_post_is_deleted_and_any_other_key_calls_it_off() {
+        let mut app = logged_in();
+        let mine = "at://did:plc:me/app.bsky.feed.post/mine";
+        app.handle_event(Event::Timeline(Ok(vec![
+            post("at://b/p/2", "did:plc:bob", true),
+            post(mine, "did:plc:me", false),
+        ]
+        .into())));
+        // On Bob's post: nothing is asked and nothing is sent.
+        let jobs = app.handle_key(key('D'));
+        assert!(jobs.is_empty(), "{jobs:?}");
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("only delete your own posts")),
+            "{:?}",
+            app.status
+        );
+        // On my own post, j calls the question off and does not move the
+        // selection: the key that answers is y and nothing else.
+        app.handle_key(key('j'));
+        let before = app.timeline.selected;
+        assert!(app.handle_key(key('D')).is_empty());
+        let jobs = app.handle_key(key('j'));
+        assert!(jobs.is_empty(), "{jobs:?}");
+        assert_eq!(app.timeline.selected, before);
+        assert!(
+            app.status
+                .as_ref()
+                .is_some_and(|s| s.text.contains("not deleted")),
+            "{:?}",
+            app.status
+        );
+        // The next j moves as usual.
+        app.handle_key(key('k'));
+        assert_ne!(app.timeline.selected, before);
     }
 
     #[test]
