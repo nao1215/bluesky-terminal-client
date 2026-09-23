@@ -2037,6 +2037,26 @@ scenarios:
                     author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
                     record: { text: "Just words, no link", createdAt: "2026-09-20T08:00:00.000Z" }
                     indexedAt: "2026-09-20T08:00:05.000Z"
+                # A plain quote of a post that has a picture: the picture is
+                # drawn here, as the quoted post itself would draw it.
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/q3
+                    cid: cid-q3
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Bob's photo", createdAt: "2026-09-20T07:00:00.000Z" }
+                    indexedAt: "2026-09-20T07:00:05.000Z"
+                    embed:
+                      $type: app.bsky.embed.record#view
+                      record:
+                        $type: app.bsky.embed.record#viewRecord
+                        uri: at://did:plc:bob/app.bsky.feed.post/withpic
+                        cid: cid-withpic
+                        author: { did: did:plc:bob, handle: bob.test, displayName: Bob }
+                        value: { text: "from the top" }
+                        embeds:
+                          - $type: app.bsky.embed.images#view
+                            images: [ { thumb: "${api.url}/img/alice.png", fullsize: "${api.url}/img/alice.png", alt: "山の頂上", aspectRatio: { width: 1, height: 1 } } ]
+          - *img_alice
     steps:
       - *session
       - pty:
@@ -2062,6 +2082,25 @@ scenarios:
             - send: o
             - expect_screen:
                 contains: "opened https://bsky.app/profile/did:plc:alice/post/p3"
+            # The fourth post quotes a post that has a picture: the picture
+            # is drawn here, and space opens it full screen.
+            - send: j
+            - expect_screen:
+                contains: "❝ @bob.test: from the top"
+                # The quoted post's square picture, drawn in the row.
+                images: { contains: [ { width: 240, height: 240 } ] }
+                stable_for: 300ms
+            - send: " "
+            - expect_screen:
+                contains: ["1/1", "山の頂上", "d download"]
+                # The same picture, now full screen.
+                images: { contains: [ { width: 520, height: 520 } ] }
+            - send: { key: esc }
+            # Back on the timeline before quitting.
+            - expect_screen:
+                contains: "Bob's photo"
+                not_contains: "d download"
             - send: q
       - assert:
           exit_code: 0
+

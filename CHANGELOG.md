@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - The `?` help is readable on a narrow terminal: each description goes under its keys where there is no room beside them, and a description too long for its column wraps instead of losing its end. On a 26 column terminal every description used to be cut to four cells.
 - A quote post that carries a picture of its own says whose post it quotes. The quote was dropped, so such a post looked like an ordinary picture post.
 - A quote of a post that is not found, is from an account you cannot see, or was detached by its author says which of those it is, instead of showing nothing. A quote of a feed or a list is named too.
+- A quote of a post that carries a picture or a video shows it, and `Space` opens it full screen, the way the quoted post itself would. Only the quoted words were shown before. A quote that adds a picture of its own still shows that one.
 
 ## [0.2.0] - 2026-09-23
 
