@@ -30,7 +30,7 @@ Or download a binary for Linux (x86_64, arm64), macOS (Intel, Apple silicon), or
 
 Run `bsky` and log in with your handle (or email) and your password. An [app password](https://bsky.app/settings/app-passwords) (Settings, Privacy and security, App passwords) is safer: it cannot change your account settings, and you can revoke it without changing your password. bsky keeps only the session tokens, never the password; `bsky logout` forgets them.
 
-You need a terminal that can draw images:
+Pictures and videos need a terminal that can draw images:
 
 | Protocol | Terminals |
 |----------|-----------|
@@ -38,7 +38,7 @@ You need a terminal that can draw images:
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 inline images | iTerm2, WezTerm |
 
-A terminal that answers none of them is refused at startup (exit status 2) rather than handed a client that drops every picture. Behind a multiplexer that hides the answer, name the protocol with `BSKY_GRAPHICS=kitty`, `sixel`, or `iterm2`.
+On a terminal that answers none of them bsky runs as text: each post says how many pictures it has, with their descriptions, or that it has a video, nothing is downloaded to be drawn, and `Space` opens the post on bsky.app in your web browser. Behind a multiplexer that hides the answer, name the protocol with `BSKY_GRAPHICS=kitty`, `sixel`, or `iterm2`.
 
 ## What it does
 
@@ -88,7 +88,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `l` `b` `f` | Like, repost, follow (each again undoes it) |
 | `[` `]` | Previous or next feed on the Timeline tab |
 | `v` | The post's thread |
-| `Space` `o` | View pictures or video, open the link |
+| `Space` `o` | View pictures or video (as text: open the post in the browser), open the link |
 | `Enter` | The author's profile (`Esc` comes back) |
 | `/` | Search (`t` switches posts and accounts) |
 | `e` | Edit your profile |
@@ -109,7 +109,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 | `BSKY_VIDEO_SERVICE` | Video service for uploads (default `https://video.bsky.app`) |
 | `NO_COLOR` | No color |
 
-Exit status: 0 success, 1 usage error, 2 terminal unsupported, 3 local file error. Server errors do not end bsky; they are shown in it and can be retried.
+Exit status: 0 success, 1 usage error, 2 not an interactive terminal, 3 local file error. Server errors do not end bsky; they are shown in it and can be retried.
 
 ## Contributing
 

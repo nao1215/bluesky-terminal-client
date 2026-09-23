@@ -2,8 +2,8 @@
 //!
 //! bsky draws images with the terminal's own graphics protocol. It asks the
 //! terminal which protocols it speaks (kitty graphics, sixel, or iTerm2
-//! inline images) and refuses to start when the answer is none of them,
-//! rather than degrading to a client that silently drops every picture.
+//! inline images); when the answer is none of them, the client runs as text
+//! and says so, rather than drawing pictures the terminal cannot show.
 
 use std::io::IsTerminal;
 
@@ -53,34 +53,23 @@ pub fn protocol_name(p: ProtocolType) -> &'static str {
     }
 }
 
-/// Query the terminal and return a picker for a real image protocol.
+/// Query the terminal for a picker for a real image protocol, or `None`
+/// when it speaks none (or does not answer), and the client runs as text.
 ///
 /// Must run after the alternate screen is entered and before any event is
 /// read, because the terminal's answer arrives on stdin.
-pub fn detect_graphics() -> Result<Picker> {
+pub fn detect_graphics() -> Result<Option<Picker>> {
     let forced = match std::env::var(GRAPHICS_ENV) {
         Ok(v) if !v.trim().is_empty() => Some(parse_protocol(&v)?),
         _ => None,
     };
-    let mut picker = Picker::from_query_stdio().map_err(|e| {
-        Error::new(
-            Kind::Terminal,
-            format!("cannot query the terminal for image support: {e}"),
-        )
-    })?;
+    let Ok(mut picker) = Picker::from_query_stdio() else {
+        return Ok(None);
+    };
     if let Some(p) = forced {
         picker.set_protocol_type(p);
     }
-    if picker.protocol_type() == ProtocolType::Halfblocks {
-        return Err(
-            Error::new(Kind::Terminal, "this terminal cannot display images").with_hint(format!(
-                "use a terminal with kitty graphics, sixel, or iTerm2 inline images \
-                 (kitty, Ghostty, WezTerm, foot, iTerm2, ...), or set {GRAPHICS_ENV} \
-                 when yours supports one but does not answer the query"
-            )),
-        );
-    }
-    Ok(picker)
+    Ok((picker.protocol_type() != ProtocolType::Halfblocks).then_some(picker))
 }
 
 #[cfg(test)]
