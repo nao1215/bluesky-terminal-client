@@ -572,8 +572,13 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
         if viewer.followed_by.is_some() {
             rel.push(Span::styled("  · follows you", t.dim()));
         }
-        if viewer.muted {
-            rel.push(Span::styled("  · muted", t.error()));
+        match &viewer.muted_by_list {
+            Some(list) => rel.push(Span::styled(
+                format!("  · muted by the list {}", truncate(&list.name, 24)),
+                t.error(),
+            )),
+            None if viewer.muted => rel.push(Span::styled("  · muted", t.error())),
+            None => {}
         }
         if viewer.blocking.is_some() {
             rel.push(Span::styled("  · blocked", t.error()));

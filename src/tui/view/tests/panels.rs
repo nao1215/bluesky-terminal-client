@@ -361,3 +361,29 @@ fn a_profile_says_muted_and_blocked_and_the_list_offers_to_undo_it() {
     let screen = render(&mut own, 100, 30);
     assert!(!screen.contains("mute them"), "{screen}");
 }
+
+/// A mute by one of your lists says which list; the list offers your own
+/// mute, since M does not undo the list's.
+#[test]
+fn a_profile_muted_by_a_list_names_the_list() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    app.profile.actor = Some("did:plc:alice".into());
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({
+            "did": "did:plc:alice", "handle": "alice.test",
+            "viewer": {"muted": true, "mutedByList": {"uri": "at://x", "name": "Spam 🚫 仲間"}}
+        }))
+        .unwrap(),
+        Vec::new().into(),
+    ))));
+    let screen = render_text_only(&mut app, 100, 24);
+    assert!(
+        screen.contains("· muted by the list Spam 🚫 仲間"),
+        "{screen}"
+    );
+    app.handle_key(KeyEvent::from(KeyCode::Char('.')));
+    let screen = render(&mut app, 100, 30);
+    assert!(screen.contains("M      mute them"), "{screen}");
+}

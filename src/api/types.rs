@@ -88,12 +88,25 @@ pub struct ActorViewer {
     /// AT-URI of this actor's follow record for the viewer, when followed back.
     #[serde(deserialize_with = "any_opt_string")]
     pub followed_by: Option<String>,
-    /// Whether the viewer has muted this actor.
+    /// Whether the viewer has muted this actor, directly or by a mute list.
     #[serde(deserialize_with = "any_bool")]
     pub muted: bool,
+    /// The mute list the actor is muted by, when it is.
+    #[serde(deserialize_with = "any_opt")]
+    pub muted_by_list: Option<ListBasic>,
     /// AT-URI of the viewer's block record for this actor, when blocking.
     #[serde(deserialize_with = "any_opt_string")]
     pub blocking: Option<String>,
+}
+
+/// `app.bsky.graph.defs#listViewBasic`, as far as it is shown.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ListBasic {
+    #[serde(deserialize_with = "any_string")]
+    pub uri: String,
+    #[serde(deserialize_with = "any_string")]
+    pub name: String,
 }
 
 /// `app.bsky.actor.defs#profileView` and its basic/detailed variants.
@@ -139,9 +152,18 @@ impl Profile {
         self.viewer.as_ref()?.following.as_deref()
     }
 
-    /// Whether the viewer has muted this actor.
+    /// Whether the viewer has muted this actor themselves: what `M` and
+    /// `bsky unmute` undo. The server says `muted` of a mute by a list too,
+    /// which only taking the actor off the list undoes.
     pub fn muted(&self) -> bool {
-        self.viewer.as_ref().is_some_and(|v| v.muted)
+        self.viewer
+            .as_ref()
+            .is_some_and(|v| v.muted && v.muted_by_list.is_none())
+    }
+
+    /// The name of the mute list this actor is muted by, if any.
+    pub fn muting_list(&self) -> Option<&str> {
+        Some(self.viewer.as_ref()?.muted_by_list.as_ref()?.name.as_str())
     }
 
     /// The viewer's block record URI for this actor.

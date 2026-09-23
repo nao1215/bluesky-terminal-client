@@ -323,10 +323,27 @@ pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Sourc
 pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
     let fail = |e: std::io::Error| format!("cannot write to {}: {e}", dir.display());
     fs::create_dir_all(dir).map_err(fail)?;
-    let probe = dir.join(format!(".bsky-write-test-{}", std::process::id()));
-    fs::write(&probe, b"").map_err(fail)?;
-    let _ = fs::remove_file(&probe);
-    Ok(())
+    // A new file only, never through a link or over a file left at a name:
+    // a name that is taken is passed over for the next.
+    for n in 0..100 {
+        let probe = dir.join(format!(".bsky-write-test-{}-{n}", std::process::id()));
+        match fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+        {
+            Ok(_) => {
+                let _ = fs::remove_file(&probe);
+                return Ok(());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(fail(e)),
+        }
+    }
+    Err(format!(
+        "cannot write to {}: every name tried was taken",
+        dir.display()
+    ))
 }
 
 /// Reads and writes the session file inside one directory.
@@ -595,6 +612,26 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A folder chosen in the settings is tried with a file of its own. A
+    // link someone left at that name is not written through: the file it
+    // points to keeps what it holds.
+    #[cfg(unix)]
+    #[test]
+    fn checking_a_folder_never_writes_through_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("notes.txt");
+        fs::write(&target, "keep me 📝").unwrap();
+        let folder = dir.path().join("chosen");
+        fs::create_dir(&folder).unwrap();
+        std::os::unix::fs::symlink(
+            &target,
+            folder.join(format!(".bsky-write-test-{}-0", std::process::id())),
+        )
+        .unwrap();
+        assert!(check_writable(&folder).is_ok());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "keep me 📝");
+    }
 
     fn env(var: &str) -> Environment {
         Environment {

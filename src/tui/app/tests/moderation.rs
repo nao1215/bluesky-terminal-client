@@ -162,3 +162,25 @@ fn questions_asked_before_the_session_expired_are_called_off() {
     assert!(app.confirm_column_remove.is_none());
     assert!(app.confirm_logout.is_none());
 }
+
+// An account muted by one of your mute lists is muted, but not by you:
+// M adds your own mute rather than sending an unmute that changes nothing.
+#[test]
+fn m_on_an_account_muted_by_a_list_mutes_it_yourself() {
+    let mut app = logged_in();
+    app.handle_key(key('4'));
+    app.open_profile(Some("did:plc:alice".into()));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({
+            "did": "did:plc:alice", "handle": "alice.test",
+            "viewer": {"muted": true, "mutedByList": {"uri": "at://did:plc:me/app.bsky.graph.list/l1", "name": "Spam 🚫"}}
+        }))
+        .unwrap(),
+        Vec::new().into(),
+    ))));
+    let jobs = app.handle_key(key('M'));
+    assert!(
+        matches!(&jobs[..], [Job::Mute { did, on: true }] if did == "did:plc:alice"),
+        "{jobs:?}"
+    );
+}
