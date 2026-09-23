@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod clipboard;
+pub mod columns;
 pub mod events;
 pub mod files;
 pub mod images;

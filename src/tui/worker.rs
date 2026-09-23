@@ -49,6 +49,14 @@ pub enum Job {
         feed: Feed,
         cursor: String,
     },
+    /// A page of the column `id`: its first page (`cursor` none) for the
+    /// load numbered `generation`, or the one at `cursor`.
+    Column {
+        id: u64,
+        generation: u64,
+        feed: Feed,
+        cursor: Option<String>,
+    },
     Like {
         subject: StrongRef,
     },
@@ -198,6 +206,14 @@ pub enum Event {
         cursor: String,
         result: Result<MorePage>,
     },
+    /// A page of the column `id`, for the load `generation`; `cursor` is
+    /// where it was asked from, none for the first page.
+    Column {
+        id: u64,
+        generation: u64,
+        cursor: Option<String>,
+        result: Result<MorePage>,
+    },
     Thread {
         uri: String,
         result: Result<ThreadNode>,
@@ -267,6 +283,7 @@ impl Job {
                 | Job::Thread(_)
                 | Job::Notifications
                 | Job::More { .. }
+                | Job::Column { .. }
                 | Job::Download { .. }
                 | Job::OpenLink { .. }
         )
@@ -440,8 +457,19 @@ impl State {
                 uri,
             },
             Job::More { feed, cursor } => Event::More {
-                result: self.more(&feed, &cursor),
+                result: self.page(&feed, Some(&cursor)),
                 feed,
+                cursor,
+            },
+            Job::Column {
+                id,
+                generation,
+                feed,
+                cursor,
+            } => Event::Column {
+                result: self.page(&feed, cursor.as_deref()),
+                id,
+                generation,
                 cursor,
             },
             Job::Repost { subject } => Event::Reposted {
@@ -639,8 +667,9 @@ impl State {
         Ok((profile?, author_page(posts?)))
     }
 
-    fn more(&mut self, feed: &Feed, cursor: &str) -> Result<MorePage> {
-        let c = Some(cursor);
+    /// The page of `feed` at `cursor`, or its first page.
+    fn page(&mut self, feed: &Feed, cursor: Option<&str>) -> Result<MorePage> {
+        let c = cursor;
         Ok(match feed {
             Feed::Timeline => MorePage::Posts(self.timeline(c)?),
             Feed::Custom(uri) => MorePage::Posts(self.custom_feed(uri, c)?),

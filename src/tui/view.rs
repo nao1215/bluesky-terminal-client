@@ -12,12 +12,14 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_problem};
+use crate::config::ColumnSource;
 use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
     App, Compose, EditProfile, List, LoginForm, Overlay, SearchMode, SettingEdit, SettingRow, Tab,
     ThreadView,
 };
+use crate::tui::columns::Rows;
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
@@ -108,6 +110,19 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     // Read before the overlay is borrowed below: the list comes from the
     // whole app.
     let actions = keys::actions(app);
+    let column_titles: Vec<String> = if matches!(app.overlay, Some(Overlay::AddColumn { .. })) {
+        app.column_choices()
+            .iter()
+            .map(|s| match s {
+                ColumnSource::Search { .. } => "Search…".to_string(),
+                ColumnSource::Author { handle, .. } => format!("Your posts (@{handle})"),
+                ColumnSource::Feed { name, .. } => format!("Feed: {name}"),
+                other => other.title(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let settings = if matches!(app.overlay, Some(Overlay::Settings { .. })) {
         app.settings_rows()
     } else {
@@ -146,6 +161,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
         Some(Overlay::Actions { selected, .. }) => {
             draw_actions(frame, area, &actions, *selected, &t)
+        }
+        Some(Overlay::AddColumn { selected, query }) => {
+            draw_add_column(frame, area, &column_titles, *selected, query.as_ref(), &t);
         }
         Some(Overlay::Accounts { selected }) => {
             let me = app.session.as_ref().map(|s| s.did.clone());
@@ -456,6 +474,68 @@ fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t
         Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
         Tab::Notifications => draw_notifications(frame, body, app, images),
+        Tab::Columns => draw_columns(frame, body, app, images, &t),
+    }
+}
+
+/// Narrowest a column is drawn; fewer columns show on a narrow screen.
+const COLUMN_MIN_W: u16 = 36;
+
+/// The Columns tab: the columns side by side, as many as fit, the focused
+/// one among them, each with its title above its list; how many are off
+/// screen on either side is said in the titles of the outermost ones.
+fn draw_columns(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
+    let n = app.columns.items.len();
+    if n == 0 {
+        frame.render_widget(
+            Paragraph::new(" No columns yet. Press + to add one: the timeline, a feed, notifications, your posts, or a search.")
+                .style(t.dim())
+                .wrap(ratatui::widgets::Wrap { trim: true }),
+            body,
+        );
+        return;
+    }
+    let fit = usize::from((body.width / COLUMN_MIN_W).max(1)).min(n);
+    let focus = app.columns.focus.min(n - 1);
+    let first = focus.saturating_sub(fit - 1).min(n - fit);
+    let areas = Layout::horizontal(vec![Constraint::Ratio(1, fit as u32); fit]).split(body);
+    let me = app.session.as_ref().map(|s| s.did.clone());
+    for (slot, i) in (first..first + fit).enumerate() {
+        let area = areas[slot];
+        let [head, list] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        let col = &mut app.columns.items[i];
+        let mut title = col.source.title();
+        if slot == 0 && first > 0 {
+            title = format!("‹{first} {title}");
+        }
+        let right = n - (first + fit);
+        if slot == fit - 1 && right > 0 {
+            title = format!("{title} {right}›");
+        }
+        let style = if i == focus { t.selected() } else { t.dim() };
+        let width = usize::from(head.width.saturating_sub(1));
+        frame.render_widget(
+            Paragraph::new(format!(" {}", truncate(&title, width))).style(style),
+            head,
+        );
+        // A gap on the right keeps the columns apart.
+        let list = Rect {
+            width: list.width.saturating_sub(u16::from(slot + 1 < fit)),
+            ..list
+        };
+        match &mut col.rows {
+            Rows::Posts(l) => draw_posts(
+                frame,
+                list,
+                l,
+                images,
+                "Nothing here yet.",
+                me.as_deref(),
+                t,
+            ),
+            Rows::Notifications(l) => draw_notification_list(frame, list, l, images, t),
+        }
     }
 }
 
@@ -582,6 +662,61 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         }
     }
     frame.render_widget(Line::from(spans), area);
+}
+
+/// The list `+` opens on the Columns tab, or the search being typed for a
+/// search column.
+fn draw_add_column(
+    frame: &mut Frame,
+    area: Rect,
+    titles: &[String],
+    selected: usize,
+    query: Option<&TextInput>,
+    t: &Theme,
+) {
+    let inner = popup(
+        frame,
+        area,
+        ACTIONS_W,
+        titles.len() as u16 + 4,
+        "Add a column",
+        t,
+    );
+    let width = usize::from(inner.width);
+    if let Some(input) = query {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::styled(" Search posts for:", t.dim()),
+                Line::raw(""),
+            ]),
+            inner,
+        );
+        let field = Rect {
+            x: inner.x + 1,
+            y: inner.y + 1,
+            width: inner.width.saturating_sub(2),
+            height: 1,
+        };
+        draw_single_input(frame, field, input, true);
+        return;
+    }
+    let lines: Vec<Line> = titles
+        .iter()
+        .enumerate()
+        .map(|(i, title)| {
+            let marker = if i == selected { "▶ " } else { "  " };
+            let style = if i == selected {
+                t.base().bold()
+            } else {
+                t.base()
+            };
+            Line::from(vec![
+                Span::styled(marker, t.accent().bold()),
+                Span::styled(truncate(title, width.saturating_sub(2)), style),
+            ])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The account list `A` opens: every logged-in account, the one in use
@@ -1492,16 +1627,26 @@ fn notif_lines(item: &NotifItem, width: u16, t: &Theme) -> Vec<Line<'static>> {
 
 fn draw_notifications(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
     let t = app.theme;
+    draw_notification_list(frame, area, &mut app.notifications, images, &t);
+}
+
+fn draw_notification_list(
+    frame: &mut Frame,
+    area: Rect,
+    list: &mut List<NotifItem>,
+    images: &mut Images,
+    t: &Theme,
+) {
     let messages = (" loading…", " No notifications yet.");
     draw_two_line_rows(
         frame,
         area,
-        &mut app.notifications,
+        list,
         images,
         messages,
-        &t,
+        t,
         |i| i.n.author.avatar.as_deref(),
-        |i, w| notif_lines(i, w, &t),
+        |i, w| notif_lines(i, w, t),
     );
 }
 
@@ -2389,7 +2534,7 @@ fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, pictures: bool, t:
 mod tests {
     use super::*;
     use crate::config::Session;
-    use crate::tui::worker::Event;
+    use crate::tui::worker::{Event, MorePage};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui_image::picker::Picker;
@@ -2953,6 +3098,45 @@ mod tests {
                 }),
             ),
             (
+                "columns",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_event(Event::Timeline(Ok(emoji_posts().into())));
+                    a.columns = crate::tui::columns::Columns::from_sources(&[
+                        crate::config::ColumnSource::Following,
+                        crate::config::ColumnSource::Notifications,
+                        crate::config::ColumnSource::Search {
+                            query: "家族👨\u{200d}👩\u{200d}👧 🇯🇵 1️⃣".into(),
+                        },
+                    ]);
+                    a.handle_key(ch('5'));
+                    for (i, c) in a.columns.items.clone().iter().enumerate() {
+                        let (id, generation) = (c.id, c.generation);
+                        let result = if i == 1 {
+                            Ok(MorePage::Notifications(Vec::new().into()))
+                        } else {
+                            Ok(MorePage::Posts(emoji_posts().into()))
+                        };
+                        a.handle_event(Event::Column {
+                            id,
+                            generation,
+                            cursor: None,
+                            result,
+                        });
+                    }
+                    a
+                }),
+            ),
+            (
+                "add column",
+                Box::new(move || {
+                    let (mut a, _) = App::new(Some(session()), "x");
+                    a.handle_key(ch('5'));
+                    a.handle_key(ch('+'));
+                    a
+                }),
+            ),
+            (
                 "accounts",
                 Box::new(move || {
                     let (mut a, _) = App::new(Some(session()), "x");
@@ -3187,6 +3371,94 @@ mod tests {
         );
     }
 
+    fn column_app(n: usize) -> App {
+        let (mut app, _) = App::new(Some(session()), "x");
+        let sources: Vec<crate::config::ColumnSource> = (0..n)
+            .map(|i| crate::config::ColumnSource::Search {
+                query: format!("q{i}"),
+            })
+            .collect();
+        app.columns = crate::tui::columns::Columns::from_sources(&sources);
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('5'),
+        ));
+        for c in app.columns.items.clone() {
+            app.handle_event(Event::Column {
+                id: c.id,
+                generation: c.generation,
+                cursor: None,
+                result: Ok(MorePage::Posts(posts(1).into())),
+            });
+        }
+        app
+    }
+
+    /// As many columns as fit side by side, the focused one among them,
+    /// and how many are off screen said at the edges.
+    #[test]
+    fn the_columns_fit_the_width_and_say_how_many_are_off_screen() {
+        let mut app = column_app(4);
+        let screen = render(&mut app, 110, 20);
+        let head = screen.lines().nth(1).unwrap();
+        assert!(head.contains("Search: q0"), "{screen}");
+        assert!(head.contains("Search: q2 1›"), "{screen}");
+        assert!(!head.contains("q3"), "{screen}");
+        assert_eq!(screen.matches("post number 0").count(), 3, "{screen}");
+        for _ in 0..3 {
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Right,
+            ));
+        }
+        let screen = render(&mut app, 110, 20);
+        let head = screen.lines().nth(1).unwrap();
+        assert!(head.contains("‹1 Search: q1"), "{screen}");
+        assert!(head.contains("Search: q3"), "{screen}");
+        assert!(screen.contains("← → column"), "{screen}");
+        // One column on a narrow screen.
+        let narrow = render(&mut app, 40, 20);
+        assert!(
+            narrow.lines().nth(1).unwrap().contains("‹3 Search: q3"),
+            "{narrow}"
+        );
+        // None yet: how to add one.
+        let mut empty = column_app(0);
+        let screen = render(&mut empty, 80, 20);
+        assert!(
+            screen.contains("No columns yet. Press + to add one"),
+            "{screen}"
+        );
+        assert!(screen.contains("+ add a column"), "{screen}");
+    }
+
+    #[test]
+    fn the_add_column_list_names_every_source_and_asks_for_a_search() {
+        let mut app = column_app(0);
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('+'),
+        ));
+        let screen = render(&mut app, 100, 24);
+        for want in [
+            "Add a column",
+            "▶ Following",
+            "Notifications",
+            "Your posts (@me.test)",
+            "Search…",
+        ] {
+            assert!(screen.contains(want), "{want}:\n{screen}");
+        }
+        for _ in 0..3 {
+            app.handle_key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char('j'),
+            ));
+        }
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Enter,
+        ));
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains("Search posts for:"), "{screen}");
+        assert!(screen.contains("enter add  esc back"), "{screen}");
+    }
+
     /// The key column is 18 cells wide, which leaves nothing for the
     /// description on a narrow screen: the help was the one screen that
     /// could not be read where it is needed most.
@@ -3207,7 +3479,7 @@ mod tests {
         // long for its column wraps rather than losing its end.
         let forty = render(&mut app, 40, 16);
         assert!(
-            forty.contains("1 2 3 4        Timeline, Search,"),
+            forty.contains("1 2 3 4 5      Timeline, Search,"),
             "{forty}"
         );
         assert!(
@@ -3219,12 +3491,12 @@ mod tests {
         assert!(
             forty
                 .lines()
-                .any(|l| l.trim_matches('│').trim() == "Profile"),
+                .any(|l| l.trim_matches('│').trim() == "Profile, Columns"),
             "{forty}"
         );
         let wide = render(&mut app, 80, 24);
         assert!(
-            wide.contains("1 2 3 4        Timeline, Search, Notifications, Profile"),
+            wide.contains("1 2 3 4 5      Timeline, Search, Notifications,"),
             "{wide}"
         );
     }
@@ -4292,6 +4564,24 @@ mod state_fuzz {
                 },
             },
             Job::UpdateSeen(_) => Event::Seen(Ok(())),
+            Job::Column {
+                id,
+                generation,
+                feed,
+                cursor,
+            } => Event::Column {
+                result: if !ok {
+                    Err(fail())
+                } else {
+                    Ok(match &feed {
+                        Feed::Notifications => MorePage::Notifications(Vec::new().into()),
+                        _ => MorePage::Posts(page(rng, next_id)),
+                    })
+                },
+                id,
+                generation,
+                cursor,
+            },
             Job::More { feed, cursor } => {
                 let result = if !ok {
                     Err(fail())
@@ -4383,7 +4673,7 @@ mod state_fuzz {
         const CHARS: &[char] = &[
             'j', 'k', 'g', 'G', 'l', 'b', 'f', 'r', 'n', 'v', 'o', '/', 't', 'T', '?', 'R', 'e',
             'd', 'D', '1', '2', '3', '4', ' ', 'a', 'y', 'x', '日', '👍', '[', ']', 's', '.', 'c',
-            'Q', 'i', 'h', 'A',
+            'Q', 'i', 'h', 'A', '5', '+', '<', '>', 'H', 'L',
         ];
         let codes = [
             KeyCode::Esc,
@@ -4437,6 +4727,20 @@ mod state_fuzz {
             "notifications",
             app.notifications.items.len(),
             app.notifications.selected,
+        );
+        for c in &app.columns.items {
+            match &c.rows {
+                crate::tui::columns::Rows::Posts(l) => bounded("column", l.items.len(), l.selected),
+                crate::tui::columns::Rows::Notifications(l) => {
+                    bounded("column", l.items.len(), l.selected)
+                }
+            }
+        }
+        assert!(
+            app.columns.items.is_empty() || app.columns.focus < app.columns.items.len(),
+            "seed {seed} step {step}: column focus {} of {}",
+            app.columns.focus,
+            app.columns.items.len()
         );
     }
 

@@ -47,6 +47,10 @@ pub struct Settings {
     /// The program that opens links; `BSKY_BROWSER` wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// The columns of the Columns tab, by the DID of the account they are
+    /// for.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub columns: std::collections::BTreeMap<String, Vec<ColumnSource>>,
     /// Keys this version of bsky does not know, kept so that saving does not
     /// drop what a newer version wrote.
     #[serde(flatten)]
@@ -57,6 +61,41 @@ impl Settings {
     /// Whether the file turns pictures off.
     pub fn pictures_off(&self) -> bool {
         self.pictures.as_deref() == Some("off")
+    }
+}
+
+/// What a column shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ColumnSource {
+    Following,
+    /// A custom feed by the URI of its generator, and the name to show.
+    Feed {
+        uri: String,
+        name: String,
+    },
+    Notifications,
+    /// Posts found for `query`.
+    Search {
+        query: String,
+    },
+    /// An account's own posts, by DID, and the handle to show.
+    Author {
+        did: String,
+        handle: String,
+    },
+}
+
+impl ColumnSource {
+    /// The title of the column.
+    pub fn title(&self) -> String {
+        match self {
+            ColumnSource::Following => "Following".into(),
+            ColumnSource::Feed { name, .. } => name.clone(),
+            ColumnSource::Notifications => "Notifications".into(),
+            ColumnSource::Search { query } => format!("Search: {query}"),
+            ColumnSource::Author { handle, .. } => format!("@{handle}"),
+        }
     }
 }
 

@@ -1,0 +1,158 @@
+# The Columns tab: lists side by side, each acting as its list does on its
+# own tab, kept per account in settings.json.
+version: "1"
+
+suite:
+  name: bsky columns
+
+scenarios:
+  - name: columns are added, a like in one shows everywhere, and they are back on the next start
+    mock_servers:
+      - name: api
+        routes:
+          - &timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Alice on the timeline", createdAt: "2026-09-20T10:00:00.000Z" }
+                    likeCount: 2
+          - &notifications
+            method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            json:
+              notifications:
+                - uri: at://did:plc:bob/app.bsky.graph.follow/f1
+                  cid: cid-f1
+                  author: { did: did:plc:bob, handle: bob.test, displayName: Bob }
+                  reason: follow
+                  record: { $type: app.bsky.graph.follow }
+                  isRead: true
+                  indexedAt: "2026-09-21T08:00:00.000Z"
+          - &search
+            method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                  record: { text: "Alice on the timeline", createdAt: "2026-09-20T10:00:00.000Z" }
+                  likeCount: 2
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.like/l1", cid: "cid-l1" }
+    steps:
+      - &session
+        fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: &env
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Alice on the timeline"
+            - send: "5"
+            - expect_screen:
+                contains: ["5 Columns", "No columns yet. Press + to add one", "+ add a column"]
+            # Following, the first in the list.
+            - send: +
+            - expect_screen:
+                contains: ["Add a column", "▶ Following", "Notifications", "Your posts (@me.test)", "Search…"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: [" Following", "Alice on the timeline"]
+                not_contains: "Add a column"
+            # Notifications.
+            - send: +
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: [" Notifications", "@bob.test followed you"]
+            # A search, typed.
+            - send: +
+            - send: k
+            - send: { key: enter }
+            - expect_screen:
+                contains: "Search posts for:"
+            - send: "猫🐈‍⬛"
+            - send: { key: enter }
+            - expect_screen:
+                contains: [" Search: 猫🐈‍⬛", "← → column"]
+            # Its results are in, beside the timeline column's.
+            - expect_screen:
+                matches: "Alice on the timeline"
+                count: 2
+            # l in the focused search column likes its post; the timeline
+            # column and the Timeline tab show it too.
+            - send: l
+            - expect_screen:
+                contains: "liked"
+                matches: '♥ 3.*♥ 3'
+            - send: "1"
+            - expect_screen:
+                contains: ["Alice on the timeline", "♥ 3"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json: { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, query: { name: q, equals: "猫🐈‍⬛" } }
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.columns['did:plc:me'][0].kind", equals: "following" }
+              - { path: "$.columns['did:plc:me'][1].kind", equals: "notifications" }
+              - { path: "$.columns['did:plc:me'][2].kind", equals: "search" }
+              - { path: "$.columns['did:plc:me'][2].query", equals: "猫🐈‍⬛" }
+      # Started again: the columns are back, loaded when the tab is shown.
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Alice on the timeline"
+            - send: "5"
+            - expect_screen:
+                contains: [" Following", " Notifications", " Search: 猫🐈‍⬛", "@bob.test followed you"]
+            # x asks; y removes the focused column, the first.
+            - send: x
+            - expect_screen:
+                contains: "press y to remove the column Following"
+            - send: y
+            - expect_screen:
+                contains: "2 columns"
+                not_contains: " Following "
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.columns['did:plc:me'][0].kind", equals: "notifications" }
+              - { path: "$.columns['did:plc:me'][1].kind", equals: "search" }

@@ -12,6 +12,7 @@ use crate::api::types::{Media, Post, Profile, ReplyRef, StrongRef};
 use crate::config::{Environment, Session, Settings};
 use crate::error::Error;
 use crate::media::{self, MAX_POST_IMAGES};
+use crate::tui::columns::{self, Columns, Rows};
 use crate::tui::files::{Action, Browser};
 use crate::tui::input::TextInput;
 use crate::tui::keys;
@@ -19,17 +20,24 @@ use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::thread::{self as thread_rows, RowKind, ThreadRow};
 use crate::tui::worker::{Attachment, Event, Feed, Job, MorePage, NotifItem, Page};
 
-/// The three top-level views.
+/// The top-level views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Timeline,
     Search,
     Profile,
     Notifications,
+    Columns,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Notifications, Tab::Profile];
+    pub const ALL: [Tab; 5] = [
+        Tab::Timeline,
+        Tab::Search,
+        Tab::Notifications,
+        Tab::Profile,
+        Tab::Columns,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -37,6 +45,7 @@ impl Tab {
             Tab::Search => "Search",
             Tab::Profile => "Profile",
             Tab::Notifications => "Notifications",
+            Tab::Columns => "Columns",
         }
     }
 
@@ -436,6 +445,12 @@ pub enum Overlay {
     Accounts {
         selected: usize,
     },
+    /// What a new column can show, opened with `+` on the Columns tab;
+    /// `query` is the search being typed for a search column.
+    AddColumn {
+        selected: usize,
+        query: Option<TextInput>,
+    },
     /// The settings screen, opened with `s` on your own profile; `edit` is
     /// the setting being changed, when one is.
     Settings {
@@ -557,6 +572,10 @@ pub struct App {
     account_logout: Option<String>,
     /// The account `x` asked about, waiting for the `y` that logs it out.
     pub confirm_logout: Option<String>,
+    /// The Columns tab of the account in use.
+    pub columns: Columns,
+    /// The column `x` asked about, waiting for the `y` that removes it.
+    pub confirm_column_remove: Option<u64>,
     /// Pictures turned on (`true`) or off on the settings screen, for the
     /// event loop, which owns the terminal and the pictures, to act on.
     pictures_change: Option<bool>,
@@ -687,6 +706,8 @@ impl App {
             account_switch: None,
             account_logout: None,
             confirm_logout: None,
+            columns: Columns::default(),
+            confirm_column_remove: None,
             pictures_change: None,
             settings_return: None,
             save_note: None,
@@ -732,6 +753,7 @@ impl App {
             None => 0,
         };
         self.settings = settings;
+        self.load_columns();
         self.set_theme(index);
         if let Some(w) = warning {
             self.error(w);
@@ -835,12 +857,16 @@ impl App {
                 edit: Some(SettingEdit::Text(input)),
                 ..
             }) => input.insert_str(text),
+            Some(Overlay::AddColumn {
+                query: Some(input), ..
+            }) => input.insert_str(text),
             Some(
                 Overlay::Help { .. }
                 | Overlay::Themes { .. }
                 | Overlay::Viewer { .. }
                 | Overlay::Actions { .. }
                 | Overlay::Accounts { .. }
+                | Overlay::AddColumn { query: None, .. }
                 | Overlay::Settings { .. },
             ) => {}
             None if self.tab == Tab::Search && self.search.editing => {
@@ -960,7 +986,11 @@ impl App {
     /// the placeholder for a post that is not there any more, so the replies
     /// under it keep their place.
     fn remove_post(&mut self, uri: &str) {
-        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
+        let feeds = self
+            .feeds
+            .iter_mut()
+            .map(|f| &mut f.list)
+            .chain(self.columns.post_lists());
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -1085,6 +1115,7 @@ impl App {
                 let selected = *selected;
                 self.accounts_key(key, selected);
             }
+            Overlay::AddColumn { .. } => return self.add_column_key(key),
             Overlay::Help { scroll } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
                 KeyCode::Char('j') | KeyCode::Down => *scroll = scroll.saturating_add(1),
@@ -1378,6 +1409,19 @@ impl App {
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
+        if tab == Tab::Columns {
+            let waiting: Vec<u64> = self
+                .columns
+                .items
+                .iter()
+                .filter(|c| !c.asked())
+                .map(|c| c.id)
+                .collect();
+            return waiting
+                .into_iter()
+                .flat_map(|id| self.load_column(id))
+                .collect();
+        }
         if tab == Tab::Notifications
             && let Some(at) = self.seen_pending.take()
         {
@@ -1414,6 +1458,23 @@ impl App {
         vec![Job::OpenProfile(target)]
     }
 
+    /// The notifications shown, when the view is a list of them: the
+    /// Notifications tab, or a column of notifications. The keys act on a
+    /// notification the same way in both.
+    pub fn shown_notifications(&self) -> Option<&List<NotifItem>> {
+        if !self.threads.is_empty() {
+            return None;
+        }
+        match self.tab {
+            Tab::Notifications => Some(&self.notifications),
+            Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
+                Some(Rows::Notifications(l)) => Some(l),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// The post list of the current view, if it shows posts.
     pub fn current_posts(&mut self) -> Option<&mut List<Post>> {
         match self.tab {
@@ -1422,6 +1483,10 @@ impl App {
             Tab::Search => None,
             Tab::Profile => Some(&mut self.profile.posts),
             Tab::Notifications => None,
+            Tab::Columns => match self.columns.focused_mut().map(|c| &mut c.rows) {
+                Some(Rows::Posts(l)) => Some(l),
+                _ => None,
+            },
         }
     }
 
@@ -1429,9 +1494,9 @@ impl App {
         if let Some(th) = self.threads.last() {
             return th.list.current().and_then(ThreadRow::post).cloned();
         }
-        if self.tab == Tab::Notifications {
+        if let Some(l) = self.shown_notifications() {
             // Only a reply, mention, or quote is a post to act on.
-            return self.notifications.current()?.post.clone();
+            return l.current()?.post.clone();
         }
         self.current_posts()?.current().cloned()
     }
@@ -1441,12 +1506,14 @@ impl App {
         if !self.threads.is_empty() {
             return self.selected_post().map(|p| p.author);
         }
+        if let Some(l) = self.shown_notifications() {
+            return l.current().map(|i| i.n.author.clone());
+        }
         match self.tab {
             Tab::Search if self.search.mode == SearchMode::Accounts => {
                 self.search.actors.current().cloned()
             }
             Tab::Profile => self.profile.profile.clone(),
-            Tab::Notifications => self.notifications.current().map(|i| i.n.author.clone()),
             _ => self.selected_post().map(|p| p.author),
         }
     }
@@ -1466,6 +1533,17 @@ impl App {
             self.info("deleting…");
             return vec![Job::DeletePost { uri }];
         }
+        // As D's: the next key answers x's question, whatever it is.
+        if let Some(id) = self.confirm_column_remove.take() {
+            if key.code == KeyCode::Char('y') && self.columns.focused().is_some_and(|c| c.id == id)
+            {
+                self.columns.remove_focused();
+                self.save_columns();
+            } else {
+                self.info("the column stays");
+            }
+            return Vec::new();
+        }
         match key.code {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
@@ -1478,6 +1556,40 @@ impl App {
             KeyCode::Char('2') => return self.switch_tab(Tab::Search),
             KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
             KeyCode::Char('4') => return self.switch_tab(Tab::Profile),
+            KeyCode::Char('5') => return self.switch_tab(Tab::Columns),
+            KeyCode::Left | KeyCode::Char('H')
+                if self.tab == Tab::Columns && self.threads.is_empty() =>
+            {
+                self.columns.move_focus(-1);
+            }
+            KeyCode::Right | KeyCode::Char('L')
+                if self.tab == Tab::Columns && self.threads.is_empty() =>
+            {
+                self.columns.move_focus(1);
+            }
+            KeyCode::Char('<') if self.tab == Tab::Columns && self.threads.is_empty() => {
+                self.columns.move_focused(-1);
+                self.save_columns();
+            }
+            KeyCode::Char('>') if self.tab == Tab::Columns && self.threads.is_empty() => {
+                self.columns.move_focused(1);
+                self.save_columns();
+            }
+            KeyCode::Char('+') if self.tab == Tab::Columns && self.threads.is_empty() => {
+                self.overlay = Some(Overlay::AddColumn {
+                    selected: 0,
+                    query: None,
+                });
+            }
+            KeyCode::Char('x') if self.tab == Tab::Columns && self.threads.is_empty() => {
+                if let Some(c) = self.columns.focused() {
+                    let (id, title) = (c.id, c.source.title());
+                    self.info(format!(
+                        "press y to remove the column {title}, any other key to keep it"
+                    ));
+                    self.confirm_column_remove = Some(id);
+                }
+            }
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
             KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
             KeyCode::Char('j') | KeyCode::Down => return self.step(1),
@@ -1603,6 +1715,7 @@ impl App {
                     .want_more()
                     .map(|c| (Feed::Notifications, c))
             }
+            Tab::Columns => return self.step_column(delta),
             Tab::Profile => {
                 self.profile.posts.step(delta);
                 let did = self.profile.profile.as_ref().map(|p| p.did.clone());
@@ -1624,12 +1737,11 @@ impl App {
     /// The post Space and `o` act on: the selected one, or on the
     /// Notifications tab the post a notification is about.
     fn post_to_view(&mut self) -> Option<Post> {
-        if self.tab == Tab::Notifications && self.threads.is_empty() {
-            self.notifications
+        match self.shown_notifications() {
+            Some(l) => l
                 .current()
-                .and_then(|i| i.post.clone().or_else(|| i.subject.clone()))
-        } else {
-            self.selected_post()
+                .and_then(|i| i.post.clone().or_else(|| i.subject.clone())),
+            None => self.selected_post(),
         }
     }
 
@@ -1717,6 +1829,193 @@ impl App {
         self.error(why);
     }
 
+    /// The columns `settings.json` keeps for the account in use.
+    fn load_columns(&mut self) {
+        let did = self
+            .session
+            .as_ref()
+            .map(|s| s.did.clone())
+            .unwrap_or_default();
+        let sources = self.settings.columns.get(&did).cloned().unwrap_or_default();
+        self.columns = Columns::from_sources(&sources);
+    }
+
+    /// Keep the columns of the account in use in `settings.json`.
+    fn save_columns(&mut self) {
+        let Some(did) = self.session.as_ref().map(|s| s.did.clone()) else {
+            return;
+        };
+        let sources = self.columns.sources();
+        if sources.is_empty() {
+            self.settings.columns.remove(&did);
+        } else {
+            self.settings.columns.insert(did, sources);
+        }
+        let n = self.columns.items.len();
+        self.save_settings(format!("{n} column{}", if n == 1 { "" } else { "s" }));
+    }
+
+    /// Ask for the first page of the column `id`, dropping any answer to an
+    /// earlier ask.
+    fn load_column(&mut self, id: u64) -> Vec<Job> {
+        let Some(c) = self.columns.by_id(id) else {
+            return Vec::new();
+        };
+        c.generation += 1;
+        match &mut c.rows {
+            Rows::Posts(l) => l.begin(),
+            Rows::Notifications(l) => l.begin(),
+        }
+        vec![Job::Column {
+            id,
+            generation: c.generation,
+            feed: columns::feed_of(&c.source),
+            cursor: None,
+        }]
+    }
+
+    /// Move in the focused column, and ask for its next page near the end.
+    fn step_column(&mut self, delta: isize) -> Vec<Job> {
+        let Some(c) = self.columns.focused_mut() else {
+            return Vec::new();
+        };
+        let cursor = match &mut c.rows {
+            Rows::Posts(l) => {
+                l.step(delta);
+                l.want_more()
+            }
+            Rows::Notifications(l) => {
+                l.step(delta);
+                l.want_more()
+            }
+        };
+        cursor
+            .map(|cursor| Job::Column {
+                id: c.id,
+                generation: c.generation,
+                feed: columns::feed_of(&c.source),
+                cursor: Some(cursor),
+            })
+            .into_iter()
+            .collect()
+    }
+
+    /// A page for the column `id`. It lands only in that column, and a first
+    /// page only for the column's latest load; a removed column's is dropped.
+    fn column_page(
+        &mut self,
+        id: u64,
+        generation: u64,
+        cursor: Option<String>,
+        result: crate::error::Result<MorePage>,
+    ) {
+        let Some(c) = self.columns.by_id(id) else {
+            return;
+        };
+        if cursor.is_none() && generation != c.generation {
+            return;
+        }
+        let failed = match (&mut c.rows, &cursor, result) {
+            (Rows::Posts(l), None, Ok(MorePage::Posts(page))) => {
+                l.set(page);
+                None
+            }
+            (Rows::Posts(l), Some(at), Ok(MorePage::Posts(page))) => {
+                l.append(at, page);
+                None
+            }
+            (Rows::Notifications(l), None, Ok(MorePage::Notifications(page))) => {
+                l.set(page);
+                None
+            }
+            (Rows::Notifications(l), Some(at), Ok(MorePage::Notifications(page))) => {
+                l.append(at, page);
+                None
+            }
+            (rows, _, Err(e)) => {
+                match (rows, &cursor) {
+                    (Rows::Posts(l), None) => l.failed(&e),
+                    (Rows::Notifications(l), None) => l.failed(&e),
+                    (Rows::Posts(l), Some(_)) => l.more_pending = false,
+                    (Rows::Notifications(l), Some(_)) => l.more_pending = false,
+                }
+                Some(e)
+            }
+            _ => None,
+        };
+        if let Some(e) = failed {
+            self.fail(&e);
+        }
+    }
+
+    /// What `+` offers: the sources a column can have, the search last.
+    pub fn column_choices(&self) -> Vec<columns::Source> {
+        let mut v = vec![columns::Source::Following];
+        v.extend(self.feeds.iter().map(|f| columns::Source::Feed {
+            uri: f.info.uri.clone(),
+            name: f.info.name.clone(),
+        }));
+        v.push(columns::Source::Notifications);
+        if let Some(s) = &self.session {
+            v.push(columns::Source::Author {
+                did: s.did.clone(),
+                handle: s.handle.clone(),
+            });
+        }
+        v.push(columns::Source::Search {
+            query: String::new(),
+        });
+        v
+    }
+
+    /// A key on the list `+` opened, or on the search being typed there.
+    fn add_column_key(&mut self, key: KeyEvent) -> Vec<Job> {
+        let choices = self.column_choices();
+        let Some(Overlay::AddColumn { selected, query }) = &mut self.overlay else {
+            return Vec::new();
+        };
+        if let Some(input) = query {
+            match key.code {
+                KeyCode::Esc => *query = None,
+                KeyCode::Enter => {
+                    let q = input.text().trim().to_string();
+                    if q.is_empty() {
+                        return Vec::new();
+                    }
+                    return self.add_column(columns::Source::Search { query: q });
+                }
+                _ => {
+                    input.handle_key(key);
+                }
+            }
+            return Vec::new();
+        }
+        let n = choices.len();
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => *selected = (*selected + 1) % n,
+            KeyCode::Char('k') | KeyCode::Up => *selected = (*selected + n - 1) % n,
+            KeyCode::Esc | KeyCode::Char('q' | '+') => self.overlay = None,
+            KeyCode::Enter => {
+                let chosen = choices[(*selected).min(n - 1)].clone();
+                if matches!(chosen, columns::Source::Search { .. }) {
+                    *query = Some(TextInput::single(""));
+                    return Vec::new();
+                }
+                return self.add_column(chosen);
+            }
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// Add a column of `source`, focus it, keep it, and load it.
+    fn add_column(&mut self, source: columns::Source) -> Vec<Job> {
+        self.overlay = None;
+        let id = self.columns.add(source);
+        self.save_columns();
+        self.load_column(id)
+    }
+
     /// The account the list asked to switch to, for the event loop.
     pub fn take_account_switch(&mut self) -> Option<String> {
         self.account_switch.take()
@@ -1743,6 +2042,7 @@ impl App {
         self.forget_account();
         self.account_since = self.sent + 1;
         self.session = Some(session);
+        self.load_columns();
         let jobs = self.startup_jobs();
         self.pending += jobs.len();
         jobs
@@ -2163,14 +2463,8 @@ impl App {
     }
 
     fn open_thread(&mut self) -> Vec<Job> {
-        let post = if self.tab == Tab::Notifications && self.threads.is_empty() {
-            // A like or repost opens the thread of the post it is about.
-            self.notifications
-                .current()
-                .and_then(|i| i.post.clone().or_else(|| i.subject.clone()))
-        } else {
-            self.selected_post()
-        };
+        // A like or repost opens the thread of the post it is about.
+        let post = self.post_to_view();
         let Some(post) = post else {
             return Vec::new();
         };
@@ -2201,6 +2495,13 @@ impl App {
             Tab::Search => self.run_search(),
             Tab::Profile => self.open_profile(self.profile.actor.clone()),
             Tab::Notifications => self.load_notifications(),
+            Tab::Columns => {
+                let id = self.columns.focused().map(|c| c.id);
+                id.map(|id| self.load_column(id))
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            }
         }
     }
 
@@ -2321,10 +2622,12 @@ impl App {
         if !self.threads.is_empty() {
             return self.shown_post().map(|p| &p.author);
         }
+        if let Some(l) = self.shown_notifications() {
+            return l.current().map(|i| &i.n.author);
+        }
         match self.tab {
             Tab::Search if self.search.mode == SearchMode::Accounts => self.search.actors.current(),
             Tab::Profile => self.profile.profile.as_ref(),
-            Tab::Notifications => self.notifications.current().map(|i| &i.n.author),
             _ => self.shown_post().map(|p| &p.author),
         }
     }
@@ -2461,13 +2764,17 @@ impl App {
         if let Some(th) = self.threads.last() {
             return th.list.current().and_then(ThreadRow::post);
         }
-        if self.tab == Tab::Notifications {
-            return self.notifications.current().and_then(|i| i.post.as_ref());
+        if let Some(l) = self.shown_notifications() {
+            return l.current().and_then(|i| i.post.as_ref());
         }
         let list = match self.tab {
             Tab::Timeline => Some(self.shown_feed()),
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
             Tab::Profile => Some(&self.profile.posts),
+            Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
+                Some(Rows::Posts(l)) => Some(l),
+                _ => None,
+            },
             _ => None,
         };
         list.and_then(List::current)
@@ -2547,7 +2854,11 @@ impl App {
     }
 
     fn each_post(&mut self, uri: &str, mut f: impl FnMut(&mut Post)) {
-        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
+        let feeds = self
+            .feeds
+            .iter_mut()
+            .map(|f| &mut f.list)
+            .chain(self.columns.post_lists());
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -2569,12 +2880,16 @@ impl App {
                 .filter(|p| p.uri == uri)
                 .for_each(&mut f);
         }
-        for item in &mut self.notifications.items {
-            item.post
-                .iter_mut()
-                .chain(item.subject.iter_mut())
-                .filter(|p| p.uri == uri)
-                .for_each(&mut f);
+        let notifications =
+            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
+        for list in notifications {
+            for item in &mut list.items {
+                item.post
+                    .iter_mut()
+                    .chain(item.subject.iter_mut())
+                    .filter(|p| p.uri == uri)
+                    .for_each(&mut f);
+            }
         }
     }
 
@@ -2585,7 +2900,11 @@ impl App {
                 p.viewer.get_or_insert_with(Default::default).following = uri.clone();
             }
         };
-        let feeds = self.feeds.iter_mut().map(|f| &mut f.list);
+        let feeds = self
+            .feeds
+            .iter_mut()
+            .map(|f| &mut f.list)
+            .chain(self.columns.post_lists());
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -2604,8 +2923,12 @@ impl App {
                 .filter_map(ThreadRow::post_mut)
                 .for_each(|p| apply(&mut p.author));
         }
-        for item in &mut self.notifications.items {
-            apply(&mut item.n.author);
+        let notifications =
+            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
+        for list in notifications {
+            for item in &mut list.items {
+                apply(&mut item.n.author);
+            }
         }
         if let Some(p) = &mut self.profile.profile {
             apply(p);
@@ -2660,6 +2983,8 @@ impl App {
         self.overlay = None;
         self.confirm_delete = None;
         self.confirm_logout = None;
+        self.confirm_column_remove = None;
+        self.columns = Columns::default();
         self.timeline = List::default();
         self.feeds.clear();
         self.feed = 0;
@@ -2749,12 +3074,16 @@ impl App {
             Event::LoggedIn(Ok(session)) => {
                 self.info(format!("logged in as @{}", session.handle));
                 self.remember_account(&session);
+                let other = self.session.as_ref().is_none_or(|s| s.did != session.did);
                 if self.session.as_ref().is_some_and(|s| s.did != session.did) {
                     self.forget_account();
                     self.account_since = self.sent + 1;
                 }
                 self.session = Some(session);
                 self.login = None;
+                if other {
+                    self.load_columns();
+                }
                 return self.startup_jobs();
             }
             Event::LoggedIn(Err(e)) => {
@@ -2851,6 +3180,12 @@ impl App {
                 cursor,
                 result,
             } => self.more(feed, &cursor, result),
+            Event::Column {
+                id,
+                generation,
+                cursor,
+                result,
+            } => self.column_page(id, generation, cursor, result),
             Event::Notifications { seen_at, result } => match result {
                 Ok(page) => {
                     self.notifications.set(page);
@@ -4001,6 +4336,196 @@ mod tests {
         assert!(app.overlay.is_none());
     }
 
+    /// On the Columns tab with the columns of `sources`, each answered with
+    /// `posts` (notifications columns with none).
+    fn columns_with(sources: &[columns::Source], posts: Vec<Post>) -> App {
+        let mut app = logged_in();
+        let mut settings = Settings::default();
+        settings
+            .columns
+            .insert("did:plc:me".into(), sources.to_vec());
+        app.apply_settings(settings, ColorDepth::TrueColor, None);
+        let jobs = app.handle_key(key('5'));
+        assert_eq!(jobs.len(), sources.len(), "{jobs:?}");
+        for job in jobs {
+            let Job::Column {
+                id,
+                generation,
+                feed,
+                cursor,
+            } = job
+            else {
+                panic!("{job:?}")
+            };
+            assert!(cursor.is_none());
+            let page = match feed {
+                Feed::Notifications => MorePage::Notifications(Vec::new().into()),
+                _ => MorePage::Posts(posts.clone().into()),
+            };
+            app.handle_event(Event::Column {
+                id,
+                generation,
+                cursor: None,
+                result: Ok(page),
+            });
+        }
+        app
+    }
+
+    #[test]
+    fn a_column_is_added_from_the_list_kept_and_loaded() {
+        let mut app = logged_in();
+        app.handle_key(key('5'));
+        assert!(app.columns.items.is_empty());
+        app.handle_key(key('+'));
+        let choices = app.column_choices();
+        let at = choices
+            .iter()
+            .position(|c| *c == columns::Source::Notifications)
+            .unwrap();
+        for _ in 0..at {
+            app.handle_key(key('j'));
+        }
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(
+            matches!(
+                &jobs[..],
+                [Job::Column {
+                    feed: Feed::Notifications,
+                    cursor: None,
+                    ..
+                }]
+            ),
+            "{jobs:?}"
+        );
+        let saved = app.take_settings_save().expect("settings to save");
+        assert_eq!(
+            saved.columns["did:plc:me"],
+            [columns::Source::Notifications]
+        );
+        // A search column asks for its query first.
+        app.handle_key(key('+'));
+        app.handle_key(key('k'));
+        app.handle_key(code(KeyCode::Enter));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::AddColumn { query: Some(_), .. })
+        ));
+        type_str(&mut app, "猫🐈‍⬛ 1️⃣");
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        assert!(
+            matches!(&jobs[..], [Job::Column { feed: Feed::SearchPosts(q), .. }] if q == "猫🐈‍⬛ 1️⃣"),
+            "{jobs:?}"
+        );
+        assert_eq!(app.columns.focus, 1);
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn the_keys_of_a_post_act_on_the_focused_columns_selection() {
+        let mut app = columns_with(
+            &[
+                columns::Source::Following,
+                columns::Source::Search { query: "x".into() },
+            ],
+            vec![
+                post("at://a/p/1", "did:plc:alice", true),
+                post("at://b/p/2", "did:plc:bob", true),
+            ],
+        );
+        assert_eq!(app.columns.focus, 0);
+        app.handle_key(code(KeyCode::Right));
+        app.handle_key(key('j'));
+        let jobs = app.handle_key(key('l'));
+        assert!(
+            matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://b/p/2"),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::Liked {
+            post_uri: "at://b/p/2".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/n".into()),
+        });
+        // Liked in both columns and on the Timeline tab.
+        for c in &app.columns.items {
+            let Rows::Posts(l) = &c.rows else { panic!() };
+            assert!(l.items[1].like_uri().is_some(), "{:?}", c.source);
+        }
+        assert!(app.timeline.items[1].like_uri().is_some());
+        // H goes back left; the first column's selection is where it was.
+        app.handle_key(key('H'));
+        assert_eq!(app.columns.focus, 0);
+        assert_eq!(app.shown_post().unwrap().uri, "at://a/p/1");
+    }
+
+    #[test]
+    fn a_page_lands_only_in_its_column_and_not_after_a_reload_or_a_removal() {
+        let mut app = columns_with(
+            &[columns::Source::Following, columns::Source::Following],
+            vec![post("at://a/p/1", "did:plc:alice", true)],
+        );
+        let first = app.columns.items[0].id;
+        let generation = app.columns.items[0].generation;
+        // R asks again; the answer to the earlier ask is dropped.
+        let jobs = app.handle_key(key('R'));
+        assert!(
+            matches!(&jobs[..], [Job::Column { id, .. }] if *id == first),
+            "{jobs:?}"
+        );
+        app.handle_event(Event::Column {
+            id: first,
+            generation,
+            cursor: None,
+            result: Ok(MorePage::Posts(
+                vec![post("at://z/p/9", "did:plc:z", true)].into(),
+            )),
+        });
+        let Rows::Posts(l) = &app.columns.items[0].rows else {
+            panic!()
+        };
+        assert!(!l.loaded, "still waiting for its own answer");
+        let Rows::Posts(other) = &app.columns.items[1].rows else {
+            panic!()
+        };
+        assert_eq!(other.items.len(), 1, "the other column is untouched");
+        // Removed after x and y: its answer goes nowhere.
+        app.handle_key(key('x'));
+        app.handle_key(key('n'));
+        assert_eq!(app.columns.items.len(), 2, "any key but y keeps it");
+        app.handle_key(key('x'));
+        app.handle_key(key('y'));
+        assert_eq!(app.columns.items.len(), 1);
+        app.handle_event(Event::Column {
+            id: first,
+            generation: generation + 1,
+            cursor: None,
+            result: Ok(MorePage::Posts(Vec::new().into())),
+        });
+        assert_eq!(app.columns.items.len(), 1);
+        assert_ne!(app.columns.items[0].id, first);
+    }
+
+    #[test]
+    fn a_deleted_post_leaves_every_column_and_each_account_has_its_own_columns() {
+        let mine = post("at://did:plc:me/app.bsky.feed.post/m1", "did:plc:me", false);
+        let mut app = columns_with(&[columns::Source::Following], vec![mine.clone()]);
+        app.handle_key(key('D'));
+        app.handle_key(key('y'));
+        app.handle_event(Event::PostDeleted {
+            uri: mine.uri.clone(),
+            result: Ok(()),
+        });
+        let Rows::Posts(l) = &app.columns.items[0].rows else {
+            panic!()
+        };
+        assert!(l.items.is_empty());
+        // Another account has none of these columns.
+        app.accounts = vec![Account::from(&session()), Account::from(&work())];
+        app.switched_to(work());
+        assert!(app.columns.items.is_empty());
+        app.switched_to(session());
+        assert_eq!(app.columns.sources(), [columns::Source::Following]);
+    }
+
     fn work() -> Session {
         Session {
             did: "did:plc:work".into(),
@@ -4556,9 +5081,10 @@ mod tests {
     #[test]
     fn backtab_arrives_at_search_focused_too() {
         let mut app = logged_in();
-        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Notifications
-        app.handle_key(code(KeyCode::BackTab)); // Notifications -> Profile
-        app.handle_key(code(KeyCode::BackTab)); // Profile -> Search
+        app.handle_key(code(KeyCode::BackTab)); // Timeline -> Columns
+        app.handle_key(code(KeyCode::BackTab)); // Columns -> Profile
+        app.handle_key(code(KeyCode::BackTab)); // Profile -> Notifications
+        app.handle_key(code(KeyCode::BackTab)); // Notifications -> Search
         assert_eq!(app.tab, Tab::Search);
         assert!(app.search.editing);
     }
