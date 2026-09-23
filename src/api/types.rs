@@ -241,7 +241,13 @@ pub enum Embed {
     #[serde(rename = "app.bsky.embed.record#view")]
     Record { record: Value },
     #[serde(rename = "app.bsky.embed.recordWithMedia#view")]
-    RecordWithMedia { media: Box<Embed> },
+    RecordWithMedia {
+        media: Box<Embed>,
+        /// The `app.bsky.embed.record#view` beside the media, which holds
+        /// the quoted post: a quote with a picture is one of these.
+        #[serde(default)]
+        record: Value,
+    },
     #[serde(other)]
     Other,
 }
@@ -276,8 +282,19 @@ impl Embed {
                 })
                 .into_iter()
                 .collect(),
-            Embed::RecordWithMedia { media } => media.images(),
+            Embed::RecordWithMedia { media, .. } => media.images(),
             Embed::Record { .. } | Embed::Other => Vec::new(),
+        }
+    }
+
+    /// The post (or feed, or list) this embed quotes, as the server sent
+    /// it. A quote with a picture keeps it beside the media, so both a
+    /// plain quote and that one answer here.
+    pub fn quoted(&self) -> Option<&Value> {
+        match self {
+            Embed::Record { record } => Some(record),
+            Embed::RecordWithMedia { record, .. } => record.get("record"),
+            _ => None,
         }
     }
 }
@@ -332,7 +349,7 @@ impl Embed {
                 alt: alt.clone().unwrap_or_default(),
                 aspect: aspect(*aspect_ratio),
             }],
-            Embed::RecordWithMedia { media } => media.media(),
+            Embed::RecordWithMedia { media, .. } => media.media(),
             _ => Vec::new(),
         }
     }
@@ -545,7 +562,7 @@ impl Post {
         };
         let card = match &self.embed {
             Some(Embed::External { external }) => Some(&external.uri),
-            Some(Embed::RecordWithMedia { media }) => match media.as_ref() {
+            Some(Embed::RecordWithMedia { media, .. }) => match media.as_ref() {
                 Embed::External { external } => Some(&external.uri),
                 _ => None,
             },
@@ -863,6 +880,42 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(e.images()[0].url, "https://cdn/m");
+    }
+
+    #[test]
+    fn a_quote_with_a_picture_keeps_the_post_it_quotes() {
+        let e: Embed = serde_json::from_value(json!({
+            "$type": "app.bsky.embed.recordWithMedia#view",
+            "record": {"$type": "app.bsky.embed.record#view", "record": {
+                "$type": "app.bsky.embed.record#viewRecord",
+                "uri": "at://did:plc:bob/app.bsky.feed.post/q", "cid": "c",
+                "author": {"did": "did:plc:bob", "handle": "bob.test"},
+                "value": {"text": "the quoted words"}
+            }},
+            "media": {"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://cdn/m", "fullsize": "f", "alt": ""}
+            ]}
+        }))
+        .unwrap();
+        let quoted = e.quoted().expect("the quoted post");
+        assert_eq!(quoted.pointer("/author/handle").unwrap(), "bob.test");
+        assert_eq!(quoted.pointer("/value/text").unwrap(), "the quoted words");
+        // A plain quote gives the same thing.
+        let e: Embed = serde_json::from_value(json!({
+            "$type": "app.bsky.embed.record#view",
+            "record": {"author": {"handle": "bob.test"}, "value": {"text": "hi"}}
+        }))
+        .unwrap();
+        assert_eq!(
+            e.quoted().unwrap().pointer("/author/handle").unwrap(),
+            "bob.test"
+        );
+        // A post with nothing quoted says so.
+        let e: Embed = serde_json::from_value(json!({
+            "$type": "app.bsky.embed.images#view", "images": []
+        }))
+        .unwrap();
+        assert!(e.quoted().is_none());
     }
 
     #[test]
