@@ -312,3 +312,71 @@ scenarios:
             count: 1
             body:
               json: { path: "$.record.avatar.ref['$link']", equals: "bafynewavatar" }
+
+  # On a small terminal the composer has no room for the thumbnails. The
+  # names of the pictures still take their rows, so what the post carries is
+  # on the screen before it is sent.
+  - name: a composer too short for thumbnails still lists the pictures it will send
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *upload
+          - *create
+    steps:
+      - *session
+      - fixture:
+          file: pics/photo.png
+          from: testdata/photo.png
+      - fixture:
+          file: pics/alice.png
+          from: testdata/avatar-alice.png
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 10
+          cols: 26
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "Two"
+            - send: { key: ctrl-o }
+            - expect_screen:
+                contains: "pics/"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "alice.png"
+            - send: " "
+            - send: j
+            - send: " "
+            - expect_screen:
+                contains: "2 marked"
+            - send: { key: enter }
+            # Both names, and no thumbnail drawn: there is no room for one.
+            - expect_screen:
+                contains:
+                  - "1 alice.png  alt:"
+                  - "2 photo.png  alt:"
+                images: { count: 0 }
+                stable_for: 300ms
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+            - send: q
+      - assert:
+          exit_code: 0
+      # What the screen listed is what the post carries.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed.images", length: 2 }

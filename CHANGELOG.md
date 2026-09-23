@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - A terminal smaller than 24 columns by 8 rows shows what size bsky needs and what size the terminal is, instead of a screen with shreds of the tabs, a post, and the key hints on it. The client comes back as soon as the window is made bigger.
 
+### Fixed
+
+- The composer on a screen too short for the thumbnails lists the pictures it will send. The rows the thumbnails would have taken were kept empty, so on a 26 by 10 terminal only the first picture was named and on a smaller one none were, while the post still carried them all.
+- The `?` help is readable on a narrow terminal: each description goes under its keys where there is no room beside them, and a description too long for its column wraps instead of losing its end. On a 26 column terminal every description used to be cut to four cells.
+
 ## [0.2.0] - 2026-09-23
 
 ### Changed
