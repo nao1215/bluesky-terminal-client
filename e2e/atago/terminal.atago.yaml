@@ -325,3 +325,58 @@ scenarios:
             created: []
             modified: []
             deleted: []
+
+  # A window too small for the tab bar, a post, and the key hints at once
+  # says so with both sizes, rather than drawing shreds of all three. The
+  # client comes back the moment the window grows, and goes away again when
+  # it shrinks, so the notice tracks the window instead of the start size.
+  - name: a terminal under the minimum size says so and gives both sizes
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "A post to read once there is room", createdAt: "2026-09-20T10:00:00.000Z" }
+                    indexedAt: "2026-09-20T10:00:05.000Z"
+    steps:
+      - fixture:
+          file: cfg/session.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 7
+          cols: 23
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains:
+                  - "Terminal too small"
+                  - "24x8 needed, now 23x7"
+                not_contains: "A post to read"
+                stable_for: 300ms
+            - resize: { rows: 24, cols: 80 }
+            - expect_screen:
+                contains:
+                  - "A post to read once there is room"
+                  - "? help"
+                not_contains: "Terminal too small"
+                stable_for: 300ms
+            - resize: { rows: 7, cols: 23 }
+            - expect_screen:
+                contains: "Terminal too small"
+                not_contains: "A post to read"
+            - send: q
+      - assert:
+          exit_code: 0
