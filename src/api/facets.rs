@@ -121,6 +121,25 @@ fn glued(s: &str) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// `s` up to a parenthesis that opens a mention or another address written
+/// straight after this one, as text without spaces puts them
+/// (`https://a/b:(@alice.test`). A parenthesis the address holds itself
+/// stays: a fragment (`https://a.test/(#frag)`) and a name
+/// (`https://en.wikipedia.org/wiki/Rust_(programming_language)`) are part
+/// of the address, not something else glued to it.
+fn until_opened_entity(s: &str) -> &str {
+    for (i, c) in s.char_indices() {
+        if !matches!(c, '(' | '（') {
+            continue;
+        }
+        let rest = &s[i + c.len_utf8()..];
+        if rest.starts_with('@') || rest.starts_with("http://") || rest.starts_with("https://") {
+            return &s[..i];
+        }
+    }
+    s
+}
+
 /// `s` up to the `close` that has no `open` before it in `s`.
 fn until_unmatched(s: &str, open: char, close: char) -> &str {
     let mut depth = 0usize;
@@ -142,7 +161,7 @@ fn until_unmatched(s: &str, open: char, close: char) -> &str {
 fn span_at(start: usize, token: &str) -> Option<Span> {
     if token.starts_with("https://") || token.starts_with("http://") {
         let token = &token[..token.find(URL_BREAK).unwrap_or(token.len())];
-        let url = trim_url(token);
+        let url = trim_url(until_opened_entity(until_unmatched(token, '(', ')')));
         (url.len() > url.find("://")? + 3).then(|| Span {
             start,
             end: start + url.len(),
@@ -166,7 +185,7 @@ fn span_at(start: usize, token: &str) -> Option<Span> {
         let token = &token[..token[domain..]
             .find(URL_BREAK)
             .map_or(token.len(), |i| domain + i)];
-        let url = trim_url(token);
+        let url = trim_url(until_opened_entity(until_unmatched(token, '(', ')')));
         Some(Span {
             start,
             end: start + url.len(),
@@ -296,7 +315,9 @@ fn tag_of(token: &str) -> Option<(usize, &str)> {
         return None;
     }
     let tag = &rest[..rest.find(TAG_STOP).unwrap_or(rest.len())];
-    // A mention or a link written straight after the tag is not part of it.
+    // A mention or a link written straight after the tag is not part of it,
+    // plainly or in a parenthesis: a tag never holds one.
+    let tag = &tag[..tag.find(['(', '（']).unwrap_or(tag.len())];
     let tag = &tag[..glued(tag).unwrap_or(tag.len())];
     let tag = tag.trim_end_matches(is_punctuation);
     is_tag(tag).then_some((hash.len_utf8(), tag))
@@ -353,6 +374,45 @@ mod tests {
             .into_iter()
             .map(|s| (text[s.start..s.end].to_string(), s.target))
             .collect()
+    }
+
+    /// An opening parenthesis with nothing to close it opens what comes
+    /// after an address rather than belonging to it. Text without spaces
+    /// puts a mention or another link right there, and it used to be
+    /// spelled into the link or the tag that was sent.
+    #[rstest]
+    #[case(
+        "(https://example.com/a.b:(@alice.test?",
+        vec![("https://example.com/a.b", Target::Link("https://example.com/a.b".into())),
+             ("@alice.test", Target::Mention("alice.test".into()))]
+    )]
+    #[case(
+        "https://ja.wikipedia.org/wiki/\u{6771}\u{4eac}!(@alice.test.\u{301c}",
+        vec![("https://ja.wikipedia.org/wiki/\u{6771}\u{4eac}", Target::Link("https://ja.wikipedia.org/wiki/\u{6771}\u{4eac}".into())),
+             ("@alice.test", Target::Mention("alice.test".into()))]
+    )]
+    #[case(
+        "\u{300c}#rust:(example.com!",
+        vec![("#rust", Target::Tag("rust".into())),
+             ("example.com", Target::Link("https://example.com".into()))]
+    )]
+    #[case(
+        "(https://example.com/a)(https://example.org/b)",
+        vec![("https://example.com/a", Target::Link("https://example.com/a".into())),
+             ("https://example.org/b", Target::Link("https://example.org/b".into()))]
+    )]
+    // A parenthesis the address closes itself stays part of it.
+    #[case(
+        "https://en.wikipedia.org/wiki/Rust_(programming_language)",
+        vec![("https://en.wikipedia.org/wiki/Rust_(programming_language)",
+              Target::Link("https://en.wikipedia.org/wiki/Rust_(programming_language)".into()))]
+    )]
+    fn an_unclosed_parenthesis_ends_the_address(
+        #[case] text: &str,
+        #[case] want: Vec<(&str, Target)>,
+    ) {
+        let want: Vec<(String, Target)> = want.into_iter().map(|(s, t)| (s.into(), t)).collect();
+        assert_eq!(targets(text), want);
     }
 
     #[test]
