@@ -557,7 +557,9 @@ scenarios:
             - expect_screen:
                 contains: ["▶ Browser", "the default; enter types the program that opens links"]
             - send: { key: enter }
-            - send: "${workdir}/ブラウザ🦊"
+            # A name without a folder, looked up on PATH: short enough that
+            # the error box never wraps it, however deep the work folder is.
+            - send: "ブラウザ🦊"
             - send: { key: enter }
             - expect_screen:
                 contains: ["browser: ", "ブラウザ🦊", "x goes back to the default"]
@@ -568,14 +570,14 @@ scenarios:
             - send: o
             # The program named on the screen is the one tried.
             - expect_screen:
-                contains: [" Error ", "cannot open the link", "ブラウザ🦊"]
+                contains: [" Error ", "cannot open the link: ブラウザ🦊 was not found"]
             - send: q
       - assert:
           exit_code: 0
       - assert:
           file:
             path: cfg/settings.json
-            json: { path: "$.browser", matches: 'ブラウザ🦊$' }
+            json: { path: "$.browser", equals: "ブラウザ🦊" }
 
   - name: without BSKY_DOWNLOAD_DIR a picture is saved under the home download folder
     # The platform download folder is the home one on Linux and macOS, so
