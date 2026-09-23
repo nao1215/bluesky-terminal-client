@@ -760,8 +760,15 @@ scenarios:
                 contains: ["@me.test", "1 followers  2 following  3 posts"]
             - send: { key: tab }
             - expect_screen:
+                contains: "No columns yet"
+            - send: { key: tab }
+            - expect_screen:
                 contains: "Photo from the mountains"
-            # Shift+tab goes the other way, wrapping to the Profile tab.
+                not_contains: "No columns yet"
+            # Shift+tab goes the other way, wrapping to the Columns tab.
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "No columns yet"
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "1 followers  2 following  3 posts"

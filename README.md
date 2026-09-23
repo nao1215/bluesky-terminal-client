@@ -46,6 +46,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 
 - Timeline of the accounts you follow and your own posts, without reposts. A reply comes with the posts above it; `v` opens the whole thread.
 - The feeds you pinned in the Bluesky app (Discover when none are), next to Following on the Timeline tab.
+- A Columns tab that shows several lists side by side (the timeline, a pinned feed, notifications, your posts, a search), each acting as its own tab does, kept per account.
 - Post, reply, quote, like, repost, follow, and delete your own posts, with links, mentions, and hashtags made clickable.
 - Quote posts show the post they quote, with its picture or video; a quote of a feed, a list, or a starter pack is named on one line.
 - `c` copies a post's address through the terminal itself (OSC 52), so it works over ssh; in tmux it needs `set-clipboard on`.
@@ -111,7 +112,7 @@ bsky like at://did:plc:.../app.bsky.feed.post/3abc
 | Key | Action |
 |-----|--------|
 | `.` | What every key does to the selected post, as a list to choose from |
-| `1`–`4`, `Tab` | Timeline, Search, Notifications, Profile |
+| `1`–`5`, `Tab` | Timeline, Search, Notifications, Profile, Columns |
 | `j` `k`, `g` `G` | Move; more loads by itself near the end |
 | `n` `r` | New post, reply |
 | `Q` `c` `D` | Quote the post, copy its address, delete your own post (`y` confirms) |
@@ -122,6 +123,7 @@ bsky like at://did:plc:.../app.bsky.feed.post/3abc
 | `Enter` | The author's profile (`Esc` comes back) |
 | `/` | Search (`t` switches posts and accounts) |
 | `e` `s` | Edit your profile, settings (on your own Profile tab) |
+| `←` `→`, `+`, `x`, `<` `>` | Columns tab: the column to act on, add one, remove one, move it |
 | `T` | Themes |
 | `A` | Accounts: switch, log in another, log out |
 | `R` | Refresh |

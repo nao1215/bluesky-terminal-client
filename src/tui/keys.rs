@@ -21,7 +21,10 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            ("1 2 3 4", "Timeline, Search, Notifications, Profile"),
+            (
+                "1 2 3 4 5",
+                "Timeline, Search, Notifications, Profile, Columns",
+            ),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
             ("A", "accounts: switch, add, log out"),
@@ -171,6 +174,20 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Columns",
+        keys: &[
+            ("← → H L", "the column to the left / right"),
+            (
+                "+",
+                "add a column: Following, a pinned feed, notifications, your posts, a search",
+            ),
+            ("< >", "move the column left / right"),
+            ("x", "remove the column: y confirms"),
+            ("R", "load the column again"),
+            ("", "the keys of a post act on the column's selected post"),
+        ],
+    },
+    Section {
         title: "Accounts",
         keys: &[
             ("A", "the logged-in accounts, the one in use marked"),
@@ -272,6 +289,12 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Actions { .. }) => {
             return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
         }
+        Some(Overlay::AddColumn { query: Some(_), .. }) => {
+            return vec![("enter", "add"), ("esc", "back")];
+        }
+        Some(Overlay::AddColumn { .. }) => {
+            return vec![("j k", "move"), ("enter", "add"), ("esc", "close")];
+        }
         Some(Overlay::Accounts { .. }) => {
             return vec![
                 ("j k", "move"),
@@ -361,6 +384,14 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("space", "view"),
             ("n", "post"),
             ("R", "refresh"),
+        ],
+        Tab::Columns if app.columns.items.is_empty() => vec![("+", "add a column")],
+        Tab::Columns => vec![
+            ("← →", "column"),
+            ("j k", "move"),
+            (".", "actions"),
+            ("+", "add"),
+            ("x", "remove"),
         ],
         Tab::Notifications => vec![
             ("j k", "move"),
