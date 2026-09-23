@@ -50,7 +50,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 - Profile editing: display name, description, and avatar.
 - Pictures and videos full screen, played, and saved to disk.
 - 42 color themes, Bluesky's own colors by default.
-- The keys that work where you are are always on the bottom row; `?` lists them all.
+- The bottom row keeps to the few keys you need where you are; `.` lists everything that can be done to the selected post, and `?` lists every key.
 - A terminal smaller than 24x8 cells says so, and names the size it needs and the size it has, instead of drawing a screen too cramped to read.
 
 ## Pictures and videos
@@ -83,6 +83,7 @@ All 42: `bluesky`, `bluesky-dark`, `bluesky-light`, `terminal` (your terminal's 
 
 | Key | Action |
 |-----|--------|
+| `.` | What every key does to the selected post, as a list to choose from |
 | `1`–`4`, `Tab` | Timeline, Search, Notifications, Profile |
 | `j` `k`, `g` `G` | Move; more loads by itself near the end |
 | `n` `r` | New post, reply |

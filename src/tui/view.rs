@@ -57,12 +57,16 @@ fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
         url.into()
     }
 }
-/// Most rows the key hints take on a narrow screen.
-const MAX_HINT_ROWS: u16 = 3;
+/// The key hints are one row: the keys that act on a post are behind `.`,
+/// so the row stays short enough to read at a glance instead of becoming a
+/// wall of text that hides the posts.
+const MAX_HINT_ROWS: u16 = 1;
 /// Themes the picker shows at once; the rest scroll.
 const THEME_ROWS: usize = 10;
 /// Widest the error box gets, in cells.
 const ERROR_W: u16 = 76;
+/// Widest the actions list gets, in cells.
+const ACTIONS_W: u16 = 44;
 /// Widest the help box gets, in cells, and the column its keys take.
 const HELP_W: u16 = 64;
 const HELP_KEYS: usize = 18;
@@ -98,6 +102,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     // The key hints wrap onto more rows on a narrow screen rather than
     // being cut off.
     let hint_lines = hint_lines(&keys::hints(app), area.width, &t);
+    // Read before the overlay is borrowed below: the list comes from the
+    // whole app.
+    let actions = keys::actions(app);
     let hint_h = (hint_lines.len() as u16).clamp(1, MAX_HINT_ROWS);
     let [top, body, hint_row, status_row] = Layout::vertical([
         Constraint::Length(1),
@@ -129,6 +136,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             }
         }
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, app.pictures, &t),
+        Some(Overlay::Actions { selected }) => draw_actions(frame, area, &actions, *selected, &t),
         Some(Overlay::Themes { selected, .. }) => draw_themes(frame, area, *selected, &t),
         Some(Overlay::Viewer {
             media,
@@ -240,6 +248,34 @@ fn draw_viewer(
         ))
     };
     frame.render_widget(Paragraph::new(vec![Line::from(head), alt]), caption);
+}
+
+/// The list `.` opens: every key of this view that acts on the selected
+/// post, with what it would do now beside it.
+fn draw_actions(frame: &mut Frame, area: Rect, entries: &[keys::Hint], selected: usize, t: &Theme) {
+    let inner = popup(
+        frame,
+        area,
+        ACTIONS_W,
+        entries.len() as u16 + 2,
+        "Actions",
+        t,
+    );
+    let lines: Vec<Line> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, (key, what))| {
+            let marker = if i == selected { "▶ " } else { "  " };
+            let key = Span::styled(format!("{marker}{key:<7}"), t.accent().bold());
+            let what = if i == selected {
+                Span::styled(*what, t.base().bold())
+            } else {
+                Span::styled(*what, t.dim())
+            };
+            Line::from(vec![key, what])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The screen for a terminal too small for the client: what is wrong, and
@@ -2743,9 +2779,9 @@ mod tests {
         );
     }
 
-    /// The hint row offers D only where it works: on a post of your own.
+    /// The actions list offers D only where it works: on a post of your own.
     #[test]
-    fn the_hints_offer_delete_only_on_your_own_post() {
+    fn the_actions_list_offers_delete_only_on_your_own_post() {
         let (mut app, _) = App::new(Some(session()), "x");
         let mine: Post = serde_json::from_value(json!({
             "uri": "at://did:plc:me/app.bsky.feed.post/mine", "cid": "c",
@@ -2754,13 +2790,23 @@ mod tests {
         }))
         .unwrap();
         app.handle_event(Event::Timeline(Ok(vec![posts(1).remove(0), mine].into())));
-        let screen = render(&mut app, 100, 20);
-        assert!(!screen.contains("D delete"), "{screen}");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('.'),
+        ));
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains("Actions"), "{screen}");
+        assert!(!screen.contains("delete your post"), "{screen}");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Esc,
+        ));
         app.handle_key(crossterm::event::KeyEvent::from(
             crossterm::event::KeyCode::Char('j'),
         ));
-        let screen = render(&mut app, 100, 20);
-        assert!(screen.contains("D delete"), "{screen}");
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('.'),
+        ));
+        let screen = render(&mut app, 100, 24);
+        assert!(screen.contains("D      delete your post"), "{screen}");
         // The help says how it is confirmed.
         app.overlay = Some(Overlay::Help { scroll: 0 });
         let help = render(&mut app, 100, 40);
@@ -3367,11 +3413,27 @@ mod tests {
         );
     }
 
+    /// The hints are one row, whatever the width: a narrow screen keeps the
+    /// ones that fit, whole, starting with the help key and the list of
+    /// what can be done here, which lead to all the others.
     #[test]
-    fn a_narrow_screen_shows_every_hint() {
+    fn the_hint_row_is_one_line_and_starts_with_the_keys_that_lead_on() {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_event(Event::Timeline(Ok(Vec::new().into())));
-        let screen = render(&mut app, 50, 24);
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
+        for width in [MIN_W, 40, 50, 80, 120] {
+            let screen = render(&mut app, width, 24);
+            let rows: Vec<&str> = screen.lines().filter(|l| l.contains("? help")).collect();
+            assert_eq!(rows.len(), 1, "{width}:\n{screen}");
+            assert!(
+                rows[0].trim_start().starts_with("? help"),
+                "{width}: {rows:?}"
+            );
+            if width >= 40 {
+                assert!(rows[0].contains(". actions"), "{width}: {rows:?}");
+            }
+        }
+        // On a wide screen every hint of the view is on that one row.
+        let screen = render(&mut app, 120, 24);
         for (key, what) in keys::hints(&app) {
             assert!(
                 screen.contains(&format!("{key} {what}")),
