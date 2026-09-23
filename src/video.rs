@@ -118,7 +118,12 @@ pub fn probe(path: &Path) -> VideoInfo {
 
 /// A length the way a player shows it: 0:07, 2:45.
 pub fn format_seconds(s: f64) -> String {
-    let s = s.round() as u64;
+    minutes_seconds(s.round())
+}
+
+/// Whole seconds as minutes and seconds.
+fn minutes_seconds(s: f64) -> String {
+    let s = s.max(0.0) as u64;
     format!("{}:{:02}", s / 60, s % 60)
 }
 
@@ -288,9 +293,10 @@ pub fn prepare(file: &Path) -> Result<Prepared> {
     if let Some(s) = info.seconds
         && s > MAX_VIDEO_SECONDS
     {
+        // Rounded up, so that 180.4 s does not read as the 3:00 allowed.
         return Err(Error::io(format!(
             "{name} runs {}; videos can be at most {}",
-            format_seconds(s),
+            minutes_seconds(s.ceil()),
             format_seconds(MAX_VIDEO_SECONDS)
         )));
     }
@@ -334,19 +340,19 @@ mod tests {
     }
 
     /// An MP4 with its media data before the header, as a camera writes it.
-    fn mp4(seconds: u32, w: u32, h: u32, rotated: bool) -> Vec<u8> {
+    fn mp4(seconds: f64, w: u32, h: u32, rotated: bool) -> Vec<u8> {
         let mut file = bx(b"ftyp", b"isom\0\0\x02\0isomiso2");
         file.extend(bx(b"mdat", &vec![0u8; 5000]));
         let audio = bx(b"trak", &tkhd(0, 0, false));
         let video = bx(b"trak", &tkhd(w, h, rotated));
-        let moov = [mvhd(1000, seconds * 1000), audio, video].concat();
+        let moov = [mvhd(1000, (seconds * 1000.0) as u32), audio, video].concat();
         file.extend(bx(b"moov", &moov));
         file
     }
 
     #[test]
     fn the_header_gives_the_shape_and_length_skipping_audio() {
-        let data = mp4(12, 1920, 1080, false);
+        let data = mp4(12.0, 1920, 1080, false);
         let moov = read_moov(&mut Cursor::new(&data)).unwrap();
         assert_eq!(
             parse_moov(&moov),
@@ -369,7 +375,7 @@ mod tests {
 
     #[test]
     fn a_video_turned_a_quarter_is_taller_than_wide() {
-        let moov = read_moov(&mut Cursor::new(mp4(3, 1920, 1080, true))).unwrap();
+        let moov = read_moov(&mut Cursor::new(mp4(3.0, 1920, 1080, true))).unwrap();
         assert_eq!(parse_moov(&moov).dims, Some((1080, 1920)));
     }
 
@@ -401,13 +407,23 @@ mod tests {
     fn a_video_is_read_and_checked_against_the_limits() {
         let dir = tempfile::tempdir().unwrap();
         let ok = dir.path().join("clip.mp4");
-        std::fs::write(&ok, mp4(12, 640, 360, false)).unwrap();
+        std::fs::write(&ok, mp4(12.0, 640, 360, false)).unwrap();
         let p = prepare(&ok).unwrap();
         assert_eq!((p.mime, p.dims), ("video/mp4", Some((640, 360))));
 
         let long = dir.path().join("long.mp4");
-        std::fs::write(&long, mp4(181, 640, 360, false)).unwrap();
+        std::fs::write(&long, mp4(181.0, 640, 360, false)).unwrap();
         let e = prepare(&long).unwrap_err();
+        assert!(
+            e.message()
+                .contains("runs 3:01; videos can be at most 3:00"),
+            "{e}"
+        );
+
+        // A length just over the limit is not shown as the limit itself.
+        let just_over = dir.path().join("just-over.mp4");
+        std::fs::write(&just_over, mp4(180.4, 640, 360, false)).unwrap();
+        let e = prepare(&just_over).unwrap_err();
         assert!(
             e.message()
                 .contains("runs 3:01; videos can be at most 3:00"),

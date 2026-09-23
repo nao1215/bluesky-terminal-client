@@ -238,11 +238,17 @@ fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     // The process id keeps two running copies of bsky from writing the same
     // temporary file, which on Windows would make one of the renames fail.
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let mut file = open_private(&tmp)?;
-    file.write_all(data)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&tmp, path)
+    let write = || -> std::io::Result<()> {
+        let mut file = open_private(&tmp)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp, path)
+    };
+    write().inspect_err(|_| {
+        // The temporary file holds the tokens; it must not be left behind.
+        let _ = fs::remove_file(&tmp);
+    })
 }
 
 #[cfg(unix)]
@@ -347,6 +353,23 @@ mod tests {
         store.save(&sample()).unwrap();
         assert!(store.clear().unwrap());
         assert_eq!(store.load().unwrap(), None);
+    }
+
+    // was: the temporary file, which holds the tokens, was left behind when
+    // the rename failed.
+    #[test]
+    fn a_failed_save_leaves_no_temporary_file_with_the_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        // A directory where the session file goes: the rename cannot happen.
+        fs::create_dir(store.path()).unwrap();
+        assert!(store.save(&sample()).is_err());
+        let left: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(left.is_empty(), "left behind: {left:?}");
     }
 
     #[test]

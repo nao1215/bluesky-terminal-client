@@ -9,9 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Changed
 
 - A terminal without kitty graphics, sixel, or iTerm2 inline images gets the client as text instead of being refused with exit status 2. Posts say how many pictures they carry, with their descriptions, or that they have a video; no avatar column is kept and nothing is downloaded to be drawn; `Space` opens the post on bsky.app in the web browser, and the key hints and `?` help say so and leave the viewer out. Exit status 2 now only means bsky was not started in an interactive terminal.
+- `--service` and `BSKY_SERVICE` take an http or https URL with a host and nothing else, and the scheme may be written in any case. A URL with a path, a query, or a fragment used to be accepted and then made every request go to an address that does not exist.
 
 ### Fixed
 
+- `R` in a thread keeps the reply that was selected instead of moving back to the post the thread was opened on, so the next `l`, `b`, or `r` acts on the reply you were reading.
+- A video a little over three minutes long says it runs 3:01, not the 3:00 that is allowed.
+- A failed save of the session file leaves no `session.json.<pid>.tmp` behind holding the tokens.
+- An invalid service URL is quoted in the error the way it was typed.
 - A video whose playlist names its files the scheme-relative (`//host/path`), absolute-path, query-only, or `..` way plays and saves. Those forms used to be joined to the playlist's address as text, which asked the server for a path that does not exist, so the video showed only its thumbnail with a warning.
 
 ## [0.1.1] - 2026-09-23
