@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
 use crate::api::types::{
-    FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef, ThreadNode,
+    ChatMessage, Convo, FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef,
+    ThreadNode,
 };
 use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
 use crate::config::{AccountStore, Session};
@@ -48,6 +49,29 @@ pub enum Job {
     More {
         feed: Feed,
         cursor: String,
+    },
+    /// The conversations: the first page, or the one at `cursor`.
+    Convos {
+        cursor: Option<String>,
+    },
+    /// Messages of a conversation, newest first: the latest, or those
+    /// before `cursor`.
+    Messages {
+        convo_id: String,
+        cursor: Option<String>,
+    },
+    /// Send a message.
+    SendMessage {
+        convo_id: String,
+        text: String,
+    },
+    /// The conversation with `did`, started if there is none.
+    ConvoFor {
+        did: String,
+    },
+    /// Mark a conversation read.
+    ReadConvo {
+        convo_id: String,
     },
     /// A page of the column `id`: its first page (`cursor` none) for the
     /// load numbered `generation`, or the one at `cursor`.
@@ -206,6 +230,28 @@ pub enum Event {
         cursor: String,
         result: Result<MorePage>,
     },
+    Convos {
+        cursor: Option<String>,
+        result: Result<Page<Convo>>,
+    },
+    /// Messages of `convo_id`, newest first.
+    Messages {
+        convo_id: String,
+        cursor: Option<String>,
+        result: Result<Page<ChatMessage>>,
+    },
+    MessageSent {
+        convo_id: String,
+        result: Result<ChatMessage>,
+    },
+    ConvoFor {
+        did: String,
+        result: Result<Convo>,
+    },
+    ConvoRead {
+        convo_id: String,
+        result: Result<()>,
+    },
     /// A page of the column `id`, for the load `generation`; `cursor` is
     /// where it was asked from, none for the first page.
     Column {
@@ -284,6 +330,9 @@ impl Job {
                 | Job::Notifications
                 | Job::More { .. }
                 | Job::Column { .. }
+                | Job::Convos { .. }
+                | Job::Messages { .. }
+                | Job::ConvoFor { .. }
                 | Job::Download { .. }
                 | Job::OpenLink { .. }
         )
@@ -460,6 +509,39 @@ impl State {
                 result: self.page(&feed, Some(&cursor)),
                 feed,
                 cursor,
+            },
+            Job::Convos { cursor } => Event::Convos {
+                result: self.client().and_then(|c| {
+                    let out = c.convos(cursor.as_deref())?;
+                    Ok(Page {
+                        items: out.convos,
+                        cursor: out.cursor,
+                    })
+                }),
+                cursor,
+            },
+            Job::Messages { convo_id, cursor } => Event::Messages {
+                result: self.client().and_then(|c| {
+                    let out = c.messages(&convo_id, cursor.as_deref())?;
+                    Ok(Page {
+                        items: out.messages,
+                        cursor: out.cursor,
+                    })
+                }),
+                convo_id,
+                cursor,
+            },
+            Job::SendMessage { convo_id, text } => Event::MessageSent {
+                result: self.client().and_then(|c| c.send_message(&convo_id, &text)),
+                convo_id,
+            },
+            Job::ConvoFor { did } => Event::ConvoFor {
+                result: self.client().and_then(|c| c.convo_for(&did)),
+                did,
+            },
+            Job::ReadConvo { convo_id } => Event::ConvoRead {
+                result: self.client().and_then(|c| c.update_read(&convo_id, None)),
+                convo_id,
             },
             Job::Column {
                 id,

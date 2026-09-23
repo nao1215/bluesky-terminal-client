@@ -135,6 +135,26 @@ pub const MAX_POST_BYTES: usize = 3000;
 
 /// Why `text` is too long to post, by either limit of the post lexicon, or
 /// `None` when it fits.
+/// Most graphemes and bytes a direct message may have.
+pub const MAX_MESSAGE_GRAPHEMES: usize = 1000;
+pub const MAX_MESSAGE_BYTES: usize = 10000;
+
+/// Why `text` is too long for a direct message, if it is.
+pub fn message_length_problem(text: &str) -> Option<String> {
+    let len = grapheme_len(text);
+    if len > MAX_MESSAGE_GRAPHEMES {
+        return Some(format!(
+            "the message is {len} characters; the limit is {MAX_MESSAGE_GRAPHEMES}"
+        ));
+    }
+    (text.len() > MAX_MESSAGE_BYTES).then(|| {
+        format!(
+            "the message is {} bytes; the limit is {MAX_MESSAGE_BYTES}",
+            text.len()
+        )
+    })
+}
+
 pub fn post_length_problem(text: &str) -> Option<String> {
     let len = grapheme_len(text);
     if len > MAX_POST_GRAPHEMES {
@@ -253,7 +273,13 @@ pub struct Client {
     store: Option<SessionStore>,
     /// `did:web` of the PDS the account lives on, once looked up.
     pds_did: Arc<Mutex<Option<String>>>,
+    /// The service the PDS passes the requests on to (`atproto-proxy`):
+    /// set for the chat calls only.
+    proxy: Option<&'static str>,
 }
+
+/// Where the PDS sends the `chat.bsky.*` calls: Bluesky's chat service.
+pub const CHAT_PROXY: &str = "did:web:api.bsky.chat#bsky_chat";
 
 #[derive(Deserialize)]
 struct ServiceAuth {
@@ -374,6 +400,16 @@ impl Client {
             session: Arc::new(Mutex::new(session)),
             store,
             pds_did: Arc::default(),
+            proxy: None,
+        }
+    }
+
+    /// The same client, its requests passed on to the chat service. The
+    /// tokens are shared, so a refresh on either serves both.
+    fn chat(&self) -> Client {
+        Client {
+            proxy: Some(CHAT_PROXY),
+            ..self.clone()
         }
     }
 
@@ -539,19 +575,29 @@ impl Client {
         let url = xrpc_url(&self.service, nsid);
         let auth = format!("Bearer {token}");
         let result = match payload {
-            Payload::None => self
-                .agent
-                .get(&url)
-                .query_pairs(query.iter().copied())
-                .header("Authorization", &auth)
-                .call(),
-            Payload::Json(body) => self
-                .agent
-                .post(&url)
-                .query_pairs(query.iter().copied())
-                .header("Authorization", &auth)
-                .header("Content-Type", "application/json")
-                .send(body.as_str()),
+            Payload::None => {
+                let req = self
+                    .agent
+                    .get(&url)
+                    .query_pairs(query.iter().copied())
+                    .header("Authorization", &auth);
+                match self.proxy {
+                    Some(p) => req.header("atproto-proxy", p).call(),
+                    None => req.call(),
+                }
+            }
+            Payload::Json(body) => {
+                let req = self
+                    .agent
+                    .post(&url)
+                    .query_pairs(query.iter().copied())
+                    .header("Authorization", &auth)
+                    .header("Content-Type", "application/json");
+                match self.proxy {
+                    Some(p) => req.header("atproto-proxy", p).send(body.as_str()),
+                    None => req.send(body.as_str()),
+                }
+            }
             // A video can take minutes to upload; other calls keep the
             // agent's short timeout.
             Payload::Bytes(bytes, mime) => self
@@ -633,6 +679,91 @@ impl Client {
     /// Any read, answered as the server wrote it: what `--json` prints.
     pub fn get_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
         self.get(nsid, query)
+    }
+
+    /// The links, mentions and tags of `text` as facets. A handle that
+    /// cannot be resolved stays plain text rather than failing the send.
+    fn facets(&self, text: &str) -> Vec<Value> {
+        let mut out = Vec::new();
+        for span in facets::detect(text) {
+            let did = match &span.target {
+                facets::Target::Mention(handle) => self.resolve_handle(handle).ok(),
+                _ => None,
+            };
+            if let Some(f) = facets::to_json(&span, did.as_deref()) {
+                out.push(f);
+            }
+        }
+        out
+    }
+
+    /// `chat.bsky.convo.listConvos`: the conversations, newest first.
+    pub fn convos(&self, cursor: Option<&str>) -> Result<Convos> {
+        let mut q = vec![("limit", "50")];
+        if let Some(c) = cursor {
+            q.push(("cursor", c));
+        }
+        self.chat().get("chat.bsky.convo.listConvos", &q)
+    }
+
+    /// `chat.bsky.convo.getMessages`: a page of a conversation, newest
+    /// first; the cursor goes further back.
+    pub fn messages(&self, convo_id: &str, cursor: Option<&str>) -> Result<Messages> {
+        let mut q = vec![("convoId", convo_id), ("limit", "50")];
+        if let Some(c) = cursor {
+            q.push(("cursor", c));
+        }
+        self.chat().get("chat.bsky.convo.getMessages", &q)
+    }
+
+    /// Any chat read, as the server wrote it.
+    pub fn chat_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
+        self.chat().get(nsid, query)
+    }
+
+    /// `chat.bsky.convo.sendMessage`, with the facets a post would have.
+    /// Sent once: a failure is returned, not tried again.
+    pub fn send_message(&self, convo_id: &str, text: &str) -> Result<ChatMessage> {
+        let text = text.trim_end();
+        if text.trim().is_empty() {
+            return Err(Error::new(Kind::Usage, "the message is empty"));
+        }
+        if let Some(why) = message_length_problem(text) {
+            return Err(Error::new(Kind::Usage, why));
+        }
+        let mut message = json!({ "text": text });
+        let facets = self.facets(text);
+        if !facets.is_empty() {
+            message["facets"] = Value::Array(facets);
+        }
+        self.chat().post(
+            "chat.bsky.convo.sendMessage",
+            &json!({ "convoId": convo_id, "message": message }),
+        )
+    }
+
+    /// `chat.bsky.convo.getConvoForMembers`: the conversation with `did`,
+    /// started when there is none (the server always gives the same one).
+    pub fn convo_for(&self, did: &str) -> Result<Convo> {
+        #[derive(Deserialize)]
+        struct Out {
+            convo: Convo,
+        }
+        let out: Out = self
+            .chat()
+            .get("chat.bsky.convo.getConvoForMembers", &[("members", did)])?;
+        Ok(out.convo)
+    }
+
+    /// `chat.bsky.convo.updateRead`: the conversation is read up to
+    /// `message_id` (or all of it).
+    pub fn update_read(&self, convo_id: &str, message_id: Option<&str>) -> Result<()> {
+        let mut body = json!({ "convoId": convo_id });
+        if let Some(m) = message_id {
+            body["messageId"] = json!(m);
+        }
+        let _: Value = self.chat().post("chat.bsky.convo.updateRead", &body)?;
+        Ok(())
     }
 
     /// `app.bsky.feed.getTimeline`.
@@ -791,17 +922,7 @@ impl Client {
         if let Some(why) = post_length_problem(text) {
             return Err(Error::new(Kind::Usage, why));
         }
-        let mut facet_json = Vec::new();
-        for span in facets::detect(text) {
-            let did = match &span.target {
-                // An unresolvable handle stays plain text rather than failing the post.
-                facets::Target::Mention(handle) => self.resolve_handle(handle).ok(),
-                _ => None,
-            };
-            if let Some(f) = facets::to_json(&span, did.as_deref()) {
-                facet_json.push(f);
-            }
-        }
+        let facet_json = self.facets(text);
         let mut record = json!({
             "$type": "app.bsky.feed.post",
             "text": text,

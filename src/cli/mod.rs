@@ -112,6 +112,14 @@ pub enum Command {
     },
     /// The logged-in accounts, the one in use marked.
     Accounts,
+    /// Direct messages: the conversations; with ACTOR the messages with
+    /// them; with TEXT too, send it (`-` reads it from stdin).
+    Chat {
+        actor: Option<String>,
+        text: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 /// What a command runs with.
@@ -186,6 +194,7 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
             password_stdin,
         } => login(ctx, o, identifier, password_stdin),
         Command::Accounts => accounts(ctx, o),
+        Command::Chat { actor, text, limit } => chat(ctx, o, actor.as_deref(), text, limit),
     }
 }
 
@@ -782,6 +791,78 @@ fn accounts(ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         } else {
             let mark = if used { "* " } else { "  " };
             text(out, &format!("{mark}@{}  {}\n", s.handle, s.did))?;
+        }
+    }
+    Ok(())
+}
+
+fn chat(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    actor: Option<&str>,
+    text_arg: Option<String>,
+    limit: usize,
+) -> Result<()> {
+    let client = ctx.client()?;
+    let me = client.did().to_string();
+    let Some(actor) = actor else {
+        let raw = client.chat_value(
+            "chat.bsky.convo.listConvos",
+            &[("limit", &limit.min(100).to_string())],
+        )?;
+        let convos = raw
+            .get("convos")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for v in convos.iter().take(limit) {
+            if ctx.json {
+                json_line(out, v)?;
+            } else if let Ok(c) = serde_json::from_value::<crate::api::types::Convo>(v.clone()) {
+                text(out, &format::convo(&c, &me))?;
+            }
+        }
+        return Ok(());
+    };
+    let did = resolve_actor(&client, actor)?;
+    let convo = client.convo_for(&did)?;
+    if let Some(t) = text_arg {
+        let body = if t == "-" {
+            let mut s = String::new();
+            io::stdin()
+                .read_to_string(&mut s)
+                .map_err(|e| Error::io(format!("cannot read the message from stdin: {e}")))?;
+            s
+        } else {
+            t
+        };
+        let m = client.send_message(&convo.id, &body)?;
+        return wrote(
+            ctx,
+            out,
+            json!({"id": m.id, "convoId": convo.id, "text": m.text, "sentAt": m.sent_at}),
+            &format!("sent to {}", format::convo_with(&convo, &me)),
+        );
+    }
+    let raw = client.chat_value(
+        "chat.bsky.convo.getMessages",
+        &[
+            ("convoId", &convo.id),
+            ("limit", &limit.min(100).to_string()),
+        ],
+    )?;
+    let mut messages = raw
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    // Oldest first, as a conversation reads.
+    messages.reverse();
+    for v in &messages {
+        if ctx.json {
+            json_line(out, v)?;
+        } else if let Some(m) = crate::api::types::ChatMessage::from_value(v) {
+            text(out, &format::message(&m, &me, &convo))?;
         }
     }
     Ok(())

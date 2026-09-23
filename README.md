@@ -52,6 +52,7 @@ On a terminal that answers none of them bsky runs as text: each post says how ma
 - `c` copies a post's address through the terminal itself (OSC 52), so it works over ssh; in tmux it needs `set-clipboard on`.
 - Search posts and accounts, with who you already follow marked.
 - Notifications, with an unread count on the tab from the start.
+- Direct messages on the Chat tab: the conversations with their unread counts, reading back through a conversation, and writing; `m` on a profile starts one. An app password needs "Allow access to your direct messages" for this.
 - Profile editing: display name, description, and avatar.
 - Pictures and videos full screen, played, and saved to disk.
 - 42 color themes, Bluesky's own colors by default.
@@ -105,14 +106,14 @@ bsky search rust --json | jq -r .uri       # the server's own objects, one per l
 bsky like at://did:plc:.../app.bsky.feed.post/3abc
 ```
 
-`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, delete, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
+`bsky --help` lists them all: timeline, feed, thread, notifications, search, profile, followers, follows, post, like, unlike, repost, unrepost, follow, unfollow, delete, chat, login, logout, and accounts. A post is named by its at:// URI or its bsky.app address. Writes are sent once and never tried again. With `--json` a write prints what the server answered, and an error is also printed as JSON on stdout. A network or server error exits with status 4.
 
 ## Keys
 
 | Key | Action |
 |-----|--------|
 | `.` | What every key does to the selected post, as a list to choose from |
-| `1`–`5`, `Tab` | Timeline, Search, Notifications, Profile, Columns |
+| `1`–`6`, `Tab` | Timeline, Search, Notifications, Profile, Columns, Chat |
 | `j` `k`, `g` `G` | Move; more loads by itself near the end |
 | `n` `r` | New post, reply |
 | `Q` `c` `D` | Quote the post, copy its address, delete your own post (`y` confirms) |
@@ -123,6 +124,8 @@ bsky like at://did:plc:.../app.bsky.feed.post/3abc
 | `Enter` | The author's profile (`Esc` comes back) |
 | `/` | Search (`t` switches posts and accounts) |
 | `e` `s` | Edit your profile, settings (on your own Profile tab) |
+| `m` | Message the account whose profile is shown |
+| `i` `Enter` | Chat tab: write a message in the open conversation, send it |
 | `←` `→`, `+`, `x`, `<` `>` | Columns tab: the column to act on, add one, remove one, move it |
 | `T` | Themes |
 | `A` | Accounts: switch, log in another, log out |
