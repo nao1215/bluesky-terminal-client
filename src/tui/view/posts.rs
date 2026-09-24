@@ -180,7 +180,12 @@ pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> 
         .into_iter()
         .map(|s| (drawable(&s.content).into_owned(), s.style))
         .collect();
-    if spans.iter().map(|(t, _)| t.width()).sum::<usize>() <= width {
+    if spans
+        .iter()
+        .map(|(t, _)| crate::tui::text::cells(t))
+        .sum::<usize>()
+        <= width
+    {
         return Line::from(
             spans
                 .into_iter()

@@ -27,6 +27,14 @@ pub fn drawable(text: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// How many cells `s` takes on screen: the width of each grapheme cluster
+/// added up, as the terminal and ratatui draw it. `str::width` measures the
+/// string as a whole and says less for some (the lam-alif ligature لا is 1
+/// there, 2 cells drawn).
+pub fn cells(s: &str) -> usize {
+    s.graphemes(true).map(UnicodeWidthStr::width).sum()
+}
+
 /// Wrap `text` into lines at most `width` columns wide.
 ///
 /// Words move to the next line whole when they fit on one; longer words,
@@ -41,7 +49,7 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
         let mut line = String::new();
         let mut col = 0;
         for word in split_keep_spaces(para) {
-            let w = word.width();
+            let w = cells(word);
             if col + w <= width {
                 line.push_str(word);
                 col += w;
@@ -123,7 +131,7 @@ impl Class {
 /// letter with a combining mark is kept whole or dropped whole.
 pub fn truncate(s: &str, width: usize) -> String {
     let s = drawable(s);
-    if s.width() <= width {
+    if cells(&s) <= width {
         return s.to_string();
     }
     let mut out = String::new();
@@ -191,13 +199,19 @@ mod tests {
         }
     }
 
+    // Measured as the screen draws them, a grapheme at a time: the lam-alif
+    // ligature لا is 1 column as a string but 2 cells drawn.
     #[test]
     fn wrapped_lines_never_exceed_the_width() {
-        let text =
-            "Bluesky は分散型の SNS です。https://example.com/a/very/long/path/that/keeps/going 👍";
-        for width in 1..30 {
-            for line in wrap(text, width) {
-                assert!(line.width() <= width.max(2), "{width}: {line:?}");
+        let texts = [
+            "Bluesky は分散型の SNS です。https://example.com/a/very/long/path/that/keeps/going 👍",
+            "لا لا لالا \u{644}\u{627}\u{644}\u{627}\u{644}\u{627} مرحبا",
+        ];
+        for text in texts {
+            for width in 1..30 {
+                for line in wrap(text, width) {
+                    assert!(cells(&line) <= width.max(2), "{width}: {line:?}");
+                }
             }
         }
     }
@@ -232,6 +246,7 @@ mod tests {
         let texts = [
             "👨\u{200d}👩\u{200d}👧 family 🇯🇵 flag 👍🏽 か\u{3099}",
             "Bluesky は分散型の SNS です 👍",
+            "لالالالالالالالا مرحبا",
         ];
         for s in texts {
             let bounds: Vec<usize> = s
@@ -239,9 +254,9 @@ mod tests {
                 .map(|(i, _)| i)
                 .chain([s.len()])
                 .collect();
-            for width in 0..=s.width() + 1 {
+            for width in 0..=cells(s) + 1 {
                 let out = truncate(s, width);
-                assert!(out.width() <= width, "{width}: {out:?}");
+                assert!(cells(&out) <= width, "{width}: {out:?}");
                 let kept = out.strip_suffix('…').unwrap_or(&out);
                 assert!(s.starts_with(kept), "{width}: {out:?}");
                 assert!(bounds.contains(&kept.len()), "{width}: {out:?}");
