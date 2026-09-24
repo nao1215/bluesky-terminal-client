@@ -142,8 +142,8 @@ impl App {
                 match (rows, &cursor) {
                     (Rows::Posts(l), None) => l.failed(&e),
                     (Rows::Notifications(l), None) => l.failed(&e),
-                    (Rows::Posts(l), Some(_)) => l.more_pending = false,
-                    (Rows::Notifications(l), Some(_)) => l.more_pending = false,
+                    (Rows::Posts(l), Some(at)) => l.more_failed(at),
+                    (Rows::Notifications(l), Some(at)) => l.more_failed(at),
                 }
                 Some(e)
             }

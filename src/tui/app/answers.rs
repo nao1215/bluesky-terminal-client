@@ -418,15 +418,14 @@ impl App {
                 self.notifications.append(cursor, page)
             }
             (feed, Err(e)) => {
-                // Let the next move try again.
                 match feed {
-                    Feed::Notifications => self.notifications.more_pending = false,
-                    Feed::Timeline => self.timeline.more_pending = false,
+                    Feed::Notifications => self.notifications.more_failed(cursor),
+                    Feed::Timeline => self.timeline.more_failed(cursor),
                     // A feed's pages come only to its column.
                     Feed::Custom(_) => {}
-                    Feed::SearchPosts(_) => self.search.posts.more_pending = false,
-                    Feed::SearchActors(_) => self.search.actors.more_pending = false,
-                    Feed::Author(_) => self.profile.posts.more_pending = false,
+                    Feed::SearchPosts(_) => self.search.posts.more_failed(cursor),
+                    Feed::SearchActors(_) => self.search.actors.more_failed(cursor),
+                    Feed::Author(_) => self.profile.posts.more_failed(cursor),
                 }
                 self.fail(&e);
             }
