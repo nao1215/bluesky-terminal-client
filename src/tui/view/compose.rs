@@ -432,16 +432,35 @@ pub(super) fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, 
         frame.render_widget(Paragraph::new(loading).style(t.dim()), inner);
         return;
     }
+    // A box too short for all of it gives up rows in a fixed order: the
+    // description's extra rows, the blank ones, then the optional avatar,
+    // and never the name, a row of the description, or the keys. Left to
+    // the layout, the rows were squeezed anywhere, and the description
+    // being typed could get no row at all.
+    let mut left = inner.height;
+    // `whole`: all of `want` or nothing, for a name and its field.
+    let mut take = |want: u16, whole: bool| {
+        let got = if whole && want > left {
+            0
+        } else {
+            want.min(left)
+        };
+        left -= got;
+        got
+    };
+    let (name_h, desc_h, foot_h) = (take(2, false), take(2, false), take(1, false));
+    let avatar_h = take(2, true);
+    let (gap_h, gap2_h, more_h) = (take(1, false), take(1, false), take(3, false));
     let [l0, f0, _, l1, f1, _, l2, f2, foot] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(4),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
+        Constraint::Length(name_h.min(1)),
+        Constraint::Length(name_h.saturating_sub(1)),
+        Constraint::Length(gap_h),
+        Constraint::Length(desc_h.min(1)),
+        Constraint::Length(desc_h.saturating_sub(1) + more_h),
+        Constraint::Length(gap2_h),
+        Constraint::Length(avatar_h / 2),
+        Constraint::Length(avatar_h / 2),
+        Constraint::Min(foot_h),
     ])
     .areas(inner);
     let fields = [(l0, f0), (l1, f1), (l2, f2)];
