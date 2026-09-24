@@ -123,20 +123,27 @@ impl TextInput {
             }
             KeyCode::Char('a') if ctrl => self.cursor = self.line_start(),
             KeyCode::Char('e') if ctrl => self.cursor = self.line_end(),
+            // What is left after a deletion can join across the cursor (the
+            // two letters of a flag, a letter and its accent, once what kept
+            // them apart is gone): the cursor goes after the character they
+            // make, as it does after typing.
             KeyCode::Char('u') if ctrl => {
                 let start = self.line_start();
                 self.chars.drain(start..self.cursor);
                 self.cursor = start;
+                self.snap_to_stop();
             }
             KeyCode::Enter if self.multiline => self.insert('\n'),
             KeyCode::Backspace => {
                 let prev = self.prev_stop();
                 self.chars.drain(prev..self.cursor);
                 self.cursor = prev;
+                self.snap_to_stop();
             }
             KeyCode::Delete => {
                 let next = self.next_stop();
                 self.chars.drain(self.cursor..next);
+                self.snap_to_stop();
             }
             KeyCode::Left => self.cursor = self.prev_stop(),
             KeyCode::Right => self.cursor = self.next_stop(),
@@ -510,6 +517,38 @@ mod tests {
         let layout = t.layout(3);
         assert_eq!(layout.cursor, (1, 0));
         assert_eq!(layout.lines.len(), 2);
+    }
+
+    // Deleting what stood between two pieces that join (a letter and its
+    // accent, the two letters of a flag) joins them into one character; the
+    // cursor then stands after it, where it is drawn, not inside it, where
+    // the field drew it at the start of the text and typing went into the
+    // middle of the character.
+    #[test]
+    fn deleting_what_kept_two_pieces_apart_leaves_the_cursor_after_them() {
+        for (text, left, code) in [
+            ("🇯x🇵", 1, KeyCode::Backspace),
+            ("🇯x🇵", 2, KeyCode::Delete),
+            ("ab\n\u{301}c", 3, KeyCode::Delete),
+        ] {
+            let mut t = TextInput::multi(text);
+            for _ in 0..left {
+                t.handle_key(key(KeyCode::Left));
+            }
+            t.handle_key(key(code));
+            let drawn = t.layout(40).cursor;
+            t.handle_key(key(KeyCode::Char('!')));
+            let at = t.text().find('!').unwrap();
+            let before = &t.text()[..at];
+            let row = before.matches('\n').count();
+            let col = crate::tui::text::cells(before.rsplit('\n').next().unwrap());
+            assert_eq!(drawn, (row, col), "{text:?} {code:?}: {:?}", t.text());
+            assert!(
+                t.text().starts_with(before) && !before.ends_with(['🇯', 'b']),
+                "{text:?} {code:?}: typed into a character: {:?}",
+                t.text()
+            );
+        }
     }
 
     // A long paste into the middle of long text goes in at once, in time
