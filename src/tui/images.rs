@@ -28,6 +28,7 @@ use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Image, Resize};
 
 use crate::tui::player::{Player, State};
+use crate::tui::scale;
 
 /// Largest image body bsky downloads.
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -253,7 +254,11 @@ impl Images {
                     let p = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let cell = (picker.font_size().width, picker.font_size().height);
                         picker
-                            .new_protocol(crate::tui::scale::to_box(&img, size, cell), size, resize)
+                            .new_protocol(
+                                scale::pad_to_cells(scale::to_box(&img, size, cell), size, cell),
+                                size,
+                                resize,
+                            )
                             .ok()
                     }))
                     .ok()
