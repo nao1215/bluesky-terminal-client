@@ -16,6 +16,23 @@ pub struct Attachment {
     pub alt: String,
 }
 
+/// The most a video's alt text may hold (`app.bsky.embed.video`): more is
+/// refused with the post, after the video was uploaded.
+pub const MAX_VIDEO_ALT_GRAPHEMES: usize = 1000;
+pub const MAX_VIDEO_ALT_BYTES: usize = 10000;
+
+/// Why `alt` cannot describe a video, if it cannot.
+pub fn video_alt_problem(alt: &str) -> Option<String> {
+    let alt = alt.trim();
+    let n = crate::api::grapheme_len(alt);
+    (n > MAX_VIDEO_ALT_GRAPHEMES || alt.len() > MAX_VIDEO_ALT_BYTES).then(|| {
+        crate::i18n::tf(
+            "the video's alt text is {} characters long; it can have {}",
+            &[&n.to_string(), &MAX_VIDEO_ALT_GRAPHEMES.to_string()],
+        )
+    })
+}
+
 /// Send a post, uploading its pictures (up to four) or its one video first.
 /// Everything is prepared before anything is uploaded, so a file that cannot
 /// be read stops the post before anything reaches the server. Nothing is
@@ -36,6 +53,9 @@ pub fn send_post(
         (0, _) => PostMedia::None,
         (1, 1) => {
             let a = &media[0];
+            if let Some(why) = video_alt_problem(&a.alt) {
+                return Err(Error::new(Kind::Usage, why));
+            }
             let v = video::prepare(&a.path)?;
             let name = a
                 .path

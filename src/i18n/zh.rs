@@ -598,6 +598,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video service is a web address, such as https://video.bsky.app",
         "视频服务应为网址，例如 https://video.bsky.app",
     ),
+    (
+        "the video's alt text is {} characters long; it can have {}",
+        "视频的替代文本有 {} 个字符，最多可以有 {} 个",
+    ),
     ("the video's playlist is not text", "视频的播放列表不是文本"),
     (
         "the video's playlist lists nothing to play",

@@ -653,6 +653,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "動画サービスには https://video.bsky.app のような Web アドレスを指定してください",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "動画の代替テキストが {} 文字あります。{} 文字までです",
+    ),
+    (
         "the video's playlist is not text",
         "動画のプレイリストがテキストではありません",
     ),

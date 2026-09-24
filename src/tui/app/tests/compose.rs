@@ -424,3 +424,23 @@ fn the_profile_editor_sends_only_the_fields_that_were_changed() {
         "{jobs:?}"
     );
 }
+
+// A video's alt text over the 1000 the lexicon allows is refused before
+// the video is uploaded, not by the post after it.
+#[test]
+fn a_video_alt_text_over_the_limit_is_refused_before_the_upload() {
+    let mut app = logged_in();
+    app.handle_key(key('n'));
+    let Some(Overlay::Compose(c)) = &mut app.overlay else {
+        unreachable!()
+    };
+    c.media.push(Attached::new(testdata("clip.mp4")));
+    app.handle_key(code(KeyCode::Tab));
+    app.handle_paste(&"👍🏽".repeat(1001));
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(
+        jobs.is_empty(),
+        "a 1001-grapheme video alt is sent: {} jobs",
+        jobs.len()
+    );
+}

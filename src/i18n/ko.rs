@@ -644,6 +644,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "동영상 서비스는 https://video.bsky.app 같은 웹 주소여야 합니다",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "동영상 대체 텍스트가 {}자입니다. 최대 {}자까지 가능합니다",
+    ),
+    (
         "the video's playlist is not text",
         "동영상 재생 목록이 텍스트가 아닙니다",
     ),

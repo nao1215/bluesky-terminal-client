@@ -683,6 +683,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "o serviço de vídeo é um endereço web, como https://video.bsky.app",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "o texto alternativo do vídeo tem {} caracteres; pode ter até {}",
+    ),
+    (
         "the video's playlist is not text",
         "a playlist do vídeo não é texto",
     ),
