@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-24
+
 ### Fixed
 
 - On a short terminal, the actions list (`.`), the language, column and account lists went on moving down past the bottom of their box, so Enter could follow, mute or block with the choice out of sight. The lists scroll with their selection.
