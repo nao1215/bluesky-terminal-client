@@ -660,11 +660,8 @@ pub struct App {
     /// `follow:<did>`. A second press on the same target is refused until the
     /// first is answered, or two presses would create two records.
     pub in_flight: HashSet<String>,
-    /// The post `D` has asked about, waiting for the `y` that deletes it.
-    /// Deleting cannot be undone, so it takes a second key.
-    pub confirm_delete: Option<String>,
-    /// The account `B` asked to block, waiting for the `y` that confirms it.
-    pub confirm_block: Option<String>,
+    /// The question waiting for its `y`: what `D`, `B` or `x` asked about.
+    pub confirm: Option<Confirm>,
     /// When the question waiting for its y was asked: it lasts as long as
     /// its prompt is on screen.
     question_at: Option<Instant>,
@@ -700,14 +697,10 @@ pub struct App {
     account_switch: Option<String>,
     /// The account the list asked to log out, for the event loop.
     account_logout: Option<String>,
-    /// The account `x` asked about, waiting for the `y` that logs it out.
-    pub confirm_logout: Option<String>,
     /// The columns of the Timeline tab, of the account in use.
     pub columns: Columns,
     /// The Chat tab of the account in use.
     pub chat: ChatPane,
-    /// The column `x` asked about, waiting for the `y` that removes it.
-    pub confirm_column_remove: Option<u64>,
     /// Pictures turned on (`true`) or off on the settings screen, for the
     /// event loop, which owns the terminal and the pictures, to act on.
     pictures_change: Option<bool>,
@@ -735,6 +728,19 @@ pub struct App {
     /// The number of the last profile asked for: an answer to an earlier
     /// one is of a profile left since.
     profile_asked: u64,
+}
+
+/// A question that takes a `y`, and what it is about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Confirm {
+    /// `D`: the post to delete. Deleting cannot be undone.
+    Delete(String),
+    /// `B`: the account to block.
+    Block(String),
+    /// `x` in the account list: the account to log out.
+    Logout(String),
+    /// `x` on the columns: the column to remove.
+    RemoveColumn(u64),
 }
 
 /// A write the server confirmed, as it shows on a post or an account.
@@ -854,8 +860,7 @@ impl App {
             status: None,
             pending: 0,
             in_flight: HashSet::new(),
-            confirm_delete: None,
-            confirm_block: None,
+            confirm: None,
             question_at: None,
             to_copy: None,
             theme: THEMES[0],
@@ -871,10 +876,8 @@ impl App {
             accounts: Vec::new(),
             account_switch: None,
             account_logout: None,
-            confirm_logout: None,
             columns: Columns::default(),
             chat: ChatPane::default(),
-            confirm_column_remove: None,
             pictures_change: None,
             settings_return: None,
             save_note: None,
@@ -932,15 +935,8 @@ impl App {
         // A question lasts while its prompt is on screen: gone (its time up,
         // or another message in its place), a y pressed later answers
         // nothing.
-        let asking = self.confirm_delete.is_some()
-            || self.confirm_block.is_some()
-            || self.confirm_column_remove.is_some()
-            || self.confirm_logout.is_some();
-        if asking && self.status.as_ref().map(|s| s.at) != self.question_at {
-            self.confirm_delete = None;
-            self.confirm_block = None;
-            self.confirm_column_remove = None;
-            self.confirm_logout = None;
+        if self.confirm.is_some() && self.status.as_ref().map(|s| s.at) != self.question_at {
+            self.confirm = None;
             self.question_at = None;
         }
         changed

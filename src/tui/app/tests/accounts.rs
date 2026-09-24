@@ -117,7 +117,7 @@ fn a_delete_asked_before_the_session_expired_is_called_off() {
     let (mut app, _) = App::new(Some(session()), "https://bsky.social");
     app.handle_event(Event::Timeline(Ok(vec![mine].into())));
     app.handle_key(key('D'));
-    assert!(app.confirm_delete.is_some());
+    assert!(matches!(app.confirm, Some(Confirm::Delete(_))));
     expire(&mut app);
     app.handle_event(Event::LoggedIn(Ok(session())));
     let jobs = app.handle_key(key('y'));

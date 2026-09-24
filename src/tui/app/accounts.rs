@@ -26,7 +26,9 @@ impl App {
         let n = self.accounts.len().max(1);
         let selected = selected.min(n - 1);
         // The question x asked takes the next key, as D's does.
-        if let Some(did) = self.confirm_logout.take() {
+        if let Some(Confirm::Logout(did)) =
+            self.confirm.take_if(|c| matches!(c, Confirm::Logout(_)))
+        {
             if key.code == KeyCode::Char('y') {
                 self.overlay = None;
                 self.settings_return = None;
@@ -74,7 +76,7 @@ impl App {
                         "press y to log out @{}, any other key to stay logged in",
                         a.handle
                     ));
-                    self.confirm_logout = Some(a.did);
+                    self.confirm = Some(Confirm::Logout(a.did));
                     self.asked();
                 }
             }

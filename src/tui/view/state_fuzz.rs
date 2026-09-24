@@ -550,7 +550,15 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                     .then(|| app.shown_account().map(|a| a.did.clone()))
                     .flatten();
                 let asked = delete_asked.take();
-                let block_asked = app.confirm_block.clone();
+                let asked_block = |app: &App| match &app.confirm {
+                    Some(crate::tui::app::Confirm::Block(did)) => Some(did.clone()),
+                    _ => None,
+                };
+                let asked_delete = |app: &App| match &app.confirm {
+                    Some(crate::tui::app::Confirm::Delete(uri)) => Some(uri.clone()),
+                    _ => None,
+                };
+                let block_asked = asked_block(&app);
                 let composing = matches!(app.overlay, Some(Overlay::Compose(_)));
                 let jobs = app.handle_key(k);
                 let writes = jobs.iter().filter(|j| is_write(j)).count();
@@ -572,16 +580,18 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                         "seed {seed} step {step}: {k:?} is not a key that writes, and sent {jobs:?}"
                     );
                 }
-                if app.confirm_delete.is_some() {
+                if asked_delete(&app).is_some() {
                     assert_eq!(
-                        app.confirm_delete, target,
+                        asked_delete(&app),
+                        target,
                         "seed {seed} step {step}: D asked about another post than the selected one"
                     );
-                    delete_asked = app.confirm_delete.clone();
+                    delete_asked = asked_delete(&app);
                 }
-                if app.confirm_block.is_some() && app.confirm_block != block_asked {
+                if asked_block(&app).is_some() && asked_block(&app) != block_asked {
                     assert_eq!(
-                        app.confirm_block, account,
+                        asked_block(&app),
+                        account,
                         "seed {seed} step {step}: B asked about another account than the one shown"
                     );
                 }

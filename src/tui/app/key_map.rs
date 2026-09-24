@@ -18,9 +18,10 @@ impl App {
         // A question (D, B, x) takes the next key wherever the screen went
         // meanwhile: the Chat tab or the search box would otherwise keep it
         // open for a y pressed much later.
-        if self.confirm_delete.is_some()
-            || self.confirm_block.is_some()
-            || self.confirm_column_remove.is_some()
+        if self
+            .confirm
+            .as_ref()
+            .is_some_and(|c| !matches!(c, Confirm::Logout(_)))
         {
             return self.main_key(key);
         }
@@ -424,7 +425,9 @@ impl App {
         // The question D asked takes the next key, whatever it is: y
         // deletes, and anything else calls it off rather than doing what
         // that key usually does.
-        if let Some(uri) = self.confirm_delete.take() {
+        if let Some(Confirm::Delete(uri)) =
+            self.confirm.take_if(|c| matches!(c, Confirm::Delete(_)))
+        {
             if key.code != KeyCode::Char('y') {
                 self.info("not deleted");
                 return Vec::new();
@@ -436,7 +439,8 @@ impl App {
             return vec![Job::DeletePost { uri }];
         }
         // As D's: the next key answers B's question, whatever it is.
-        if let Some(did) = self.confirm_block.take() {
+        if let Some(Confirm::Block(did)) = self.confirm.take_if(|c| matches!(c, Confirm::Block(_)))
+        {
             if key.code != KeyCode::Char('y') {
                 self.info("not blocked");
                 return Vec::new();
@@ -448,7 +452,10 @@ impl App {
             return vec![Job::Block { did }];
         }
         // As D's: the next key answers x's question, whatever it is.
-        if let Some(id) = self.confirm_column_remove.take() {
+        if let Some(Confirm::RemoveColumn(id)) = self
+            .confirm
+            .take_if(|c| matches!(c, Confirm::RemoveColumn(_)))
+        {
             if key.code == KeyCode::Char('y') && self.columns.focused().is_some_and(|c| c.id == id)
             {
                 self.columns.remove_focused();
@@ -513,7 +520,7 @@ impl App {
                     self.info(format!(
                         "press y to remove the column {title}, any other key to keep it"
                     ));
-                    self.confirm_column_remove = Some(id);
+                    self.confirm = Some(Confirm::RemoveColumn(id));
                     self.asked();
                 }
             }

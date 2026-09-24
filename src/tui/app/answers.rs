@@ -375,10 +375,7 @@ impl App {
             self.login = Some(form);
             // A question asked before is not answered by the first key after
             // logging in again, and a theme being previewed was not chosen.
-            self.confirm_delete = None;
-            self.confirm_block = None;
-            self.confirm_column_remove = None;
-            self.confirm_logout = None;
+            self.confirm = None;
             if let Some(Overlay::Themes { previous, .. }) = self.overlay {
                 self.set_theme(previous);
             }
@@ -407,10 +404,7 @@ impl App {
     pub(super) fn forget_account(&mut self) {
         // Whatever was being typed belonged to the account left behind.
         self.overlay = None;
-        self.confirm_delete = None;
-        self.confirm_block = None;
-        self.confirm_logout = None;
-        self.confirm_column_remove = None;
+        self.confirm = None;
         self.columns = Columns::default();
         self.chat = ChatPane::default();
         self.timeline = List::default();
