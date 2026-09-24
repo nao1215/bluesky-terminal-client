@@ -226,12 +226,14 @@ fn average_blocks<const C: usize>(
                     }
                     let height = (bottom - top) as u32;
                     for (px, &(left, right)) in dst.as_chunks_mut::<C>().0.iter_mut().zip(cols) {
-                        let n = (right - left) as u32 * height;
+                        // Wide enough not to overflow however lopsided the
+                        // block (a strip shrunk to a few pixels).
+                        let n = (right - left) as u64 * u64::from(height);
                         let round = n / 2;
-                        let mut acc = [0u32; C];
+                        let mut acc = [0u64; C];
                         for s in sums[left * C..right * C].as_chunks::<C>().0 {
                             for c in 0..C {
-                                acc[c] += s[c];
+                                acc[c] += u64::from(s[c]);
                             }
                         }
                         for c in 0..C {
