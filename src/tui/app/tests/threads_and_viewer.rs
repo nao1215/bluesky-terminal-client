@@ -233,6 +233,42 @@ fn a_failed_thread_says_why_and_r_retries() {
     assert!(matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"));
 }
 
+// was: a reload that failed (R, or the reload after a reply was sent)
+// put the error in place of the whole thread, while the keys still acted
+// on the posts no longer shown: l liked a reply the reader could not see.
+#[test]
+fn a_failed_reload_keeps_the_thread_on_screen() {
+    let mut app = logged_in();
+    app.handle_key(key('v'));
+    app.handle_event(Event::Thread {
+        uri: "at://a/p/1".into(),
+        result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+    });
+    app.handle_key(key('j'));
+    app.handle_key(key('j'));
+    app.handle_key(key('R'));
+    app.handle_event(Event::Thread {
+        uri: "at://a/p/1".into(),
+        result: Err(Error::api("connection reset")),
+    });
+    let th = &app.threads[0];
+    assert_eq!(th.error, None, "the posts stay shown");
+    assert!(th.list.loaded);
+    assert_eq!(th.list.items.len(), 4);
+    assert!(
+        app.status
+            .as_ref()
+            .is_some_and(|s| s.text.contains("connection reset")),
+        "{:?}",
+        app.status
+    );
+    let jobs = app.handle_key(key('l'));
+    assert!(
+        matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://r2"),
+        "{jobs:?}"
+    );
+}
+
 #[test]
 fn an_unreadable_settings_file_is_never_overwritten() {
     let mut app = logged_in();

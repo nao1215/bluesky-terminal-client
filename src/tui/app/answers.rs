@@ -782,7 +782,13 @@ impl App {
                     Err(e) => {
                         for th in self.threads.iter_mut().filter(|t| waiting(t)) {
                             th.list.loaded = true;
-                            th.error = Some(e.message().to_string());
+                            // A thread already shown stays, as other lists
+                            // do when a reload fails: the error in its place
+                            // hid the posts the keys still acted on. The
+                            // status line says what went wrong.
+                            if th.list.items.is_empty() {
+                                th.error = Some(e.message().to_string());
+                            }
                         }
                         self.fail(&e);
                     }
