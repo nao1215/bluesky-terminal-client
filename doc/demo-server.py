@@ -16,7 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-TESTDATA = Path(__file__).resolve().parent.parent / "e2e" / "atago" / "testdata"
+# The pictures of doc/demo: avatars and photos for the made-up accounts.
+PICTURES = Path(__file__).resolve().parent / "demo"
 BASE = ""  # set once the port is known
 
 
@@ -26,10 +27,8 @@ def img(name):
 
 ME = {"did": "did:plc:river", "handle": "river.example", "displayName": "River"}
 ALICE = {"did": "did:plc:alice", "handle": "alice.example", "displayName": "Alice Chen",
-         "avatar": img("alice.png"),
          "viewer": {"following": "at://did:plc:river/app.bsky.graph.follow/a"}}
 BOB = {"did": "did:plc:bob", "handle": "bob.example", "displayName": "Bob Tanaka",
-       "avatar": img("bob.png"),
        "viewer": {"following": "at://did:plc:river/app.bsky.graph.follow/b"}}
 CAROL = {"did": "did:plc:carol", "handle": "carol.example", "displayName": "Carol"}
 
@@ -48,34 +47,55 @@ def post(author, rkey, text, when, likes=0, reposts=0, replies=0, embed=None):
     return p
 
 
+def photo(name, alt, width, height):
+    return {"$type": "app.bsky.embed.images#view",
+            "images": [{"thumb": img(name), "fullsize": img(name), "alt": alt,
+                        "aspectRatio": {"width": width, "height": height}}]}
+
+
 def fix_urls():
-    for a in (ALICE, BOB):
-        a["avatar"] = img("alice.png" if a is ALICE else "bob.png")
+    for a, name in ((ALICE, "alice.jpg"), (BOB, "bob.jpg"), (CAROL, "carol.jpg")):
+        a["avatar"] = img(name)
 
 
 def timeline():
     return [
-        post(ALICE, "t1", "Finished the trail before the rain. The view from the ridge was worth every step.",
-             "2026-09-23T09:40:00.000Z", 12, 3, 2,
-             {"$type": "app.bsky.embed.images#view",
-              "images": [{"thumb": img("photo.png"), "fullsize": img("photo.png"), "alt": "the ridge",
-                          "aspectRatio": {"width": 4, "height": 3}}]}),
+        post(ALICE, "t1", "Finished the trail before the rain, and earned this. The new burger place by the station is worth the walk.",
+             "2026-09-23T09:40:00.000Z", 12, 3, 2, photo("burger.jpg", "a burger with cheese and tomato", 4, 3)),
         post(BOB, "t2", "Rust 1.98 is out. The new lint caught two bugs in my parser before lunch.",
              "2026-09-23T08:15:00.000Z", 30, 8, 5),
         post(ALICE, "t3", "今日は早起きして、駅前のパン屋で朝ごはん。🥐", "2026-09-23T07:02:00.000Z", 6, 0, 1),
         post(BOB, "t4", "Reading list for the weekend: two papers on CRDTs and a novel.",
              "2026-09-22T21:30:00.000Z", 4, 1, 0),
+        post(ALICE, "t5", "A clean desk, a notebook, and one list for the rest of the year.",
+             "2026-09-22T17:45:00.000Z", 9, 1, 0, photo("desk.jpg", "a laptop and a notebook on a desk", 3, 2)),
+        post(BOB, "t6", "Pair programming tip: say what you expect the test to print before you run it.",
+             "2026-09-22T14:20:00.000Z", 22, 6, 3),
+        post(ALICE, "t7", "Finally fixed the squeaky door. It only took three videos and a pencil.",
+             "2026-09-22T11:05:00.000Z", 7, 0, 2),
+        post(BOB, "t8", "週末は川沿いを走って、帰りに銭湯。最高の組み合わせ。♨️",
+             "2026-09-22T08:30:00.000Z", 15, 2, 1),
+        post(ALICE, "t9", "Swapped my morning scroll for a morning walk. One week in, still going.",
+             "2026-09-21T19:00:00.000Z", 11, 1, 0),
+        post(BOB, "t10", "A small shell trick: set -eu at the top saves an afternoon later.",
+             "2026-09-21T13:40:00.000Z", 19, 4, 2),
     ]
 
 
-def cats():
+def watercolours():
     return [
-        post(CAROL, "c1", "She has decided the keyboard is the warmest place in the house.",
-             "2026-09-23T09:00:00.000Z", 88, 12, 9,
-             {"$type": "app.bsky.embed.images#view",
-              "images": [{"thumb": img("alice.png"), "fullsize": img("alice.png"), "alt": "a cat",
-                          "aspectRatio": {"width": 1, "height": 1}}]}),
-        post(CAROL, "c2", "Nap number four of the day.", "2026-09-23T06:00:00.000Z", 41, 2, 3),
+        post(CAROL, "c1", "Finished this morning: the owl flies the penguin home. Watercolour on cold-pressed paper.",
+             "2026-09-23T09:00:00.000Z", 88, 12, 9, photo("owl.jpg", "an owl flying with a penguin on its back", 40, 21)),
+        post(CAROL, "c2", "Mixing a warm grey for feathers takes longer than painting them.",
+             "2026-09-23T06:00:00.000Z", 41, 2, 3),
+        post(CAROL, "c3", "A quiet afternoon in the study. The penguin reads, the owl pretends to.",
+             "2026-09-22T20:10:00.000Z", 63, 7, 4, photo("reading.jpg", "an owl and a penguin reading among books", 16, 9)),
+        post(CAROL, "c4", "Tip: leave the white of the paper for the highlights. You cannot paint it back.",
+             "2026-09-22T05:00:00.000Z", 52, 5, 6),
+        post(CAROL, "c5", "水彩はにじみを待つ時間も含めて絵を描いている気がする。🎨",
+             "2026-09-21T15:30:00.000Z", 37, 3, 2),
+        post(CAROL, "c6", "New sketchbook, first page. Always the hardest one.",
+             "2026-09-21T10:00:00.000Z", 45, 4, 3),
     ]
 
 
@@ -121,20 +141,20 @@ def answer(path, query):
     if path == "app.bsky.feed.getTimeline":
         return {"feed": [{"post": p} for p in timeline()]}
     if path == "app.bsky.feed.getFeed":
-        return {"feed": [{"post": p} for p in cats()]}
+        return {"feed": [{"post": p} for p in watercolours()]}
     if path == "app.bsky.actor.getPreferences":
         return {"preferences": [{"$type": "app.bsky.actor.defs#savedFeedsPrefV2", "items": [
             {"id": "1", "type": "timeline", "value": "following", "pinned": True},
-            {"id": "2", "type": "feed", "value": "at://did:plc:carol/app.bsky.feed.generator/cats", "pinned": True},
+            {"id": "2", "type": "feed", "value": "at://did:plc:carol/app.bsky.feed.generator/watercolours", "pinned": True},
         ]}]}
     if path == "app.bsky.feed.getFeedGenerators":
-        return {"feeds": [{"uri": "at://did:plc:carol/app.bsky.feed.generator/cats", "cid": "c",
-                           "did": "did:web:feeds.example", "creator": CAROL, "displayName": "Cats",
+        return {"feeds": [{"uri": "at://did:plc:carol/app.bsky.feed.generator/watercolours", "cid": "c",
+                           "did": "did:web:feeds.example", "creator": CAROL, "displayName": "Watercolours",
                            "indexedAt": "2026-09-01T00:00:00.000Z"}]}
     if path == "app.bsky.notification.listNotifications":
         return {"notifications": notifications()}
     if path == "app.bsky.feed.searchPosts":
-        return {"posts": [p for p in timeline() + cats() if "Rust" in p["record"]["text"] or "trail" in p["record"]["text"]]}
+        return {"posts": [p for p in timeline() + watercolours() if "Rust" in p["record"]["text"] or "trail" in p["record"]["text"]]}
     if path == "app.bsky.actor.getProfile":
         return dict(ME, followersCount=128, followsCount=64, postsCount=512, description="Walks, code, and bread.")
     if path == "app.bsky.feed.getAuthorFeed":
@@ -155,18 +175,22 @@ def answer(path, query):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # Kept open between calls, as a real server does: with HTTP/1.0 each
+    # answer closes the connection, and a write sent on it after a pause
+    # finds it gone.
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, *args):
         pass
 
     def reply(self):
         url = urlparse(self.path)
         if url.path.startswith("/img/"):
-            name = {"alice.png": "avatar-alice.png", "bob.png": "avatar-bob.png",
-                    "photo.png": "photo.png"}.get(url.path[5:])
-            if name:
-                data = (TESTDATA / name).read_bytes()
+            name = url.path[5:]
+            if "/" not in name and (PICTURES / name).is_file():
+                data = (PICTURES / name).read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Type", "image/jpeg")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -175,6 +199,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path.startswith("/xrpc/"):
             body = answer(url.path[6:], parse_qs(url.query))
         if body is None:
+            sys.stderr.write(f"demo-server: nothing for {self.command} {url.path}\n")
             data = json.dumps({"error": "NotFound", "message": url.path}).encode()
             self.send_response(404)
         else:
