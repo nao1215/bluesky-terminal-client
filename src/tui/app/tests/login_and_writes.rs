@@ -431,3 +431,58 @@ fn deleting_a_post_on_your_profile_counts_it_gone_once() {
     app.handle_answer(again, Event::Profile(Ok((me(1), mine(&[p2])))));
     assert_eq!(count(&app), Some(1));
 }
+
+// Deleting your reply takes it off its parent's count, once: a timeline
+// read before the delete brings both back with the old count, and only
+// that list is counted again.
+#[test]
+fn deleting_a_reply_counts_it_gone_from_its_parent_once() {
+    let (mut app, _) = App::new(Some(session()), "https://bsky.social");
+    let parent = "at://did:plc:alice/app.bsky.feed.post/p";
+    let reply = "at://did:plc:me/app.bsky.feed.post/r";
+    let page = |replies: u64, with_reply: bool| -> Page<Post> {
+        let mut p = post(parent, "did:plc:alice", true);
+        p.reply_count = replies;
+        let mut items = vec![];
+        if with_reply {
+            let mut r = post(reply, "did:plc:me", false);
+            r.raw_record = json!({
+                "text": "me too",
+                "reply": {
+                    "root": {"uri": parent, "cid": "c"},
+                    "parent": {"uri": parent, "cid": "c"},
+                },
+            });
+            items.push(r);
+        }
+        items.push(p);
+        items.into()
+    };
+    app.handle_event(Event::Timeline(Ok(page(2, true))));
+    let reload = press(&mut app, key('R'))[0];
+    app.handle_key(key('D'));
+    let delete = press(&mut app, key('y'))[0];
+    app.handle_answer(
+        delete,
+        Event::PostDeleted {
+            uri: reply.into(),
+            result: Ok(()),
+        },
+    );
+    let count = |app: &App| {
+        app.timeline
+            .items
+            .iter()
+            .find(|p| p.uri == parent)
+            .unwrap()
+            .reply_count
+    };
+    assert_eq!(app.timeline.items.len(), 1);
+    assert_eq!(count(&app), 1);
+    app.handle_answer(reload, Event::Timeline(Ok(page(2, true))));
+    assert_eq!(app.timeline.items.len(), 1);
+    assert_eq!(count(&app), 1);
+    let again = press(&mut app, key('R'))[0];
+    app.handle_answer(again, Event::Timeline(Ok(page(1, false))));
+    assert_eq!(count(&app), 1);
+}
