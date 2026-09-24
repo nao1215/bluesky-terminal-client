@@ -323,8 +323,9 @@ scenarios:
                 contains: ["the feed is down", "Photo from the mountains"]
                 stable_for: 200ms
             - send: R
+            # The feed fails again, and says so in a new box.
             - expect_screen:
-                contains: ["the feed is down", "Photo from the mountains"]
+                contains: ["the feed is down", "any key closes this", "Photo from the mountains"]
             - send: q
       - assert:
           exit_code: 0
