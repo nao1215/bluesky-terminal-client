@@ -31,6 +31,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A video with no extension, or another one, was taken for a picture.
 - A video whose times jumped ahead (at a break in the stream) stopped until the jump had passed, and could not be closed meanwhile.
 - A `settings.json` saved with a byte order mark (as some editors do) was ignored whole.
+- A video whose file claimed a part far larger than itself stopped every write after it (the post never went, nor did any like or follow until restart).
+- `bsky like at://` and other at:// addresses with no account crashed the command; they are refused with a usage message.
+- A column of a kind added by a newer bsky was dropped from `settings.json` the next time any setting was saved.
+- A conversation shown read, with a message that came after the list was loaded, did not get marked read when opened, and came back as new.
+- A mark of notifications as seen that had failed was sent again after a newer one went through, putting the unread notifications back.
+- A Following column, and a profile, read again (after posting, unmuting, unblocking or `R`) lost their further pages and went back to the top; `R` on a profile also emptied its posts while it loaded.
+- Deleting your post left the post count on your profile as it was.
+- `bsky notifications --seen` compared times as text, so a time with fractions of a second could be taken for older, and the newest notification stayed unread.
+- A tag written inside a link that follows another tag (`#a,https://x.test/(#b)`) was made both a link and a tag.
 
 ## [0.9.0] - 2026-09-24
 

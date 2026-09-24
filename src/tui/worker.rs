@@ -16,7 +16,7 @@ use crate::api::types::{
     ChatMessage, Convo, FeedInfo, Media, Notification, Post, Profile, Record, ReplyRef, StrongRef,
     ThreadNode,
 };
-use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit};
+use crate::api::{self, Client, MAX_AVATAR_BYTES, ProfileEdit, newest};
 use crate::config::{AccountStore, Session};
 use crate::error::{Error, Result};
 use crate::media;
@@ -467,15 +467,6 @@ impl Worker {
     pub fn try_recv(&self) -> Option<(u64, Event)> {
         self.rx.try_recv().ok()
     }
-}
-
-/// The latest of some RFC 3339 timestamps, as it was written. Ones that do
-/// not parse are skipped.
-fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
-    times
-        .filter_map(|t| chrono::DateTime::parse_from_rfc3339(t).ok().map(|d| (d, t)))
-        .max_by_key(|(d, _)| *d)
-        .map(|(_, t)| t.to_string())
 }
 
 struct State {

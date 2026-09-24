@@ -546,3 +546,71 @@ fn a_failed_search_does_not_page_the_results_of_the_one_before() {
         "the cats results' cursor is used to page the dogs query: {asked:?}"
     );
 }
+
+// R on a profile reads it again where the reader is, as it does on every
+// other list: the posts stay while it loads, and the selection stays on the
+// post it was on.
+#[test]
+fn reloading_a_profile_keeps_the_place_in_its_posts() {
+    let mut app = logged_in();
+    app.handle_key(code(KeyCode::Enter)); // alice
+    let alice: Profile =
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap();
+    let posts: Vec<Post> = (0..5)
+        .map(|i| post(&format!("at://alice/{i}"), "did:plc:alice", true))
+        .collect();
+    app.handle_event(Event::Profile(Ok((alice.clone(), posts.clone().into()))));
+    for _ in 0..3 {
+        app.handle_key(key('j'));
+    }
+    let jobs = app.handle_key(key('R'));
+    assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:alice"));
+    assert_eq!(
+        app.profile.posts.items.len(),
+        5,
+        "the posts stay while it loads"
+    );
+    assert_eq!(app.profile.came_from, Some(Tab::Timeline));
+    app.handle_event(Event::Profile(Ok((alice, posts.into()))));
+    assert_eq!(app.profile.posts.current().unwrap().uri, "at://alice/3");
+}
+
+// A profile read again keeps the pages loaded after its first, as the
+// timeline does: a reader far down its posts stays where they were.
+#[test]
+fn reloading_a_profile_keeps_its_further_pages() {
+    let mut app = logged_in();
+    app.handle_key(code(KeyCode::Enter)); // alice
+    let alice: Profile =
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap();
+    let posts = |from: usize, to: usize| -> Vec<Post> {
+        (from..to)
+            .map(|i| post(&format!("at://alice/{i}"), "did:plc:alice", true))
+            .collect()
+    };
+    app.handle_event(Event::Profile(Ok((
+        alice.clone(),
+        page(posts(0, 30), Some("c1")),
+    ))));
+    let mut asked = Vec::new();
+    for _ in 0..25 {
+        asked.extend(app.handle_key(key('j')));
+    }
+    assert!(
+        matches!(&asked[..], [Job::More { feed: Feed::Author(_), cursor }] if cursor == "c1"),
+        "{asked:?}"
+    );
+    app.handle_event(Event::More {
+        feed: Feed::Author("did:plc:alice".into()),
+        cursor: "c1".into(),
+        result: Ok(MorePage::Posts(page(posts(30, 60), Some("c2")))),
+    });
+    for _ in 0..15 {
+        app.handle_key(key('j'));
+    }
+    assert_eq!(app.profile.posts.current().unwrap().uri, "at://alice/40");
+    app.handle_key(key('R'));
+    app.handle_event(Event::Profile(Ok((alice, page(posts(0, 30), Some("c1b"))))));
+    assert_eq!(app.profile.posts.items.len(), 60);
+    assert_eq!(app.profile.posts.current().unwrap().uri, "at://alice/40");
+}

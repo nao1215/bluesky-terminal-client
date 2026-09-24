@@ -533,8 +533,15 @@ fn bare_at_uri(uri: &str) -> String {
 /// stands for: the server and the checks of whose a record is compare DIDs.
 fn with_did(client: &Client, uri: &str) -> Result<String> {
     let uri = bare_at_uri(uri);
-    let rest = &uri["at://".len()..];
+    // `at://` alone is cut to `at:` by the trailing slashes taken off.
+    let rest = uri.strip_prefix("at://").unwrap_or_default();
     let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    if authority.is_empty() {
+        return Err(Error::new(
+            Kind::Usage,
+            format!("{uri:?} names no account after at://"),
+        ));
+    }
     if authority.starts_with("did:") {
         return Ok(uri.clone());
     }
@@ -609,15 +616,19 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Re
         text(out, &format::notification(&n, what))?;
     }
     if seen {
-        let newest = raw
-            .iter()
-            .filter_map(|v| v.get("indexedAt").and_then(Value::as_str))
-            .max()
-            .map(str::to_string)
-            .unwrap_or_else(api::now);
-        client.update_seen(&newest)?;
+        client.update_seen(&seen_at(&raw))?;
     }
     Ok(())
+}
+
+/// The time to mark notifications seen up to: the newest of `raw`, by the
+/// time it is rather than how its text sorts, as the client marks them.
+fn seen_at(raw: &[Value]) -> String {
+    api::newest(
+        raw.iter()
+            .filter_map(|v| v.get("indexedAt").and_then(Value::as_str)),
+    )
+    .unwrap_or_else(api::now)
 }
 
 fn search(ctx: &Ctx, out: &mut dyn Write, q: &str, accounts: bool, limit: usize) -> Result<()> {
@@ -1381,5 +1392,54 @@ mod tests {
     )]
     fn an_at_uri_loses_what_follows_its_record_key(#[case] given: &str, #[case] want: &str) {
         assert_eq!(bare_at_uri(given), want);
+    }
+
+    // An at:// URI with nothing after the scheme but what bare_at_uri takes
+    // off was cut short and then sliced past its end.
+    #[rstest]
+    #[case("at://")]
+    #[case("at:///")]
+    #[case("at://?x=1")]
+    #[case("at://#top")]
+    #[case("at:///app.bsky.feed.post/p1")]
+    fn an_at_uri_without_an_account_is_refused(#[case] given: &str) {
+        let client = Client::new(
+            crate::config::Session {
+                service: "http://127.0.0.1:9".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            },
+            None,
+        );
+        let e = post_uri(&client, given).unwrap_err();
+        assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
+        assert!(list_uri(&client, given).is_err());
+    }
+
+    // --seen marks up to the newest notification listed, by the time it
+    // is, not by how its text sorts: a time without milliseconds sorts
+    // after one with them in the same second, and one with an offset
+    // anywhere.
+    #[test]
+    fn seen_is_the_newest_notification_by_time() {
+        let listed = |times: &[&str]| -> Vec<Value> {
+            times.iter().map(|t| json!({"indexedAt": t})).collect()
+        };
+        assert_eq!(
+            seen_at(&listed(&[
+                "2026-09-22T00:30:00Z",
+                "2026-09-22T00:30:00.500Z"
+            ])),
+            "2026-09-22T00:30:00.500Z"
+        );
+        assert_eq!(
+            seen_at(&listed(&[
+                "2026-09-22T09:00:00+09:00",
+                "2026-09-22T00:59:59.999Z"
+            ])),
+            "2026-09-22T00:59:59.999Z"
+        );
     }
 }

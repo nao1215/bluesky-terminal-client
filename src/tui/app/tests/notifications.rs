@@ -184,3 +184,27 @@ fn a_failed_mark_as_seen_is_tried_again() {
 
 // H4: two first pages of the conversations out (the tab, then R); the
 // older one arriving last replaces the newer.
+
+// A mark that failed waits for the next visit; one sent since for newer
+// notifications makes it old news. Sent on the next visit anyway, it would
+// put the time seen back to before what the newer one marked.
+#[test]
+fn a_failed_mark_is_not_sent_after_a_newer_one() {
+    let mut app = notifications_tab();
+    app.handle_event(Event::Seen(Err(Error::api(
+        "app.bsky.notification.updateSeen failed: HTTP 502",
+    ))));
+    app.handle_key(key('R'));
+    let jobs = app.handle_event(Event::Notifications {
+        seen_at: "2026-09-23T00:00:00.000Z".into(),
+        result: Ok(vec![notif("mention", "at://m/2", false, None, None)].into()),
+    });
+    assert!(
+        matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-23T00:00:00.000Z"),
+        "{jobs:?}"
+    );
+    app.handle_event(Event::Seen(Ok(())));
+    app.handle_key(key('1'));
+    let jobs = app.handle_key(key('4'));
+    assert!(jobs.is_empty(), "an older mark is sent again: {jobs:?}");
+}

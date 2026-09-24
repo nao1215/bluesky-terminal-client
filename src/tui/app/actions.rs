@@ -75,7 +75,18 @@ impl App {
                 vec![Job::Timeline]
             }
             Tab::Search => self.run_search(),
-            Tab::Profile => self.open_profile(self.profile.actor.clone()),
+            // Read again in place, as the other lists are: the profile and
+            // its posts stay while it loads, and the answer keeps the
+            // selection on the post it was on.
+            Tab::Profile => match &self.profile.profile {
+                Some(p) => {
+                    let target = p.did.clone();
+                    self.profile.loading = true;
+                    self.profile.error = None;
+                    vec![Job::OpenProfile(target)]
+                }
+                None => self.open_profile(self.profile.actor.clone()),
+            },
             Tab::Notifications => self.load_notifications(),
             Tab::Columns => {
                 let id = self.columns.focused().map(|c| c.id);

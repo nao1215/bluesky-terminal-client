@@ -531,3 +531,35 @@ fn an_older_list_of_conversations_does_not_replace_a_newer_one() {
 
 // H5: the thread read again after a reply in it: its answer is dropped, as
 // the view is not waiting (loaded), so the reply never shows.
+
+// A conversation the list showed as read, opened after a message came into
+// it: the message is read now, and is marked so, or the list read again
+// shows it as new after the user has read it.
+#[test]
+fn a_message_that_came_after_the_list_is_marked_read_when_opened() {
+    let mut app = chat_tab();
+    app.chat.convos.items[1].last_message = Some(a_message("m1", "old"));
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(&jobs[..], [Job::Messages { .. }]), "{jobs:?}");
+    let jobs = app.handle_event(Event::Messages {
+        convo_id: "b".into(),
+        cursor: None,
+        result: Ok(vec![a_message("m2", "new 👍🏽"), a_message("m1", "old")].into()),
+    });
+    assert!(
+        matches!(&jobs[..], [Job::ReadConvo { convo_id }] if convo_id == "b"),
+        "{jobs:?}"
+    );
+    // Nothing since the list: nothing to mark.
+    let mut app = chat_tab();
+    app.chat.convos.items[1].last_message = Some(a_message("m1", "old"));
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    let jobs = app.handle_event(Event::Messages {
+        convo_id: "b".into(),
+        cursor: None,
+        result: Ok(vec![a_message("m1", "old")].into()),
+    });
+    assert!(jobs.is_empty(), "{jobs:?}");
+}

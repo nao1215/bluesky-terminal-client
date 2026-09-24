@@ -157,7 +157,21 @@ impl App {
                 }
             }
             // A page asked for before the delete still carries the post.
-            Written::Deleted { post } => self.remove_post(post),
+            // The profile it is on counts it gone with it: once, as only a
+            // list that still shows it has a count from before the delete.
+            Written::Deleted { post } => {
+                let author = self.profile.profile.as_ref().map(|p| p.did.as_str());
+                let counted = self
+                    .profile
+                    .posts
+                    .items
+                    .iter()
+                    .any(|p| p.uri == *post && Some(p.author.did.as_str()) == author);
+                self.remove_post(post);
+                if counted && let Some(p) = &mut self.profile.profile {
+                    p.posts_count = p.posts_count.map(|n| n.saturating_sub(1));
+                }
+            }
             Written::ConvoRead { convo } => {
                 if let Some(c) = self.chat.convos.items.iter_mut().find(|c| c.id == *convo) {
                     c.unread_count = 0;
@@ -491,6 +505,9 @@ impl App {
     /// Mark the notifications up to `at` seen, remembering it in case the
     /// mark fails.
     pub(super) fn mark_seen(&mut self, at: String) -> Vec<Job> {
+        // A mark still waiting (one that failed) is of notifications this
+        // one covers too: sent later, it would put the time back.
+        self.seen_pending = None;
         self.seen_sending = Some(at.clone());
         vec![Job::UpdateSeen(at)]
     }
@@ -573,8 +590,19 @@ impl App {
             } => self.search.actors.set(actors),
             Event::Profile(Ok((profile, posts))) => {
                 if self.wanted_profile(&profile) {
+                    // The same profile read again (R, a post sent) keeps the
+                    // pages loaded after its first, as the timeline does.
+                    let again = self
+                        .profile
+                        .profile
+                        .as_ref()
+                        .is_some_and(|p| p.did == profile.did);
                     self.profile.profile = Some(profile);
-                    self.profile.posts.set(posts);
+                    if again {
+                        self.profile.posts.renew(posts);
+                    } else {
+                        self.profile.posts.set(posts);
+                    }
                     self.profile.error = None;
                     self.profile.loading = false;
                 }

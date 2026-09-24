@@ -238,12 +238,22 @@ impl App {
             (None, Ok(page)) => {
                 let read_before = open.loaded;
                 let had = open.messages.len();
+                // The first page was marked when the conversation was opened,
+                // if the list said it had unread messages. One the list
+                // showed read may have had a message since: that one is read
+                // now too.
+                let known = open.convo.last_message.as_ref().map(|m| m.id.as_str());
+                let came_since = open.convo.unread_count == 0
+                    && page
+                        .items
+                        .iter()
+                        .take_while(|m| Some(m.id.as_str()) != known)
+                        .any(|m| m.sender != me);
                 open.take_latest(page.items, page.cursor);
                 // Messages from the others that came while it is read are
-                // read: marked so, they do not come back as unread. The first
-                // page was marked when the conversation was opened.
+                // read: marked so, they do not come back as unread.
                 let theirs = open.messages[had..].iter().any(|m| m.sender != me);
-                if read_before && theirs && shown {
+                if shown && (read_before && theirs || !read_before && came_since) {
                     return vec![Job::ReadConvo {
                         convo_id: convo_id.to_string(),
                     }];

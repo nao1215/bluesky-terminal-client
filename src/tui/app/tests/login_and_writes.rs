@@ -385,3 +385,49 @@ fn quote_sends_the_quoted_post_s_reference() {
         other => panic!("{other:?}"),
     }
 }
+
+// A post deleted on your own profile leaves its count as well as its list,
+// once: a page read before the delete, which still carries the post and
+// the count before it, loses both too; one read after it has neither.
+#[test]
+fn deleting_a_post_on_your_profile_counts_it_gone_once() {
+    let mut app = logged_in();
+    let open = press(&mut app, key('5'))[0];
+    let me = |count: u64| -> Profile {
+        serde_json::from_value(
+            json!({"did": "did:plc:me", "handle": "me.test", "postsCount": count}),
+        )
+        .unwrap()
+    };
+    let mine = |uris: &[&str]| -> Page<Post> {
+        uris.iter()
+            .map(|u| post(u, "did:plc:me", false))
+            .collect::<Vec<_>>()
+            .into()
+    };
+    let (p1, p2) = (
+        "at://did:plc:me/app.bsky.feed.post/1",
+        "at://did:plc:me/app.bsky.feed.post/2",
+    );
+    app.handle_answer(open, Event::Profile(Ok((me(2), mine(&[p1, p2])))));
+    let reload = press(&mut app, key('R'))[0];
+    app.handle_key(key('D'));
+    let delete = press(&mut app, key('y'))[0];
+    app.handle_answer(
+        delete,
+        Event::PostDeleted {
+            uri: p1.into(),
+            result: Ok(()),
+        },
+    );
+    let count = |app: &App| app.profile.profile.as_ref().unwrap().posts_count;
+    assert_eq!(count(&app), Some(1));
+    // Read before the delete: the post and the old count.
+    app.handle_answer(reload, Event::Profile(Ok((me(2), mine(&[p1, p2])))));
+    assert_eq!(app.profile.posts.items.len(), 1);
+    assert_eq!(count(&app), Some(1));
+    // Read after it: neither.
+    let again = press(&mut app, key('R'))[0];
+    app.handle_answer(again, Event::Profile(Ok((me(1), mine(&[p2])))));
+    assert_eq!(count(&app), Some(1));
+}

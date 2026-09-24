@@ -94,6 +94,14 @@ pub fn detect(text: &str) -> Vec<Span> {
                 .iter()
                 .any(|s| (s.start..s.end).contains(&span.start))
         {
+            // What a parenthesis inside the link started is the link's own
+            // (`https://a.test/(#frag)`), as it is for a link found first:
+            // two facets over the same text are not drawn by the app.
+            let outside: Vec<Span> = spans
+                .drain(first..)
+                .filter(|s| s.end <= span.start || span.end <= s.start)
+                .collect();
+            spans.extend(outside);
             spans.push(span);
         }
     }
@@ -786,6 +794,15 @@ mod tests {
             n.bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
         }));
+    }
+
+    #[test]
+    fn a_link_glued_after_a_tag_takes_the_parenthesis_it_holds() {
+        // The tag found in the link's own parenthesis was kept beside the
+        // link: two facets over the same bytes.
+        let text = "#tag,https://a.test/(#x)";
+        let got: Vec<(usize, usize)> = detect(text).iter().map(|s| (s.start, s.end)).collect();
+        assert_eq!(got, [(0, 4), (5, text.len())]);
     }
 
     #[test]

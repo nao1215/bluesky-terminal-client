@@ -298,3 +298,63 @@ fn the_first_plus_asks_for_the_pinned_feeds_once() {
     app.switched_to(work());
     assert!(matches!(&app.handle_key(key('+'))[..], [Job::PinnedFeeds]));
 }
+
+// A post sent reloads the Following column, as it reloads the timeline: a
+// reader down its second page stays there, as on the Timeline tab, rather
+// than being put back at the top with the further pages gone.
+#[test]
+fn a_following_column_read_again_keeps_its_further_pages() {
+    let posts = |from: usize, to: usize| -> Vec<Post> {
+        (from..to)
+            .map(|i| post(&format!("at://f/{i}"), "did:plc:alice", true))
+            .collect()
+    };
+    let mut app = columns_with(&[columns::Source::Following], Vec::new());
+    let id = app.columns.items[0].id;
+    let generation = app.columns.items[0].generation;
+    app.handle_event(Event::Column {
+        id,
+        generation,
+        cursor: None,
+        result: Ok(MorePage::Posts(page(posts(0, 30), Some("c1")))),
+    });
+    let mut asked = Vec::new();
+    for _ in 0..25 {
+        asked.extend(app.handle_key(key('j')));
+    }
+    assert!(
+        matches!(&asked[..], [Job::Column { cursor: Some(c), .. }] if c == "c1"),
+        "{asked:?}"
+    );
+    app.handle_event(Event::Column {
+        id,
+        generation,
+        cursor: Some("c1".into()),
+        result: Ok(MorePage::Posts(page(posts(30, 60), Some("c2")))),
+    });
+    for _ in 0..15 {
+        app.handle_key(key('j'));
+    }
+    let jobs = app.handle_event(Event::Posted {
+        reply_to: None,
+        result: Ok(()),
+    });
+    let Some(Job::Column { generation, .. }) =
+        jobs.iter().find(|j| matches!(j, Job::Column { .. }))
+    else {
+        panic!("{jobs:?}")
+    };
+    let mut first = posts(0, 30);
+    first.insert(0, post("at://me/new", "did:plc:me", false));
+    app.handle_event(Event::Column {
+        id,
+        generation: *generation,
+        cursor: None,
+        result: Ok(MorePage::Posts(page(first, Some("c1b")))),
+    });
+    let Rows::Posts(l) = &app.columns.items[0].rows else {
+        panic!()
+    };
+    assert_eq!(l.items.len(), 61);
+    assert_eq!(l.current().unwrap().uri, "at://f/40");
+}
