@@ -616,15 +616,19 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Re
         text(out, &format::notification(&n, what))?;
     }
     if seen {
-        let newest = raw
-            .iter()
-            .filter_map(|v| v.get("indexedAt").and_then(Value::as_str))
-            .max()
-            .map(str::to_string)
-            .unwrap_or_else(api::now);
-        client.update_seen(&newest)?;
+        client.update_seen(&seen_at(&raw))?;
     }
     Ok(())
+}
+
+/// The time to mark notifications seen up to: the newest of `raw`, by the
+/// time it is rather than how its text sorts, as the client marks them.
+fn seen_at(raw: &[Value]) -> String {
+    api::newest(
+        raw.iter()
+            .filter_map(|v| v.get("indexedAt").and_then(Value::as_str)),
+    )
+    .unwrap_or_else(api::now)
 }
 
 fn search(ctx: &Ctx, out: &mut dyn Write, q: &str, accounts: bool, limit: usize) -> Result<()> {
@@ -1412,5 +1416,30 @@ mod tests {
         let e = post_uri(&client, given).unwrap_err();
         assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
         assert!(list_uri(&client, given).is_err());
+    }
+
+    // --seen marks up to the newest notification listed, by the time it
+    // is, not by how its text sorts: a time without milliseconds sorts
+    // after one with them in the same second, and one with an offset
+    // anywhere.
+    #[test]
+    fn seen_is_the_newest_notification_by_time() {
+        let listed = |times: &[&str]| -> Vec<Value> {
+            times.iter().map(|t| json!({"indexedAt": t})).collect()
+        };
+        assert_eq!(
+            seen_at(&listed(&[
+                "2026-09-22T00:30:00Z",
+                "2026-09-22T00:30:00.500Z"
+            ])),
+            "2026-09-22T00:30:00.500Z"
+        );
+        assert_eq!(
+            seen_at(&listed(&[
+                "2026-09-22T09:00:00+09:00",
+                "2026-09-22T00:59:59.999Z"
+            ])),
+            "2026-09-22T00:59:59.999Z"
+        );
     }
 }

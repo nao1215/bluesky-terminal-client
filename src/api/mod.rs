@@ -172,6 +172,15 @@ pub fn post_length_problem(text: &str) -> Option<String> {
     })
 }
 
+/// The latest of some RFC 3339 timestamps, as it was written. Ones that do
+/// not parse are skipped.
+pub fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
+    times
+        .filter_map(|t| chrono::DateTime::parse_from_rfc3339(t).ok().map(|d| (d, t)))
+        .max_by_key(|(d, _)| *d)
+        .map(|(_, t)| t.to_string())
+}
+
 /// The current time as the AT Protocol writes it.
 pub fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
