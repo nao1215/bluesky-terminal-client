@@ -57,16 +57,17 @@ pub fn send_post(
                 return Err(Error::new(Kind::Usage, why));
             }
             let v = video::prepare(&a.path)?;
-            let name = a
-                .path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "video".into());
+            // The name the video service is told, which it may keep: what
+            // the file is, not what it was called on this computer.
+            let name = format!("video.{}", video::extension(v.mime));
             let blob = client.upload_video(
                 video_service,
                 &v.bytes,
                 v.mime,
                 &name,
+                &a.path
+                    .file_name()
+                    .map_or_else(|| name.clone(), |n| n.to_string_lossy().into_owned()),
                 std::time::Duration::from_secs(1),
             )?;
             PostMedia::Video(PostVideo {
@@ -95,7 +96,7 @@ pub fn send_post(
         _ => {
             return Err(Error::new(
                 Kind::Usage,
-                "a post can have up to 4 pictures or one video, not both",
+                crate::i18n::t("a post can have up to 4 pictures or one video, not both"),
             ));
         }
     };

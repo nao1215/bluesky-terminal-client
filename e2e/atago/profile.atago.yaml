@@ -343,6 +343,58 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.putRecord, count: 0 }
 
+  # A message the worker writes is in the language chosen too.
+  - name: in Japanese, a file that is not a picture is refused in Japanese
+    mock_servers:
+      - name: api
+        routes:
+          - *empty_timeline
+          - *own_profile
+          - *own_feed
+          - *own_record
+          - *put_record
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"language": "ja"}'
+      - fixture:
+          file: notes.txt
+          content: "not an image\n"
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "1 タイムライン"
+            - send: "5"
+            - expect_screen:
+                contains: "あなたです"
+            - send: e
+            - expect_screen:
+                contains: ["新しいアバター（パス、ctrl+o で選択、省略可）", "old bio"]
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: "notes.txt"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: ["notes.txt", "が読める画像ではありません", "いずれかのキーで閉じる"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "いずれかのキーで閉じる"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "╭ プロフィールを編集"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+
   - name: an account that never saved a profile gets a new record, swapped against none
     mock_servers:
       - name: api

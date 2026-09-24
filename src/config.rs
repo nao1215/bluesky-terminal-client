@@ -23,7 +23,6 @@ use crate::error::{Error, Result};
 /// Environment variable that overrides the config directory.
 pub const CONFIG_DIR_ENV: &str = "BSKY_CONFIG_DIR";
 
-const SESSION_FILE: &str = "session.json";
 const SETTINGS_FILE: &str = "settings.json";
 
 /// User preferences.
@@ -171,6 +170,12 @@ impl Environment {
     }
 }
 
+/// A file's bytes without the byte order mark some editors put at the start
+/// of UTF-8 (Notepad did), which JSON does not allow.
+fn without_bom(data: &[u8]) -> &[u8] {
+    data.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(data)
+}
+
 /// Reads and writes `settings.json` inside one directory.
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
@@ -194,33 +199,44 @@ impl SettingsStore {
     pub fn load(&self) -> (Settings, Option<String>) {
         let path = self.path();
         match fs::read(&path) {
-            Ok(data) => match serde_json::from_slice(&data) {
+            Ok(data) => match serde_json::from_slice(without_bom(&data)) {
                 Ok(settings) => (settings, None),
                 Err(e) => (
                     Settings::default(),
-                    Some(format!(
-                        "{} is not valid and was ignored: {e}",
-                        path.display()
+                    Some(crate::i18n::tf(
+                        "{} is not valid and was ignored: {}",
+                        &[&(path.display()).to_string(), &e.to_string()],
                     )),
                 ),
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Settings::default(), None),
             Err(e) => (
                 Settings::default(),
-                Some(format!("cannot read {}: {e}", path.display())),
+                Some(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                )),
             ),
         }
     }
 
     /// Save the settings, creating the directory when needed.
     pub fn save(&self, settings: &Settings) -> Result<()> {
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.path();
         let mut json = serde_json::to_vec_pretty(settings).expect("settings serialize");
         json.push(b'\n');
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 }
 
@@ -245,25 +261,11 @@ pub fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
-    dirs::config_dir()
-        .map(|d| platform_config_dir(&d))
-        .ok_or_else(|| {
-            Error::io("cannot determine the config directory")
-                .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
-        })
-}
-
-/// `bsky` inside the platform config directory. The command used to be
-/// called `bs` and kept its state in `bs`; when only that folder exists it is
-/// moved, so a login made before the rename is kept. A move that fails
-/// leaves both as they are and bsky starts logged out.
-fn platform_config_dir(platform: &Path) -> PathBuf {
-    let dir = platform.join("bsky");
-    let old = platform.join("bs");
-    if !dir.exists() && old.join(SESSION_FILE).is_file() {
-        let _ = fs::rename(&old, &dir);
-    }
-    dir
+    dirs::config_dir().map(|d| d.join("bsky")).ok_or_else(|| {
+        Error::io(crate::i18n::t("cannot determine the config directory")).with_hint(
+            crate::i18n::tf("set {} to a writable directory", &[CONFIG_DIR_ENV]),
+        )
+    })
 }
 
 /// Where a setting's value comes from, in the order they win.
@@ -358,7 +360,12 @@ pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Sourc
 /// a folder chosen for downloads or the cache is tried at once, so a bad one
 /// is refused with the reason rather than at the next download.
 pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
-    let fail = |e: std::io::Error| format!("cannot write to {}: {e}", dir.display());
+    let fail = |e: std::io::Error| {
+        crate::i18n::tf(
+            "cannot write to {}: {}",
+            &[&(dir.display()).to_string(), &e.to_string()],
+        )
+    };
     fs::create_dir_all(dir).map_err(fail)?;
     // A new file only, never through a link or over a file left at a name:
     // a name that is taken is passed over for the next.
@@ -377,9 +384,9 @@ pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
             Err(e) => return Err(fail(e)),
         }
     }
-    Err(format!(
+    Err(crate::i18n::tf(
         "cannot write to {}: every name tried was taken",
-        dir.display()
+        &[&(dir.display()).to_string()],
     ))
 }
 
@@ -391,15 +398,6 @@ pub struct SessionStore {
 }
 
 impl SessionStore {
-    /// The `session.json` of `dir`, where versions before several accounts
-    /// kept the one login; nothing is touched until a read or write.
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self {
-            dir: dir.into(),
-            file: SESSION_FILE.to_string(),
-        }
-    }
-
     /// Path of the session file.
     pub fn path(&self) -> PathBuf {
         self.dir.join(&self.file)
@@ -411,15 +409,24 @@ impl SessionStore {
         let data = match fs::read(&path) {
             Ok(data) => data,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", path.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
-        serde_json::from_slice(&data).map(Some).map_err(|e| {
-            Error::io(format!(
-                "{} is not a valid session file: {e}",
-                path.display()
-            ))
-            .with_hint("run `bsky logout` to discard it and log in again")
-        })
+        serde_json::from_slice(without_bom(&data))
+            .map(Some)
+            .map_err(|e| {
+                Error::io(crate::i18n::tf(
+                    "{} is not a valid session file: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                ))
+                .with_hint(crate::i18n::t(
+                    "run `bsky logout --all` to discard it and log in again",
+                ))
+            })
     }
 
     /// Save refreshed tokens, only while the file is there: an account
@@ -433,12 +440,20 @@ impl SessionStore {
 
     /// Save the session, creating the directory when needed.
     pub fn save(&self, session: &Session) -> Result<()> {
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.path();
         let json = serde_json::to_vec_pretty(session).expect("session serializes");
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 
     /// Remove the saved session. Returns whether a session existed.
@@ -447,7 +462,10 @@ impl SessionStore {
         match fs::remove_file(&path) {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(Error::io(format!("cannot remove {}: {e}", path.display()))),
+            Err(e) => Err(Error::io(crate::i18n::tf(
+                "cannot remove {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))),
         }
     }
 }
@@ -477,26 +495,10 @@ pub struct AccountStore {
 }
 
 impl AccountStore {
-    /// The accounts of the config directory `dir`. A `session.json` left by
-    /// a version with one login becomes the first account and the current
-    /// one, once; if it cannot be moved it is left where it is and used as
-    /// it was. One that cannot be read is reported, and left alone.
+    /// The accounts of the config directory `dir`; nothing is touched
+    /// until a read or write.
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self> {
-        let store = Self { dir: dir.into() };
-        store.adopt_old_session()?;
-        Ok(store)
-    }
-
-    fn adopt_old_session(&self) -> Result<()> {
-        let old = SessionStore::new(&self.dir);
-        let Some(session) = old.load()? else {
-            return Ok(());
-        };
-        if self.store_for(&session.did).save(&session).is_ok() {
-            let _ = self.write_current(Some(&session.did));
-            let _ = old.clear();
-        }
-        Ok(())
+        Ok(Self { dir: dir.into() })
     }
 
     fn accounts_dir(&self) -> PathBuf {
@@ -513,12 +515,52 @@ impl AccountStore {
     }
 
     /// Every account, by handle.
+    /// Log every account out: each account file goes, one that cannot be
+    /// read too (that is the way out of it). The accounts that could be read
+    /// are returned, to say who was logged out.
+    pub fn remove_all(&self) -> Result<Vec<Session>> {
+        let dir = self.accounts_dir();
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(dir.display()).to_string(), &e.to_string()],
+                )));
+            }
+        };
+        let mut gone = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(stem) = name.strip_suffix(".json") else {
+                continue;
+            };
+            let store = SessionStore {
+                dir: dir.clone(),
+                file: format!("{stem}.json"),
+            };
+            if let Ok(Some(s)) = store.load() {
+                gone.push(s);
+            }
+            store.clear()?;
+        }
+        self.write_current(None)?;
+        gone.sort_by_key(|a| a.handle.to_lowercase());
+        Ok(gone)
+    }
+
     pub fn list(&self) -> Result<Vec<Session>> {
         let dir = self.accounts_dir();
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", dir.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(dir.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
         let mut all = Vec::new();
         for entry in entries.flatten() {
@@ -584,20 +626,28 @@ impl AccountStore {
     fn read_current(&self) -> Current {
         fs::read(self.dir.join(ACCOUNTS_FILE))
             .ok()
-            .and_then(|d| serde_json::from_slice(&d).ok())
+            .and_then(|d| serde_json::from_slice(without_bom(&d)).ok())
             .unwrap_or_default()
     }
 
     fn write_current(&self, did: Option<&str>) -> Result<()> {
         let mut c = self.read_current();
         c.current = did.map(str::to_string);
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.dir.join(ACCOUNTS_FILE);
         let mut json = serde_json::to_vec_pretty(&c).expect("accounts serialize");
         json.push(b'\n');
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 }
 
@@ -916,6 +966,14 @@ mod tests {
         );
     }
 
+    /// A session file of its own in `dir`, as an account's is.
+    fn session_store(dir: impl Into<PathBuf>) -> SessionStore {
+        SessionStore {
+            dir: dir.into(),
+            file: "account.json".into(),
+        }
+    }
+
     fn sample() -> Session {
         Session {
             service: "https://pds.example".into(),
@@ -924,34 +982,6 @@ mod tests {
             access_jwt: "access".into(),
             refresh_jwt: "refresh".into(),
         }
-    }
-
-    #[test]
-    fn the_config_of_the_old_bs_name_is_moved_once() {
-        let platform = tempfile::tempdir().unwrap();
-        fs::create_dir(platform.path().join("bs")).unwrap();
-        fs::write(platform.path().join("bs").join(SESSION_FILE), "{}").unwrap();
-
-        let dir = platform_config_dir(platform.path());
-        assert_eq!(dir, platform.path().join("bsky"));
-        assert_eq!(fs::read_to_string(dir.join(SESSION_FILE)).unwrap(), "{}");
-        assert!(!platform.path().join("bs").exists());
-
-        // A later `bs` folder (another program's, say) is left alone.
-        fs::create_dir(platform.path().join("bs")).unwrap();
-        fs::write(platform.path().join("bs").join(SESSION_FILE), "other").unwrap();
-        platform_config_dir(platform.path());
-        assert_eq!(fs::read_to_string(dir.join(SESSION_FILE)).unwrap(), "{}");
-        assert!(platform.path().join("bs").exists());
-    }
-
-    #[test]
-    fn a_bs_folder_without_a_session_is_not_taken() {
-        let platform = tempfile::tempdir().unwrap();
-        fs::create_dir(platform.path().join("bs")).unwrap();
-        let dir = platform_config_dir(platform.path());
-        assert!(!dir.exists());
-        assert!(platform.path().join("bs").exists());
     }
 
     fn account(did: &str, handle: &str) -> Session {
@@ -991,16 +1021,26 @@ mod tests {
         );
     }
 
+    // An account file that cannot be read is not a dead end: logging every
+    // account out takes it with the others.
     #[test]
-    fn the_one_login_of_before_becomes_the_first_account_once() {
+    fn logging_every_account_out_takes_a_broken_file_too() {
         let dir = tempfile::tempdir().unwrap();
-        SessionStore::new(dir.path()).save(&sample()).unwrap();
         let store = AccountStore::open(dir.path()).unwrap();
-        assert_eq!(store.current().unwrap(), Some(sample()));
-        assert!(!dir.path().join(SESSION_FILE).exists(), "moved");
-        // Opening again changes nothing.
-        let store = AccountStore::open(dir.path()).unwrap();
-        assert_eq!(store.list().unwrap(), vec![sample()]);
+        store.save(&account("did:plc:a", "a.test")).unwrap();
+        fs::write(
+            dir.path().join("accounts").join("did_plc_b.json"),
+            "{not json",
+        )
+        .unwrap();
+        assert!(store.list().is_err());
+        let gone = store.remove_all().unwrap();
+        assert_eq!(
+            gone.iter().map(|s| s.handle.as_str()).collect::<Vec<_>>(),
+            ["a.test"]
+        );
+        assert_eq!(store.list().unwrap(), Vec::new());
+        assert_eq!(store.current().unwrap(), None);
     }
 
     #[test]
@@ -1088,13 +1128,13 @@ mod tests {
     #[test]
     fn load_without_file_is_none() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(SessionStore::new(dir.path()).load().unwrap(), None);
+        assert_eq!(session_store(dir.path()).load().unwrap(), None);
     }
 
     #[test]
     fn save_then_load_round_trips() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path().join("nested"));
+        let store = session_store(dir.path().join("nested"));
         store.save(&sample()).unwrap();
         assert_eq!(store.load().unwrap(), Some(sample()));
     }
@@ -1102,7 +1142,7 @@ mod tests {
     #[test]
     fn clear_reports_whether_a_session_existed() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path());
+        let store = session_store(dir.path());
         assert!(!store.clear().unwrap());
         store.save(&sample()).unwrap();
         assert!(store.clear().unwrap());
@@ -1114,7 +1154,7 @@ mod tests {
     #[test]
     fn a_failed_save_leaves_no_temporary_file_with_the_tokens() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path());
+        let store = session_store(dir.path());
         // A directory where the session file goes: the rename cannot happen.
         fs::create_dir(store.path()).unwrap();
         assert!(store.save(&sample()).is_err());
@@ -1129,14 +1169,28 @@ mod tests {
     #[test]
     fn corrupt_file_is_an_io_error_with_a_hint() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path());
+        let store = session_store(dir.path());
         fs::write(store.path(), b"{not json").unwrap();
         let err = store.load().unwrap_err();
         assert_eq!(err.kind(), crate::error::Kind::Io);
         assert!(
-            err.to_string().contains("\nhint: run `bsky logout`"),
+            err.to_string().contains("\nhint: run `bsky logout --all`"),
             "{err}"
         );
+    }
+
+    // A file an editor saved with a byte order mark is read as it is meant.
+    #[test]
+    fn settings_saved_with_a_byte_order_mark_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(SETTINGS_FILE),
+            "\u{feff}{\"theme\": \"nord\"}\n",
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(dir.path()).load();
+        assert_eq!(warning, None);
+        assert_eq!(settings.theme.as_deref(), Some("nord"));
     }
 
     #[test]
@@ -1180,14 +1234,14 @@ mod tests {
     #[test]
     fn save_leaves_no_temporary_file() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path());
+        let store = session_store(dir.path());
         store.save(&sample()).unwrap();
         store.save(&sample()).unwrap();
         let names: Vec<_> = fs::read_dir(dir.path())
             .unwrap()
             .map(|e| e.unwrap().file_name())
             .collect();
-        assert_eq!(names, ["session.json"]);
+        assert_eq!(names, ["account.json"]);
     }
 
     #[cfg(unix)]
@@ -1195,7 +1249,7 @@ mod tests {
     fn session_file_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path());
+        let store = session_store(dir.path());
         fs::write(store.path(), b"old").unwrap();
         fs::set_permissions(store.path(), fs::Permissions::from_mode(0o644)).unwrap();
         store.save(&sample()).unwrap();

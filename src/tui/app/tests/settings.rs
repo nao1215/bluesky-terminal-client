@@ -540,3 +540,26 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     assert_eq!(again.take_settings_save().unwrap().language, None);
     i18n::set(Lang::En);
 }
+
+// After the session expired over a list the settings opened, the same
+// list opened with A closes to nothing.
+#[test]
+fn a_list_opened_from_the_settings_does_not_return_there_after_an_expiry() {
+    let mut app = two_accounts();
+    settings_on(&mut app, "Account");
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(app.overlay, Some(Overlay::Accounts { .. })));
+    expire(&mut app);
+    app.handle_event(Event::LoggedIn(Ok(session())));
+    app.handle_key(key('1'));
+    app.handle_key(key('A'));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(
+        app.overlay.is_none(),
+        "Esc on A's list opened {:?}",
+        app.overlay
+    );
+}
+
+// H3: a failed updateSeen: the unread count stays on the tab, and coming
+// back to the tab never marks them again.

@@ -283,3 +283,55 @@ fn a_thread_reloaded_and_opened_again_is_not_left_loading() {
     app.handle_key(code(KeyCode::Esc));
     assert!(app.threads.last().unwrap().list.loaded);
 }
+
+// A reply sent in an open thread shows there once the thread is read
+// again.
+#[test]
+fn a_reply_shows_in_the_thread_it_was_sent_in() {
+    let mut app = logged_in();
+    let open = press(&mut app, key('v'));
+    app.handle_answer(
+        open[0],
+        Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &[])),
+        },
+    );
+    app.handle_key(key('r'));
+    type_str(&mut app, "reply");
+    let send = press(&mut app, ctrl('s'));
+    let jobs = app.handle_answer(
+        send[0],
+        Event::Posted {
+            reply_to: Some("at://a/p/1".into()),
+            result: Ok(()),
+        },
+    );
+    let seqs: Vec<(u64, Job)> = jobs.into_iter().map(|j| (app.stamp(&j), j)).collect();
+    let (seq, _) = seqs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::Thread(_)))
+        .unwrap();
+    app.handle_answer(
+        *seq,
+        Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json(
+                "at://a/p/1",
+                &["at://did:plc:me/app.bsky.feed.post/myreply"],
+            )),
+        },
+    );
+    let uris: Vec<String> = app.threads[0]
+        .list
+        .items
+        .iter()
+        .filter_map(|r| r.post().map(|p| p.uri.clone()))
+        .collect();
+    assert!(
+        uris.iter().any(|u| u.ends_with("myreply")),
+        "the reply is not in the thread: {uris:?}"
+    );
+}
+
+// H1b: a like still on its way, A -> B -> A, l sends a second Like.

@@ -63,7 +63,13 @@ pub fn inspect(path: &Path) -> Info {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if crate::video::is_video_name(&name) {
+    // A video by its name, or by what it starts with: one saved without
+    // its extension, or with another, is still a video.
+    let mut head = [0u8; 64];
+    let read = File::open(path)
+        .and_then(|mut f| std::io::Read::read(&mut f, &mut head))
+        .unwrap_or(0);
+    if crate::video::is_video_name(&name) || crate::video::sniff_mime(&head[..read]).is_some() {
         let v = crate::video::probe(path);
         return Info {
             kind: Kind::Video,
@@ -97,18 +103,27 @@ pub struct Prepared {
 /// Read a picture upright. The error names the file and what is wrong.
 pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
     let shown = path.display();
-    let file = File::open(path).map_err(|e| Error::io(format!("cannot read {shown}: {e}")))?;
+    let file = File::open(path).map_err(|e| {
+        Error::io(crate::i18n::tf(
+            "cannot read {}: {}",
+            &[&shown.to_string(), &e.to_string()],
+        ))
+    })?;
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
     if len > MAX_FILE_BYTES {
-        return Err(Error::io(format!(
-            "{shown} is {} MB; pictures must be at most {} MB",
-            len / (1024 * 1024),
-            MAX_FILE_BYTES / (1024 * 1024)
+        return Err(Error::io(crate::i18n::tf(
+            "{} is {} MB; pictures must be at most {} MB",
+            &[
+                &shown.to_string(),
+                &(len / (1024 * 1024)).to_string(),
+                &(MAX_FILE_BYTES / (1024 * 1024)).to_string(),
+            ],
         )));
     }
     let not_image = |e: &dyn std::fmt::Display| {
-        Error::io(format!(
-            "{shown} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {e}"
+        Error::io(crate::i18n::tf(
+            "{} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {}",
+            &[&shown.to_string(), &e.to_string()],
         ))
     };
     let reader = ImageReader::new(BufReader::new(file))
@@ -116,7 +131,7 @@ pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
         .map_err(|e| not_image(&e))?;
     let format = reader
         .format()
-        .ok_or_else(|| not_image(&"unknown format"))?;
+        .ok_or_else(|| not_image(&crate::i18n::t("unknown format")))?;
     let mut decoder = reader.into_decoder().map_err(|e| not_image(&e))?;
     let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
     let mut img = DynamicImage::from_decoder(decoder).map_err(|e| not_image(&e))?;
@@ -128,9 +143,12 @@ pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
 pub fn prepare(path: &Path) -> Result<Prepared> {
     let (img, format) = load(path)?;
     encode_within(img, format, MAX_SIDE, MAX_POST_IMAGE_BYTES).ok_or_else(|| {
-        Error::io(format!(
-            "{} cannot be made smaller than {MAX_POST_IMAGE_BYTES} bytes",
-            path.display()
+        Error::io(crate::i18n::tf(
+            "{} cannot be made smaller than {} bytes",
+            &[
+                &(path.display()).to_string(),
+                &MAX_POST_IMAGE_BYTES.to_string(),
+            ],
         ))
     })
 }
@@ -140,9 +158,9 @@ pub fn prepare(path: &Path) -> Result<Prepared> {
 pub fn prepare_avatar(path: &Path, limit: usize) -> Result<Prepared> {
     let (img, format) = load(path)?;
     encode_within(img, format, 1000, limit).ok_or_else(|| {
-        Error::io(format!(
-            "{} cannot be made smaller than {limit} bytes",
-            path.display()
+        Error::io(crate::i18n::tf(
+            "{} cannot be made smaller than {} bytes",
+            &[&(path.display()).to_string(), &limit.to_string()],
         ))
     })
 }
@@ -233,6 +251,18 @@ fn flatten(img: &DynamicImage) -> RgbImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A video without its extension, or with another, is still a video.
+    #[test]
+    fn a_video_is_known_by_what_it_holds_whatever_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let clip = Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/clip.mp4");
+        for name in ["clipnoext", "clip.mkv", "動画👍🏽"] {
+            let path = dir.path().join(name);
+            std::fs::copy(&clip, &path).unwrap();
+            assert_eq!(inspect(&path).kind, Kind::Video, "{name}");
+        }
+    }
     use image::{Rgb, Rgba, RgbaImage};
     use rstest::rstest;
 

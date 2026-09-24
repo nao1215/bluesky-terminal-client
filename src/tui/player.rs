@@ -134,18 +134,18 @@ fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
     let mut resp = agent
         .get(url)
         .call()
-        .map_err(|e| format!("cannot load the video: {e}"))?;
+        .map_err(|e| crate::i18n::tf("cannot load the video: {}", &[&e.to_string()]))?;
     if !resp.status().is_success() {
-        return Err(format!(
+        return Err(crate::i18n::tf(
             "cannot load the video: HTTP {}",
-            resp.status().as_u16()
+            &[&(resp.status().as_u16()).to_string()],
         ));
     }
     resp.body_mut()
         .with_config()
         .limit(MAX_BYTES)
         .read_to_vec()
-        .map_err(|e| format!("cannot load the video: {e}"))
+        .map_err(|e| crate::i18n::tf("cannot load the video: {}", &[&e.to_string()]))
 }
 
 /// Bytes of a segment handed on at a time: the demuxer and the decoder start
@@ -170,11 +170,11 @@ fn stream(
     let mut resp = agent
         .get(url)
         .call()
-        .map_err(|e| format!("cannot load the video: {e}"))?;
+        .map_err(|e| crate::i18n::tf("cannot load the video: {}", &[&e.to_string()]))?;
     if !resp.status().is_success() {
-        return Err(format!(
+        return Err(crate::i18n::tf(
             "cannot load the video: HTTP {}",
-            resp.status().as_u16()
+            &[&(resp.status().as_u16()).to_string()],
         ));
     }
     let mut body = resp.body_mut().with_config().limit(MAX_BYTES).reader();
@@ -186,7 +186,12 @@ fn stream(
             match body.read(&mut buf[len..]) {
                 Ok(0) => break,
                 Ok(n) => len += n,
-                Err(e) => return Err(format!("cannot load the video: {e}")),
+                Err(e) => {
+                    return Err(crate::i18n::tf(
+                        "cannot load the video: {}",
+                        &[&e.to_string()],
+                    ));
+                }
             }
         }
         if len == 0 {
@@ -277,8 +282,9 @@ fn play(
             }
         };
         if let Some(kind) = demux.unsupported {
-            return Err(format!(
-                "this video is not H.264 (stream type 0x{kind:02x}), which bsky cannot decode"
+            return Err(crate::i18n::tf(
+                "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
+                &[&format!("{:02x}", kind)],
             ));
         }
         for unit in units {
@@ -327,7 +333,7 @@ fn decoder() -> Result<Decoder, String> {
     use openh264::decoder::{DecoderConfig, Flush};
     let config = DecoderConfig::new().flush_after_decode(Flush::NoFlush);
     Decoder::with_api_config(OpenH264API::from_source(), config)
-        .map_err(|e| format!("cannot start the video decoder: {e}"))
+        .map_err(|e| crate::i18n::tf("cannot start the video decoder: {}", &[&e.to_string()]))
 }
 
 fn to_rgb(yuv: &DecodedYUV<'_>) -> Option<RgbImage> {
@@ -376,7 +382,10 @@ impl<'a> Pacer<'a> {
         let due = match (pts, self.clock) {
             (Some(p), Some((at, first))) => {
                 let due = at + Duration::from_secs_f64(p.saturating_sub(first) as f64 / 90_000.0);
-                if now > due + Duration::from_secs(1) {
+                // Far behind (a stall) or far ahead (the times jumped, as at
+                // a discontinuity): the clock starts again at this picture,
+                // rather than skip all that follows or wait for the jump.
+                if now > due + Duration::from_secs(1) || due > now + Duration::from_secs(1) {
                     self.clock = Some((now, p));
                     now
                 } else {
@@ -401,7 +410,10 @@ impl<'a> Pacer<'a> {
         if due > now {
             thread::sleep(due - now);
         }
-        let (cols, rows) = *self.size.lock().map_err(|_| "the player stopped")?;
+        let (cols, rows) = *self
+            .size
+            .lock()
+            .map_err(|_| crate::i18n::t("the player stopped"))?;
         if cols == 0 || rows == 0 {
             return Ok(true);
         }
@@ -499,6 +511,30 @@ mod tests {
         drop(tx);
         let frames = rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count();
         (result, frames)
+    }
+
+    // Times that jump far ahead (the next part of a stream starting at
+    // another clock) play on at once; they do not wait out the jump.
+    #[test]
+    fn a_jump_ahead_in_the_times_does_not_stop_the_video() {
+        let played = thread::spawn(|| {
+            let (tx, _rx) = channel();
+            let size = Mutex::new((20, 10));
+            let picker = Picker::halfblocks();
+            let mut pacer = Pacer::new(&picker, &size, &tx);
+            let pic = || Some(RgbImage::from_pixel(8, 8, image::Rgb([1, 2, 3])));
+            pacer.show(pic(), Some(0)).unwrap();
+            pacer.show(pic(), Some(3600 * 90_000)).unwrap();
+        });
+        let started = Instant::now();
+        while !played.is_finished() && started.elapsed() < Duration::from_secs(3) {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            played.is_finished(),
+            "still waiting after {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

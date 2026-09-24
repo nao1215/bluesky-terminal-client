@@ -275,3 +275,60 @@ fn the_settings_screen_switches_accounts_as_a_does() {
     app.handle_key(code(KeyCode::Esc));
     assert!(app.overlay.is_none());
 }
+
+// A like answered after switching to another account and back is the
+// account's own: it shows, and l does not like again.
+#[test]
+fn a_like_answered_after_switching_away_and_back_is_shown() {
+    let mut app = two_accounts();
+    app.handle_key(key('1'));
+    let like = press(&mut app, key('l'));
+    assert_eq!(like.len(), 1);
+    app.switched_to(work());
+    let back = app.switched_to(session());
+    let seqs: Vec<u64> = back.iter().map(|j| app.stamp(j)).collect();
+    // The reload of A's timeline is read before the like is committed.
+    app.handle_answer(
+        seqs[0],
+        Event::Timeline(Ok(vec![post("at://a/p/1", "did:plc:alice", true)].into())),
+    );
+    app.handle_answer(
+        like[0],
+        Event::Liked {
+            post_uri: "at://a/p/1".into(),
+            result: Ok("at://did:plc:me/app.bsky.feed.like/1".into()),
+        },
+    );
+    let liked = app.timeline.items[0].like_uri().is_some();
+    let jobs = app.handle_key(key('l'));
+    assert!(
+        liked && !matches!(jobs[..], [Job::Like { .. }]),
+        "liked shown: {liked}, l sends {jobs:?}"
+    );
+}
+
+// H2: the account list opened from the settings, then the session expires:
+// A pressed later on another tab brings the settings screen back on Esc.
+
+// A like still on its way when the account was switched away and back
+// cannot be sent a second time.
+#[test]
+fn a_like_on_its_way_is_not_sent_again_after_a_round_trip() {
+    let mut app = two_accounts();
+    app.handle_key(key('1'));
+    let first = app.handle_key(key('l'));
+    assert!(matches!(first[..], [Job::Like { .. }]));
+    app.switched_to(work());
+    app.switched_to(session());
+    app.handle_event(Event::Timeline(Ok(vec![post(
+        "at://a/p/1",
+        "did:plc:alice",
+        true,
+    )]
+    .into())));
+    let again = app.handle_key(key('l'));
+    assert!(
+        again.is_empty(),
+        "a second like for the same account: {again:?}"
+    );
+}

@@ -143,14 +143,15 @@ pub const MAX_MESSAGE_BYTES: usize = 10000;
 pub fn message_length_problem(text: &str) -> Option<String> {
     let len = grapheme_len(text);
     if len > MAX_MESSAGE_GRAPHEMES {
-        return Some(format!(
-            "the message is {len} characters; the limit is {MAX_MESSAGE_GRAPHEMES}"
+        return Some(crate::i18n::tf(
+            "the message is {} characters; the limit is {}",
+            &[&len.to_string(), &MAX_MESSAGE_GRAPHEMES.to_string()],
         ));
     }
     (text.len() > MAX_MESSAGE_BYTES).then(|| {
-        format!(
-            "the message is {} bytes; the limit is {MAX_MESSAGE_BYTES}",
-            text.len()
+        crate::i18n::tf(
+            "the message is {} bytes; the limit is {}",
+            &[&(text.len()).to_string(), &MAX_MESSAGE_BYTES.to_string()],
         )
     })
 }
@@ -158,14 +159,15 @@ pub fn message_length_problem(text: &str) -> Option<String> {
 pub fn post_length_problem(text: &str) -> Option<String> {
     let len = grapheme_len(text);
     if len > MAX_POST_GRAPHEMES {
-        return Some(format!(
-            "the post is {len} characters; the limit is {MAX_POST_GRAPHEMES}"
+        return Some(crate::i18n::tf(
+            "the post is {} characters; the limit is {}",
+            &[&len.to_string(), &MAX_POST_GRAPHEMES.to_string()],
         ));
     }
     (text.len() > MAX_POST_BYTES).then(|| {
-        format!(
-            "the post is {} bytes; the limit is {MAX_POST_BYTES} (emoji take up to 25 bytes each)",
-            text.len()
+        crate::i18n::tf(
+            "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
+            &[&(text.len()).to_string(), &MAX_POST_BYTES.to_string()],
         )
     })
 }
@@ -227,7 +229,7 @@ impl XrpcFailure {
         };
         let err = Error::api(format!("{nsid} failed: {detail}"));
         if self.status == 401 {
-            err.with_hint("log in again")
+            err.with_hint(crate::i18n::t("log in again"))
         } else {
             err
         }
@@ -235,8 +237,13 @@ impl XrpcFailure {
 }
 
 fn transport(nsid: &str, e: ureq::Error) -> Error {
-    Error::api(format!("{nsid}: cannot reach the server: {e}"))
-        .with_hint("check the network connection and the service URL")
+    Error::api(crate::i18n::tf(
+        "{}: cannot reach the server: {}",
+        &[nsid, &e.to_string()],
+    ))
+    .with_hint(crate::i18n::t(
+        "check the network connection and the service URL",
+    ))
 }
 
 /// Log in with an identifier (handle, DID, or email) and an app password.
@@ -338,9 +345,9 @@ impl UploadLimits {
     /// Why a video of `len` bytes cannot be uploaded now, if it cannot.
     fn refusal(&self, len: usize) -> Option<Error> {
         let hint = match self.error.as_deref() {
-            Some("unconfirmed_email") => {
-                Some("confirm the account's email address in the Bluesky app (Settings, Account)")
-            }
+            Some("unconfirmed_email") => Some(crate::i18n::t(
+                "confirm the account's email address in the Bluesky app (Settings, Account)",
+            )),
             _ => None,
         };
         let why = if !self.can_upload {
@@ -348,17 +355,21 @@ impl UploadLimits {
                 self.message
                     .clone()
                     .or_else(|| self.error.clone())
-                    .unwrap_or_else(|| "no reason given".into()),
+                    .unwrap_or_else(|| crate::i18n::t("no reason given").into()),
             )
         } else if self.remaining_daily_videos == Some(0) {
-            Some("the daily number of videos has been reached".into())
+            Some(crate::i18n::t("the daily number of videos has been reached").into())
         } else if self.remaining_daily_bytes.is_some_and(|b| b < len as u64) {
-            Some("the video is larger than what is left of today's upload allowance".into())
+            Some(
+                crate::i18n::t("the video is larger than what is left of today's upload allowance")
+                    .into(),
+            )
         } else {
             None
         }?;
-        let err = Error::api(format!(
-            "Bluesky does not take videos from this account now: {why}"
+        let err = Error::api(crate::i18n::tf(
+            "Bluesky does not take videos from this account now: {}",
+            &[&why.to_string()],
         ));
         Some(match hint {
             Some(h) => err.with_hint(h),
@@ -507,6 +518,7 @@ impl Client {
         bytes: &[u8],
         mime: &str,
         name: &str,
+        shown: &str,
         poll_every: Duration,
     ) -> Result<Value> {
         // Asked first, as the official app does: a refusal (an unconfirmed
@@ -563,14 +575,15 @@ impl Client {
                 return Ok(blob);
             }
             if job.state == "JOB_STATE_FAILED" {
-                return Err(Error::api(format!(
-                    "the video service could not process {name}: {}",
-                    job.why()
+                return Err(Error::api(crate::i18n::tf(
+                    "the video service could not process {}: {}",
+                    &[shown, &(job.why()).to_string()],
                 )));
             }
             if std::time::Instant::now() >= deadline {
-                return Err(Error::api(format!(
-                    "the video service did not finish {name} in time"
+                return Err(Error::api(crate::i18n::tf(
+                    "the video service did not finish {} in time",
+                    &[shown],
                 )));
             }
             std::thread::sleep(poll_every);
@@ -695,8 +708,8 @@ impl Client {
             .header("Authorization", &format!("Bearer {}", session.refresh_jwt))
             .send_empty()
             .map_err(|e| transport(nsid, e))?;
-        let tokens: SessionTokens =
-            decode(nsid, resp).map_err(|e| e.with_hint("the session expired; log in again"))?;
+        let tokens: SessionTokens = decode(nsid, resp)
+            .map_err(|e| e.with_hint(crate::i18n::t("the session expired; log in again")))?;
         session.access_jwt = tokens.access_jwt;
         session.refresh_jwt = tokens.refresh_jwt;
         session.handle = tokens.handle;
@@ -762,7 +775,10 @@ impl Client {
     pub fn send_message(&self, convo_id: &str, text: &str) -> Result<ChatMessage> {
         let text = text.trim_end();
         if text.trim().is_empty() {
-            return Err(Error::new(Kind::Usage, "the message is empty"));
+            return Err(Error::new(
+                Kind::Usage,
+                crate::i18n::t("the message is empty"),
+            ));
         }
         if let Some(why) = message_length_problem(text) {
             return Err(Error::new(Kind::Usage, why));
@@ -942,16 +958,16 @@ impl Client {
     ) -> Result<CreatedRecord> {
         let text = text.trim_end();
         if text.trim().is_empty() && matches!(media, PostMedia::None) {
-            return Err(Error::new(Kind::Usage, "the post is empty"));
+            return Err(Error::new(Kind::Usage, crate::i18n::t("the post is empty")));
         }
         if let PostMedia::Images(images) = media
             && images.len() > crate::media::MAX_POST_IMAGES
         {
             return Err(Error::new(
                 Kind::Usage,
-                format!(
+                crate::i18n::tf(
                     "a post can have at most {} images",
-                    crate::media::MAX_POST_IMAGES
+                    &[&(crate::media::MAX_POST_IMAGES).to_string()],
                 ),
             ));
         }
@@ -1158,7 +1174,7 @@ fn set_or_remove(obj: &mut Value, key: &str, text: &str) {
 /// anywhere else would delete the account's own record with the same rkey.
 fn own_rkey<'a>(uri: &'a str, did: &str, collection: &str) -> Result<&'a str> {
     let noun = collection.rsplit('.').next().unwrap_or(collection);
-    let foreign = || Error::api(format!("not a {noun} of yours: {uri}"));
+    let foreign = || Error::api(crate::i18n::tf("not a {} of yours: {}", &[noun, uri]));
     let rest = uri.strip_prefix("at://").ok_or_else(foreign)?;
     let mut parts = rest.splitn(3, '/');
     match (parts.next(), parts.next(), parts.next()) {

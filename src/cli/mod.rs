@@ -529,10 +529,22 @@ fn bare_at_uri(uri: &str) -> String {
 }
 
 /// A post's at:// URI from its URI or its bsky.app address.
+/// An at:// URI with its handle, if written with one, put as the DID it
+/// stands for: the server and the checks of whose a record is compare DIDs.
+fn with_did(client: &Client, uri: &str) -> Result<String> {
+    let uri = bare_at_uri(uri);
+    let rest = &uri["at://".len()..];
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    if authority.starts_with("did:") {
+        return Ok(uri.clone());
+    }
+    Ok(format!("at://{}{path}", resolve_actor(client, authority)?))
+}
+
 fn post_uri(client: &Client, post: &str) -> Result<String> {
     let p = post.trim();
     if p.starts_with("at://") {
-        return Ok(bare_at_uri(p));
+        return with_did(client, p);
     }
     match format::bsky_app_path(p, "post") {
         Some((actor, rkey)) => {
@@ -713,7 +725,7 @@ fn lists(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>, limit: usize) -> R
 fn list_uri(client: &Client, list: &str) -> Result<String> {
     let l = list.trim();
     if l.starts_with("at://") {
-        return Ok(bare_at_uri(l));
+        return with_did(client, l);
     }
     match format::bsky_app_path(l, "lists") {
         Some((actor, rkey)) => {

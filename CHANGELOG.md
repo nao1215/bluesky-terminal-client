@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- Messages about files, downloads, videos, the network and the settings are in the language chosen too, not only the screens. The `bsky` commands still write English.
+
+### Removed
+
+- A `session.json` of version 0.3 or before, and a config folder named `bs`, are no longer taken over: log in again after updating from those.
+
+### Fixed
+
+- A video was uploaded with where it was filmed (the location a phone writes in it) and its other metadata, and the service was told the name of the file. Both are left out now, as they are for pictures.
+- Switching to another account and back while a like, repost, follow or block was on its way lost its answer, so the post looked unliked, and the same key could send it a second time.
+- A reply sent in an open thread did not show there; a list of conversations asked for earlier could replace a newer one; a failed mark of notifications as seen was never tried again; and a list the settings opened could reopen the settings after the session expired.
+- An account file that could not be read told you to run `bsky logout`, which failed on the same file. `bsky logout --all` removes it, and the message says so.
+- `bsky delete`, `like` and the others refused your own post given as an at:// address with your handle instead of your DID.
+- A video with no extension, or another one, was taken for a picture.
+- A video whose times jumped ahead (at a break in the stream) stopped until the jump had passed, and could not be closed meanwhile.
+- A `settings.json` saved with a byte order mark (as some editors do) was ignored whole.
+
 ## [0.9.0] - 2026-09-24
 
 ### Added

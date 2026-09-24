@@ -20,6 +20,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "Attach pictures (up to {}) or a video",
         "이미지(최대 {}개) 또는 동영상 첨부",
     ),
+    (
+        "Bluesky does not take videos from this account now: {}",
+        "Bluesky가 지금은 이 계정의 동영상을 받지 않습니다: {}",
+    ),
     ("Browser", "브라우저"),
     ("Chat", "채팅"),
     ("Choose a folder", "폴더 선택"),
@@ -96,6 +100,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "a 다른 계정 로그인  x 로그아웃",
     ),
     (
+        "a post can have at most {} images",
+        "게시물에는 이미지를 최대 {}개까지 첨부할 수 있습니다",
+    ),
+    (
         "a post can have at most {} pictures",
         "게시물에는 이미지를 최대 {}개까지 첨부할 수 있습니다",
     ),
@@ -160,10 +168,59 @@ pub const TABLE: &[(&str, &str)] = &[
         "bsky는 Bluesky가 만들지 않은 비공식 클라이언트입니다.",
     ),
     ("cancel", "취소"),
+    ("cannot create {}: {}", "{}을(를) 만들 수 없습니다: {}"),
+    (
+        "cannot determine the config directory",
+        "설정 디렉터리를 확인할 수 없습니다",
+    ),
+    (
+        "cannot download {}: HTTP {}",
+        "{}을(를) 다운로드할 수 없습니다: HTTP {}",
+    ),
+    (
+        "cannot download {}: {}",
+        "{}을(를) 다운로드할 수 없습니다: {}",
+    ),
+    (
+        "cannot load the video: HTTP {}",
+        "동영상을 불러올 수 없습니다: HTTP {}",
+    ),
+    (
+        "cannot load the video: {}",
+        "동영상을 불러올 수 없습니다: {}",
+    ),
+    (
+        "cannot open the link with {}: {}",
+        "{}(으)로 링크를 열 수 없습니다: {}",
+    ),
+    (
+        "cannot open the link: {} was not found",
+        "링크를 열 수 없습니다: {}을(를) 찾을 수 없습니다",
+    ),
+    ("cannot read {}: {}", "{}을(를) 읽을 수 없습니다: {}"),
+    ("cannot remove {}: {}", "{}을(를) 삭제할 수 없습니다: {}"),
+    (
+        "cannot start the video decoder: {}",
+        "동영상 디코더를 시작할 수 없습니다: {}",
+    ),
+    (
+        "cannot write to {}: every name tried was taken",
+        "{}에 쓸 수 없습니다: 시도한 이름이 모두 사용 중입니다",
+    ),
+    ("cannot write to {}: {}", "{}에 쓸 수 없습니다: {}"),
+    ("cannot write {}: {}", "{}을(를) 쓸 수 없습니다: {}"),
     ("change", "변경"),
     ("change the selected setting", "선택한 설정 변경"),
+    (
+        "check the network connection and the service URL",
+        "네트워크 연결과 서비스 URL을 확인하세요",
+    ),
     ("choose a color theme", "색상 테마 선택"),
     ("choose avatar", "아바타 선택"),
+    (
+        "choose one on the settings screen (s on your Profile tab)",
+        "설정 화면에서 선택하세요 (프로필 탭에서 s)",
+    ),
     ("choose this folder", "이 폴더 선택"),
     ("clear to the start of the line", "줄 처음까지 지우기"),
     ("close", "닫기"),
@@ -175,6 +232,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "NO_COLOR가 설정되어 색상이 꺼져 있습니다",
     ),
     ("column", "칼럼"),
+    (
+        "confirm the account's email address in the Bluesky app (Settings, Account)",
+        "Bluesky 앱에서 계정의 이메일 주소를 인증하세요 (설정 → 계정)",
+    ),
     ("copied {}", "{} 복사됨"),
     ("copy its address", "주소 복사"),
     ("copy the post's address", "게시물 주소 복사"),
@@ -322,6 +383,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("loading earlier messages…", "이전 메시지를 불러오는 중…"),
     ("loading the video…", "동영상을 불러오는 중…"),
     ("loading…", "불러오는 중…"),
+    ("log in again", "다시 로그인하세요"),
     ("log in another account", "다른 계정 로그인"),
     ("log out", "로그아웃"),
     (
@@ -399,10 +461,14 @@ pub const TABLE: &[(&str, &str)] = &[
         "no picture of the video could be decoded",
         "동영상의 화면을 하나도 디코딩하지 못했습니다",
     ),
+    ("no reason given", "사유가 제시되지 않았습니다"),
     ("none", "없음"),
+    ("not a web link: {}", "웹 링크가 아닙니다: {}"),
+    ("not a {} of yours: {}", "내 {}이(가) 아닙니다: {}"),
     ("not blocked", "차단하지 않음"),
     ("not deleted", "삭제하지 않음"),
     ("not following", "팔로우 안 함"),
+    ("not logged in", "로그인하지 않았습니다"),
     ("now @{}", "현재 @{}"),
     ("off", "끔"),
     ("open", "열기"),
@@ -556,6 +622,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("reposted", "재게시함"),
     ("reposted your post", "님이 내 게시물을 재게시했습니다"),
     ("reposted your repost", "님이 내 재게시를 재게시했습니다"),
+    (
+        "run `bsky logout --all` to discard it and log in again",
+        "`bsky logout --all`을 실행해 폐기하고 다시 로그인하세요",
+    ),
     ("save", "저장"),
     ("save it in the download folder", "다운로드 폴더에 저장"),
     ("saved {}", "{} 저장됨"),
@@ -576,6 +646,14 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("sending…", "보내는 중…"),
     ("set by {} for this run", "이번 실행에서 {}(으)로 설정됨"),
+    (
+        "set {} to a writable directory",
+        "{}을(를) 쓰기 가능한 디렉터리로 설정하세요",
+    ),
+    (
+        "set {}, or Browser on the settings screen (s on your Profile tab), to the program that opens links",
+        "{} 또는 설정 화면(프로필 탭에서 s)의 브라우저를 링크를 여는 프로그램으로 설정하세요",
+    ),
     ("settings", "설정"),
     (
         "settings: theme, pictures, folders",
@@ -603,17 +681,39 @@ pub const TABLE: &[(&str, &str)] = &[
         "the conversation is ready on the Chat tab",
         "채팅 탭에서 대화를 시작할 수 있습니다",
     ),
+    (
+        "the daily number of videos has been reached",
+        "하루에 올릴 수 있는 동영상 수에 도달했습니다",
+    ),
     ("the default; {}", "기본값, {}"),
     ("the folder above", "상위 폴더"),
     (
         "the last one removed, the timeline is alone",
         "마지막을 지우면 타임라인만 남음",
     ),
+    ("the message is empty", "메시지가 비어 있습니다"),
     (
         "the message is still on its way",
         "메시지를 아직 보내는 중입니다",
     ),
+    (
+        "the message is {} bytes; the limit is {}",
+        "메시지가 {}바이트입니다. 한도는 {}입니다",
+    ),
+    (
+        "the message is {} characters; the limit is {}",
+        "메시지가 {}자입니다. 한도는 {}자입니다",
+    ),
+    ("the player stopped", "플레이어가 멈췄습니다"),
     ("the post is empty", "게시물이 비어 있습니다"),
+    (
+        "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
+        "게시물이 {}바이트입니다. 한도는 {}입니다 (이모지는 하나에 최대 25바이트)",
+    ),
+    (
+        "the post is {} characters; the limit is {}",
+        "게시물이 {}자입니다. 한도는 {}자입니다",
+    ),
     (
         "the post the list was about is no longer selected; press . again",
         "목록의 대상 게시물이 더 이상 선택되어 있지 않습니다. . 을 다시 누르세요",
@@ -625,6 +725,10 @@ pub const TABLE: &[(&str, &str)] = &[
     (
         "the search box has focus when you arrive",
         "진입 시 검색창에 포커스",
+    ),
+    (
+        "the session expired; log in again",
+        "세션이 만료되었습니다. 다시 로그인하세요",
     ),
     (
         "the session has expired; log in again",
@@ -641,6 +745,18 @@ pub const TABLE: &[(&str, &str)] = &[
         "동영상 다운로드가 중단되었습니다",
     ),
     (
+        "the video is larger than what is left of today's upload allowance",
+        "동영상이 오늘 남은 업로드 허용량보다 큽니다",
+    ),
+    (
+        "the video service could not process {}: {}",
+        "동영상 서비스가 {}을(를) 처리하지 못했습니다: {}",
+    ),
+    (
+        "the video service did not finish {} in time",
+        "동영상 서비스가 제한 시간 안에 {} 처리를 끝내지 못했습니다",
+    ),
+    (
         "the video service is a web address, such as https://video.bsky.app",
         "동영상 서비스는 https://video.bsky.app 같은 웹 주소여야 합니다",
     ),
@@ -653,10 +769,15 @@ pub const TABLE: &[(&str, &str)] = &[
         "동영상 재생 목록이 텍스트가 아닙니다",
     ),
     (
+        "the video's playlist lists nothing to download",
+        "동영상 재생 목록에 다운로드할 항목이 없습니다",
+    ),
+    (
         "the video's playlist lists nothing to play",
         "동영상 재생 목록에 재생할 항목이 없습니다",
     ),
     ("theme: {}", "테마: {}"),
+    ("there is no download folder", "다운로드 폴더가 없습니다"),
     (
         "this app password cannot read direct messages. Make one with \"Allow access to your direct messages\" (Settings, Privacy and security, App passwords) and log in with it (A, then a).",
         "이 앱 비밀번호로는 DM을 읽을 수 없습니다. \"DM 접근 허용\"을 켠 앱 비밀번호를 만들고(설정, 개인정보 및 보안, 앱 비밀번호) 그것으로 로그인하세요 (A, 그다음 a).",
@@ -683,12 +804,17 @@ pub const TABLE: &[(&str, &str)] = &[
         "this terminal cannot show video",
         "이 터미널은 동영상을 표시할 수 없습니다",
     ),
+    (
+        "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
+        "이 동영상은 H.264가 아니므로(스트림 유형 0x{}) bsky에서 디코딩할 수 없습니다",
+    ),
     ("type in the search box again", "검색창에 다시 입력"),
     ("type, then enter", "입력 후 enter"),
     ("unblock them", "차단 해제"),
     ("unblocked", "차단 해제됨"),
     ("unfollow", "언팔로우"),
     ("unfollowed", "언팔로우함"),
+    ("unknown format", "알 수 없는 형식"),
     ("unknown theme {}; using {}", "알 수 없는 테마 {}, {} 사용"),
     ("unmute them", "뮤트 해제"),
     ("unmuted", "뮤트 해제됨"),
@@ -730,11 +856,51 @@ pub const TABLE: &[(&str, &str)] = &[
     ("your home folder", "홈 폴더"),
     ("{}\nhint: {}", "{}\n힌트: {}"),
     ("{} bytes", "{}바이트"),
+    (
+        "{} cannot be made smaller than {} bytes",
+        "{}을(를) {}바이트보다 작게 만들 수 없습니다",
+    ),
     ("{} column", "칼럼 {}개"),
     ("{} columns", "칼럼 {}개"),
     (
+        "{} for this session only; settings.json could not be read, so it is not overwritten (fix or remove it to save)",
+        "{} (이번 세션에만 적용). settings.json을 읽을 수 없어 덮어쓰지 않습니다 (저장하려면 수정하거나 삭제하세요)",
+    ),
+    (
+        "{} has too many files named like {}",
+        "{}에 {}와(과) 비슷한 이름의 파일이 너무 많습니다",
+    ),
+    (
+        "{} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {}",
+        "{}은(는) bsky가 읽을 수 있는 이미지가 아닙니다 (PNG, JPEG, GIF, WebP): {}",
+    ),
+    (
+        "{} is not a picture bsky can save; nothing was written",
+        "{}은(는) bsky가 저장할 수 있는 이미지가 아닙니다. 아무것도 쓰지 않았습니다",
+    ),
+    (
+        "{} is not a valid session file: {}",
+        "{}은(는) 올바른 세션 파일이 아닙니다: {}",
+    ),
+    (
+        "{} is not a video bsky can post (MP4, MOV, WebM, MPEG)",
+        "{}은(는) bsky로 게시할 수 있는 동영상이 아닙니다 (MP4, MOV, WebM, MPEG)",
+    ),
+    (
         "{} is not logged in any more",
         "{}은(는) 더 이상 로그인되어 있지 않습니다",
+    ),
+    (
+        "{} is not valid and was ignored: {}",
+        "{}이(가) 올바르지 않아 무시했습니다: {}",
+    ),
+    (
+        "{} is {} MB; pictures must be at most {} MB",
+        "{}은(는) {} MB입니다. 이미지는 최대 {} MB입니다",
+    ),
+    (
+        "{} is {} MB; videos must be at most {} MB",
+        "{}은(는) {} MB입니다. 동영상은 최대 {} MB입니다",
     ),
     ("{} marked", "{}개 표시됨"),
     (
@@ -744,7 +910,15 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{} needed, now {}", "{} 필요, 현재 {}"),
     ("{} new", "새 항목 {}개"),
     ("{} pictures", "이미지 {}개"),
+    (
+        "{} runs {}; videos can be at most {}",
+        "{}의 길이는 {}입니다. 동영상은 최대 {}입니다",
+    ),
     ("{}: back to the default, {}", "{}: 기본값으로 되돌림, {}"),
+    (
+        "{}: cannot reach the server: {}",
+        "{}: 서버에 연결할 수 없습니다: {}",
+    ),
     ("{}; showing its thumbnail", "{}, 썸네일 표시 중"),
     ("{}; x goes back to the default", "{}, x로 기본값으로"),
     ("✓ following", "✓ 팔로우 중"),

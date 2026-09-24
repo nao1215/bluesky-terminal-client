@@ -45,7 +45,10 @@ pub fn system_opener() -> &'static str {
 /// links are opened, so a post cannot make bsky run a file or a command.
 pub fn open(url: &str, program: Option<&str>) -> Result<()> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(Error::new(Kind::Usage, format!("not a web link: {url}")));
+        return Err(Error::new(
+            Kind::Usage,
+            crate::i18n::tf("not a web link: {}", &[url]),
+        ));
     }
     let (program, args) = opener(url, program);
     spawn(&program, &args)
@@ -67,15 +70,9 @@ fn spawn(program: &str, args: &[String]) -> Result<()> {
             std::thread::spawn(move || child.wait());
             Ok(())
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::io(format!(
-            "cannot open the link: {program} was not found"
-        ))
-        .with_hint(format!(
-            "set {BROWSER_ENV}, or Browser on the settings screen (s on your Profile tab), to the program that opens links"
-        ))),
-        Err(e) => Err(Error::io(format!(
-            "cannot open the link with {program}: {e}"
-        ))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::io(crate::i18n::tf("cannot open the link: {} was not found", &[program]))
+        .with_hint(crate::i18n::tf("set {}, or Browser on the settings screen (s on your Profile tab), to the program that opens links", &[BROWSER_ENV]))),
+        Err(e) => Err(Error::io(crate::i18n::tf("cannot open the link with {}: {}", &[program, &e.to_string()]))),
     }
 }
 

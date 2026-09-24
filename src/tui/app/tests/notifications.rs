@@ -159,3 +159,28 @@ fn the_actions_list_of_a_like_offers_what_acts_on_the_post_liked() {
     assert!(!keys.contains(&"l"), "{keys:?}");
     assert!(!keys.contains(&"r"), "{keys:?}");
 }
+
+// Notifications a failed mark could not mark seen are marked on the next
+// visit to the tab.
+#[test]
+fn a_failed_mark_as_seen_is_tried_again() {
+    let mut app = logged_in();
+    app.handle_event(Event::Notifications {
+        seen_at: "t1".into(),
+        result: Ok(vec![notif("reply", "at://r/1", false, None, None)].into()),
+    });
+    assert_eq!(app.unread, 1);
+    let jobs = app.handle_key(key('4'));
+    assert!(matches!(&jobs[..], [Job::UpdateSeen(_)]), "{jobs:?}");
+    app.handle_event(Event::Seen(Err(Error::api("boom"))));
+    app.handle_key(key('1'));
+    let jobs = app.handle_key(key('4'));
+    assert!(
+        app.unread == 0 || matches!(&jobs[..], [Job::UpdateSeen(_)]),
+        "unread {} and back on the tab: {jobs:?}",
+        app.unread
+    );
+}
+
+// H4: two first pages of the conversations out (the tab, then R); the
+// older one arriving last replaces the newer.

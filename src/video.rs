@@ -159,6 +159,62 @@ fn read_moov<R: Read + Seek>(r: &mut R) -> Option<Vec<u8>> {
     None
 }
 
+/// The file name extension of a video's type.
+pub fn extension(mime: &str) -> &'static str {
+    match mime {
+        "video/quicktime" => "mov",
+        "video/webm" => "webm",
+        "video/mpeg" => "mpg",
+        "image/gif" => "gif",
+        _ => "mp4",
+    }
+}
+
+/// The boxes that say where, when, and with what a video was made: user
+/// data (where a phone writes the place, `©xyz`), metadata (`meta`, with
+/// Apple's location keys), `loci`, and `uuid` boxes (XMP). A picture is
+/// posted without its location, and so is a video.
+const PRIVATE_BOXES: &[&[u8; 4]] = &[b"udta", b"meta", b"loci", b"uuid"];
+
+/// The boxes that hold other boxes, where the private ones are looked for.
+const CONTAINERS: &[&[u8; 4]] = &[b"moov", b"trak", b"mdia", b"minf", b"edts"];
+
+/// Blank the private boxes of an MP4 or QuickTime file in place: each
+/// becomes a `free` box of the same size, its content zeroed, so every
+/// offset in the file (the media data's included) stays where it was.
+pub fn strip_metadata(file: &mut [u8]) {
+    fn walk(buf: &mut [u8]) {
+        let mut at = 0;
+        while at + 8 <= buf.len() {
+            let size = u32::from_be_bytes(buf[at..at + 4].try_into().expect("four bytes")) as usize;
+            let (size, header) = match size {
+                0 => (buf.len() - at, 8),
+                1 => {
+                    let Some(large) = buf.get(at + 8..at + 16) else {
+                        return;
+                    };
+                    let large = u64::from_be_bytes(large.try_into().expect("eight bytes"));
+                    (usize::try_from(large).unwrap_or(usize::MAX), 16)
+                }
+                n => (n, 8),
+            };
+            if size < header || at + size > buf.len() {
+                return;
+            }
+            let kind: [u8; 4] = buf[at + 4..at + 8].try_into().expect("four bytes");
+            let body = at + header..at + size;
+            if PRIVATE_BOXES.contains(&&kind) || kind == *b"\xA9xyz" {
+                buf[at + 4..at + 8].copy_from_slice(b"free");
+                buf[body].fill(0);
+            } else if CONTAINERS.contains(&&kind) {
+                walk(&mut buf[body]);
+            }
+            at += size;
+        }
+    }
+    walk(file);
+}
+
 /// The child boxes of a box's content, as (type, content).
 fn boxes(mut buf: &[u8]) -> impl Iterator<Item = ([u8; 4], &[u8])> {
     std::iter::from_fn(move || {
@@ -279,16 +335,29 @@ pub struct Prepared {
 pub fn prepare(file: &Path) -> Result<Prepared> {
     let name = file.display();
     let len = std::fs::metadata(file)
-        .map_err(|e| Error::io(format!("cannot read {name}: {e}")))?
+        .map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot read {}: {}",
+                &[&name.to_string(), &e.to_string()],
+            ))
+        })?
         .len();
     if len > MAX_VIDEO_BYTES {
-        return Err(Error::io(format!(
-            "{name} is {} MB; videos must be at most {} MB",
-            len / (1024 * 1024),
-            MAX_VIDEO_BYTES / (1024 * 1024)
+        return Err(Error::io(crate::i18n::tf(
+            "{} is {} MB; videos must be at most {} MB",
+            &[
+                &name.to_string(),
+                &(len / (1024 * 1024)).to_string(),
+                &(MAX_VIDEO_BYTES / (1024 * 1024)).to_string(),
+            ],
         )));
     }
-    let bytes = std::fs::read(file).map_err(|e| Error::io(format!("cannot read {name}: {e}")))?;
+    let bytes = std::fs::read(file).map_err(|e| {
+        Error::io(crate::i18n::tf(
+            "cannot read {}: {}",
+            &[&name.to_string(), &e.to_string()],
+        ))
+    })?;
     if bytes.starts_with(b"GIF8") {
         return Ok(Prepared {
             dims: image::image_dimensions(file).ok(),
@@ -297,19 +366,27 @@ pub fn prepare(file: &Path) -> Result<Prepared> {
         });
     }
     let mime = sniff_mime(&bytes).ok_or_else(|| {
-        Error::io(format!(
-            "{name} is not a video bsky can post (MP4, MOV, WebM, MPEG)"
+        Error::io(crate::i18n::tf(
+            "{} is not a video bsky can post (MP4, MOV, WebM, MPEG)",
+            &[&name.to_string()],
         ))
     })?;
+    let mut bytes = bytes;
+    if matches!(mime, "video/mp4" | "video/quicktime") {
+        strip_metadata(&mut bytes);
+    }
     let info = probe(file);
     if let Some(s) = info.seconds
         && s > MAX_VIDEO_SECONDS
     {
         // Rounded up, so that 180.4 s does not read as the 3:00 allowed.
-        return Err(Error::io(format!(
-            "{name} runs {}; videos can be at most {}",
-            minutes_seconds(s.ceil()),
-            format_seconds(MAX_VIDEO_SECONDS)
+        return Err(Error::io(crate::i18n::tf(
+            "{} runs {}; videos can be at most {}",
+            &[
+                &name.to_string(),
+                &(minutes_seconds(s.ceil())).to_string(),
+                &(format_seconds(MAX_VIDEO_SECONDS)).to_string(),
+            ],
         )));
     }
     Ok(Prepared {
@@ -408,6 +485,36 @@ mod tests {
         assert_eq!(sniff_mime(&file), Some("video/quicktime"));
         let p = prepare(&path).unwrap();
         assert_eq!((p.mime, p.dims), ("video/quicktime", Some((640, 480))));
+    }
+
+    // Where a phone says it was filmed, and what an editor wrote in XMP, are
+    // blanked before the video goes anywhere; its length, shape and media
+    // data stay where they were.
+    #[test]
+    fn a_videos_location_and_metadata_are_blanked_in_place() {
+        let place = b"+35.6895+139.6917/";
+        let mut xyz = vec![0u8, 18, 0, 0];
+        xyz.extend_from_slice(place);
+        let udta = bx(b"udta", &bx(b"\xA9xyz", &xyz));
+        let trak_meta = bx(b"meta", b"com.apple.quicktime.location.ISO6709 +35.6895");
+        let mut file = bx(b"ftyp", b"isom\0\0\x02\0isomiso2");
+        file.extend(bx(b"uuid", b"<x:xmpmeta>secret</x:xmpmeta>"));
+        file.extend(bx(b"mdat", &vec![7u8; 500]));
+        let video = bx(b"trak", &[tkhd(640, 360, false), trak_meta].concat());
+        let moov = [mvhd(1000, 3000), video, udta].concat();
+        file.extend(bx(b"moov", &moov));
+        let before = file.clone();
+        strip_metadata(&mut file);
+        assert_eq!(file.len(), before.len());
+        let text = String::from_utf8_lossy(&file);
+        for gone in ["+35.6895", "xmpmeta", "com.apple.quicktime", "udta", "uuid"] {
+            assert!(!text.contains(gone), "{gone} is still there");
+        }
+        // The media data is untouched, and the header still reads.
+        assert!(file.windows(500).any(|w| w.iter().all(|b| *b == 7)));
+        let info = parse_moov(&read_moov(&mut Cursor::new(&file[..])).unwrap());
+        assert_eq!(info.dims, Some((640, 360)));
+        assert_eq!(info.seconds, Some(3.0));
     }
 
     #[test]

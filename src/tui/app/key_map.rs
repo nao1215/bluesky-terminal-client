@@ -409,7 +409,7 @@ impl App {
         if tab == Tab::Notifications
             && let Some(at) = self.seen_pending.take()
         {
-            return vec![Job::UpdateSeen(at)];
+            return self.mark_seen(at);
         }
         Vec::new()
     }
@@ -493,6 +493,8 @@ impl App {
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {
+                // Opened here, not from the settings: Esc closes it.
+                self.settings_return = None;
                 let at = self.current_account_index().unwrap_or(0);
                 self.overlay = Some(Overlay::Accounts { selected: at });
             }
@@ -631,7 +633,7 @@ impl App {
             if tab == Tab::Notifications
                 && let Some(at) = self.seen_pending.take()
             {
-                return vec![Job::UpdateSeen(at)];
+                return self.mark_seen(at);
             }
             return Vec::new();
         }

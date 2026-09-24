@@ -664,6 +664,8 @@ pub struct App {
     pub unread: usize,
     /// The time to mark notifications seen up to, once their tab is visited.
     pub seen_pending: Option<String>,
+    /// The time a mark of the notifications seen is on its way for.
+    seen_sending: Option<String>,
     pub overlay: Option<Overlay>,
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
@@ -672,6 +674,8 @@ pub struct App {
     /// `follow:<did>`. A second press on the same target is refused until the
     /// first is answered, or two presses would create two records.
     pub in_flight: HashSet<String>,
+    /// The account each job still unanswered was sent as, by its number.
+    sent_as: HashMap<u64, String>,
     /// The question waiting for its `y`: what `D`, `B` or `x` asked about.
     pub confirm: Option<Confirm>,
     /// When the question waiting for its y was asked: it lasts as long as
@@ -895,10 +899,12 @@ impl App {
             notifications: List::default(),
             unread: 0,
             seen_pending: None,
+            seen_sending: None,
             overlay: None,
             status: None,
             pending: 0,
             in_flight: HashSet::new(),
+            sent_as: HashMap::new(),
             confirm: None,
             question_at: None,
             to_copy: None,

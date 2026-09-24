@@ -23,6 +23,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "Attach pictures (up to {}) or a video",
         "Bilder (bis zu {}) oder ein Video anhängen",
     ),
+    (
+        "Bluesky does not take videos from this account now: {}",
+        "Bluesky nimmt von diesem Konto derzeit keine Videos an: {}",
+    ),
     ("Browser", "Browser"),
     ("Chat", "Chat"),
     ("Choose a folder", "Ordner wählen"),
@@ -102,6 +106,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "a weiteres anmelden  x abmelden",
     ),
     (
+        "a post can have at most {} images",
+        "ein Beitrag kann höchstens {} Bilder haben",
+    ),
+    (
         "a post can have at most {} pictures",
         "ein Beitrag kann höchstens {} Bilder haben",
     ),
@@ -169,10 +177,65 @@ pub const TABLE: &[(&str, &str)] = &[
         "bsky ist ein inoffizieller Client, nicht von Bluesky.",
     ),
     ("cancel", "abbrechen"),
+    ("cannot create {}: {}", "{} kann nicht erstellt werden: {}"),
+    (
+        "cannot determine the config directory",
+        "das Konfigurationsverzeichnis kann nicht bestimmt werden",
+    ),
+    (
+        "cannot download {}: HTTP {}",
+        "{} kann nicht heruntergeladen werden: HTTP {}",
+    ),
+    (
+        "cannot download {}: {}",
+        "{} kann nicht heruntergeladen werden: {}",
+    ),
+    (
+        "cannot load the video: HTTP {}",
+        "das Video kann nicht geladen werden: HTTP {}",
+    ),
+    (
+        "cannot load the video: {}",
+        "das Video kann nicht geladen werden: {}",
+    ),
+    (
+        "cannot open the link with {}: {}",
+        "der Link kann nicht mit {} geöffnet werden: {}",
+    ),
+    (
+        "cannot open the link: {} was not found",
+        "der Link kann nicht geöffnet werden: {} wurde nicht gefunden",
+    ),
+    ("cannot read {}: {}", "{} kann nicht gelesen werden: {}"),
+    ("cannot remove {}: {}", "{} kann nicht entfernt werden: {}"),
+    (
+        "cannot start the video decoder: {}",
+        "der Video-Decoder kann nicht gestartet werden: {}",
+    ),
+    (
+        "cannot write to {}: every name tried was taken",
+        "in {} kann nicht geschrieben werden: alle versuchten Namen sind vergeben",
+    ),
+    (
+        "cannot write to {}: {}",
+        "in {} kann nicht geschrieben werden: {}",
+    ),
+    (
+        "cannot write {}: {}",
+        "{} kann nicht geschrieben werden: {}",
+    ),
     ("change", "ändern"),
     ("change the selected setting", "gewählte Einstellung ändern"),
+    (
+        "check the network connection and the service URL",
+        "prüfe die Netzwerkverbindung und die Dienst-URL",
+    ),
     ("choose a color theme", "Farbdesign wählen"),
     ("choose avatar", "Avatar wählen"),
+    (
+        "choose one on the settings screen (s on your Profile tab)",
+        "wähle einen in den Einstellungen (s auf deinem Profil-Tab)",
+    ),
     ("choose this folder", "diesen Ordner wählen"),
     ("clear to the start of the line", "bis Zeilenanfang löschen"),
     ("close", "schließen"),
@@ -184,6 +247,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "Farben aus, da NO_COLOR gesetzt ist",
     ),
     ("column", "Spalte"),
+    (
+        "confirm the account's email address in the Bluesky app (Settings, Account)",
+        "bestätige die E-Mail-Adresse des Kontos in der Bluesky-App (Einstellungen, Konto)",
+    ),
     ("copied {}", "{} kopiert"),
     ("copy its address", "Adresse kopieren"),
     ("copy the post's address", "Adresse des Beitrags kopieren"),
@@ -346,6 +413,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("loading the video…", "Video wird geladen…"),
     ("loading…", "wird geladen…"),
+    ("log in again", "melde dich neu an"),
     ("log in another account", "weiteres Konto anmelden"),
     ("log out", "abmelden"),
     (
@@ -432,10 +500,17 @@ pub const TABLE: &[(&str, &str)] = &[
         "no picture of the video could be decoded",
         "kein Bild des Videos ließ sich dekodieren",
     ),
+    ("no reason given", "kein Grund angegeben"),
     ("none", "keiner"),
+    ("not a web link: {}", "kein Weblink: {}"),
+    (
+        "not a {} of yours: {}",
+        "nicht dein eigener Eintrag ({}): {}",
+    ),
     ("not blocked", "nicht blockiert"),
     ("not deleted", "nicht gelöscht"),
     ("not following", "nicht gefolgt"),
+    ("not logged in", "nicht angemeldet"),
     ("now @{}", "jetzt @{}"),
     ("off", "aus"),
     ("open", "öffnen"),
@@ -598,6 +673,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("reposted", "repostet"),
     ("reposted your post", "hat deinen Beitrag repostet"),
     ("reposted your repost", "hat deinen Repost repostet"),
+    (
+        "run `bsky logout --all` to discard it and log in again",
+        "führe `bsky logout --all` aus, um sie zu verwerfen, und melde dich neu an",
+    ),
     ("save", "speichern"),
     (
         "save it in the download folder",
@@ -621,6 +700,14 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("sending…", "wird gesendet…"),
     ("set by {} for this run", "durch {} für diesen Lauf gesetzt"),
+    (
+        "set {} to a writable directory",
+        "setze {} auf ein beschreibbares Verzeichnis",
+    ),
+    (
+        "set {}, or Browser on the settings screen (s on your Profile tab), to the program that opens links",
+        "setze {} oder Browser in den Einstellungen (s auf deinem Profil-Tab) auf das Programm, das Links öffnet",
+    ),
     ("settings", "Einstellungen"),
     (
         "settings: theme, pictures, folders",
@@ -654,17 +741,39 @@ pub const TABLE: &[(&str, &str)] = &[
         "the conversation is ready on the Chat tab",
         "die Unterhaltung wartet im Chat-Tab",
     ),
+    (
+        "the daily number of videos has been reached",
+        "die tägliche Anzahl an Videos ist erreicht",
+    ),
     ("the default; {}", "Standard; {}"),
     ("the folder above", "übergeordneter Ordner"),
     (
         "the last one removed, the timeline is alone",
         "ohne Spalten bleibt nur die Timeline",
     ),
+    ("the message is empty", "die Nachricht ist leer"),
     (
         "the message is still on its way",
         "die Nachricht ist noch unterwegs",
     ),
+    (
+        "the message is {} bytes; the limit is {}",
+        "die Nachricht hat {} Bytes; das Limit ist {}",
+    ),
+    (
+        "the message is {} characters; the limit is {}",
+        "die Nachricht hat {} Zeichen; das Limit ist {}",
+    ),
+    ("the player stopped", "der Player wurde beendet"),
     ("the post is empty", "der Beitrag ist leer"),
+    (
+        "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
+        "der Beitrag hat {} Bytes; das Limit ist {} (Emoji belegen je bis zu 25 Bytes)",
+    ),
+    (
+        "the post is {} characters; the limit is {}",
+        "der Beitrag hat {} Zeichen; das Limit ist {}",
+    ),
     (
         "the post the list was about is no longer selected; press . again",
         "der Beitrag der Liste ist nicht mehr gewählt; drücke erneut .",
@@ -676,6 +785,10 @@ pub const TABLE: &[(&str, &str)] = &[
     (
         "the search box has focus when you arrive",
         "das Suchfeld ist beim Öffnen aktiv",
+    ),
+    (
+        "the session expired; log in again",
+        "die Sitzung ist abgelaufen; melde dich neu an",
     ),
     (
         "the session has expired; log in again",
@@ -695,6 +808,18 @@ pub const TABLE: &[(&str, &str)] = &[
         "der Video-Download wurde abgebrochen",
     ),
     (
+        "the video is larger than what is left of today's upload allowance",
+        "das Video ist größer als das, was vom heutigen Upload-Kontingent übrig ist",
+    ),
+    (
+        "the video service could not process {}: {}",
+        "der Videodienst konnte {} nicht verarbeiten: {}",
+    ),
+    (
+        "the video service did not finish {} in time",
+        "der Videodienst hat {} nicht rechtzeitig fertig verarbeitet",
+    ),
+    (
         "the video service is a web address, such as https://video.bsky.app",
         "der Videodienst ist eine Webadresse, etwa https://video.bsky.app",
     ),
@@ -707,10 +832,18 @@ pub const TABLE: &[(&str, &str)] = &[
         "die Playlist des Videos ist kein Text",
     ),
     (
+        "the video's playlist lists nothing to download",
+        "die Playlist des Videos enthält nichts zum Herunterladen",
+    ),
+    (
         "the video's playlist lists nothing to play",
         "die Playlist des Videos enthält nichts zum Abspielen",
     ),
     ("theme: {}", "Design: {}"),
+    (
+        "there is no download folder",
+        "es gibt keinen Download-Ordner",
+    ),
     (
         "this app password cannot read direct messages. Make one with \"Allow access to your direct messages\" (Settings, Privacy and security, App passwords) and log in with it (A, then a).",
         "dieses App-Passwort kann keine Direktnachrichten lesen. Erstelle eines mit „Zugriff auf deine Direktnachrichten erlauben“ (Einstellungen, Privatsphäre und Sicherheit, App-Passwörter) und melde dich damit an (A, dann a).",
@@ -737,12 +870,17 @@ pub const TABLE: &[(&str, &str)] = &[
         "this terminal cannot show video",
         "dieses Terminal kann kein Video zeigen",
     ),
+    (
+        "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
+        "dieses Video ist kein H.264 (Stream-Typ 0x{}), das kann bsky nicht dekodieren",
+    ),
     ("type in the search box again", "wieder ins Suchfeld tippen"),
     ("type, then enter", "tippen, dann enter"),
     ("unblock them", "entsperren"),
     ("unblocked", "entsperrt"),
     ("unfollow", "entfolgen"),
     ("unfollowed", "entfolgt"),
+    ("unknown format", "unbekanntes Format"),
     (
         "unknown theme {}; using {}",
         "unbekanntes Design {}; nutze {}",
@@ -796,11 +934,51 @@ pub const TABLE: &[(&str, &str)] = &[
     ("your home folder", "dein Home-Ordner"),
     ("{}\nhint: {}", "{}\nHinweis: {}"),
     ("{} bytes", "{} Bytes"),
+    (
+        "{} cannot be made smaller than {} bytes",
+        "{} lässt sich nicht kleiner als {} Bytes machen",
+    ),
     ("{} column", "{} Spalte"),
     ("{} columns", "{} Spalten"),
     (
+        "{} for this session only; settings.json could not be read, so it is not overwritten (fix or remove it to save)",
+        "{} nur für diese Sitzung; settings.json konnte nicht gelesen werden und wird daher nicht überschrieben (korrigiere oder entferne sie, um zu speichern)",
+    ),
+    (
+        "{} has too many files named like {}",
+        "{} enthält zu viele Dateien mit Namen wie {}",
+    ),
+    (
+        "{} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {}",
+        "{} ist kein Bild, das bsky lesen kann (PNG, JPEG, GIF, WebP): {}",
+    ),
+    (
+        "{} is not a picture bsky can save; nothing was written",
+        "{} ist kein Bild, das bsky speichern kann; nichts wurde geschrieben",
+    ),
+    (
+        "{} is not a valid session file: {}",
+        "{} ist keine gültige Sitzungsdatei: {}",
+    ),
+    (
+        "{} is not a video bsky can post (MP4, MOV, WebM, MPEG)",
+        "{} ist kein Video, das bsky posten kann (MP4, MOV, WebM, MPEG)",
+    ),
+    (
         "{} is not logged in any more",
         "{} ist nicht mehr angemeldet",
+    ),
+    (
+        "{} is not valid and was ignored: {}",
+        "{} ist ungültig und wurde ignoriert: {}",
+    ),
+    (
+        "{} is {} MB; pictures must be at most {} MB",
+        "{} ist {} MB groß; Bilder dürfen höchstens {} MB groß sein",
+    ),
+    (
+        "{} is {} MB; videos must be at most {} MB",
+        "{} ist {} MB groß; Videos dürfen höchstens {} MB groß sein",
     ),
     ("{} marked", "{} markiert"),
     (
@@ -810,7 +988,15 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{} needed, now {}", "{} nötig, jetzt {}"),
     ("{} new", "{} neu"),
     ("{} pictures", "{} Bilder"),
+    (
+        "{} runs {}; videos can be at most {}",
+        "{} dauert {}; Videos dürfen höchstens {} lang sein",
+    ),
     ("{}: back to the default, {}", "{}: zurück auf Standard, {}"),
+    (
+        "{}: cannot reach the server: {}",
+        "{}: Server nicht erreichbar: {}",
+    ),
     ("{}; showing its thumbnail", "{}; zeige Vorschaubild"),
     (
         "{}; x goes back to the default",
