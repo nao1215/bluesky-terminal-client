@@ -370,7 +370,7 @@ fn a_question_takes_the_next_key_on_the_chat_tab_too() {
         result: Ok(a_convo("new", 0)),
     });
     app.handle_key(code(KeyCode::Esc));
-    assert!(app.confirm_block.is_none());
+    assert!(!matches!(app.confirm, Some(Confirm::Block(_))));
     assert!(app.handle_key(key('y')).is_empty());
 }
 

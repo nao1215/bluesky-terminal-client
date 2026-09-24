@@ -26,9 +26,12 @@ impl App {
         let n = self.accounts.len().max(1);
         let selected = selected.min(n - 1);
         // The question x asked takes the next key, as D's does.
-        if let Some(did) = self.confirm_logout.take() {
+        if let Some(Confirm::Logout(did)) =
+            self.confirm.take_if(|c| matches!(c, Confirm::Logout(_)))
+        {
             if key.code == KeyCode::Char('y') {
                 self.overlay = None;
+                self.settings_return = None;
                 self.info("logging out…");
                 self.account_logout = Some(did);
             } else {
@@ -40,9 +43,14 @@ impl App {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => self.overlay = at((selected + 1) % n),
             KeyCode::Char('k') | KeyCode::Up => self.overlay = at((selected + n - 1) % n),
-            KeyCode::Esc | KeyCode::Char('q' | 'A') => self.overlay = None,
+            // Opened from the settings, esc goes back there; anything done
+            // with an account closes both.
+            KeyCode::Esc | KeyCode::Char('q' | 'A') => {
+                self.back_to_settings();
+            }
             KeyCode::Enter => {
                 self.overlay = None;
+                self.settings_return = None;
                 if let Some(a) = self.accounts.get(selected).cloned()
                     && Some(selected) != self.current_account_index()
                 {
@@ -52,6 +60,7 @@ impl App {
             }
             KeyCode::Char('a') => {
                 self.overlay = None;
+                self.settings_return = None;
                 let service = self
                     .session
                     .as_ref()
@@ -67,7 +76,7 @@ impl App {
                         "press y to log out @{}, any other key to stay logged in",
                         a.handle
                     ));
-                    self.confirm_logout = Some(a.did);
+                    self.confirm = Some(Confirm::Logout(a.did));
                     self.asked();
                 }
             }

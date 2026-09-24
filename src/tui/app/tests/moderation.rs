@@ -25,7 +25,32 @@ fn m_mutes_the_selected_posts_author_and_their_posts_leave_the_lists() {
             .collect::<Vec<_>>(),
         ["at://b/p/2"]
     );
-    assert!(app.status.as_ref().unwrap().text.contains("muted"));
+    // The next M acts on the post now selected, someone else's: the status
+    // says where the mute is undone instead.
+    let status = &app.status.as_ref().unwrap().text;
+    assert!(status.contains("muted"), "{status}");
+    assert!(status.contains("profile"), "{status}");
+    assert!(!status.contains("M again"), "{status}");
+}
+
+// An unmute or an unblock brings the account's posts back: the lists they
+// were taken out of are loaded again.
+#[test]
+fn an_unmute_or_an_unblock_loads_the_timeline_again() {
+    let mut app = logged_in();
+    let jobs = app.handle_event(Event::Muted {
+        did: "did:plc:alice".into(),
+        on: false,
+        result: Ok(()),
+    });
+    assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
+    let jobs = app.handle_event(Event::Unblocked {
+        did: "did:plc:alice".into(),
+        result: Ok(()),
+    });
+    assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
+    let status = &app.status.as_ref().unwrap().text;
+    assert!(status.contains("unblocked"), "{status}");
 }
 
 #[test]
@@ -115,7 +140,7 @@ fn you_cannot_mute_or_block_yourself() {
     assert!(app.handle_key(key('M')).is_empty());
     assert!(app.status.as_ref().unwrap().text.contains("mute yourself"));
     assert!(app.handle_key(key('B')).is_empty());
-    assert!(app.confirm_block.is_none());
+    assert!(!matches!(app.confirm, Some(Confirm::Block(_))));
 }
 
 // A reload asked for before the mute was confirmed still carries the
@@ -152,15 +177,20 @@ fn a_page_asked_for_before_a_mute_comes_without_the_muted_posts() {
 fn questions_asked_before_the_session_expired_are_called_off() {
     let mut app = logged_in();
     app.handle_key(key('B'));
-    assert!(app.confirm_block.is_some());
-    app.confirm_column_remove = Some(1);
-    app.confirm_logout = Some("did:plc:work".into());
-    expire(&mut app);
-    app.handle_event(Event::LoggedIn(Ok(session())));
-    assert!(app.handle_key(key('y')).is_empty());
-    assert!(app.confirm_block.is_none());
-    assert!(app.confirm_column_remove.is_none());
-    assert!(app.confirm_logout.is_none());
+    assert!(matches!(app.confirm, Some(Confirm::Block(_))));
+    for asked in [
+        None,
+        Some(Confirm::RemoveColumn(1)),
+        Some(Confirm::Logout("did:plc:work".into())),
+    ] {
+        if asked.is_some() {
+            app.confirm = asked;
+        }
+        expire(&mut app);
+        app.handle_event(Event::LoggedIn(Ok(session())));
+        assert!(app.handle_key(key('y')).is_empty());
+        assert_eq!(app.confirm, None);
+    }
 }
 
 // An account muted by one of your mute lists is muted, but not by you:
@@ -216,9 +246,9 @@ fn a_mute_takes_its_notifications_out_of_the_unread_count() {
 fn a_question_ends_with_its_prompt() {
     let mut app = logged_in();
     app.handle_key(key('B'));
-    assert!(app.confirm_block.is_some());
+    assert!(matches!(app.confirm, Some(Confirm::Block(_))));
     app.expire_status(Instant::now() + STATUS_TTL + Duration::from_secs(1));
-    assert!(app.confirm_block.is_none());
+    assert!(!matches!(app.confirm, Some(Confirm::Block(_))));
     assert!(app.handle_key(key('y')).is_empty());
     // Another message in the prompt's place ends it too.
     app.handle_key(key('D'));

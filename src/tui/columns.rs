@@ -1,8 +1,8 @@
-//! Columns on the Timeline tab: lists the client already has, side by
-//! side. Each column is one source (the following timeline, a pinned feed,
-//! the notifications, a search, an account's posts) with a list of its own,
-//! loaded and paged as the same list is on its own tab. Which columns there
-//! are is kept in `settings.json`, per account.
+//! Columns on the Timeline tab: lists side by side. Each column is one
+//! source (the following timeline, a pinned feed, the notifications, a
+//! search, an account's posts) with a list of its own, loaded and paged on
+//! its own. Which columns there are is kept in `settings.json`, per
+//! account.
 
 use crate::api::types::Post;
 use crate::tui::app::List;
@@ -20,6 +20,17 @@ pub fn feed_of(source: &Source) -> Feed {
         Source::Author { did, .. } => Feed::Author(did.clone()),
     }
 }
+
+/// Run `body` on a column's list, whichever kind it is: `|l| ...` names it.
+macro_rules! each_list {
+    ($rows:expr, |$l:ident| $body:expr) => {
+        match $rows {
+            $crate::tui::columns::Rows::Posts($l) => $body,
+            $crate::tui::columns::Rows::Notifications($l) => $body,
+        }
+    };
+}
+pub(crate) use each_list;
 
 /// A column's list: posts, or notifications.
 #[derive(Debug, Clone)]
@@ -56,10 +67,7 @@ impl Column {
 
     /// Whether its first page has been asked for.
     pub fn asked(&self) -> bool {
-        match &self.rows {
-            Rows::Posts(l) => l.loaded || l.loading,
-            Rows::Notifications(l) => l.loaded || l.loading,
-        }
+        each_list!(&self.rows, |l| l.loaded || l.loading)
     }
 }
 

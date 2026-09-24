@@ -257,7 +257,7 @@ impl App {
             return;
         }
         self.info("press y to delete this post, any other key to keep it");
-        self.confirm_delete = Some(post.uri);
+        self.confirm = Some(Confirm::Delete(post.uri));
         self.asked();
     }
 
@@ -347,7 +347,7 @@ impl App {
             "press y to block @{}, any other key to leave them be",
             account.handle
         ));
-        self.confirm_block = Some(account.did);
+        self.confirm = Some(Confirm::Block(account.did));
         self.asked();
         Vec::new()
     }

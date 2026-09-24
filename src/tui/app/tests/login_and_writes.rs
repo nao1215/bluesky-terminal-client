@@ -25,10 +25,7 @@ fn without_a_session_the_login_form_submits_all_fields() {
     }
     let jobs = app.handle_event(Event::LoggedIn(Ok(session())));
     assert!(app.login.is_none());
-    assert!(matches!(
-        jobs[..],
-        [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
-    ));
+    assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
 }
 
 #[test]

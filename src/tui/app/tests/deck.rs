@@ -187,7 +187,8 @@ fn a_profile_opened_from_a_column_says_esc_goes_back_to_the_columns() {
 fn feeds_that_come_while_the_add_list_is_open_do_not_change_the_choice() {
     let mut app = logged_in();
     app.handle_key(key('1'));
-    app.handle_key(key('+'));
+    // The first + asks for them, not the start.
+    assert!(matches!(&app.handle_key(key('+'))[..], [Job::PinnedFeeds]));
     app.handle_key(key('j'));
     app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("cats 🐈")])));
     let jobs = app.handle_key(code(KeyCode::Enter));
@@ -278,4 +279,22 @@ fn a_new_post_loads_the_columns_that_show_your_posts() {
         ),
         "{jobs:?}"
     );
+}
+
+// The pinned feeds are asked for once, by the first +; a failure lets the
+// next + ask again, and another account asks for its own.
+#[test]
+fn the_first_plus_asks_for_the_pinned_feeds_once() {
+    let mut app = two_accounts();
+    assert!(matches!(&app.handle_key(key('+'))[..], [Job::PinnedFeeds]));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.handle_key(key('+')).is_empty());
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_event(Event::PinnedFeeds(Err(Error::api(
+        "getPreferences failed: HTTP 502",
+    ))));
+    assert!(matches!(&app.handle_key(key('+'))[..], [Job::PinnedFeeds]));
+    app.handle_key(code(KeyCode::Esc));
+    app.switched_to(work());
+    assert!(matches!(&app.handle_key(key('+'))[..], [Job::PinnedFeeds]));
 }

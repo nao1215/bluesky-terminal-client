@@ -5,8 +5,9 @@
 //! `~/.config/bsky` on Linux, `~/Library/Application Support/bsky` on macOS,
 //! `%APPDATA%\bsky` on Windows).
 //!
-//! - `session.json` holds the tokens of an app-password login, so it is
-//!   written with owner-only permissions on Unix. `bsky logout` removes it.
+//! - `accounts/<did>.json` holds the tokens of each account logged in, so
+//!   it is written with owner-only permissions on Unix, and `accounts.json`
+//!   names the one in use. `bsky logout` removes an account's file.
 //! - `settings.json` holds preferences (the color theme, pictures on or
 //!   off, and the folders, video service and browser of the settings
 //!   screen). It is written only when a preference is changed, and a broken

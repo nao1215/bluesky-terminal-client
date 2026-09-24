@@ -18,9 +18,10 @@ impl App {
         // A question (D, B, x) takes the next key wherever the screen went
         // meanwhile: the Chat tab or the search box would otherwise keep it
         // open for a y pressed much later.
-        if self.confirm_delete.is_some()
-            || self.confirm_block.is_some()
-            || self.confirm_column_remove.is_some()
+        if self
+            .confirm
+            .as_ref()
+            .is_some_and(|c| !matches!(c, Confirm::Logout(_)))
         {
             return self.main_key(key);
         }
@@ -140,33 +141,14 @@ impl App {
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(n - 1),
                     KeyCode::Enter => {
-                        self.overlay =
-                            self.settings_return
-                                .take()
-                                .map(|selected| Overlay::Settings {
-                                    selected,
-                                    edit: None,
-                                });
-                        self.settings.theme = Some(THEMES[selected].name.to_string());
-                        if self.settings_writable {
-                            self.settings_to_save = Some(self.settings.clone());
-                        } else {
-                            self.error(format!(
-                                "theme: {} for this session only; settings.json could not be \
-                                 read, so it is not overwritten (fix or remove it to save)",
-                                THEMES[selected].name
-                            ));
-                        }
+                        self.back_to_settings();
+                        let name = THEMES[selected].name;
+                        self.settings.theme = Some(name.to_string());
+                        self.save_settings(format!("theme: {name}"));
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
-                        self.overlay =
-                            self.settings_return
-                                .take()
-                                .map(|selected| Overlay::Settings {
-                                    selected,
-                                    edit: None,
-                                });
+                        self.back_to_settings();
                         self.set_theme(previous);
                         None
                     }
@@ -443,7 +425,9 @@ impl App {
         // The question D asked takes the next key, whatever it is: y
         // deletes, and anything else calls it off rather than doing what
         // that key usually does.
-        if let Some(uri) = self.confirm_delete.take() {
+        if let Some(Confirm::Delete(uri)) =
+            self.confirm.take_if(|c| matches!(c, Confirm::Delete(_)))
+        {
             if key.code != KeyCode::Char('y') {
                 self.info("not deleted");
                 return Vec::new();
@@ -455,7 +439,8 @@ impl App {
             return vec![Job::DeletePost { uri }];
         }
         // As D's: the next key answers B's question, whatever it is.
-        if let Some(did) = self.confirm_block.take() {
+        if let Some(Confirm::Block(did)) = self.confirm.take_if(|c| matches!(c, Confirm::Block(_)))
+        {
             if key.code != KeyCode::Char('y') {
                 self.info("not blocked");
                 return Vec::new();
@@ -467,7 +452,10 @@ impl App {
             return vec![Job::Block { did }];
         }
         // As D's: the next key answers x's question, whatever it is.
-        if let Some(id) = self.confirm_column_remove.take() {
+        if let Some(Confirm::RemoveColumn(id)) = self
+            .confirm
+            .take_if(|c| matches!(c, Confirm::RemoveColumn(_)))
+        {
             if key.code == KeyCode::Char('y') && self.columns.focused().is_some_and(|c| c.id == id)
             {
                 self.columns.remove_focused();
@@ -520,6 +508,11 @@ impl App {
                     selected: 0,
                     query: None,
                 });
+                // The pinned feeds come into the list when they are in.
+                if !self.feeds_asked {
+                    self.feeds_asked = true;
+                    return vec![Job::PinnedFeeds];
+                }
             }
             KeyCode::Char('x') if self.tab == Tab::Columns && self.threads.is_empty() => {
                 if let Some(c) = self.columns.focused() {
@@ -527,7 +520,7 @@ impl App {
                     self.info(format!(
                         "press y to remove the column {title}, any other key to keep it"
                     ));
-                    self.confirm_column_remove = Some(id);
+                    self.confirm = Some(Confirm::RemoveColumn(id));
                     self.asked();
                 }
             }

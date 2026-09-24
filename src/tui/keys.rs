@@ -40,10 +40,6 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
-        title: "Timeline",
-        keys: &[("+", "add a column: a pinned feed, notifications…")],
-    },
-    Section {
         title: "Posts",
         keys: &[
             ("n", "new post"),
@@ -148,7 +144,7 @@ pub const HELP: &[Section] = &[
         title: "Columns",
         keys: &[
             ("← → H L", "the column to the left / right"),
-            ("+", "add a column: a feed, notifications, search"),
+            ("+", "add a column: a pinned feed, notifications…"),
             ("", "the last one removed, the timeline is alone"),
             ("< >", "move the column left / right"),
             ("x", "remove the column: y confirms"),

@@ -29,7 +29,14 @@ impl App {
     pub(super) fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
         self.pending = self.pending.saturating_sub(1);
         let read = seq.filter(|s| self.reads_out.remove(s));
+        // A download or a link opened belongs to no account: it is said
+        // whoever is logged in when it is done.
+        let anyone = matches!(
+            event,
+            Event::Downloaded(_) | Event::Opened { .. } | Event::LoggedIn(_)
+        );
         if let Some(seq) = read
+            && !anyone
             && self.superseded(seq, &event)
         {
             self.forget_writes();
@@ -37,19 +44,20 @@ impl App {
         }
         // A write the account before made (it is sent as that account) is
         // not the one in use's: a like shown on its lists would be undone
-        // with a record it does not own. A download or a link opened
-        // belongs to no account.
+        // with a record it does not own.
         if let Some(seq) = seq
             && seq < self.account_since
-            && !matches!(
-                event,
-                Event::Downloaded(_) | Event::Opened { .. } | Event::LoggedIn(_)
-            )
+            && !anyone
         {
             self.forget_writes();
             return Vec::new();
         }
+        // A write the server confirmed shows everywhere as it would on a
+        // late read: the same `apply`, and `event` only says so.
         let written = Written::of(&event);
+        if let Some(w) = &written {
+            self.apply(w);
+        }
         self.answering = seq;
         let jobs = self.event(event);
         self.answering = None;
@@ -62,11 +70,14 @@ impl App {
         {
             self.written.push((self.sent, w));
         }
+        // A write is kept with the last job sent when its answer came: a
+        // read sent up to then, that one included, may have been read
+        // before the write was made.
         if let Some(seq) = read {
             let since: Vec<Written> = self
                 .written
                 .iter()
-                .filter(|(at, _)| *at > seq)
+                .filter(|(at, _)| *at >= seq)
                 .map(|(_, w)| w.clone())
                 .collect();
             since.iter().for_each(|w| self.apply(w));
@@ -102,7 +113,7 @@ impl App {
     /// Writes older than every read still out can no longer be undone by one.
     pub(super) fn forget_writes(&mut self) {
         match self.reads_out.first().copied() {
-            Some(oldest) => self.written.retain(|(at, _)| *at > oldest),
+            Some(oldest) => self.written.retain(|(at, _)| *at >= oldest),
             None => self.written.clear(),
         }
     }
@@ -136,19 +147,28 @@ impl App {
         }
     }
 
-    /// Take a post out of every list it is in. A thread keeps its row, as
-    /// the placeholder for a post that is not there any more, so the replies
-    /// under it keep their place.
-    pub(super) fn remove_post(&mut self, uri: &str) {
-        let feeds = self.columns.post_lists();
-        for list in [
+    /// Every list of posts: the timeline, the search, the profile, and the
+    /// columns'.
+    fn post_lists(&mut self) -> impl Iterator<Item = &mut List<Post>> {
+        [
             &mut self.timeline,
             &mut self.search.posts,
             &mut self.profile.posts,
         ]
         .into_iter()
-        .chain(feeds)
-        {
+        .chain(self.columns.post_lists())
+    }
+
+    /// Every list of notifications: the tab's and the columns'.
+    fn notification_lists(&mut self) -> impl Iterator<Item = &mut List<NotifItem>> {
+        std::iter::once(&mut self.notifications).chain(self.columns.notification_lists())
+    }
+
+    /// Take a post out of every list it is in. A thread keeps its row, as
+    /// the placeholder for a post that is not there any more, so the replies
+    /// under it keep their place.
+    pub(super) fn remove_post(&mut self, uri: &str) {
+        for list in self.post_lists() {
             list.retain(|p| p.uri != uri);
         }
         for th in &mut self.threads {
@@ -188,15 +208,7 @@ impl App {
 
     /// Apply `f` to every copy of the post `uri` on screen.
     pub(super) fn each_post(&mut self, uri: &str, mut f: impl FnMut(&mut Post)) {
-        let feeds = self.columns.post_lists();
-        for list in [
-            &mut self.timeline,
-            &mut self.search.posts,
-            &mut self.profile.posts,
-        ]
-        .into_iter()
-        .chain(feeds)
-        {
+        for list in self.post_lists() {
             list.items
                 .iter_mut()
                 .filter(|p| p.uri == uri)
@@ -210,9 +222,7 @@ impl App {
                 .filter(|p| p.uri == uri)
                 .for_each(&mut f);
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             for item in &mut list.items {
                 item.post
                     .iter_mut()
@@ -225,12 +235,47 @@ impl App {
 
     /// Set the follow state of `did` everywhere it is shown.
     pub(super) fn set_following(&mut self, did: &str, uri: Option<String>) {
+        // The profile shown counts you among its followers, or not, when
+        // this changes whether you follow it.
+        if let Some(p) = &mut self.profile.profile
+            && p.did == did
+        {
+            let was = p.viewer.as_ref().is_some_and(|v| v.following.is_some());
+            if was != uri.is_some() {
+                p.followers_count = p.followers_count.map(|n| {
+                    if uri.is_some() {
+                        n + 1
+                    } else {
+                        n.saturating_sub(1)
+                    }
+                });
+            }
+        }
         self.set_account(did, move |v| v.following = uri.clone());
     }
 
-    /// The posts and notifications of an account muted or blocked leave
-    /// every list, as the server leaves them out of the next pages. Its
-    /// profile, where the change was made, and an open thread stay.
+    /// Load the timeline and the Following columns again, and with `own` a
+    /// column of your own posts: what shows posts a write just changed.
+    fn reload_following(&mut self, own: bool) -> Vec<Job> {
+        let me = self.session.as_ref().map(|s| s.did.clone());
+        let ids: Vec<u64> = self
+            .columns
+            .items
+            .iter()
+            .filter(|c| match &c.source {
+                columns::Source::Following => true,
+                columns::Source::Author { did, .. } => own && Some(did) == me.as_ref(),
+                _ => false,
+            })
+            .map(|c| c.id)
+            .collect();
+        let mut jobs = vec![Job::Timeline];
+        for id in ids {
+            jobs.extend(self.load_column(id));
+        }
+        jobs
+    }
+
     /// Take an unfollowed account's posts off the timeline and the Following
     /// columns, which show followed accounts only.
     fn drop_unfollowed(&mut self, did: &str) {
@@ -240,6 +285,9 @@ impl App {
         }
     }
 
+    /// The posts and notifications of an account muted or blocked leave
+    /// every list, as the server leaves them out of the next pages. Its
+    /// profile, where the change was made, and an open thread stay.
     pub(super) fn remove_posts_by(&mut self, did: &str) {
         let feeds = self.columns.post_lists();
         for list in [&mut self.timeline, &mut self.search.posts]
@@ -248,9 +296,7 @@ impl App {
         {
             list.retain(|p| p.author.did != did);
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             list.retain(|item| item.n.author.did != did);
         }
         // The count on the tab is of the notifications there are.
@@ -276,15 +322,7 @@ impl App {
                 f(p.viewer.get_or_insert_with(Default::default));
             }
         };
-        let feeds = self.columns.post_lists();
-        for list in [
-            &mut self.timeline,
-            &mut self.search.posts,
-            &mut self.profile.posts,
-        ]
-        .into_iter()
-        .chain(feeds)
-        {
+        for list in self.post_lists() {
             list.items.iter_mut().for_each(|p| apply(&mut p.author));
         }
         self.search.actors.items.iter_mut().for_each(apply);
@@ -295,9 +333,7 @@ impl App {
                 .filter_map(ThreadRow::post_mut)
                 .for_each(|p| apply(&mut p.author));
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             for item in &mut list.items {
                 apply(&mut item.n.author);
             }
@@ -331,10 +367,7 @@ impl App {
             self.login = Some(form);
             // A question asked before is not answered by the first key after
             // logging in again, and a theme being previewed was not chosen.
-            self.confirm_delete = None;
-            self.confirm_block = None;
-            self.confirm_column_remove = None;
-            self.confirm_logout = None;
+            self.confirm = None;
             if let Some(Overlay::Themes { previous, .. }) = self.overlay {
                 self.set_theme(previous);
             }
@@ -363,14 +396,12 @@ impl App {
     pub(super) fn forget_account(&mut self) {
         // Whatever was being typed belonged to the account left behind.
         self.overlay = None;
-        self.confirm_delete = None;
-        self.confirm_block = None;
-        self.confirm_logout = None;
-        self.confirm_column_remove = None;
+        self.confirm = None;
         self.columns = Columns::default();
         self.chat = ChatPane::default();
         self.timeline = List::default();
         self.feeds.clear();
+        self.feeds_asked = false;
         self.search.posts = List::default();
         self.search.actors = List::default();
         self.profile = ProfilePane::default();
@@ -471,6 +502,13 @@ impl App {
                 if other {
                     self.load_columns();
                     jobs.extend(self.settle_timeline());
+                } else {
+                    // The same account again: its columns, which the expired
+                    // session left failed or waiting, are loaded again.
+                    let ids: Vec<u64> = self.columns.items.iter().map(|c| c.id).collect();
+                    for id in ids {
+                        jobs.extend(self.load_column(id));
+                    }
                 }
                 return jobs;
             }
@@ -491,8 +529,9 @@ impl App {
                 self.timeline.renew(posts);
             }
             Event::PinnedFeeds(Ok(infos)) => self.set_pinned_feeds(infos),
-            // The timeline still works; + just offers no feeds.
-            Event::PinnedFeeds(Err(_)) => {}
+            // The timeline still works; + offers no feeds, and asks again
+            // the next time.
+            Event::PinnedFeeds(Err(_)) => self.feeds_asked = false,
             // Searches run beside each other: an answer for a query that
             // has since been replaced is dropped.
             Event::SearchPosts { query, .. } if query != self.search.posts_query => {}
@@ -511,34 +550,10 @@ impl App {
                     self.profile.loading = false;
                 }
             }
-            Event::Liked {
-                post_uri,
-                result: Ok(like),
-            } => {
-                self.set_like(&post_uri, Some(like));
-                self.info("liked");
-            }
-            Event::Unliked {
-                post_uri,
-                result: Ok(()),
-            } => {
-                self.set_like(&post_uri, None);
-                self.info("like removed");
-            }
-            Event::Reposted {
-                post_uri,
-                result: Ok(repost),
-            } => {
-                self.set_repost(&post_uri, Some(repost));
-                self.info("reposted");
-            }
-            Event::Unreposted {
-                post_uri,
-                result: Ok(()),
-            } => {
-                self.set_repost(&post_uri, None);
-                self.info("repost removed");
-            }
+            Event::Liked { result: Ok(_), .. } => self.info("liked"),
+            Event::Unliked { result: Ok(()), .. } => self.info("like removed"),
+            Event::Reposted { result: Ok(_), .. } => self.info("reposted"),
+            Event::Unreposted { result: Ok(()), .. } => self.info("repost removed"),
             Event::More {
                 feed,
                 cursor,
@@ -591,12 +606,7 @@ impl App {
             }
             Event::ConvoFor { did, result } => match result {
                 Ok(convo) => {
-                    if convo
-                        .others(self.session.as_ref().map_or("", |s| s.did.as_str()))
-                        .iter()
-                        .any(|m| m.did == did)
-                        || convo.members.iter().any(|m| m.did == did)
-                    {
+                    if convo.members.iter().any(|m| m.did == did) {
                         // Only while their profile is still what is looked
                         // at: after a move elsewhere the answer would take
                         // the screen, and mark the conversation read.
@@ -698,78 +708,60 @@ impl App {
                     }
                 }
             }
-            Event::Followed {
-                did,
-                result: Ok(uri),
-            } => {
-                self.set_following(&did, Some(uri));
-                self.info("followed");
-            }
-            Event::Unfollowed {
-                did,
-                result: Ok(()),
-            } => {
-                self.set_following(&did, None);
-                self.drop_unfollowed(&did);
-                self.info("unfollowed");
-            }
+            Event::Followed { result: Ok(_), .. } => self.info("followed"),
+            Event::Unfollowed { result: Ok(()), .. } => self.info("unfollowed"),
             Event::Muted {
-                did,
-                on,
-                result: Ok(()),
+                on, result: Ok(()), ..
             } => {
-                self.set_account(&did, |v| v.muted = on);
                 if on {
-                    self.remove_posts_by(&did);
-                    self.info("muted: their posts leave your lists; M again unmutes");
+                    self.info("muted: their posts leave your lists; M on their profile unmutes");
                 } else {
                     self.info("unmuted");
+                    return self.reload_following(false);
                 }
             }
-            Event::Blocked {
-                did,
-                result: Ok(uri),
-            } => {
-                self.set_account(&did, move |v| v.blocking = Some(uri.clone()));
-                self.remove_posts_by(&did);
-                self.info("blocked: B again unblocks");
+            Event::Blocked { result: Ok(_), .. } => {
+                self.info("blocked: B on their profile unblocks");
             }
-            Event::Unblocked {
-                did,
-                result: Ok(()),
-            } => {
-                self.set_account(&did, |v| v.blocking = None);
+            Event::Unblocked { result: Ok(()), .. } => {
                 self.info("unblocked");
+                return self.reload_following(false);
             }
             Event::Posted {
                 reply_to,
                 result: Ok(()),
             } => {
                 self.overlay = None;
+                // Your own posts are on the timeline, in a column of them
+                // and on your profile: load those again so the new one is
+                // there, and a thread it answers in, so it shows under the
+                // post.
+                let mut jobs = self.reload_following(true);
+                let me = self.session.as_ref().map(|s| s.did.clone());
+                if let Some(me) = me
+                    && self.profile.actor.is_none()
+                    && (self.tab == Tab::Profile
+                        || self.profile.profile.as_ref().is_some_and(|p| p.did == me))
+                {
+                    jobs.push(Job::OpenProfile(me));
+                }
                 match reply_to {
                     Some(uri) => {
                         self.each_post(&uri, |p| p.reply_count += 1);
                         self.info("reply sent");
+                        jobs.extend(
+                            self.threads
+                                .iter()
+                                .filter(|th| {
+                                    th.list
+                                        .items
+                                        .iter()
+                                        .any(|r| r.post().is_some_and(|p| p.uri == uri))
+                                })
+                                .map(|th| Job::Thread(th.uri.clone())),
+                        );
                     }
                     None => self.info("posted"),
-                }
-                // Your own posts are on the timeline and in a column of
-                // them: load those again so the new one is there.
-                let me = self.session.as_ref().map(|s| s.did.clone());
-                let ids: Vec<u64> = self
-                    .columns
-                    .items
-                    .iter()
-                    .filter(|c| match &c.source {
-                        columns::Source::Following => true,
-                        columns::Source::Author { did, .. } => Some(did) == me.as_ref(),
-                        _ => false,
-                    })
-                    .map(|c| c.id)
-                    .collect();
-                let mut jobs = vec![Job::Timeline];
-                for id in ids {
-                    jobs.extend(self.load_column(id));
                 }
                 return jobs;
             }
@@ -779,13 +771,7 @@ impl App {
                 }
                 self.fail(&e);
             }
-            Event::PostDeleted {
-                uri,
-                result: Ok(()),
-            } => {
-                self.remove_post(&uri);
-                self.info("post deleted");
-            }
+            Event::PostDeleted { result: Ok(()), .. } => self.info("post deleted"),
             Event::PostDeleted { result: Err(e), .. } => self.fail(&e),
             Event::ProfileEditor(result) => {
                 // Only an editor still waiting takes the answer: a late one
