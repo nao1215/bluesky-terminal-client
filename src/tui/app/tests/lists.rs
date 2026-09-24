@@ -3,10 +3,7 @@ use super::*;
 #[test]
 fn nothing_more_is_fetched_on_load_or_far_from_the_end() {
     let mut app = timeline_with(MORE_AHEAD + 3, Some("c1"));
-    assert_eq!(
-        app.pending, 1,
-        "only the notifications, in the background"
-    );
+    assert_eq!(app.pending, 1, "only the notifications, in the background");
     assert!(app.handle_key(key('j')).is_empty());
     assert!(app.handle_key(key('j')).is_empty());
 }
