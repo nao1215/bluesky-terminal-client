@@ -493,7 +493,10 @@ scenarios:
           - { method: GET, path: /img/t.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
     steps:
       - *session
-      # Stands in for the browser: it writes down every URL it is given.
+      # Stands in for the browser: it writes down the URL it is given, each
+      # in its own file named by the five letters after the host. Two cmd
+      # started a moment apart both appending to one file could lose a line
+      # (Windows lets one writer have the file at a time).
       - fixture:
           file: opener.cmd
           content: |
@@ -501,7 +504,7 @@ scenarios:
             setlocal enabledelayedexpansion
             rem Delayed expansion keeps cmd from reading the & in a URL.
             set "url=%~1"
-            >>"%~dp0opened.txt" echo(!url!
+            >"%~dp0opened-!url:~20,5!.txt" echo(!url!
       - pty:
           command: bsky
           graphics: kitty
@@ -531,11 +534,23 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+      # The openers are not waited for: wait here until both have written.
+      - run:
+          command: cmd /c type opened-artic.txt opened-photo.txt
+          retry:
+            times: 50
+            interval: 200ms
+            until:
+              exit_code: 0
       # Each URL whole (cmd ends its lines with CRLF).
       - assert:
           file:
-            path: opened.txt
-            contains: "https://example.com/article?a=1&b=2\r\nhttps://example.com/photo-page\r\n"
+            path: opened-artic.txt
+            equals: "https://example.com/article?a=1&b=2\r\n"
+      - assert:
+          file:
+            path: opened-photo.txt
+            equals: "https://example.com/photo-page\r\n"
 
   - name: without a program to open links, it says what to set
     mock_servers:
