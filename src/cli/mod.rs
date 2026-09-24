@@ -533,8 +533,15 @@ fn bare_at_uri(uri: &str) -> String {
 /// stands for: the server and the checks of whose a record is compare DIDs.
 fn with_did(client: &Client, uri: &str) -> Result<String> {
     let uri = bare_at_uri(uri);
-    let rest = &uri["at://".len()..];
+    // `at://` alone is cut to `at:` by the trailing slashes taken off.
+    let rest = uri.strip_prefix("at://").unwrap_or_default();
     let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    if authority.is_empty() {
+        return Err(Error::new(
+            Kind::Usage,
+            format!("{uri:?} names no account after at://"),
+        ));
+    }
     if authority.starts_with("did:") {
         return Ok(uri.clone());
     }
@@ -1381,5 +1388,29 @@ mod tests {
     )]
     fn an_at_uri_loses_what_follows_its_record_key(#[case] given: &str, #[case] want: &str) {
         assert_eq!(bare_at_uri(given), want);
+    }
+
+    // An at:// URI with nothing after the scheme but what bare_at_uri takes
+    // off was cut short and then sliced past its end.
+    #[rstest]
+    #[case("at://")]
+    #[case("at:///")]
+    #[case("at://?x=1")]
+    #[case("at://#top")]
+    #[case("at:///app.bsky.feed.post/p1")]
+    fn an_at_uri_without_an_account_is_refused(#[case] given: &str) {
+        let client = Client::new(
+            crate::config::Session {
+                service: "http://127.0.0.1:9".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            },
+            None,
+        );
+        let e = post_uri(&client, given).unwrap_err();
+        assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
+        assert!(list_uri(&client, given).is_err());
     }
 }
