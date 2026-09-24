@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- bsky is shown in English, Japanese, Simplified Chinese, Korean, Russian, Spanish, French, German or Portuguese: the language the system asks for (`LC_ALL`, `LC_MESSAGES`, `LANG`), or the one chosen on the settings screen's Language row, kept in `settings.json`. The `bsky` commands for scripts stay in English.
+
+### Added
+
 - The settings screen has an Account row: Enter opens the account list `A` opens, to switch, add or log out an account, and Esc goes back to the settings.
 
 ### Changed

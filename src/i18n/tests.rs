@@ -48,13 +48,14 @@ fn marked() -> BTreeSet<String> {
         for entry in std::fs::read_dir(&dir).unwrap() {
             let path = entry.unwrap().path();
             if path.is_dir() {
-                if !path.ends_with("i18n") {
+                // The tables, and the tests, are not what is shown.
+                if !path.ends_with("i18n") && !path.ends_with("tests") {
                     dirs.push(path);
                 }
             } else if path.extension().is_some_and(|e| e == "rs") {
                 let text = std::fs::read_to_string(&path).unwrap();
                 // What a file's tests write is not shown to anyone.
-                let text = text.split("#[cfg(test)]\nmod tests").next().unwrap();
+                let text = text.split("#[cfg(test)]\nmod tests {").next().unwrap();
                 found.extend(literals_marked(text));
             }
         }
@@ -133,10 +134,13 @@ fn every_language_has_every_string_and_only_those() {
             if tr.trim().is_empty() {
                 problems.push(format!("{}: empty for {en:?}", lang.code()));
             }
-            // The arguments filled in are the same ones, in whatever order.
+            // The arguments filled in are the same ones: as many `{}`, or each
+            // of them once by position, `{0}` `{1}`..., in whatever order.
             let (want, got) = (placeholders(en), placeholders(tr));
-            let positional = |p: &[String]| p.iter().filter(|p| *p != "{}").count();
-            if want.len() != got.len() || (positional(&want) == 0 && want != got) {
+            let mut by_position: Vec<String> =
+                (0..want.len()).map(|i| format!("{{{i}}}")).collect();
+            by_position.sort();
+            if got != want && got != by_position {
                 problems.push(format!("{}: {{}} differ: {en:?} -> {tr:?}", lang.code()));
             }
         }

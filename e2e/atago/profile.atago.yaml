@@ -756,3 +756,73 @@ scenarios:
           file:
             path: cfg/settings.json
             exists: false
+
+  # The environment asks for English here (C); the Language row chooses
+  # another, which is used at once and kept for the next start.
+  - name: the language chosen on the settings screen is used at once and on the next start
+    mock_servers:
+      - name: api
+        routes:
+          - *picture_timeline
+          - *own_profile
+          - *own_feed
+          - *img_photo
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: &env_c
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+            LC_ALL: C.UTF-8
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 Timeline", "Photo from the mountains"]
+            - send: "5"
+            - expect_screen:
+                contains: "s settings"
+            - send: s
+            - expect_screen:
+                contains: ["Language         English", "Account"]
+            # The row above the last, Account.
+            - send: k
+            - send: k
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["▶ English", "日本語", "简体中文", "한국어", "Русский", "Português", "in use"]
+            - send: j
+            - send: { key: enter }
+            # Back on the settings, now in Japanese.
+            - expect_screen:
+                contains: ["設定", "言語", "日本語", "5 プロフィール"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "e プロフィール編集"
+            - expect_screen:
+                contains: "1 タイムライン"
+                timeout: 2s
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.language", equals: "ja" }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env_c
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 タイムライン", "2 チャット", "Photo from the mountains"]
+            - send: q
+      - assert:
+          exit_code: 0

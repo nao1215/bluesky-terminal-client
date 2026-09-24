@@ -295,7 +295,7 @@ compose() {
 
 # The client as text, as on a terminal that draws no pictures.
 text() {
-  printf '{"theme": "bluesky", "pictures": "off"}\n' > "$CFG/settings.json"
+  printf '{"theme": "bluesky", "pictures": "off", "language": "en"}\n' > "$CFG/settings.json"
   start 1120 700
   ready "♡"
   sleep 1
@@ -317,7 +317,7 @@ demo_server() {
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:river", "handle": "river.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_river.json"
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:sea", "handle": "sea.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_sea.json"
   printf '{"current": "did:plc:river"}\n' > "$DCFG/accounts.json"
-  printf '{"theme": "bluesky"}\n' > "$DCFG/settings.json"
+  printf '{"theme": "bluesky", "language": "en"}\n' > "$DCFG/settings.json"
   DEMO_ENV="BSKY_CONFIG_DIR=$DCFG BSKY_CACHE_DIR=off"
 }
 
@@ -395,7 +395,8 @@ restore_settings() {
   if [ -f "$SAVED_SETTINGS" ]; then cp "$SAVED_SETTINGS" "$CFG/settings.json"; else rm -f "$CFG/settings.json"; fi
 }
 trap 'restore_settings; cleanup' EXIT INT TERM
-use_theme() { printf '{"theme": "%s"}\n' "$1" > "$CFG/settings.json"; }
+# English, whatever language the system asks for: the README is in English.
+use_theme() { printf '{"theme": "%s", "language": "en"}\n' "$1" > "$CFG/settings.json"; }
 
 case "${1:-demo}" in
   demo) demo ;;
