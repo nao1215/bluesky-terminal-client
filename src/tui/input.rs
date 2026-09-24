@@ -77,19 +77,25 @@ impl TextInput {
     /// Insert text at the cursor (newlines are dropped in single-line fields).
     pub fn insert_str(&mut self, s: &str) {
         let mut after_break = false;
+        let mut pasted = Vec::new();
         for c in drawable(s).chars() {
             // One line takes a pasted paragraph as one line: a run of line
             // breaks is a space, so the words on either side stay apart.
             if c == '\n' && !self.multiline {
                 if !after_break {
-                    self.insert(' ');
+                    pasted.push(' ');
                 }
                 after_break = true;
                 continue;
             }
             after_break = false;
-            self.insert(c);
+            pasted.push(c);
         }
+        // In at once: a character at a time moves what follows once per
+        // character, which a long paste into long text makes slow.
+        let n = pasted.len();
+        self.chars.splice(self.cursor..self.cursor, pasted);
+        self.cursor += n;
         self.snap_to_stop();
     }
 
@@ -505,5 +511,22 @@ mod tests {
         let layout = t.layout(3);
         assert_eq!(layout.cursor, (1, 0));
         assert_eq!(layout.lines.len(), 2);
+    }
+
+    // A long paste into the middle of long text goes in at once, in time
+    // that grows with the text, not with its square.
+    #[test]
+    fn a_long_paste_into_long_text_is_quick() {
+        let mut t = TextInput::multi(&"a".repeat(200_000));
+        t.handle_key(key(KeyCode::Home));
+        let started = std::time::Instant::now();
+        t.insert_str(&"日本語👍🏽\n".repeat(40_000));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(t.text().starts_with("日本語👍🏽\n日本語"));
+        assert!(t.text().ends_with("aaa"));
     }
 }
