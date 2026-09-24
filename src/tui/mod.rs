@@ -65,8 +65,26 @@ pub fn run(
         worker.send(app.stamp(&job), job);
     }
 
+    // The panic hook ratatui sets restores the terminal whichever thread
+    // panicked, a caught one included (a picture the encoder chokes on):
+    // the client would go on drawing outside the screen it set up. Ours
+    // restores it, bracketed paste too, only when the thread drawing
+    // panics.
+    let default_hook = std::panic::take_hook();
     let mut term = ratatui::try_init()
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot set up the terminal: {e}")))?;
+    let _ratatui_hook = std::panic::take_hook();
+    let drawing = std::thread::current().id();
+    std::panic::set_hook(Box::new(move |info| {
+        if std::thread::current().id() == drawing {
+            let _ = execute!(io::stdout(), DisableBracketedPaste);
+            ratatui::restore();
+            default_hook(info);
+        }
+        // Another thread's is caught, or ends that thread, whose work then
+        // fails with an error the screen shows; written over the screen,
+        // it would only break it.
+    }));
     let picker = match terminal::detect_graphics() {
         Ok(p) => p,
         Err(e) => {
