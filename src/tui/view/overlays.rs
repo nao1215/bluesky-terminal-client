@@ -76,7 +76,10 @@ pub(super) fn draw_viewer(
     } else {
         Line::from(format!(
             " {}",
-            truncate(alt, usize::from(caption.width.saturating_sub(2)))
+            truncate(
+                &crate::tui::text::one_line(alt),
+                usize::from(caption.width.saturating_sub(2))
+            )
         ))
     };
     frame.render_widget(Paragraph::new(vec![Line::from(head), alt]), caption);

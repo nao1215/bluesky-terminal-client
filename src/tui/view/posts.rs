@@ -220,8 +220,8 @@ pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> 
 pub(super) fn media_line(embed: &Embed, width: usize, t: &Theme) -> Option<Line<'static>> {
     let media = embed.media();
     let alts = |alt: &str| {
-        let alt = alt.trim();
-        (!alt.is_empty()).then(|| alt.to_string())
+        let alt = crate::tui::text::one_line(alt);
+        (!alt.is_empty()).then_some(alt)
     };
     let text = match media.first()? {
         Media::Video { alt, .. } => match alts(alt) {

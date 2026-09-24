@@ -206,3 +206,27 @@ fn help_is_clamped_to_its_last_page() {
     // The last section is on screen after scrolling to the end.
     assert!(screen.contains("scroll"), "{screen}");
 }
+
+// A line break in alt text keeps the words on either side apart.
+#[test]
+fn a_line_break_in_alt_text_keeps_its_words_apart() {
+    let (mut a, _) = App::new(Some(session()), "x");
+    let p: Post = serde_json::from_value(json!({
+        "uri": "at://p/1", "cid": "c",
+        "author": {"did": "did:plc:a", "handle": "alice.test"},
+        "record": {"text": "pic"},
+        "embed": {"$type": "app.bsky.embed.images#view", "images": [
+            {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": "first line of alt\nsecond line WORD"}]}
+    })).unwrap();
+    a.handle_event(Event::Timeline(Ok(vec![p].into())));
+    a.handle_key(crossterm::event::KeyEvent::from(
+        crossterm::event::KeyCode::Char(' '),
+    ));
+    assert!(a.viewer_open());
+    let s = render_text_only(&mut a, 80, 20);
+
+    assert!(
+        !s.contains("altsecond"),
+        "the line break of the alt text glues two words: {s}"
+    );
+}

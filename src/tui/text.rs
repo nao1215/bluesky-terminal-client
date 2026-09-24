@@ -69,6 +69,12 @@ pub fn wrap_cached(text: &str, width: usize) -> Vec<String> {
     })
 }
 
+/// `s` on one line: line breaks and runs of spaces become one space, so
+/// the words on either side stay apart where only one line is drawn.
+pub fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Wrap `text` into lines at most `width` columns wide.
 ///
 /// Words move to the next line whole when they fit on one; longer words,
