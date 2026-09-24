@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- A new search that failed kept the results of the one before on screen, and moving down them asked the new search for their next page.
+- In a long conversation, holding `k` at the top did not load the older messages (only `g` did), and after a first page that failed, the older messages could not be reached at all.
+- A conversation marked read showed its unread count again when a list of conversations asked for before it came.
+- A video's alt text over 1000 characters was refused only after the video was uploaded, with the post. It is refused before, with the reason.
+- A line break in alt text glued the words on either side together where it is drawn on one line.
 - A tag ending in punctuation of a script other than Latin or CJK (Arabic `؟`, Hebrew `׃`, `〽`, the vertical and small forms) kept the mark in the tag it sent, unlike Bluesky's app; and a tag of 33 to 64 emoji was sent where the app sends none. Tags end at any Unicode punctuation now, and their 64 are counted as the app counts them.
 - Arabic text with the lam-alif ligature `لا` could run past the edge of its column or the screen: text is measured as it is drawn, a character at a time.
 - In a text box, a character typed in front of a flag or before an emoji it joins left the cursor inside the new emoji, and the next key went elsewhere. The cursor is drawn where the next character will go, also before a wide character moved to the next line and at the end of a full line.
