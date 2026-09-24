@@ -55,7 +55,7 @@ impl PostLines {
         match me {
             Some(me) if me != post.author.did => {
                 header.push(if post.author.following_uri().is_some() {
-                    Span::styled(format!(" ✓ {}", i18n::t("following")), t.accent())
+                    Span::styled(format!(" {}", i18n::t("✓ following")), t.accent())
                 } else {
                     Span::styled(format!(" {}", i18n::t("not following")), t.dim())
                 })
@@ -220,8 +220,8 @@ pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> 
 pub(super) fn media_line(embed: &Embed, width: usize, t: &Theme) -> Option<Line<'static>> {
     let media = embed.media();
     let alts = |alt: &str| {
-        let alt = alt.trim();
-        (!alt.is_empty()).then(|| alt.to_string())
+        let alt = crate::tui::text::one_line(alt);
+        (!alt.is_empty()).then_some(alt)
     };
     let text = match media.first()? {
         Media::Video { alt, .. } => match alts(alt) {
@@ -591,7 +591,7 @@ pub(super) fn account_lines(p: &Profile, width: u16, t: &Theme) -> Vec<Line<'sta
     ];
     if p.following_uri().is_some() {
         head.push(Span::styled(
-            format!("  ✓ {}", i18n::t("following")),
+            format!("  {}", i18n::t("✓ following")),
             t.accent(),
         ));
     }

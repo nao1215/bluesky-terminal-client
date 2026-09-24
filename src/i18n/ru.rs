@@ -349,6 +349,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "m в чужом профиле открывает беседу",
     ),
+    ("made a new post", "опубликовали новый пост"),
     ("mark", "отметить"),
     (
         "mark pictures to choose together with enter",
@@ -486,7 +487,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "клавиши постов — для поста колонки",
     ),
-    ("posted", "опубликовали пост"),
+    ("posted", "опубликовано"),
     ("posts", "посты"),
     ("posts / accounts", "посты / аккаунты"),
     ("press / or i to type", "нажмите / или i для ввода"),
@@ -659,6 +660,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "видеосервис — это веб-адрес, например https://video.bsky.app",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "в альтернативном тексте видео символов: {}; можно не больше {}",
+    ),
+    (
         "the video's playlist is not text",
         "плейлист видео — не текст",
     ),
@@ -754,4 +759,5 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}: back to the default, {}", "{}: снова по умолчанию, {}"),
     ("{}; showing its thumbnail", "{}; показана миниатюра"),
     ("{}; x goes back to the default", "{}; x — по умолчанию"),
+    ("✓ following", "✓ вы подписаны"),
 ];

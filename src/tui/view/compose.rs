@@ -72,11 +72,13 @@ pub(super) fn draw_compose(
     } else {
         n!("ctrl+s send  ctrl+o attach pictures or a video  esc cancel")
     });
+    let count = format!(" {len}/{MAX_POST_GRAPHEMES}{bytes}  ");
+    let room = usize::from(foot.width).saturating_sub(crate::tui::text::cells(&count));
     frame.render_widget(
         truncate_line(
             Line::from(vec![
-                Span::styled(format!(" {len}/{MAX_POST_GRAPHEMES}{bytes}  "), count_style),
-                Span::styled(action, t.dim()),
+                Span::styled(count, count_style),
+                Span::styled(crate::tui::text::fit_hints(action, room), t.dim()),
             ]),
             usize::from(foot.width),
         ),
@@ -385,7 +387,12 @@ pub(super) fn draw_browser(
         None if b.folders => Line::styled(
             format!(
                 " {}",
-                i18n::t("enter open  space choose this folder  h up  . hidden  ~ home  esc cancel")
+                crate::tui::text::fit_hints(
+                    i18n::t(
+                        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel"
+                    ),
+                    usize::from(foot.width.saturating_sub(1))
+                )
             ),
             t.dim(),
         ),
@@ -398,10 +405,16 @@ pub(super) fn draw_browser(
                     i18n::tf("{} marked", &[&b.marked.len().to_string()])
                 )
             };
+            let room = usize::from(foot.width).saturating_sub(1 + crate::tui::text::cells(&marked));
             Line::styled(
                 format!(
                     " {marked}{}",
-                    i18n::t("enter open/choose  space mark  h up  . hidden  ~ home  esc cancel")
+                    crate::tui::text::fit_hints(
+                        i18n::t(
+                            "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel"
+                        ),
+                        room
+                    )
                 ),
                 t.dim(),
             )
@@ -460,6 +473,7 @@ pub(super) fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, 
             n!("tab next field  ctrl+o choose avatar  ctrl+s save  esc cancel")
         })
     );
+    let action = crate::tui::text::fit_hints(&action, usize::from(foot.width));
     frame.render_widget(
         Paragraph::new(action).style(t.dim()),
         Rect { height: 1, ..foot },

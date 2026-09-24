@@ -144,6 +144,11 @@ impl App {
             }
             // A page asked for before the delete still carries the post.
             Written::Deleted { post } => self.remove_post(post),
+            Written::ConvoRead { convo } => {
+                if let Some(c) = self.chat.convos.items.iter_mut().find(|c| c.id == *convo) {
+                    c.unread_count = 0;
+                }
+            }
         }
     }
 
@@ -625,14 +630,9 @@ impl App {
                 }
                 Err(e) => self.fail(&e),
             },
-            Event::ConvoRead { convo_id, result } => match result {
-                Ok(()) => {
-                    if let Some(c) = self.chat.convos.items.iter_mut().find(|c| c.id == convo_id) {
-                        c.unread_count = 0;
-                    }
-                }
-                Err(e) => self.fail(&e),
-            },
+            // Shown read by `apply`, as it is on a list read before it.
+            Event::ConvoRead { result: Ok(()), .. } => {}
+            Event::ConvoRead { result: Err(e), .. } => self.fail(&e),
             Event::Notifications { seen_at, result } => match result {
                 Ok(page) => {
                     self.notifications.set(page);

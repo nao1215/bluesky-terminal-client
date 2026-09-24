@@ -304,7 +304,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("followed", "gefolgt"),
     ("followed you", "folgt dir jetzt"),
     ("followers", "Follower"),
-    ("following", "folge ich"),
+    ("following", "Folge ich"),
     ("follows you", "folgt dir"),
     (
         "go back to the theme you had",
@@ -361,6 +361,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "m auf einem fremden Profil öffnet eine Unterhaltung",
     ),
+    ("made a new post", "hat einen neuen Beitrag gepostet"),
     ("mark", "markieren"),
     (
         "mark pictures to choose together with enter",
@@ -504,7 +505,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "Beitragstasten wirken auf die Spalte",
     ),
-    ("posted", "hat gepostet"),
+    ("posted", "gepostet"),
     ("posts", "Beiträge"),
     ("posts / accounts", "Beiträge / Konten"),
     ("press / or i to type", "drücke / oder i zum Tippen"),
@@ -518,7 +519,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     (
         "press y to log out @{}, any other key to stay logged in",
-        "drücke y, um @{} abzumelden, eine andere Taste bleibt angemeldet",
+        "y meldet @{} ab, jede andere Taste bricht ab",
     ),
     (
         "press y to remove the column {}, any other key to keep it",
@@ -698,6 +699,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "der Videodienst ist eine Webadresse, etwa https://video.bsky.app",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "der Alternativtext des Videos hat {} Zeichen; erlaubt sind {}",
+    ),
+    (
         "the video's playlist is not text",
         "die Playlist des Videos ist kein Text",
     ),
@@ -811,4 +816,5 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}; x goes back to the default",
         "{}; x setzt auf Standard zurück",
     ),
+    ("✓ following", "✓ Folge ich"),
 ];

@@ -46,11 +46,17 @@ pub struct OpenConvo {
     pub older: Option<String>,
     /// Older messages have been asked for and not answered yet.
     pub loading_older: bool,
-    /// Whether the latest messages have arrived.
+    /// Whether the latest messages have arrived, or failed to.
     pub loaded: bool,
+    /// Whether a page of the latest messages has arrived: the first one
+    /// says where the older ones begin, a failure before it does not.
+    got_latest: bool,
     pub error: Option<String>,
     /// Lines scrolled up from the newest message.
     pub scroll: usize,
+    /// Whether the oldest message shown is at the top of the screen: the
+    /// view, which knows how many lines the messages take, says so.
+    pub at_top: bool,
     pub input: TextInput,
     /// Keys go to the message box.
     pub typing: bool,
@@ -66,8 +72,10 @@ impl OpenConvo {
             older: None,
             loading_older: false,
             loaded: false,
+            got_latest: false,
             error: None,
             scroll: 0,
+            at_top: false,
             input: TextInput::single(""),
             typing: false,
             sending: false,
@@ -78,7 +86,8 @@ impl OpenConvo {
     /// the ones not here yet go after the others. Older ones read earlier
     /// stay, so reading again while scrolled up loses nothing.
     pub fn take_latest(&mut self, newest_first: Vec<ChatMessage>, cursor: Option<String>) {
-        let first = !self.loaded;
+        let first = !self.got_latest;
+        self.got_latest = true;
         let known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
         let mut new: Vec<ChatMessage> = newest_first
             .into_iter()

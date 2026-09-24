@@ -31,7 +31,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Download folder", "下载文件夹"),
     ("Edit profile", "编辑个人资料"),
     ("Error", "错误"),
-    ("Feed: {}", "Feed：{}"),
+    ("Feed: {}", "动态源：{}"),
     ("File browser", "文件浏览器"),
     ("Following", "正在关注"),
     ("GIF, posted as a video", "GIF（作为视频发布）"),
@@ -277,7 +277,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("followed", "已关注"),
     ("followed you", "关注了你"),
     ("followers", "粉丝"),
-    ("following", "已关注"),
+    ("following", "关注"),
     ("follows you", "关注了你"),
     ("go back to the theme you had", "恢复原来的主题"),
     ("help", "帮助"),
@@ -325,6 +325,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "在他人的个人资料中按 m 开始对话",
     ),
+    ("made a new post", "发布了新帖子"),
     ("mark", "标记"),
     (
         "mark pictures to choose together with enter",
@@ -441,7 +442,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "帖子按键作用于此栏的帖子",
     ),
-    ("posted", "发布了帖子"),
+    ("posted", "已发布"),
     ("posts", "帖子"),
     ("posts / accounts", "帖子 / 账户"),
     ("press / or i to type", "按 / 或 i 输入"),
@@ -598,6 +599,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video service is a web address, such as https://video.bsky.app",
         "视频服务应为网址，例如 https://video.bsky.app",
     ),
+    (
+        "the video's alt text is {} characters long; it can have {}",
+        "视频的替代文本有 {} 个字符，最多可以有 {} 个",
+    ),
     ("the video's playlist is not text", "视频的播放列表不是文本"),
     (
         "the video's playlist lists nothing to play",
@@ -673,4 +678,5 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}: back to the default, {}", "{}：已恢复默认（{}）"),
     ("{}; showing its thumbnail", "{}；正在显示缩略图"),
     ("{}; x goes back to the default", "{}；x 恢复默认"),
+    ("✓ following", "✓ 已关注"),
 ];

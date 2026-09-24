@@ -79,7 +79,9 @@ impl App {
         let Some(open) = &mut self.chat.open else {
             return Vec::new();
         };
-        if open.loading_older || open.scroll < open.messages.len() {
+        // At the top of what is drawn, or scrolled past every message.
+        let top = open.at_top || open.scroll >= open.messages.len();
+        if open.loading_older || !top {
             return Vec::new();
         }
         let Some(cursor) = open.older.clone() else {

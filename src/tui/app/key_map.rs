@@ -225,6 +225,13 @@ impl App {
                             self.error(n!("the post is empty"));
                         } else if let Some(why) = post_length_problem(text.trim_end()) {
                             self.error(why);
+                        } else if let Some(why) = c
+                            .media
+                            .iter()
+                            .filter(|a| a.is_video())
+                            .find_map(|a| crate::compose::video_alt_problem(&a.alt.text()))
+                        {
+                            self.error(why);
                         } else {
                             c.sending = true;
                             let reply = c.reply.as_ref().map(|(r, _, _)| r.clone());
@@ -349,13 +356,22 @@ impl App {
         if q.is_empty() {
             return Vec::new();
         }
+        // Another query's results are not this one's: they go, with the
+        // cursor that would page on from them. The same query again keeps
+        // them on screen while it loads.
         match self.search.mode {
             SearchMode::Posts => {
+                if self.search.posts_query != q {
+                    self.search.posts = List::default();
+                }
                 self.search.posts_query = q.clone();
                 self.search.posts.begin();
                 vec![Job::SearchPosts(q)]
             }
             SearchMode::Accounts => {
+                if self.search.actors_query != q {
+                    self.search.actors = List::default();
+                }
                 self.search.actors_query = q.clone();
                 self.search.actors.begin();
                 vec![Job::SearchActors(q)]

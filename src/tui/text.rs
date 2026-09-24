@@ -69,6 +69,42 @@ pub fn wrap_cached(text: &str, width: usize) -> Vec<String> {
     })
 }
 
+/// A row of hints, `key what` pairs two spaces apart, in `width` cells: the
+/// pairs that do not fit are left out from the middle, and the last one,
+/// which says how to leave (`esc cancel`), is kept.
+pub fn fit_hints(row: &str, width: usize) -> String {
+    if cells(row) <= width {
+        return row.to_string();
+    }
+    let pairs: Vec<&str> = row.split("  ").collect();
+    let Some((last, rest)) = pairs.split_last() else {
+        return truncate(row, width);
+    };
+    let mut kept = String::new();
+    for p in rest {
+        let with = if kept.is_empty() {
+            p.to_string()
+        } else {
+            format!("{kept}  {p}")
+        };
+        if cells(&with) + 2 + cells(last) > width {
+            break;
+        }
+        kept = with;
+    }
+    if kept.is_empty() {
+        truncate(last, width)
+    } else {
+        format!("{kept}  {last}")
+    }
+}
+
+/// `s` on one line: line breaks and runs of spaces become one space, so
+/// the words on either side stay apart where only one line is drawn.
+pub fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Wrap `text` into lines at most `width` columns wide.
 ///
 /// Words move to the next line whole when they fit on one; longer words,
@@ -189,6 +225,19 @@ pub use crate::clock::local_time as format_time;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A hint row too long for its place loses pairs from the middle and
+    // keeps the last, which says how to leave.
+    #[rstest]
+    #[case("a one  b two  esc cancel", 40, "a one  b two  esc cancel")]
+    #[case("a one  b two  esc cancel", 18, "a one  esc cancel")]
+    #[case("a one  b two  esc cancel", 10, "esc cancel")]
+    #[case("a one  b two  esc cancel", 6, "esc c…")]
+    #[case("ctrl+s 送信  ctrl+o 添付  esc 取消", 21, "ctrl+s 送信  esc 取消")]
+    fn a_hint_row_keeps_its_last_pair(#[case] row: &str, #[case] w: usize, #[case] want: &str) {
+        assert_eq!(fit_hints(row, w), want);
+        assert!(cells(&fit_hints(row, w)) <= w);
+    }
 
     // The same text at the same width wraps as wrap does, from the cache
     // or not; another width or text is wrapped again.

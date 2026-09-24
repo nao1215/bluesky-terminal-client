@@ -77,8 +77,10 @@ fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
 }
 /// The key hints are one row: the keys that act on a post are behind `.`,
 /// so the row stays short enough to read at a glance instead of becoming a
-/// wall of text that hides the posts.
-const MAX_HINT_ROWS: u16 = 1;
+/// wall of text that hides the posts. A language whose words are longer
+/// than English's may take a second row rather than lose a key such as
+/// `esc` or `q` off its end.
+const MAX_HINT_ROWS: u16 = 2;
 /// Themes the picker shows at once; the rest scroll.
 const THEME_ROWS: usize = 10;
 /// Widest the error box gets, in cells.
@@ -392,15 +394,19 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
             false => format!("{} ", i18n::t("text")),
         }
     };
+    let w = crate::tui::text::cells(&right) as u16;
     // Errors are drawn in the middle of the screen (draw_error); the row
-    // keeps the passing news.
+    // keeps the passing news, cut short of what is on the right.
     if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
+        let room = usize::from(area.width.saturating_sub(w + 2));
         frame.render_widget(
-            Line::from(Span::styled(format!(" {}", i18n::t(&s.text)), t.ok())),
+            Line::from(Span::styled(
+                format!(" {}", truncate(i18n::t(&s.text), room)),
+                t.ok(),
+            )),
             area,
         );
     }
-    let w = crate::tui::text::cells(&right) as u16;
     if w < area.width {
         frame.render_widget(
             Paragraph::new(right).style(t.dim()),
@@ -483,6 +489,17 @@ fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) 
         height: h,
     };
     frame.render_widget(Clear, r);
+    // A wide character just left of the box has its second half under the
+    // left border, and a terminal draws it over the border: it goes.
+    if r.x > area.x {
+        let buf = frame.buffer_mut();
+        for y in r.y..r.bottom() {
+            let cell = &mut buf[(r.x - 1, y)];
+            if cell.symbol().width() > 1 {
+                cell.set_symbol(" ");
+            }
+        }
+    }
     // Clear resets the cells to the terminal's colors; the block's style
     // paints them back in the theme's.
     let block = Block::bordered()

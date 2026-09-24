@@ -364,6 +364,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "m abre una conversación desde el perfil de otra persona",
     ),
+    ("made a new post", "publicó algo nuevo"),
     ("mark", "marcar"),
     (
         "mark pictures to choose together with enter",
@@ -710,6 +711,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "el servicio de vídeo es una dirección web, como https://video.bsky.app",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "el texto alternativo del vídeo tiene {} caracteres; puede tener {}",
+    ),
+    (
         "the video's playlist is not text",
         "la lista de reproducción del vídeo no es texto",
     ),
@@ -826,4 +831,5 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}; x goes back to the default",
         "{}; x vuelve al predeterminado",
     ),
+    ("✓ following", "✓ siguiendo"),
 ];

@@ -95,7 +95,7 @@ scenarios:
                 contains: "[ s Settings ]"
             - send: s
             - expect_screen:
-                contains: ["▶ Theme            bluesky", "enter chooses one from the list, as T does"]
+                contains: ["▶ Theme                bluesky", "enter chooses one from the list, as T does"]
             - send: { key: enter }
             - expect_screen:
                 contains: ["▶ bluesky", "1/42  enter apply"]
@@ -103,7 +103,7 @@ scenarios:
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: ["▶ Theme            bluesky-light", "theme: bluesky-light", "Picture cache"]
+                contains: ["▶ Theme                bluesky-light", "theme: bluesky-light", "Picture cache"]
                 not_contains: "enter apply"
             # Cancelled, the picker also comes back, with the theme as it was.
             - send: { key: enter }
@@ -112,7 +112,7 @@ scenarios:
             - send: j
             - send: { key: esc }
             - expect_screen:
-                contains: ["▶ Theme            bluesky-light", "Picture cache"]
+                contains: ["▶ Theme                bluesky-light", "Picture cache"]
                 not_contains: "enter apply"
             - send: { key: esc }
             - expect_screen:

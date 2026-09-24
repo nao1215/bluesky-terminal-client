@@ -241,7 +241,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     (
         "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter 開く  space このフォルダ  h 上へ  . 隠し  ~ ホーム  esc 取消",
+        "enter 開く  space このフォルダを選ぶ  h 上へ  . 隠し  ~ ホーム  esc 取消",
     ),
     (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
@@ -289,7 +289,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("followed", "フォローしました"),
     ("followed you", "があなたをフォローしました"),
     ("followers", "フォロワー"),
-    ("following", "フォロー中"),
+    ("following", "フォロー"),
     ("follows you", "フォローされています"),
     ("go back to the theme you had", "元のテーマに戻す"),
     ("help", "ヘルプ"),
@@ -343,6 +343,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "相手のプロフィールで m を押すと会話を始められます",
     ),
+    ("made a new post", "が新しく投稿しました"),
     ("mark", "印"),
     (
         "mark pictures to choose together with enter",
@@ -474,7 +475,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "投稿用キーはカラムの投稿に作用",
     ),
-    ("posted", "が投稿しました"),
+    ("posted", "投稿しました"),
     ("posts", "投稿"),
     ("posts / accounts", "投稿 / アカウント"),
     ("press / or i to type", "/ か i で入力"),
@@ -653,6 +654,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "動画サービスには https://video.bsky.app のような Web アドレスを指定してください",
     ),
     (
+        "the video's alt text is {} characters long; it can have {}",
+        "動画の代替テキストが {} 文字あります。{} 文字までです",
+    ),
+    (
         "the video's playlist is not text",
         "動画のプレイリストがテキストではありません",
     ),
@@ -760,4 +765,5 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}。サムネイルを表示しています",
     ),
     ("{}; x goes back to the default", "{}。x で既定値に戻す"),
+    ("✓ following", "✓ フォロー中"),
 ];

@@ -758,12 +758,33 @@ pub enum Confirm {
 /// A write the server confirmed, as it shows on a post or an account.
 #[derive(Debug, Clone)]
 enum Written {
-    Like { post: String, uri: Option<String> },
-    Repost { post: String, uri: Option<String> },
-    Follow { did: String, uri: Option<String> },
-    Mute { did: String, on: bool },
-    Block { did: String, uri: Option<String> },
-    Deleted { post: String },
+    Like {
+        post: String,
+        uri: Option<String>,
+    },
+    Repost {
+        post: String,
+        uri: Option<String>,
+    },
+    Follow {
+        did: String,
+        uri: Option<String>,
+    },
+    Mute {
+        did: String,
+        on: bool,
+    },
+    Block {
+        did: String,
+        uri: Option<String>,
+    },
+    Deleted {
+        post: String,
+    },
+    /// A conversation marked read.
+    ConvoRead {
+        convo: String,
+    },
 }
 
 impl Written {
@@ -837,6 +858,12 @@ impl Written {
                 uri,
                 result: Ok(()),
             } => Written::Deleted { post: uri.clone() },
+            Event::ConvoRead {
+                convo_id,
+                result: Ok(()),
+            } => Written::ConvoRead {
+                convo: convo_id.clone(),
+            },
             _ => return None,
         })
     }

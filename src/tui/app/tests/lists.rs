@@ -109,7 +109,8 @@ fn a_page_for_an_old_query_is_dropped() {
             None,
         ))),
     });
-    assert_eq!(app.search.posts.items.len(), 1);
+    // The old query's results went with it, and its late page is not added.
+    assert!(app.search.posts.items.is_empty());
 }
 
 #[test]

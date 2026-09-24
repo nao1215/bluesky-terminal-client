@@ -617,7 +617,7 @@ scenarios:
                 contains: ["this is you  [ e Edit profile ]  [ s Settings ]", "s settings"]
             - send: s
             - expect_screen:
-                contains: [" Settings ", "▶ Theme", "Pictures         auto", "Download folder", "Picture cache", "Video service", "Browser", "Account          @me.test", "j k move  enter change  esc close"]
+                contains: [" Settings ", "▶ Theme", "Pictures             auto", "Download folder", "Picture cache", "Video service", "Browser", "Account              @me.test", "j k move  enter change  esc close"]
             # The last row opens the account list A opens; esc comes back.
             - send: k
             - send: { key: enter }
@@ -625,12 +625,12 @@ scenarios:
                 contains: ["Accounts", "in use", "a log in another"]
             - send: { key: esc }
             - expect_screen:
-                contains: ["▶ Account          @me.test", "Picture cache"]
+                contains: ["▶ Account              @me.test", "Picture cache"]
             - send: j
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: ["Pictures         off", "pictures: off"]
+                contains: ["Pictures             off", "pictures: off"]
             # Wait for the window itself to go before the next key, or Esc
             # followed by 1 reads as Alt+1.
             - send: { key: esc }
@@ -670,11 +670,11 @@ scenarios:
                 contains: "[ s Settings ]"
             - send: s
             - expect_screen:
-                contains: "Pictures         off"
+                contains: "Pictures             off"
             - send: j
             - send: " "
             - expect_screen:
-                contains: ["Pictures         auto", "pictures: auto"]
+                contains: ["Pictures             auto", "pictures: auto"]
             - send: { key: esc }
             - expect_screen:
                 not_contains: "Picture cache"
@@ -722,13 +722,13 @@ scenarios:
                 contains: "[ s Settings ]"
             - send: s
             - expect_screen:
-                contains: ["Pictures         kitty", "saved"]
+                contains: ["Pictures             kitty", "saved"]
             - send: j
             - expect_screen:
                 contains: "set by BSKY_GRAPHICS for this run"
             - send: { key: enter }
             - expect_screen:
-                contains: "Pictures         kitty"
+                contains: "Pictures             kitty"
                 not_contains: "pictures: off"
             - send: j
             - expect_screen:
@@ -788,7 +788,7 @@ scenarios:
                 contains: "s settings"
             - send: s
             - expect_screen:
-                contains: ["Language         English", "Account"]
+                contains: ["Language             English", "Account"]
             # The row above the last, Account.
             - send: k
             - send: k

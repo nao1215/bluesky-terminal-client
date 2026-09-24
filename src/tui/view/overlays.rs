@@ -76,7 +76,10 @@ pub(super) fn draw_viewer(
     } else {
         Line::from(format!(
             " {}",
-            truncate(alt, usize::from(caption.width.saturating_sub(2)))
+            truncate(
+                &crate::tui::text::one_line(alt),
+                usize::from(caption.width.saturating_sub(2))
+            )
         ))
     };
     frame.render_widget(Paragraph::new(vec![Line::from(head), alt]), caption);
@@ -128,7 +131,7 @@ pub(super) fn draw_settings(
     typing: Option<&TextInput>,
     t: &Theme,
 ) {
-    const NAME_W: usize = 16;
+    const NAME_W: usize = 20;
     let inner = popup(
         frame,
         area,
@@ -161,7 +164,7 @@ pub(super) fn draw_settings(
             let head = format!("{marker}{name}{pad} ");
             let room = width.saturating_sub(head.width());
             // A path is cut at its start: its end names the folder.
-            let value = truncate_start(i18n::t(&r.value), room);
+            let value = truncate_start(&r.value, room);
             let style = if i == selected {
                 t.base().bold()
             } else {
@@ -364,9 +367,28 @@ pub(super) fn draw_languages(
 }
 
 pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
-    let inner = popup(frame, area, 64, 17, n!("Log in to Bluesky"), t);
+    // The three lines at the top wrap, in a language where they are longer
+    // than the box, and the box grows to hold them.
+    let intro_w = usize::from(64.min(area.width).saturating_sub(4)).max(1);
+    let para = |s: &str| wrap(i18n::t(s), intro_w);
+    let mut intro: Vec<Line> = para(n!("Your Bluesky password works; an app password is safer."))
+        .into_iter()
+        .map(|l| Line::from(format!(" {l}")))
+        .collect();
+    for s in [
+        n!("Settings → Privacy and security → App passwords"),
+        n!("bsky is an unofficial client, not made by Bluesky."),
+    ] {
+        intro.extend(
+            para(s)
+                .into_iter()
+                .map(|l| Line::styled(format!(" {l}"), t.dim())),
+        );
+    }
+    let intro_h = intro.len() as u16;
+    let inner = popup(frame, area, 64, 14 + intro_h, n!("Log in to Bluesky"), t);
     let rows = Layout::vertical([
-        Constraint::Length(3),
+        Constraint::Length(intro_h),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
@@ -379,29 +401,7 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
         Constraint::Length(1),
     ])
     .split(inner);
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(format!(
-                " {}",
-                i18n::t("Your Bluesky password works; an app password is safer.")
-            )),
-            Line::styled(
-                format!(
-                    " {}",
-                    i18n::t("Settings → Privacy and security → App passwords")
-                ),
-                t.dim(),
-            ),
-            Line::styled(
-                format!(
-                    " {}",
-                    i18n::t("bsky is an unofficial client, not made by Bluesky.")
-                ),
-                t.dim(),
-            ),
-        ]),
-        rows[0],
-    );
+    frame.render_widget(Paragraph::new(intro), rows[0]);
     for (i, label) in LoginForm::LABELS.iter().enumerate() {
         let focused = form.focus == i && !form.pending;
         let style = if focused {
@@ -445,11 +445,14 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     frame.render_widget(
         Paragraph::new(format!(
             " {}",
-            if form.adding {
-                i18n::t("enter next/submit  tab switch field  esc back")
-            } else {
-                i18n::t("enter next/submit  tab switch field  esc quit")
-            }
+            crate::tui::text::fit_hints(
+                if form.adding {
+                    i18n::t("enter next/submit  tab switch field  esc back")
+                } else {
+                    i18n::t("enter next/submit  tab switch field  esc quit")
+                },
+                usize::from(rows[10].width.saturating_sub(1))
+            )
         ))
         .style(t.dim()),
         rows[10],
