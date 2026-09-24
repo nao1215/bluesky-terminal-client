@@ -172,7 +172,7 @@ fn main() -> ExitCode {
                 let _ = e.print();
                 return ExitCode::SUCCESS;
             }
-            let err = Error::new(Kind::Usage, first_line(&e.to_string()))
+            let err = Error::new(Kind::Usage, first_paragraph(&e.to_string()))
                 .with_hint("run `bsky --help` for usage");
             eprintln!("{err}");
             // The flags were not read, so --json is looked for by hand.
@@ -212,8 +212,44 @@ fn say(line: &str) {
     let _ = writeln!(std::io::stdout(), "{line}");
 }
 
-/// clap's message without its `error: ` prefix and trailing usage block.
-fn first_line(msg: &str) -> String {
-    let line = msg.lines().next().unwrap_or(msg);
-    line.strip_prefix("error: ").unwrap_or(line).to_string()
+/// clap's message without its `error: ` prefix and trailing usage block:
+/// its first paragraph on one line. A missing argument is named on the
+/// lines after the first, which the message must keep.
+fn first_paragraph(msg: &str) -> String {
+    let para: Vec<&str> = msg
+        .lines()
+        .take_while(|l| !l.trim().is_empty())
+        .map(str::trim)
+        .collect();
+    let line = para.join(" ");
+    line.strip_prefix("error: ").unwrap_or(&line).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usage_error(args: &[&str]) -> String {
+        let e = Cli::try_parse_from(args).unwrap_err();
+        first_paragraph(&e.to_string())
+    }
+
+    // clap names the missing arguments on the lines after the first; the
+    // message must keep them, or it tells the user something is missing
+    // without saying what.
+    #[test]
+    fn a_missing_argument_is_named() {
+        assert_eq!(
+            usage_error(&["bsky", "post"]),
+            "the following required arguments were not provided: <TEXT>"
+        );
+        assert_eq!(
+            usage_error(&["bsky", "report", "x"]),
+            "the following required arguments were not provided: --reason <REASON>"
+        );
+        assert_eq!(
+            usage_error(&["bsky", "chat", "a", "b", "c"]),
+            "unexpected argument 'c' found"
+        );
+    }
 }

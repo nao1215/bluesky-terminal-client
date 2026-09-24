@@ -14,6 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - The theme picker's keys were cut in German (`esc abbreche`) and, on narrow screens, in every language.
 - Half-width katakana with sound marks, such as `ｶﾞｲｼﾞﾝ`, lost the end of each wrapped line off the right edge, and the cursor after them sat one cell too far left.
 - Deleting what kept two pieces apart that then join (a flag's halves, an accent after a line break) left the cursor inside the joined character, and the next key went into its middle.
+- A picture or video whose address ended in a very long name was downloaded whole with `d` and then failed to save ("File name too long"). The name is shortened.
+- A download that failed partway (a full disk) left a partial file under the download's name. It is removed.
+- The folder browser opened on a path ending in `..` (such as `BSKY_DOWNLOAD_DIR=..`) went back into the folder just left when moving up.
+- Reloading an open thread (with `R`, or after replying) replaced the whole thread with the error when it failed, while keys still acted on the posts no longer shown. The thread stays on screen and the error is shown on the status row.
+- A server error whose message was null showed only "HTTP 400", and an expired session was not refreshed.
+- Saving a profile with a display name over 64 characters or a description over 256 (fewer with emoji) uploaded the avatar and was then refused by the server. The editor refuses it on Ctrl+S and keeps what you typed.
+- `bsky chat` with an empty or too long message started an empty conversation on the server before failing, and exited with the network error code. It checks the message first.
+- A usage error for a missing argument (`bsky post`, `bsky report` without `--reason`) did not say which argument was missing.
+- `bsky feed` printed the names of your pinned feeds as their creators wrote them, escape sequences included, which could change the window title or clipboard. They are shown as plain text.
+- A video's alt text over the byte limit (many emoji) was refused with a character count below the limit. The message gives the bytes.
 
 ## [0.10.0] - 2026-09-24
 

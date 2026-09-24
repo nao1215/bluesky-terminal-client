@@ -1007,4 +1007,24 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}; x setzt auf Standard zurück",
     ),
     ("✓ following", "✓ Folge ich"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "der Anzeigename hat {} Zeichen; das Limit ist {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "der Anzeigename hat {} Bytes; das Limit ist {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "die Beschreibung hat {} Zeichen; das Limit ist {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "die Beschreibung hat {} Bytes; das Limit ist {}",
+    ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "der Alternativtext des Videos hat {} Bytes; das Limit ist {}",
+    ),
 ];

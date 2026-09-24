@@ -926,4 +926,24 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}; showing its thumbnail", "{}, 썸네일 표시 중"),
     ("{}; x goes back to the default", "{}, x로 기본값으로"),
     ("✓ following", "✓ 팔로우 중"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "표시 이름이 {}자입니다. 한도는 {}자입니다",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "표시 이름이 {}바이트입니다. 한도는 {}바이트입니다",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "소개가 {}자입니다. 한도는 {}자입니다",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "소개가 {}바이트입니다. 한도는 {}바이트입니다",
+    ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "동영상 대체 텍스트가 {}바이트입니다. 한도는 {}바이트입니다",
+    ),
 ];

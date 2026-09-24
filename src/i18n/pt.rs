@@ -977,4 +977,24 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}; showing its thumbnail", "{}; mostrando a miniatura"),
     ("{}; x goes back to the default", "{}; x volta ao padrão"),
     ("✓ following", "✓ seguindo"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "o nome de exibição tem {} caracteres; o limite é {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "o nome de exibição tem {} bytes; o limite é {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "a descrição tem {} caracteres; o limite é {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "a descrição tem {} bytes; o limite é {}",
+    ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "o texto alternativo do vídeo tem {} bytes; o limite é {}",
+    ),
 ];

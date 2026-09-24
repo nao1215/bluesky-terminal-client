@@ -868,7 +868,11 @@ pub struct UploadedBlob {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct XrpcError {
+    // Read leniently: a `"message": null` failed the whole body, and the
+    // error name with it (an ExpiredToken was then not refreshed).
+    #[serde(deserialize_with = "any_string")]
     pub error: String,
+    #[serde(deserialize_with = "any_string")]
     pub message: String,
 }
 

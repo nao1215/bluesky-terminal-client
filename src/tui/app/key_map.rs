@@ -292,9 +292,17 @@ impl App {
                         e.browser = Some(Browser::open(&browse_start(&self.browse_from), 1, false));
                     }
                     KeyCode::Char('s') if ctrl => {
-                        e.saving = true;
                         let [display_name, description, avatar_text] =
                             e.fields.clone().map(|f| f.text());
+                        // Refused here, with the editor still open, rather
+                        // than by the PDS after the avatar was uploaded.
+                        if let Some(why) =
+                            crate::api::profile_length_problem(&display_name, &description)
+                        {
+                            self.error(why);
+                            return Vec::new();
+                        }
+                        e.saving = true;
                         let changed =
                             |text: String, loaded: &String| (text != *loaded).then_some(text);
                         let display_name = changed(display_name, &e.loaded[0]);

@@ -68,12 +68,29 @@ pub struct Browser {
     pub info: HashMap<PathBuf, media::Info>,
 }
 
+/// `dir` without `..` in it, each taking off the name before it, as going
+/// up does. `absolute` keeps them on Unix, and going up from `a/b/..` took
+/// the `..` off: it went to `a/b`, the folder just left, not above `a`.
+fn without_dot_dot(dir: PathBuf) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in dir.components() {
+        match c {
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 impl Browser {
     /// Open at `dir`, where at most `room` pictures, or a video when
     /// `videos`, may be chosen.
     pub fn open(dir: &Path, room: usize, videos: bool) -> Self {
         let mut b = Self {
-            dir: std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf()),
+            dir: without_dot_dot(std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf())),
             list: List::default(),
             show_hidden: false,
             error: None,
@@ -419,6 +436,20 @@ mod tests {
         assert!(!names(&Browser::open(&pics, 4, false)).contains(&"clip.mp4"));
         let b = Browser::open(&pics, 4, true);
         assert_eq!(names(&b), ["..", "Zoo", "A.PNG", "b.png", "clip.mp4"]);
+    }
+
+    // A folder named with `..` (BSKY_DOWNLOAD_DIR=.., say) went "up" into
+    // the folder it had just left: the parent of `pics/..` is `pics`.
+    #[test]
+    fn a_folder_named_with_dot_dot_goes_up_to_its_real_parent() {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        let mut b = Browser::folder(&pics.join("Zoo").join(".."));
+        assert_eq!(b.dir, std::path::absolute(&pics).unwrap());
+        assert_eq!(names(&b), ["..", "Zoo"]);
+        b.key(key('h'));
+        assert_eq!(b.dir, std::path::absolute(dir.path()).unwrap());
+        assert_eq!(b.current().unwrap().name, "pics");
     }
 
     #[test]

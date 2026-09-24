@@ -500,16 +500,21 @@ fn feed_uri(client: &Client, feed: &str) -> Result<String> {
         .iter()
         .find(|f| f.name.eq_ignore_ascii_case(feed.trim()))
         .map(|f| f.uri.clone())
-        .ok_or_else(|| {
-            let names: Vec<&str> = pinned.iter().map(|f| f.name.as_str()).collect();
-            Error::new(Kind::Usage, format!("no pinned feed is named {feed:?}")).with_hint(
-                if names.is_empty() {
-                    "give the feed's at:// URI or its bsky.app address".to_string()
-                } else {
-                    format!("pinned: {}", names.join(", "))
-                },
-            )
-        })
+        .ok_or_else(|| no_pinned_feed(feed, &pinned))
+}
+
+/// That no pinned feed is named `feed`, with the names there are.
+fn no_pinned_feed(feed: &str, pinned: &[crate::api::types::FeedInfo]) -> Error {
+    // Each name as text only: a feed's name is what its maker wrote, and a
+    // control character in it would reach the terminal as a command.
+    let names: Vec<String> = pinned.iter().map(|f| format::one_line(&f.name)).collect();
+    Error::new(Kind::Usage, format!("no pinned feed is named {feed:?}")).with_hint(
+        if names.is_empty() {
+            "give the feed's at:// URI or its bsky.app address".to_string()
+        } else {
+            format!("pinned: {}", names.join(", "))
+        },
+    )
 }
 
 /// A DID from a handle, `@handle` or DID.
@@ -1327,18 +1332,34 @@ fn chat(
         }
         return Ok(());
     };
-    let did = resolve_actor(&client, actor)?;
-    let convo = client.convo_for(&did)?;
-    if let Some(t) = text_arg {
-        let body = if t == "-" {
+    // The message is read and checked before the conversation is asked
+    // for: getConvoForMembers starts one when there is none, which a
+    // message that cannot be sent must not leave behind.
+    let body = match text_arg {
+        Some(t) if t == "-" => {
             let mut s = String::new();
             io::stdin()
                 .read_to_string(&mut s)
                 .map_err(|e| Error::io(format!("cannot read the message from stdin: {e}")))?;
-            s
-        } else {
-            t
-        };
+            Some(s)
+        }
+        other => other,
+    };
+    if let Some(body) = &body {
+        let body = body.trim_end();
+        if body.trim().is_empty() {
+            return Err(Error::new(
+                Kind::Usage,
+                crate::i18n::t("the message is empty"),
+            ));
+        }
+        if let Some(why) = api::message_length_problem(body) {
+            return Err(Error::new(Kind::Usage, why));
+        }
+    }
+    let did = resolve_actor(&client, actor)?;
+    let convo = client.convo_for(&did)?;
+    if let Some(body) = body {
         let m = client.send_message(&convo.id, &body)?;
         return wrote(
             ctx,
@@ -1441,5 +1462,62 @@ mod tests {
             ])),
             "2026-09-22T00:59:59.999Z"
         );
+    }
+
+    // A message that cannot be sent is refused before anything reaches the
+    // server: getConvoForMembers starts a conversation when there is none,
+    // so asking for it first left an empty conversation behind, and a usage
+    // error came out as a network one when the server could not be reached.
+    #[rstest]
+    #[case("")]
+    #[case("  \n")]
+    #[case(&"a".repeat(1001))]
+    #[case(&"👨‍👩‍👧‍👦".repeat(401))]
+    fn a_message_that_cannot_be_sent_starts_no_conversation(#[case] body: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = AccountStore::open(dir.path()).unwrap();
+        let ctx = Ctx {
+            dir: dir.path(),
+            accounts: &accounts,
+            session: Some(crate::config::Session {
+                service: "http://127.0.0.1:9".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            }),
+            service: "http://127.0.0.1:9",
+            json: false,
+        };
+        let mut out = Vec::new();
+        let e = chat(
+            &ctx,
+            &mut out,
+            Some("did:plc:alice"),
+            Some(body.to_string()),
+            20,
+        )
+        .unwrap_err();
+        assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
+        assert!(out.is_empty());
+    }
+
+    // A feed's name is whatever its maker wrote: an escape sequence in it
+    // (one sets the clipboard, one clears the screen) must not reach the
+    // terminal with the list of pinned feeds.
+    #[test]
+    fn the_pinned_feed_names_in_the_hint_are_text_only() {
+        let pinned = [
+            crate::api::types::FeedInfo {
+                uri: "at://did:plc:x/app.bsky.feed.generator/a".into(),
+                name: "Cats 🐱\u{1b}]52;c;cHduZWQ=\u{7}\u{1b}[2J".into(),
+            },
+            crate::api::types::FeedInfo {
+                uri: "at://did:plc:x/app.bsky.feed.generator/b".into(),
+                name: "日本\n語\u{9b}".into(),
+            },
+        ];
+        let e = no_pinned_feed("dogs", &pinned);
+        assert_eq!(e.hint(), Some("pinned: Cats 🐱]52;c;cHduZWQ=[2J, 日本 語"));
     }
 }

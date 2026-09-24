@@ -156,6 +156,43 @@ pub fn message_length_problem(text: &str) -> Option<String> {
     })
 }
 
+/// Most graphemes and bytes `app.bsky.actor.profile` allows in the display
+/// name and the description.
+pub const MAX_DISPLAY_NAME_GRAPHEMES: usize = 64;
+pub const MAX_DISPLAY_NAME_BYTES: usize = 640;
+pub const MAX_DESCRIPTION_GRAPHEMES: usize = 256;
+pub const MAX_DESCRIPTION_BYTES: usize = 2560;
+
+/// Why a display name or description is too long for the profile record,
+/// if one is. Measured as saved, without the spaces around it: the PDS
+/// refuses the whole record for either field, so the editor checks first.
+pub fn profile_length_problem(display_name: &str, description: &str) -> Option<String> {
+    let name = display_name.trim();
+    let about = description.trim();
+    let (n, d) = (grapheme_len(name), grapheme_len(about));
+    let (count, bytes, limit, which) = if n > MAX_DISPLAY_NAME_GRAPHEMES {
+        (n, false, MAX_DISPLAY_NAME_GRAPHEMES, 0)
+    } else if name.len() > MAX_DISPLAY_NAME_BYTES {
+        (name.len(), true, MAX_DISPLAY_NAME_BYTES, 0)
+    } else if d > MAX_DESCRIPTION_GRAPHEMES {
+        (d, false, MAX_DESCRIPTION_GRAPHEMES, 1)
+    } else if about.len() > MAX_DESCRIPTION_BYTES {
+        (about.len(), true, MAX_DESCRIPTION_BYTES, 1)
+    } else {
+        return None;
+    };
+    let template = match (which, bytes) {
+        (0, false) => crate::i18n::n!("the display name is {} characters; the limit is {}"),
+        (0, true) => crate::i18n::n!("the display name is {} bytes; the limit is {}"),
+        (_, false) => crate::i18n::n!("the description is {} characters; the limit is {}"),
+        (_, true) => crate::i18n::n!("the description is {} bytes; the limit is {}"),
+    };
+    Some(crate::i18n::tf(
+        template,
+        &[&count.to_string(), &limit.to_string()],
+    ))
+}
+
 pub fn post_length_problem(text: &str) -> Option<String> {
     let len = grapheme_len(text);
     if len > MAX_POST_GRAPHEMES {
@@ -1171,6 +1208,12 @@ impl Client {
         };
         if !value.is_object() {
             value = json!({"$type": "app.bsky.actor.profile"});
+        }
+        if let Some(why) = profile_length_problem(
+            edit.display_name.as_deref().unwrap_or(""),
+            edit.description.as_deref().unwrap_or(""),
+        ) {
+            return Err(Error::new(Kind::Usage, why));
         }
         if let Some(name) = &edit.display_name {
             set_or_remove(&mut value, "displayName", name);

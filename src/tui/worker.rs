@@ -916,14 +916,22 @@ fn download_name(media: &Media) -> String {
         "jpeg" => "jpg".to_string(),
         e => e.to_string(),
     };
-    let stem = clean_name(stem);
-    let stem = if stem.is_empty() || is_reserved_name(&stem) {
-        fallback.to_string()
+    let mut stem = clean_name(stem);
+    // Most file systems take 255 bytes a name; the room left leaves space
+    // for " (9999)" and the extension. The name is ASCII, so any cut is on
+    // a character boundary.
+    stem.truncate(MAX_STEM_BYTES);
+    let stem = stem.trim_end_matches('.');
+    let stem = if stem.is_empty() || is_reserved_name(stem) {
+        fallback
     } else {
         stem
     };
     format!("{stem}.{ext}")
 }
+
+/// Longest stem of a download's name, in bytes.
+const MAX_STEM_BYTES: usize = 100;
 
 /// A URL without its query and fragment.
 fn url_path(url: &str) -> &str {
@@ -1036,6 +1044,15 @@ fn picture_name(name: &str, bytes: &[u8]) -> Result<String> {
 /// overwritten or written through a link, even if it appears meanwhile.
 fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> {
     use std::io::Write;
+    save_new_with(dir, name, |f| f.write_all(bytes))
+}
+
+/// [`save_new`], with `write` filling the new file.
+fn save_new_with(
+    dir: &std::path::Path,
+    name: &str,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<PathBuf> {
     for i in 0..10_000 {
         let path = candidate_path(dir, name, i);
         let mut file = match std::fs::OpenOptions::new()
@@ -1052,12 +1069,17 @@ fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> 
                 )));
             }
         };
-        file.write_all(bytes).map_err(|e| {
-            Error::io(crate::i18n::tf(
+        if let Err(e) = write(&mut file).and_then(|()| file.sync_all()) {
+            // What was written of it is not the picture or the video: a
+            // full disk left a cut file that looked like the download, and
+            // took its name from the next try.
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return Err(Error::io(crate::i18n::tf(
                 "cannot write {}: {}",
                 &[&(path.display()).to_string(), &e.to_string()],
-            ))
-        })?;
+            )));
+        }
         return Ok(path);
     }
     Err(Error::io(crate::i18n::tf(
@@ -1324,6 +1346,52 @@ mod tests {
         assert_eq!(saved, downloads.join("a (1).jpg"));
         assert!(!outside.exists(), "wrote through the link");
         assert_eq!(std::fs::read(saved).unwrap(), b"picture");
+    }
+
+    // A name longer than a file system allows (255 bytes on most) failed
+    // the download with "File name too long" after the whole file had come.
+    #[test]
+    fn a_long_address_still_names_a_file_that_can_be_written() {
+        let stem = "a".repeat(300);
+        let media = Media::Image {
+            url: format!("https://cdn.test/plain/did:plc:x/{stem}@jpeg"),
+            thumb: String::new(),
+            alt: String::new(),
+            aspect: None,
+        };
+        let name = download_name(&media);
+        assert!(name.len() <= 128, "{} bytes", name.len());
+        assert!(name.ends_with(".jpg") && name.starts_with("aaaa"), "{name}");
+        let video = Media::Video {
+            playlist: format!("https://video.test/watch/did/{stem}/playlist.m3u8"),
+            thumbnail: None,
+            alt: String::new(),
+            aspect: None,
+        };
+        assert!(download_name(&video).len() <= 128);
+        let dir = tempfile::tempdir().unwrap();
+        save_new(dir.path(), &name, b"x").unwrap();
+        let again = save_new(dir.path(), &name, b"x").unwrap();
+        assert!(again.to_string_lossy().ends_with(" (1).jpg"));
+    }
+
+    // A write that fails part way (a full disk) left a cut file under the
+    // download's name, which looked saved and took the name from a retry.
+    #[test]
+    fn a_download_that_cannot_be_written_whole_leaves_no_file() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let err = save_new_with(dir.path(), "a.jpg", |f| {
+            f.write_all(b"half of it")?;
+            Err(std::io::Error::other("no space left on device"))
+        })
+        .unwrap_err();
+        assert!(err.message().contains("no space left"), "{err}");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            save_new(dir.path(), "a.jpg", b"whole").unwrap(),
+            dir.path().join("a.jpg")
+        );
     }
 
     #[test]

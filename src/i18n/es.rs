@@ -1007,4 +1007,24 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}; x vuelve al predeterminado",
     ),
     ("✓ following", "✓ siguiendo"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "el nombre visible tiene {} caracteres; el límite es {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "el nombre visible tiene {} bytes; el límite es {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "la descripción tiene {} caracteres; el límite es {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "la descripción tiene {} bytes; el límite es {}",
+    ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "el texto alternativo del vídeo tiene {} bytes; el límite es {}",
+    ),
 ];
