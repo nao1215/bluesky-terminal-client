@@ -198,7 +198,9 @@ pub fn strip_metadata(file: &mut [u8]) {
                 }
                 n => (n, 8),
             };
-            if size < header || at + size > buf.len() {
+            // Compared with what is left, not added to `at`: a 64-bit size
+            // near the largest overflows the sum.
+            if size < header || size > buf.len() - at {
                 return;
             }
             let kind: [u8; 4] = buf[at + 4..at + 8].try_into().expect("four bytes");
@@ -518,6 +520,22 @@ mod tests {
     }
 
     #[test]
+    fn a_box_claiming_a_64_bit_size_past_the_file_is_left_alone() {
+        // `ftyp`, then a box whose 64-bit size runs past the end of any
+        // memory: adding it to where the box starts overflowed.
+        for large in [u64::MAX, u64::MAX - 7, 1 << 63] {
+            let mut file = bx(b"ftyp", b"isom\0\0\x02\0isomiso2");
+            file.extend([0, 0, 0, 1]);
+            file.extend(b"udta");
+            file.extend(large.to_be_bytes());
+            file.extend(b"+35.6895+139.6917/");
+            let before = file.clone();
+            strip_metadata(&mut file);
+            assert_eq!(file, before);
+        }
+    }
+
+    #[test]
     fn a_file_without_a_header_gives_nothing() {
         assert_eq!(read_moov(&mut Cursor::new(b"not a video at all")), None);
         assert_eq!(parse_moov(b"\0\0\0\x04junk"), VideoInfo::default());
@@ -756,6 +774,7 @@ mod tests {
                     let _ = is_animated_gif(&path);
                     let _ = crate::api::sniff_image_mime(&data);
                     let _ = crate::media::inspect(&path);
+                    strip_metadata(&mut data.clone());
                 }
             }
             let took = start.elapsed();
