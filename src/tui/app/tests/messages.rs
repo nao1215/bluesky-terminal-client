@@ -434,3 +434,66 @@ fn m_before_the_chat_tab_was_shown_loads_the_list_too() {
     );
     assert!(app.chat.convos.loading);
 }
+
+// A conversation read while the list was on its way stays read when the
+// list, asked for before, comes.
+#[test]
+fn a_list_asked_for_before_a_read_does_not_bring_back_its_unread_count() {
+    let mut app = chat_tab();
+    let later = Instant::now() + chat::POLL_EVERY + Duration::from_secs(1);
+    let polled = app.poll_chat(later);
+    assert!(matches!(&polled[..], [Job::Convos { cursor: None }]));
+    let s_list = app.stamp(&polled[0]);
+    let s: Vec<u64> = press(&mut app, code(KeyCode::Enter));
+    // ReadConvo answered first.
+    app.handle_answer(
+        s[1],
+        Event::ConvoRead {
+            convo_id: "a".into(),
+            result: Ok(()),
+        },
+    );
+    assert_eq!(app.chat.unread(), 0);
+    // The list read before arrives late.
+    app.handle_answer(
+        s_list,
+        Event::Convos {
+            cursor: None,
+            result: Ok(vec![a_convo("a", 2), a_convo("b", 0)].into()),
+        },
+    );
+    assert_eq!(app.chat.unread(), 0, "conversation a was read");
+}
+
+// A first page that failed, asked for again, still says where the older
+// messages are.
+#[test]
+fn a_retry_after_a_failed_first_page_keeps_the_older_messages_reachable() {
+    let mut app = chat_tab();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_event(Event::Messages {
+        convo_id: "a".into(),
+        cursor: None,
+        result: Err(Error::api("chat.bsky.convo.getMessages failed: HTTP 502")),
+    });
+    let jobs = app.handle_key(key('R'));
+    assert!(
+        matches!(&jobs[..], [Job::Messages { cursor: None, .. }]),
+        "{jobs:?}"
+    );
+    app.handle_event(Event::Messages {
+        convo_id: "a".into(),
+        cursor: None,
+        result: Ok(Page {
+            items: vec![a_message("m2", "b"), a_message("m1", "a")],
+            cursor: Some("older".into()),
+        }),
+    });
+    let o = app.chat.open.as_ref().unwrap();
+    assert_eq!(o.messages.len(), 2);
+    assert_eq!(
+        o.older.as_deref(),
+        Some("older"),
+        "the earlier messages can still be asked for"
+    );
+}
