@@ -170,6 +170,12 @@ impl Environment {
     }
 }
 
+/// A file's bytes without the byte order mark some editors put at the start
+/// of UTF-8 (Notepad did), which JSON does not allow.
+fn without_bom(data: &[u8]) -> &[u8] {
+    data.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(data)
+}
+
 /// Reads and writes `settings.json` inside one directory.
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
@@ -193,33 +199,44 @@ impl SettingsStore {
     pub fn load(&self) -> (Settings, Option<String>) {
         let path = self.path();
         match fs::read(&path) {
-            Ok(data) => match serde_json::from_slice(&data) {
+            Ok(data) => match serde_json::from_slice(without_bom(&data)) {
                 Ok(settings) => (settings, None),
                 Err(e) => (
                     Settings::default(),
-                    Some(format!(
-                        "{} is not valid and was ignored: {e}",
-                        path.display()
+                    Some(crate::i18n::tf(
+                        "{} is not valid and was ignored: {}",
+                        &[&(path.display()).to_string(), &e.to_string()],
                     )),
                 ),
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Settings::default(), None),
             Err(e) => (
                 Settings::default(),
-                Some(format!("cannot read {}: {e}", path.display())),
+                Some(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                )),
             ),
         }
     }
 
     /// Save the settings, creating the directory when needed.
     pub fn save(&self, settings: &Settings) -> Result<()> {
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.path();
         let mut json = serde_json::to_vec_pretty(settings).expect("settings serialize");
         json.push(b'\n');
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 }
 
@@ -245,8 +262,9 @@ pub fn config_dir() -> Result<PathBuf> {
         return Ok(PathBuf::from(dir));
     }
     dirs::config_dir().map(|d| d.join("bsky")).ok_or_else(|| {
-        Error::io("cannot determine the config directory")
-            .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
+        Error::io(crate::i18n::t("cannot determine the config directory")).with_hint(
+            crate::i18n::tf("set {} to a writable directory", &[CONFIG_DIR_ENV]),
+        )
     })
 }
 
@@ -342,7 +360,12 @@ pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Sourc
 /// a folder chosen for downloads or the cache is tried at once, so a bad one
 /// is refused with the reason rather than at the next download.
 pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
-    let fail = |e: std::io::Error| format!("cannot write to {}: {e}", dir.display());
+    let fail = |e: std::io::Error| {
+        crate::i18n::tf(
+            "cannot write to {}: {}",
+            &[&(dir.display()).to_string(), &e.to_string()],
+        )
+    };
     fs::create_dir_all(dir).map_err(fail)?;
     // A new file only, never through a link or over a file left at a name:
     // a name that is taken is passed over for the next.
@@ -361,9 +384,9 @@ pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
             Err(e) => return Err(fail(e)),
         }
     }
-    Err(format!(
+    Err(crate::i18n::tf(
         "cannot write to {}: every name tried was taken",
-        dir.display()
+        &[&(dir.display()).to_string()],
     ))
 }
 
@@ -386,15 +409,24 @@ impl SessionStore {
         let data = match fs::read(&path) {
             Ok(data) => data,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", path.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
-        serde_json::from_slice(&data).map(Some).map_err(|e| {
-            Error::io(format!(
-                "{} is not a valid session file: {e}",
-                path.display()
-            ))
-            .with_hint("run `bsky logout --all` to discard it and log in again")
-        })
+        serde_json::from_slice(without_bom(&data))
+            .map(Some)
+            .map_err(|e| {
+                Error::io(crate::i18n::tf(
+                    "{} is not a valid session file: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                ))
+                .with_hint(crate::i18n::t(
+                    "run `bsky logout --all` to discard it and log in again",
+                ))
+            })
     }
 
     /// Save refreshed tokens, only while the file is there: an account
@@ -408,12 +440,20 @@ impl SessionStore {
 
     /// Save the session, creating the directory when needed.
     pub fn save(&self, session: &Session) -> Result<()> {
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.path();
         let json = serde_json::to_vec_pretty(session).expect("session serializes");
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 
     /// Remove the saved session. Returns whether a session existed.
@@ -422,7 +462,10 @@ impl SessionStore {
         match fs::remove_file(&path) {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(Error::io(format!("cannot remove {}: {e}", path.display()))),
+            Err(e) => Err(Error::io(crate::i18n::tf(
+                "cannot remove {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))),
         }
     }
 }
@@ -480,7 +523,12 @@ impl AccountStore {
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", dir.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(dir.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
         let mut gone = Vec::new();
         for entry in entries.flatten() {
@@ -507,7 +555,12 @@ impl AccountStore {
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(Error::io(format!("cannot read {}: {e}", dir.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(dir.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
         let mut all = Vec::new();
         for entry in entries.flatten() {
@@ -573,20 +626,28 @@ impl AccountStore {
     fn read_current(&self) -> Current {
         fs::read(self.dir.join(ACCOUNTS_FILE))
             .ok()
-            .and_then(|d| serde_json::from_slice(&d).ok())
+            .and_then(|d| serde_json::from_slice(without_bom(&d)).ok())
             .unwrap_or_default()
     }
 
     fn write_current(&self, did: Option<&str>) -> Result<()> {
         let mut c = self.read_current();
         c.current = did.map(str::to_string);
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| Error::io(format!("cannot create {}: {e}", self.dir.display())))?;
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot create {}: {}",
+                &[&(self.dir.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         let path = self.dir.join(ACCOUNTS_FILE);
         let mut json = serde_json::to_vec_pretty(&c).expect("accounts serialize");
         json.push(b'\n');
-        write_private(&path, &json)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+        write_private(&path, &json).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })
     }
 }
 
@@ -1116,6 +1177,20 @@ mod tests {
             err.to_string().contains("\nhint: run `bsky logout --all`"),
             "{err}"
         );
+    }
+
+    // A file an editor saved with a byte order mark is read as it is meant.
+    #[test]
+    fn settings_saved_with_a_byte_order_mark_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(SETTINGS_FILE),
+            "\u{feff}{\"theme\": \"nord\"}\n",
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(dir.path()).load();
+        assert_eq!(warning, None);
+        assert_eq!(settings.theme.as_deref(), Some("nord"));
     }
 
     #[test]
