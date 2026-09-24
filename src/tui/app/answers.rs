@@ -576,8 +576,19 @@ impl App {
             } => self.search.actors.set(actors),
             Event::Profile(Ok((profile, posts))) => {
                 if self.wanted_profile(&profile) {
+                    // The same profile read again (R, a post sent) keeps the
+                    // pages loaded after its first, as the timeline does.
+                    let again = self
+                        .profile
+                        .profile
+                        .as_ref()
+                        .is_some_and(|p| p.did == profile.did);
                     self.profile.profile = Some(profile);
-                    self.profile.posts.set(posts);
+                    if again {
+                        self.profile.posts.renew(posts);
+                    } else {
+                        self.profile.posts.set(posts);
+                    }
                     self.profile.error = None;
                     self.profile.loading = false;
                 }
