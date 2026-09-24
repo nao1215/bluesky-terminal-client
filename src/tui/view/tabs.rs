@@ -127,6 +127,7 @@ pub(super) fn draw_chat(
     let h = usize::from(msgs.height);
     let most = lines.len().saturating_sub(h);
     open.scroll = open.scroll.min(most);
+    open.at_top = open.scroll >= most;
     let top = most - open.scroll;
     let shown: Vec<Line> = lines.into_iter().skip(top).take(h).collect();
     // A short conversation sits just above the input line, where the next

@@ -411,3 +411,69 @@ fn a_profile_muted_by_a_list_names_the_list() {
     let screen = render(&mut app, 100, 30);
     assert!(screen.contains("M      mute them"), "{screen}");
 }
+
+// k held at the top of a long conversation asks for the older messages,
+// however many lines the ones shown take.
+#[test]
+fn k_at_the_top_of_a_long_conversation_loads_older_messages() {
+    let (mut a, _) = App::new(Some(session()), "x");
+    a.handle_key(crossterm::event::KeyEvent::from(
+        crossterm::event::KeyCode::Char('2'),
+    ));
+    let convo: crate::api::types::Convo = serde_json::from_value(json!({
+        "id": "c", "rev": "r",
+        "members": [{"did": "did:plc:a", "handle": "alice.test"}],
+        "muted": false, "unreadCount": 0
+    }))
+    .unwrap();
+    a.handle_event(Event::Convos {
+        cursor: None,
+        result: Ok(vec![convo].into()),
+    });
+    a.handle_key(crossterm::event::KeyEvent::from(
+        crossterm::event::KeyCode::Enter,
+    ));
+    let msgs: Vec<crate::api::types::ChatMessage> = (0..50)
+        .rev()
+        .map(|i| crate::api::types::ChatMessage {
+            id: format!("m{i}"),
+            text: format!("hi {i}"),
+            sender: "did:plc:a".into(),
+            sent_at: "2026-09-22T00:00:00Z".into(),
+            ..Default::default()
+        })
+        .collect();
+    a.handle_event(Event::Messages {
+        convo_id: "c".into(),
+        cursor: None,
+        result: Ok(crate::tui::worker::Page {
+            items: msgs,
+            cursor: Some("older".into()),
+        }),
+    });
+    let mut asked = false;
+    for _ in 0..300 {
+        render(&mut a, 100, 60);
+        let jobs = a.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Char('k'),
+        ));
+        if jobs.iter().any(|j| {
+            matches!(
+                j,
+                crate::tui::worker::Job::Messages {
+                    cursor: Some(_),
+                    ..
+                }
+            )
+        }) {
+            asked = true;
+            break;
+        }
+    }
+    let screen = render(&mut a, 100, 60);
+    assert!(
+        asked,
+        "k held at the top never asked for older messages; scroll={}\n{screen}",
+        a.chat.open.as_ref().unwrap().scroll
+    );
+}
