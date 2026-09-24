@@ -55,7 +55,7 @@ impl PostLines {
         match me {
             Some(me) if me != post.author.did => {
                 header.push(if post.author.following_uri().is_some() {
-                    Span::styled(format!(" ✓ {}", i18n::t("following")), t.accent())
+                    Span::styled(format!(" {}", i18n::t("✓ following")), t.accent())
                 } else {
                     Span::styled(format!(" {}", i18n::t("not following")), t.dim())
                 })
@@ -591,7 +591,7 @@ pub(super) fn account_lines(p: &Profile, width: u16, t: &Theme) -> Vec<Line<'sta
     ];
     if p.following_uri().is_some() {
         head.push(Span::styled(
-            format!("  ✓ {}", i18n::t("following")),
+            format!("  {}", i18n::t("✓ following")),
             t.accent(),
         ));
     }

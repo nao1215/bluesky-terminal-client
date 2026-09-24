@@ -354,7 +354,7 @@ pub(super) fn notif_action(reason: &str) -> String {
         "starterpack-joined" => i18n::t("joined through your starter pack"),
         "verified" => i18n::t("verified you"),
         "unverified" => i18n::t("removed your verification"),
-        "subscribed-post" => i18n::t("posted"),
+        "subscribed-post" => i18n::t("made a new post"),
         other => return format!("({other})"),
     };
     what.to_string()
@@ -552,7 +552,7 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
     if !own {
         let viewer = p.viewer.clone().unwrap_or_default();
         let mut rel = vec![if viewer.following.is_some() {
-            Span::styled(format!("✓ {}", i18n::t("following")), t.accent().bold())
+            Span::styled(i18n::t("✓ following"), t.accent().bold())
         } else {
             Span::styled(i18n::t("not following"), t.dim())
         }];

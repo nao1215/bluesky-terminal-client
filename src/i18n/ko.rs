@@ -286,7 +286,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("followed", "팔로우함"),
     ("followed you", "님이 나를 팔로우했습니다"),
     ("followers", "팔로워"),
-    ("following", "팔로우 중"),
+    ("following", "팔로잉"),
     ("follows you", "나를 팔로우함"),
     ("go back to the theme you had", "원래 테마로 되돌리기"),
     ("help", "도움말"),
@@ -337,6 +337,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "다른 사람의 프로필에서 m으로 대화를 엽니다",
     ),
+    ("made a new post", "님이 새 게시물을 올렸습니다"),
     ("mark", "표시"),
     (
         "mark pictures to choose together with enter",
@@ -471,7 +472,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "게시물 키는 칼럼의 게시물에 작동",
     ),
-    ("posted", "님이 게시했습니다"),
+    ("posted", "게시했습니다"),
     ("posts", "게시물"),
     ("posts / accounts", "게시물 / 계정"),
     ("press / or i to type", "/ 또는 i를 눌러 입력"),
@@ -746,4 +747,5 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}: back to the default, {}", "{}: 기본값으로 되돌림, {}"),
     ("{}; showing its thumbnail", "{}, 썸네일 표시 중"),
     ("{}; x goes back to the default", "{}, x로 기본값으로"),
+    ("✓ following", "✓ 팔로우 중"),
 ];

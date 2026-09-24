@@ -364,6 +364,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "m abre una conversación desde el perfil de otra persona",
     ),
+    ("made a new post", "publicó algo nuevo"),
     ("mark", "marcar"),
     (
         "mark pictures to choose together with enter",
@@ -830,4 +831,5 @@ pub const TABLE: &[(&str, &str)] = &[
         "{}; x goes back to the default",
         "{}; x vuelve al predeterminado",
     ),
+    ("✓ following", "✓ siguiendo"),
 ];

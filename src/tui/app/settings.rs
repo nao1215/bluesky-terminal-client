@@ -193,14 +193,14 @@ impl App {
             },
             None if self.settings.pictures_off() => SettingRow {
                 name: n!("Pictures"),
-                value: n!("off").into(),
+                value: crate::i18n::t("off").into(),
                 note: n!("enter draws them again where the terminal can").into(),
                 editable: true,
                 resettable: false,
             },
             None => SettingRow {
                 name: n!("Pictures"),
-                value: n!("auto").into(),
+                value: crate::i18n::t("auto").into(),
                 note: if self.pictures {
                     n!("enter turns them off: posts say what they carry").into()
                 } else {
@@ -235,14 +235,14 @@ impl App {
             row(
                 n!("Download folder"),
                 config::DOWNLOAD_DIR_ENV,
-                path(download, n!("none")),
+                path(download, crate::i18n::t("none")),
                 download_from,
                 n!("enter chooses another folder"),
             ),
             row(
                 n!("Picture cache"),
                 config::CACHE_DIR_ENV,
-                path(cache, n!("off")),
+                path(cache, crate::i18n::t("off")),
                 cache_from,
                 n!("enter chooses another folder"),
             ),
@@ -274,10 +274,10 @@ impl App {
             },
             SettingRow {
                 name: n!("Account"),
-                value: self
-                    .session
-                    .as_ref()
-                    .map_or_else(|| n!("none").into(), |s| format!("@{}", s.handle)),
+                value: self.session.as_ref().map_or_else(
+                    || crate::i18n::t("none").into(),
+                    |s| format!("@{}", s.handle),
+                ),
                 note: n!("enter switches, adds or logs out an account, as A does").into(),
                 editable: true,
                 resettable: false,
@@ -468,7 +468,6 @@ impl App {
             .map(|r| r.value)
             .unwrap_or_default();
         let name = crate::i18n::t(row.name).to_lowercase();
-        let shown = crate::i18n::t(&shown).to_string();
         self.save_settings(if value.is_empty() {
             tf("{}: back to the default, {}", &[&name, &shown])
         } else {

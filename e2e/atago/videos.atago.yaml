@@ -608,7 +608,7 @@ scenarios:
                 contains: "[ s Settings ]"
             - send: s
             - expect_screen:
-                contains: "Video service    https://video.bsky.app"
+                contains: "Video service        https://video.bsky.app"
             - send: j
             - send: j
             - send: j

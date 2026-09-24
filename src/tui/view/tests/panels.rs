@@ -44,8 +44,8 @@ fn the_settings_screen_lists_each_setting_and_where_it_comes_from() {
     }
     assert!(screen.contains("▶ Theme"), "{screen}");
     assert!(screen.contains("bluesky"), "{screen}");
-    assert!(screen.contains("Pictures         kitty"), "{screen}");
-    assert!(screen.contains("Browser          firefox"), "{screen}");
+    assert!(screen.contains("Pictures             kitty"), "{screen}");
+    assert!(screen.contains("Browser              firefox"), "{screen}");
     assert!(
         screen.contains("enter chooses one from the list"),
         "{screen}"

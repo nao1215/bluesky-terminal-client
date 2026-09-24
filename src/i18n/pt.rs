@@ -355,6 +355,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "m opens a conversation with someone else's profile",
         "m abre uma conversa a partir do perfil de outra pessoa",
     ),
+    ("made a new post", "publicou algo novo"),
     ("mark", "marcar"),
     (
         "mark pictures to choose together with enter",
@@ -495,7 +496,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "post keys act on the column's post",
         "as teclas agem no post da coluna",
     ),
-    ("posted", "postado"),
+    ("posted", "publicado"),
     ("posts", "posts"),
     ("posts / accounts", "posts / contas"),
     ("press / or i to type", "pressione / ou i para digitar"),
@@ -797,4 +798,5 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}: back to the default, {}", "{}: de volta ao padrão, {}"),
     ("{}; showing its thumbnail", "{}; mostrando a miniatura"),
     ("{}; x goes back to the default", "{}; x volta ao padrão"),
+    ("✓ following", "✓ seguindo"),
 ];

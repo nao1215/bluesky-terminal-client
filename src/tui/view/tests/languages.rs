@@ -75,3 +75,70 @@ fn the_screens_draw_in_every_language() {
         }
     }
 }
+
+// A box over wide characters keeps its left border: a wide character just
+// left of it would otherwise cover the border's cell with its second half.
+#[test]
+fn a_box_over_wide_characters_keeps_its_left_border() {
+    let _english = English;
+    let (mut app, _) = App::new(Some(session()), "x");
+    let settings = crate::config::Settings {
+        language: Some("ja".into()),
+        ..Default::default()
+    };
+    app.apply_settings(settings, crate::tui::theme::ColorDepth::TrueColor, None);
+    app.handle_event(Event::Timeline(Ok(posts(8).into())));
+    press(&mut app, '?');
+    let buf = render_buffer(&mut app, 80, 24);
+    let left = (0..80u16)
+        .find(|x| buf[(*x, 1)].symbol() == "│")
+        .expect("the help's left border");
+    for y in 1..23u16 {
+        let before = buf[(left - 1, y)].symbol();
+        assert!(
+            before.width() < 2,
+            "row {y}: a wide {before:?} covers the border"
+        );
+    }
+}
+
+// In German, whose words are long, the composer still says how to cancel,
+// and the login form shows its whole first line.
+#[test]
+fn long_words_do_not_push_out_how_to_leave() {
+    let _english = English;
+    i18n::set(Lang::De);
+    let (mut app, _) = App::new(Some(session()), "x");
+    let settings = crate::config::Settings {
+        language: Some("de".into()),
+        ..Default::default()
+    };
+    app.apply_settings(settings, crate::tui::theme::ColorDepth::TrueColor, None);
+    app.handle_event(Event::Timeline(Ok(posts(3).into())));
+    press(&mut app, 'n');
+    let screen: String = cells(&mut app, 80, 24)
+        .into_iter()
+        .map(|row| row.concat())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(screen.contains("esc abbrechen"), "{screen}");
+    let (mut login, _) = App::new(None, "x");
+    login.apply_settings(
+        crate::config::Settings {
+            language: Some("de".into()),
+            ..Default::default()
+        },
+        crate::tui::theme::ColorDepth::TrueColor,
+        None,
+    );
+    let screen: String = cells(&mut login, 80, 30)
+        .into_iter()
+        .map(|row| row.concat())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let squeezed: String = screen.split_whitespace().collect::<Vec<_>>().join(" ");
+    let want = i18n::t("Your Bluesky password works; an app password is safer.");
+    for word in want.split_whitespace() {
+        assert!(squeezed.contains(word), "{word}: {squeezed}");
+    }
+}
