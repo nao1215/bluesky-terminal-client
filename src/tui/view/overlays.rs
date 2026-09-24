@@ -507,7 +507,12 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
             Line::from(spans)
         })
         .collect();
-    let w = (width + 2 + 10 + 4) as u16;
+    // Wide enough for its keys too, which some languages make longer than
+    // the names: cut there, the row ended in half a word.
+    let keys = i18n::t("enter apply  esc cancel");
+    let count = format!(" {}/{n}  ", selected + 1);
+    let foot_w = crate::tui::text::cells(&format!(" {n}/{n}  {keys}")) + 2;
+    let w = (width + 2 + 10 + 4).max(foot_w) as u16;
     let inner = popup(frame, area, w.max(34), rows as u16 + 4, n!("Theme"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(lines), body);
@@ -532,11 +537,13 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
             },
         );
     }
+    // On a screen too narrow for them, the keys in the middle go and the
+    // one that says how to leave stays whole.
+    let room = usize::from(foot.width).saturating_sub(crate::tui::text::cells(&count));
     frame.render_widget(
         Paragraph::new(format!(
-            " {}/{n}  {}",
-            selected + 1,
-            i18n::t("enter apply  esc cancel")
+            "{count}{}",
+            crate::tui::text::fit_hints(keys, room)
         ))
         .style(t.dim()),
         foot,

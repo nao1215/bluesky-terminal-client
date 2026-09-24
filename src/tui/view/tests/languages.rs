@@ -142,3 +142,32 @@ fn long_words_do_not_push_out_how_to_leave() {
         assert!(squeezed.contains(word), "{word}: {squeezed}");
     }
 }
+
+// The theme picker says how to apply and how to cancel in every language:
+// the box is wide enough for its keys, and a screen too narrow for them
+// drops the middle ones rather than cutting a word. In German the box was
+// one cell short and ended on "esc abbreche".
+#[test]
+fn the_theme_picker_keeps_its_keys_whole_in_every_language() {
+    let _english = English;
+    for lang in Lang::ALL {
+        i18n::set(lang);
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Ok(posts(3).into())));
+        press(&mut app, 'T');
+        for _ in 0..12 {
+            app.handle_key(KeyEvent::from(KeyCode::Down));
+        }
+        let keys = i18n::t("enter apply  esc cancel");
+        // The box's own row of keys, not the hint row under the screen.
+        let foot = |screen: &str| {
+            let row = screen.lines().find(|l| l.contains("13/42")).unwrap_or("");
+            row.to_string()
+        };
+        let screen = render_text_only(&mut app, 80, 24);
+        assert!(foot(&screen).contains(keys), "{}:\n{screen}", lang.code());
+        let leave = keys.rsplit("  ").next().unwrap();
+        let narrow = render_text_only(&mut app, 30, 24);
+        assert!(foot(&narrow).contains(leave), "{}:\n{narrow}", lang.code());
+    }
+}
