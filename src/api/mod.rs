@@ -518,6 +518,7 @@ impl Client {
         bytes: &[u8],
         mime: &str,
         name: &str,
+        shown: &str,
         poll_every: Duration,
     ) -> Result<Value> {
         // Asked first, as the official app does: a refusal (an unconfirmed
@@ -576,13 +577,13 @@ impl Client {
             if job.state == "JOB_STATE_FAILED" {
                 return Err(Error::api(crate::i18n::tf(
                     "the video service could not process {}: {}",
-                    &[name, &(job.why()).to_string()],
+                    &[shown, &(job.why()).to_string()],
                 )));
             }
             if std::time::Instant::now() >= deadline {
                 return Err(Error::api(crate::i18n::tf(
                     "the video service did not finish {} in time",
-                    &[name],
+                    &[shown],
                 )));
             }
             std::thread::sleep(poll_every);

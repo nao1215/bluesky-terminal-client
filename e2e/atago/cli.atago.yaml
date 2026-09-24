@@ -278,6 +278,39 @@ scenarios:
                 - { path: "$.collection", equals: "app.bsky.feed.post" }
                 - { path: "$.rkey", equals: "p9" }
 
+  # An at:// address written with a handle names the same record as one
+  # with the DID: your own post is yours either way.
+  - name: delete takes your own post by an at:// address written with your handle
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:me" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+    steps:
+      - *session
+      - run:
+          command: bsky delete at://me.test/app.bsky.feed.post/p8
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "deleted at://did:plc:me/app.bsky.feed.post/p8\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.rkey", equals: "p8" }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.identity.resolveHandle, query: { name: handle, equals: "me.test" } }
+
   - name: notifications are listed, and marked seen only with --seen
     mock_servers:
       - name: api

@@ -65,6 +65,9 @@ pub fn send_post(
                 &v.bytes,
                 v.mime,
                 &name,
+                &a.path
+                    .file_name()
+                    .map_or_else(|| name.clone(), |n| n.to_string_lossy().into_owned()),
                 std::time::Duration::from_secs(1),
             )?;
             PostMedia::Video(PostVideo {
