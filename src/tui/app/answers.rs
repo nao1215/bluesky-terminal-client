@@ -231,6 +231,28 @@ impl App {
     /// The posts and notifications of an account muted or blocked leave
     /// every list, as the server leaves them out of the next pages. Its
     /// profile, where the change was made, and an open thread stay.
+    /// Load the timeline and the Following columns again, and with `own` a
+    /// column of your own posts: what shows posts a write just changed.
+    fn reload_following(&mut self, own: bool) -> Vec<Job> {
+        let me = self.session.as_ref().map(|s| s.did.clone());
+        let ids: Vec<u64> = self
+            .columns
+            .items
+            .iter()
+            .filter(|c| match &c.source {
+                columns::Source::Following => true,
+                columns::Source::Author { did, .. } => own && Some(did) == me.as_ref(),
+                _ => false,
+            })
+            .map(|c| c.id)
+            .collect();
+        let mut jobs = vec![Job::Timeline];
+        for id in ids {
+            jobs.extend(self.load_column(id));
+        }
+        jobs
+    }
+
     /// Take an unfollowed account's posts off the timeline and the Following
     /// columns, which show followed accounts only.
     fn drop_unfollowed(&mut self, did: &str) {
@@ -721,9 +743,10 @@ impl App {
                 self.set_account(&did, |v| v.muted = on);
                 if on {
                     self.remove_posts_by(&did);
-                    self.info("muted: their posts leave your lists; M again unmutes");
+                    self.info("muted: their posts leave your lists; M on their profile unmutes");
                 } else {
                     self.info("unmuted");
+                    return self.reload_following(false);
                 }
             }
             Event::Blocked {
@@ -732,7 +755,7 @@ impl App {
             } => {
                 self.set_account(&did, move |v| v.blocking = Some(uri.clone()));
                 self.remove_posts_by(&did);
-                self.info("blocked: B again unblocks");
+                self.info("blocked: B on their profile unblocks");
             }
             Event::Unblocked {
                 did,
@@ -740,6 +763,7 @@ impl App {
             } => {
                 self.set_account(&did, |v| v.blocking = None);
                 self.info("unblocked");
+                return self.reload_following(false);
             }
             Event::Posted {
                 reply_to,
@@ -755,23 +779,7 @@ impl App {
                 }
                 // Your own posts are on the timeline and in a column of
                 // them: load those again so the new one is there.
-                let me = self.session.as_ref().map(|s| s.did.clone());
-                let ids: Vec<u64> = self
-                    .columns
-                    .items
-                    .iter()
-                    .filter(|c| match &c.source {
-                        columns::Source::Following => true,
-                        columns::Source::Author { did, .. } => Some(did) == me.as_ref(),
-                        _ => false,
-                    })
-                    .map(|c| c.id)
-                    .collect();
-                let mut jobs = vec![Job::Timeline];
-                for id in ids {
-                    jobs.extend(self.load_column(id));
-                }
-                return jobs;
+                return self.reload_following(true);
             }
             Event::Posted { result: Err(e), .. } => {
                 if let Some(Overlay::Compose(c)) = &mut self.overlay {

@@ -25,7 +25,32 @@ fn m_mutes_the_selected_posts_author_and_their_posts_leave_the_lists() {
             .collect::<Vec<_>>(),
         ["at://b/p/2"]
     );
-    assert!(app.status.as_ref().unwrap().text.contains("muted"));
+    // The next M acts on the post now selected, someone else's: the status
+    // says where the mute is undone instead.
+    let status = &app.status.as_ref().unwrap().text;
+    assert!(status.contains("muted"), "{status}");
+    assert!(status.contains("profile"), "{status}");
+    assert!(!status.contains("M again"), "{status}");
+}
+
+// An unmute or an unblock brings the account's posts back: the lists they
+// were taken out of are loaded again.
+#[test]
+fn an_unmute_or_an_unblock_loads_the_timeline_again() {
+    let mut app = logged_in();
+    let jobs = app.handle_event(Event::Muted {
+        did: "did:plc:alice".into(),
+        on: false,
+        result: Ok(()),
+    });
+    assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
+    let jobs = app.handle_event(Event::Unblocked {
+        did: "did:plc:alice".into(),
+        result: Ok(()),
+    });
+    assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
+    let status = &app.status.as_ref().unwrap().text;
+    assert!(status.contains("unblocked"), "{status}");
 }
 
 #[test]

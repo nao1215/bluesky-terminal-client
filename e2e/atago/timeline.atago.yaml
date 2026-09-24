@@ -2644,7 +2644,7 @@ scenarios:
             - send: B
             - send: y
             - expect_screen:
-                contains: ["blocked: B again unblocks", "My own post"]
+                contains: ["blocked: B on their profile unblocks", "My own post"]
                 not_contains: "Replying to carol"
             - send: q
       - assert:
