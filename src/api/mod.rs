@@ -701,7 +701,7 @@ impl Client {
         session.refresh_jwt = tokens.refresh_jwt;
         session.handle = tokens.handle;
         if let Some(store) = &self.store {
-            store.save(&session)?;
+            store.update(&session)?;
         }
         Ok(session.access_jwt.clone())
     }

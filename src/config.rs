@@ -412,6 +412,15 @@ impl SessionStore {
         })
     }
 
+    /// Save refreshed tokens, only while the file is there: an account
+    /// logged out while a load of it was on its way stays logged out.
+    pub fn update(&self, session: &Session) -> Result<()> {
+        if !self.path().exists() {
+            return Ok(());
+        }
+        self.save(session)
+    }
+
     /// Save the session, creating the directory when needed.
     pub fn save(&self, session: &Session) -> Result<()> {
         fs::create_dir_all(&self.dir)
@@ -914,6 +923,35 @@ mod tests {
             handle: handle.into(),
             ..sample()
         }
+    }
+
+    // New tokens of an account logged out meanwhile (a load of it was still
+    // on its way) do not bring its file back; one still logged in has them
+    // saved.
+    #[test]
+    fn new_tokens_are_kept_only_for_an_account_still_logged_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        store.save(&account("did:plc:a", "a.test")).unwrap();
+        store.save(&account("did:plc:b", "b.test")).unwrap();
+        let fresh = |did: &str, handle: &str| Session {
+            access_jwt: "new-access".into(),
+            ..account(did, handle)
+        };
+        store.remove("did:plc:a").unwrap();
+        store
+            .store_for("did:plc:a")
+            .update(&fresh("did:plc:a", "a.test"))
+            .unwrap();
+        assert_eq!(store.find("did:plc:a").unwrap(), None);
+        store
+            .store_for("did:plc:b")
+            .update(&fresh("did:plc:b", "b.test"))
+            .unwrap();
+        assert_eq!(
+            store.find("did:plc:b").unwrap().unwrap().access_jwt,
+            "new-access"
+        );
     }
 
     #[test]
