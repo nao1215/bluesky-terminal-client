@@ -157,7 +157,21 @@ impl App {
                 }
             }
             // A page asked for before the delete still carries the post.
-            Written::Deleted { post } => self.remove_post(post),
+            // The profile it is on counts it gone with it: once, as only a
+            // list that still shows it has a count from before the delete.
+            Written::Deleted { post } => {
+                let author = self.profile.profile.as_ref().map(|p| p.did.as_str());
+                let counted = self
+                    .profile
+                    .posts
+                    .items
+                    .iter()
+                    .any(|p| p.uri == *post && Some(p.author.did.as_str()) == author);
+                self.remove_post(post);
+                if counted && let Some(p) = &mut self.profile.profile {
+                    p.posts_count = p.posts_count.map(|n| n.saturating_sub(1));
+                }
+            }
             Written::ConvoRead { convo } => {
                 if let Some(c) = self.chat.convos.items.iter_mut().find(|c| c.id == *convo) {
                     c.unread_count = 0;
