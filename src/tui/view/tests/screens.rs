@@ -25,6 +25,32 @@ fn a_long_login_error_is_shown_whole() {
     assert!(screen.contains("esc quit"), "{screen}");
 }
 
+// On a short terminal the introduction gives way, not the form: every
+// field keeps its name and its line to type on, and the keys stay shown.
+// The rows used to be squeezed at random, so the handle field lost its
+// name, or the password field its line, while empty rows stayed below.
+#[test]
+fn a_short_login_screen_keeps_every_field_and_its_name() {
+    for (w, h) in [(80, 12), (80, 10), (40, 12), (24, 8)] {
+        let (mut app, _) = App::new(None, "https://bsky.social");
+        let screen = render(&mut app, w, h);
+        for label in crate::tui::app::LoginForm::LABELS {
+            assert!(screen.contains(label), "{w}x{h} {label}:\n{screen}");
+        }
+        let fields = screen.lines().filter(|l| l.contains("│ › ")).count();
+        assert_eq!(fields, 3, "{w}x{h}:\n{screen}");
+    }
+    // A server's reason is kept over the introduction.
+    let (mut app, _) = App::new(None, "https://bsky.social");
+    app.login.as_mut().unwrap().error = Some("Invalid identifier or password".into());
+    let screen = render(&mut app, 80, 12);
+    assert!(
+        screen.contains("Invalid identifier or password"),
+        "{screen}"
+    );
+    assert!(screen.contains("Handle or email"), "{screen}");
+}
+
 // Without pictures the text starts where the avatar was, and a line
 // says what each post carries; descriptions keep their emoji whole.
 #[test]

@@ -387,18 +387,38 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     }
     let intro_h = intro.len() as u16;
     let inner = popup(frame, area, 64, 14 + intro_h, n!("Log in to Bluesky"), t);
+    // A box too short for all of it gives up rows in a fixed order: the
+    // blank ones first, then the introduction, the message, and the keys,
+    // and never a field or its name. Left to the layout, the rows were
+    // squeezed anywhere, and a field lost its name or its line.
+    let mut left = inner.height.saturating_sub(6);
+    let mut take = |want: u16| {
+        let got = want.min(left);
+        left -= got;
+        got
+    };
+    // A server's reason comes before the introduction: it is what to fix.
+    let msg_want = match (&form.error, form.pending) {
+        (Some(e), false) => {
+            wrap(&format!(" {}", i18n::t(e)), usize::from(inner.width).max(1)).len()
+        }
+        _ => 1,
+    };
+    let (foot_h, msg_h) = (take(1), take(msg_want as u16));
+    let intro_h = take(intro_h);
+    let (gap_h, below_h) = (take(1), take(1));
     let rows = Layout::vertical([
         Constraint::Length(intro_h),
+        Constraint::Length(gap_h),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
+        Constraint::Length(below_h),
+        Constraint::Min(msg_h),
+        Constraint::Length(foot_h),
     ])
     .split(inner);
     frame.render_widget(Paragraph::new(intro), rows[0]);
