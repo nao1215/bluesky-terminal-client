@@ -13,6 +13,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_problem};
 use crate::config::ColumnSource;
+use crate::i18n::{self, n};
 use crate::media;
 use crate::terminal::protocol_name;
 use crate::tui::app::{
@@ -128,9 +129,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         app.column_choices()
             .iter()
             .map(|s| match s {
-                ColumnSource::Search { .. } => "Search…".to_string(),
-                ColumnSource::Author { handle, .. } => format!("Your posts (@{handle})"),
-                ColumnSource::Feed { name, .. } => format!("Feed: {name}"),
+                ColumnSource::Search { .. } => i18n::t("Search…").to_string(),
+                ColumnSource::Author { handle, .. } => i18n::tf("Your posts (@{})", &[handle]),
+                ColumnSource::Feed { name, .. } => i18n::tf("Feed: {}", &[name]),
                 other => other.title(),
             })
             .collect()
@@ -182,6 +183,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Accounts { selected }) => {
             let me = app.session.as_ref().map(|s| s.did.clone());
             draw_account_list(frame, area, &app.accounts, *selected, me.as_deref(), &t)
+        }
+        Some(Overlay::Languages { selected }) => {
+            draw_languages(frame, area, *selected, i18n::current(), &t);
         }
         Some(Overlay::Settings { selected, edit }) => {
             let typing = match edit {
@@ -240,11 +244,17 @@ fn fit(area: Rect, (w, h): (u32, u32), (cw, ch): (u16, u16)) -> Rect {
 /// until they meet, rather than guessed at.
 fn draw_too_small(frame: &mut Frame, area: Rect, t: &Theme) {
     let w = usize::from(area.width).max(1);
-    let mut lines: Vec<Line> = wrap("Terminal too small", w)
+    let mut lines: Vec<Line> = wrap(i18n::t("Terminal too small"), w)
         .into_iter()
         .map(|l| Line::styled(l, t.accent().bold()).centered())
         .collect();
-    let size = format!("{MIN_W}x{MIN_H} needed, now {}x{}", area.width, area.height);
+    let size = i18n::tf(
+        "{} needed, now {}",
+        &[
+            &format!("{MIN_W}x{MIN_H}"),
+            &format!("{}x{}", area.width, area.height),
+        ],
+    );
     lines.extend(wrap(&size, w).into_iter().map(|l| Line::raw(l).centered()));
     let h = lines.len() as u16;
     frame.render_widget(
@@ -262,12 +272,12 @@ fn draw_too_small(frame: &mut Frame, area: Rect, t: &Theme) {
 fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
     let w = ERROR_W.min(area.width.saturating_sub(4)).max(10);
     let inner_w = usize::from(w.saturating_sub(4)).max(1);
-    let mut lines: Vec<Line> = wrap(text, inner_w)
+    let mut lines: Vec<Line> = wrap(i18n::t(text), inner_w)
         .into_iter()
         .map(|l| Line::styled(l, t.error()))
         .collect();
     lines.push(Line::default());
-    lines.push(Line::styled("any key closes this", t.dim()));
+    lines.push(Line::styled(i18n::t("any key closes this"), t.dim()));
     let h = lines.len() as u16 + 2;
     let r = Rect {
         x: area.x + area.width.saturating_sub(w) / 2,
@@ -278,7 +288,7 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
     frame.render_widget(Clear, r);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
-        .title(" Error ")
+        .title(format!(" {} ", i18n::t("Error")))
         .border_style(t.error())
         .style(t.base());
     let inner = block.inner(r);
@@ -310,12 +320,13 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     // No name of the app: the tabs start at the edge, and the room is theirs.
     let mut spans = Vec::new();
     for (i, tab) in Tab::ALL.iter().enumerate() {
+        let title = i18n::t(tab.title());
         let label = match (tab, app.unread) {
-            (Tab::Notifications, n) if n > 0 => format!(" {} {} ({n}) ", i + 1, tab.title()),
+            (Tab::Notifications, n) if n > 0 => format!(" {} {title} ({n}) ", i + 1),
             (Tab::Chat, _) if app.chat.unread() > 0 => {
-                format!(" {} {} ({}) ", i + 1, tab.title(), app.chat.unread())
+                format!(" {} {title} ({}) ", i + 1, app.chat.unread())
             }
-            _ => format!(" {} {} ", i + 1, tab.title()),
+            _ => format!(" {} {title} ", i + 1),
         };
         let style = if *tab == app.tab.shown_as() {
             t.selected()
@@ -374,22 +385,22 @@ fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>>
 fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     let t = &app.theme.clone();
     let right = if app.pending > 0 || images.loading() {
-        "loading… ".to_string()
+        format!("{} ", i18n::t("loading…"))
     } else {
         match images.shows() {
             true => format!("{} ", protocol_name(images.protocol_type())),
-            false => "text ".to_string(),
+            false => format!("{} ", i18n::t("text")),
         }
     };
     // Errors are drawn in the middle of the screen (draw_error); the row
     // keeps the passing news.
     if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
         frame.render_widget(
-            Line::from(Span::styled(format!(" {}", s.text), t.ok())),
+            Line::from(Span::styled(format!(" {}", i18n::t(&s.text)), t.ok())),
             area,
         );
     }
-    let w = right.width() as u16;
+    let w = crate::tui::text::cells(&right) as u16;
     if w < area.width {
         frame.render_widget(
             Paragraph::new(right).style(t.dim()),
@@ -453,10 +464,10 @@ fn scroll_offset(
 /// What an empty list says: why it failed to load, or that it is empty.
 fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, t: &Theme) {
     let p = match &list.error {
-        Some(e) => Paragraph::new(format!(" {e}  (R to retry)"))
+        Some(e) => Paragraph::new(format!(" {e}  {}", i18n::t("(R to retry)")))
             .style(t.error())
             .wrap(ratatui::widgets::Wrap { trim: true }),
-        None => Paragraph::new(format!(" {}", empty.trim_start())).style(t.dim()),
+        None => Paragraph::new(format!(" {}", i18n::t(empty.trim_start()))).style(t.dim()),
     };
     frame.render_widget(p, area);
 }
@@ -478,7 +489,7 @@ fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) 
         .border_type(BorderType::Rounded)
         .style(t.base())
         .border_style(t.accent())
-        .title(format!(" {title} "));
+        .title(format!(" {} ", i18n::t(title)));
     let inner = block.inner(r);
     frame.render_widget(block, r);
     inner

@@ -5,6 +5,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::api::types::Media;
+use crate::i18n::{n, t};
 use crate::tui::app::{App, Overlay, SearchMode, SettingEdit, Tab};
 
 /// A key and what it does.
@@ -19,174 +20,174 @@ pub struct Section {
 /// Everything `?` shows, in the order it shows it.
 pub const HELP: &[Section] = &[
     Section {
-        title: "Global",
+        title: n!("Global"),
         keys: &[
-            ("1 2 3 4 5", "the tabs, in the order shown"),
-            ("tab shift+tab", "next / previous tab"),
-            ("T", "choose a color theme"),
-            ("A", "accounts: switch, add, log out"),
-            ("?", "this help"),
-            ("q ctrl+c", "quit"),
+            ("1 2 3 4 5", n!("the tabs, in the order shown")),
+            ("tab shift+tab", n!("next / previous tab")),
+            ("T", n!("choose a color theme")),
+            ("A", n!("accounts: switch, add, log out")),
+            ("?", n!("this help")),
+            ("q ctrl+c", n!("quit")),
         ],
     },
     Section {
-        title: "Lists",
+        title: n!("Lists"),
         keys: &[
-            ("j k ↓ ↑", "move the selection"),
-            ("g G home end", "first / last item"),
-            ("pgdn pgup", "move five items"),
-            ("", "more loads by itself near the end"),
-            ("R F5", "refresh the current view"),
+            ("j k ↓ ↑", n!("move the selection")),
+            ("g G home end", n!("first / last item")),
+            ("pgdn pgup", n!("move five items")),
+            ("", n!("more loads by itself near the end")),
+            ("R F5", n!("refresh the current view")),
         ],
     },
     Section {
-        title: "Posts",
+        title: n!("Posts"),
         keys: &[
-            ("n", "new post"),
-            ("r", "reply to the selected post"),
-            ("l", "like / remove like"),
-            ("b", "repost / remove repost"),
-            ("f", "follow / unfollow the selected account"),
-            ("M", "mute / unmute the selected account"),
-            ("B", "block / unblock the account: y confirms"),
-            ("v", "open the thread with every reply"),
-            ("space", "view pictures or video, or open the link"),
-            ("o", "open the link, or the post, in the browser"),
-            (".", "list what the keys do to the post"),
-            ("Q", "quote the selected post in a new post"),
-            ("c", "copy the post's address to the clipboard"),
-            ("D", "delete your own post: y confirms"),
-            ("enter", "open the selected account's profile"),
+            ("n", n!("new post")),
+            ("r", n!("reply to the selected post")),
+            ("l", n!("like / remove like")),
+            ("b", n!("repost / remove repost")),
+            ("f", n!("follow / unfollow the selected account")),
+            ("M", n!("mute / unmute the selected account")),
+            ("B", n!("block / unblock the account: y confirms")),
+            ("v", n!("open the thread with every reply")),
+            ("space", n!("view pictures or video, or open the link")),
+            ("o", n!("open the link, or the post, in the browser")),
+            (".", n!("list what the keys do to the post")),
+            ("Q", n!("quote the selected post in a new post")),
+            ("c", n!("copy the post's address to the clipboard")),
+            ("D", n!("delete your own post: y confirms")),
+            ("enter", n!("open the selected account's profile")),
         ],
     },
     Section {
-        title: "Thread",
+        title: n!("Thread"),
         keys: &[
-            ("j k", "move through the posts and replies"),
-            ("l b r f", "like, repost, reply, follow on any of them"),
-            ("v", "open the thread of the selected reply"),
-            ("esc", "close the thread"),
+            ("j k", n!("move through the posts and replies")),
+            ("l b r f", n!("like, repost, reply, follow on any of them")),
+            ("v", n!("open the thread of the selected reply")),
+            ("esc", n!("close the thread")),
         ],
     },
     Section {
-        title: "Search",
+        title: n!("Search"),
         keys: &[
-            ("type", "the search box has focus when you arrive"),
-            ("enter", "search, then move through the results"),
-            ("/ i", "type in the search box again"),
-            ("ctrl+t t", "search posts or accounts"),
-            ("f", "follow / unfollow the account or author"),
-            ("esc", "leave the search box"),
+            ("type", n!("the search box has focus when you arrive")),
+            ("enter", n!("search, then move through the results")),
+            ("/ i", n!("type in the search box again")),
+            ("ctrl+t t", n!("search posts or accounts")),
+            ("f", n!("follow / unfollow the account or author")),
+            ("esc", n!("leave the search box")),
         ],
     },
     Section {
-        title: "Notifications",
+        title: n!("Notifications"),
         keys: &[
-            ("enter", "open the profile of who it is from"),
-            ("r l b", "reply, like, repost a reply or mention"),
-            ("v", "open the thread it is about"),
-            ("R", "load new notifications"),
+            ("enter", n!("open the profile of who it is from")),
+            ("r l b", n!("reply, like, repost a reply or mention")),
+            ("v", n!("open the thread it is about")),
+            ("R", n!("load new notifications")),
         ],
     },
     Section {
-        title: "Profile",
+        title: n!("Profile"),
         keys: &[
-            ("e", "edit your profile"),
-            ("m", "message the account shown"),
-            ("s", "settings: theme, pictures, folders"),
-            ("f", "follow / unfollow the account shown"),
-            ("M B", "mute / block the account shown"),
-            ("esc", "back to the list it was opened from"),
+            ("e", n!("edit your profile")),
+            ("m", n!("message the account shown")),
+            ("s", n!("settings: theme, pictures, folders")),
+            ("f", n!("follow / unfollow the account shown")),
+            ("M B", n!("mute / block the account shown")),
+            ("esc", n!("back to the list it was opened from")),
         ],
     },
     Section {
-        title: "Composer and profile editor",
+        title: n!("Composer and profile editor"),
         keys: &[
-            ("ctrl+s", "send the post / save the profile"),
-            ("ctrl+o", "attach pictures or a video / an avatar"),
-            ("tab", "next field, or a picture's alt text"),
-            ("ctrl+x", "remove the attachment"),
-            ("ctrl+u", "clear to the start of the line"),
-            ("esc", "close without sending"),
+            ("ctrl+s", n!("send the post / save the profile")),
+            ("ctrl+o", n!("attach pictures or a video / an avatar")),
+            ("tab", n!("next field, or a picture's alt text")),
+            ("ctrl+x", n!("remove the attachment")),
+            ("ctrl+u", n!("clear to the start of the line")),
+            ("esc", n!("close without sending")),
         ],
     },
     Section {
-        title: "File browser",
+        title: n!("File browser"),
         keys: &[
-            ("j k", "move; pictures are previewed"),
-            ("enter l", "open the folder / choose the file"),
-            ("space", "mark pictures to choose together with enter"),
-            ("h backspace", "the folder above"),
-            (".", "show or hide hidden files"),
-            ("~", "your home folder"),
-            ("esc", "close without choosing"),
+            ("j k", n!("move; pictures are previewed")),
+            ("enter l", n!("open the folder / choose the file")),
+            ("space", n!("mark pictures to choose together with enter")),
+            ("h backspace", n!("the folder above")),
+            (".", n!("show or hide hidden files")),
+            ("~", n!("your home folder")),
+            ("esc", n!("close without choosing")),
         ],
     },
     Section {
-        title: "Viewer",
+        title: n!("Viewer"),
         keys: &[
-            ("← → h l", "previous / next picture"),
-            ("r", "play the video again"),
-            ("d", "save it in the download folder"),
-            ("esc q", "back to where you were"),
+            ("← → h l", n!("previous / next picture")),
+            ("r", n!("play the video again")),
+            ("d", n!("save it in the download folder")),
+            ("esc q", n!("back to where you were")),
         ],
     },
     Section {
-        title: "Theme picker",
+        title: n!("Theme picker"),
         keys: &[
-            ("j k", "preview the next / previous theme"),
-            ("g G pgdn pgup", "first / last / ten further"),
-            ("enter", "use it and remember it"),
-            ("esc", "go back to the theme you had"),
+            ("j k", n!("preview the next / previous theme")),
+            ("g G pgdn pgup", n!("first / last / ten further")),
+            ("enter", n!("use it and remember it")),
+            ("esc", n!("go back to the theme you had")),
         ],
     },
     Section {
-        title: "Columns",
+        title: n!("Columns"),
         keys: &[
-            ("← → H L", "the column to the left / right"),
-            ("+", "add a column: a pinned feed, notifications…"),
-            ("", "the last one removed, the timeline is alone"),
-            ("< >", "move the column left / right"),
-            ("x", "remove the column: y confirms"),
-            ("R", "load the column again"),
-            ("", "post keys act on the column's post"),
+            ("← → H L", n!("the column to the left / right")),
+            ("+", n!("add a column: a pinned feed, notifications…")),
+            ("", n!("the last one removed, the timeline is alone")),
+            ("< >", n!("move the column left / right")),
+            ("x", n!("remove the column: y confirms")),
+            ("R", n!("load the column again")),
+            ("", n!("post keys act on the column's post")),
         ],
     },
     Section {
-        title: "Chat",
+        title: n!("Chat"),
         keys: &[
-            ("enter", "open the conversation; it is marked read"),
-            ("i enter", "write a message; enter sends it"),
-            ("j k g G", "read further back / forward"),
-            ("esc", "back to the conversations"),
-            ("", "read again every 15 s while shown"),
+            ("enter", n!("open the conversation; it is marked read")),
+            ("i enter", n!("write a message; enter sends it")),
+            ("j k g G", n!("read further back / forward")),
+            ("esc", n!("back to the conversations")),
+            ("", n!("read again every 15 s while shown")),
         ],
     },
     Section {
-        title: "Accounts",
+        title: n!("Accounts"),
         keys: &[
-            ("A", "the accounts, the one in use marked"),
-            ("j k", "move"),
-            ("enter", "use the selected account"),
-            ("a", "log in another account"),
-            ("x", "log the selected account out: y confirms"),
-            ("esc", "close"),
+            ("A", n!("the accounts, the one in use marked")),
+            ("j k", n!("move")),
+            ("enter", n!("use the selected account")),
+            ("a", n!("log in another account")),
+            ("x", n!("log the selected account out: y confirms")),
+            ("esc", n!("close")),
         ],
     },
     Section {
-        title: "Settings",
+        title: n!("Settings"),
         keys: &[
-            ("s", "open them from your own Profile tab"),
-            ("j k", "move"),
-            ("enter space", "change the selected setting"),
-            ("x", "put the setting back to its default"),
-            ("", "a setting a BSKY_ variable sets stays"),
-            ("esc", "close"),
+            ("s", n!("open them from your own Profile tab")),
+            ("j k", n!("move")),
+            ("enter space", n!("change the selected setting")),
+            ("x", n!("put the setting back to its default")),
+            ("", n!("a setting a BSKY_ variable sets stays")),
+            ("esc", n!("close")),
         ],
     },
     Section {
-        title: "Help",
-        keys: &[("j k pgdn pgup", "scroll"), ("esc q ?", "close")],
+        title: n!("Help"),
+        keys: &[("j k pgdn pgup", n!("scroll")), ("esc q ?", n!("close"))],
     },
 ];
 
@@ -200,12 +201,15 @@ pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
                 .keys
                 .iter()
                 .map(|&(k, d)| match (pictures, s.title, k) {
-                    (false, "Posts", "space") => (k, "open the post or its link in the browser"),
-                    (false, "File browser", "j k") => (k, "move; a video is described"),
+                    (false, "Posts", "space") => {
+                        (k, n!("open the post or its link in the browser"))
+                    }
+                    (false, "File browser", "j k") => (k, n!("move; a video is described")),
                     _ => (k, d),
                 })
+                .map(|(k, d)| (k, t(d)))
                 .collect();
-            (s.title, keys)
+            (t(s.title), keys)
         })
         .collect()
 }
@@ -216,9 +220,17 @@ pub fn hints(app: &App) -> Vec<Hint> {
     if !app.pictures {
         for h in &mut v {
             if *h == ("space", "view") {
-                h.1 = "open in browser";
+                h.1 = n!("open in browser");
             }
         }
+    }
+    translated(v)
+}
+
+/// The hints with what each does in the language in use.
+fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
+    for h in &mut v {
+        h.1 = t(h.1);
     }
     v
 }
@@ -226,48 +238,63 @@ pub fn hints(app: &App) -> Vec<Hint> {
 fn view_hints(app: &App) -> Vec<Hint> {
     if let Some(form) = &app.login {
         return vec![
-            ("enter", "next / log in"),
-            ("tab", "switch field"),
-            ("esc", if form.adding { "back" } else { "quit" }),
+            ("enter", n!("next / log in")),
+            ("tab", n!("switch field")),
+            ("esc", if form.adding { n!("back") } else { n!("quit") }),
         ];
     }
     match &app.overlay {
         Some(Overlay::Compose(c)) if c.browser.is_some() => return browser_hints(),
         Some(Overlay::EditProfile(e)) if e.browser.is_some() => return browser_hints(),
         Some(Overlay::Compose(c)) => {
-            let mut v = vec![("ctrl+s", "send"), ("ctrl+o", "attach")];
+            let mut v = vec![("ctrl+s", n!("send")), ("ctrl+o", n!("attach"))];
             if !c.media.is_empty() {
-                v.push(("tab", "alt text"));
-                v.push(("ctrl+x", "remove picture"));
+                v.push(("tab", n!("alt text")));
+                v.push(("ctrl+x", n!("remove picture")));
             }
-            v.push(("esc", "cancel"));
+            v.push(("esc", n!("cancel")));
             return v;
         }
         Some(Overlay::EditProfile(_)) => {
             return vec![
-                ("tab", "next field"),
-                ("ctrl+o", "choose avatar"),
-                ("ctrl+s", "save"),
-                ("esc", "cancel"),
+                ("tab", n!("next field")),
+                ("ctrl+o", n!("choose avatar")),
+                ("ctrl+s", n!("save")),
+                ("esc", n!("cancel")),
             ];
         }
-        Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Help { .. }) => return vec![("j k", n!("scroll")), ("esc", n!("close"))],
         Some(Overlay::Actions { .. }) => {
-            return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("do it")),
+                ("esc", n!("close")),
+            ];
         }
         Some(Overlay::AddColumn { query: Some(_), .. }) => {
-            return vec![("enter", "add"), ("esc", "back")];
+            return vec![("enter", n!("add")), ("esc", n!("back"))];
         }
         Some(Overlay::AddColumn { .. }) => {
-            return vec![("j k", "move"), ("enter", "add"), ("esc", "close")];
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("add")),
+                ("esc", n!("close")),
+            ];
+        }
+        Some(Overlay::Languages { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("use")),
+                ("esc", n!("back")),
+            ];
         }
         Some(Overlay::Accounts { .. }) => {
             return vec![
-                ("j k", "move"),
-                ("enter", "use"),
-                ("a", "add"),
-                ("x", "log out"),
-                ("esc", "close"),
+                ("j k", n!("move")),
+                ("enter", n!("use")),
+                ("a", n!("add")),
+                ("x", n!("log out")),
+                ("esc", n!("close")),
             ];
         }
         Some(Overlay::Settings {
@@ -275,113 +302,125 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ..
         }) => {
             return vec![
-                ("enter", "open"),
-                ("space", "choose this folder"),
-                ("h", "up"),
-                ("esc", "cancel"),
+                ("enter", n!("open")),
+                ("space", n!("choose this folder")),
+                ("h", n!("up")),
+                ("esc", n!("cancel")),
             ];
         }
         Some(Overlay::Settings {
             edit: Some(SettingEdit::Text(_)),
             ..
-        }) => return vec![("enter", "keep"), ("esc", "cancel")],
+        }) => return vec![("enter", n!("keep")), ("esc", n!("cancel"))],
         Some(Overlay::Settings { selected, .. }) => {
-            let mut v = vec![("j k", "move"), ("enter", "change")];
+            let mut v = vec![("j k", n!("move")), ("enter", n!("change"))];
             if app
                 .settings_rows()
                 .get(*selected)
                 .is_some_and(|r| r.resettable)
             {
-                v.push(("x", "default"));
+                v.push(("x", n!("default")));
             }
-            v.push(("esc", "close"));
+            v.push(("esc", n!("close")));
             return v;
         }
         Some(Overlay::Viewer { media, index, .. }) => {
             let mut v = Vec::new();
             if media.len() > 1 {
-                v.push(("← →", "previous / next"));
+                v.push(("← →", n!("previous / next")));
             }
             if matches!(media.get(*index), Some(Media::Video { .. })) {
-                v.push(("r", "replay"));
+                v.push(("r", n!("replay")));
             }
-            v.push(("d", "download"));
-            v.push(("esc", "back"));
+            v.push(("d", n!("download")));
+            v.push(("esc", n!("back")));
             return v;
         }
         Some(Overlay::Themes { .. }) => {
-            return vec![("j k", "preview"), ("enter", "apply"), ("esc", "cancel")];
+            return vec![
+                ("j k", n!("preview")),
+                ("enter", n!("apply")),
+                ("esc", n!("cancel")),
+            ];
         }
         None => {}
     }
     if !app.threads.is_empty() {
         return vec![
-            ("?", "help"),
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
-            ("esc", "back"),
+            ("?", n!("help")),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("esc", n!("back")),
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
         Tab::Search if app.search.editing => {
             return vec![
-                ("enter", "search"),
-                ("ctrl+t", "posts / accounts"),
-                ("tab", "next tab"),
-                ("esc", "done"),
+                ("enter", n!("search")),
+                ("ctrl+t", n!("posts / accounts")),
+                ("tab", n!("next tab")),
+                ("esc", n!("done")),
             ];
         }
         Tab::Search if app.search.mode == SearchMode::Accounts => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("/", "edit query"),
-            ("t", "posts"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("/", n!("edit query")),
+            ("t", n!("posts")),
         ],
         Tab::Search => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("/", "edit query"),
-            ("t", "accounts"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("/", n!("edit query")),
+            ("t", n!("accounts")),
         ],
         Tab::Timeline => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
-            ("n", "post"),
-            ("R", "refresh"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("n", n!("post")),
+            ("R", n!("refresh")),
         ],
         Tab::Chat => match &app.chat.open {
-            Some(o) if o.typing => return vec![("enter", "send"), ("esc", "stop writing")],
-            Some(_) => vec![("i", "write"), ("j k", "scroll"), ("esc", "back")],
-            None => vec![("j k", "move"), ("enter", "open"), ("R", "refresh")],
+            Some(o) if o.typing => return vec![("enter", n!("send")), ("esc", n!("stop writing"))],
+            Some(_) => vec![
+                ("i", n!("write")),
+                ("j k", n!("scroll")),
+                ("esc", n!("back")),
+            ],
+            None => vec![
+                ("j k", n!("move")),
+                ("enter", n!("open")),
+                ("R", n!("refresh")),
+            ],
         },
         Tab::Columns => vec![
-            ("← →", "column"),
-            ("j k", "move"),
-            (".", "actions"),
-            ("+", "add"),
-            ("x", "remove"),
+            ("← →", n!("column")),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("+", n!("add")),
+            ("x", n!("remove")),
         ],
         Tab::Notifications => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
-            ("R", "refresh"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("R", n!("refresh")),
         ],
         Tab::Profile if app.profile.actor.is_some() => vec![
             ("esc", back_label(app.profile.came_from)),
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
         ],
         Tab::Profile => {
             let mut v = vec![
-                ("j k", "move"),
-                (".", "actions"),
-                ("e", "edit profile"),
-                ("s", "settings"),
-                ("R", "reload"),
+                ("j k", n!("move")),
+                (".", n!("actions")),
+                ("e", n!("edit profile")),
+                ("s", n!("settings")),
+                ("R", n!("reload")),
             ];
             // Your own profile, opened from a list: Esc still goes back.
             if app.profile.came_from.is_some() {
@@ -392,8 +431,8 @@ fn view_hints(app: &App) -> Vec<Hint> {
     };
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
     // is the key that leads to every other one.
-    v.insert(0, ("?", "help"));
-    v.push(("q", "quit"));
+    v.insert(0, ("?", n!("help")));
+    v.push(("q", n!("quit")));
     v
 }
 
@@ -409,48 +448,48 @@ pub fn actions(app: &App) -> Vec<Hint> {
     }
     let mut v: Vec<Hint> = Vec::new();
     if let Some(post) = app.shown_post() {
-        v.push(("r", "reply to it"));
+        v.push(("r", n!("reply to it")));
         v.push((
             "l",
             if post.like_uri().is_some() {
-                "remove your like"
+                n!("remove your like")
             } else {
-                "like it"
+                n!("like it")
             },
         ));
         v.push((
             "b",
             if post.viewer.as_ref().is_some_and(|x| x.repost.is_some()) {
-                "remove your repost"
+                n!("remove your repost")
             } else {
-                "repost it"
+                n!("repost it")
             },
         ));
-        v.push(("Q", "quote it in a new post"));
+        v.push(("Q", n!("quote it in a new post")));
         v.push((
             "space",
             if app.pictures {
-                "view its pictures or video"
+                n!("view its pictures or video")
             } else {
-                "open it in the web browser"
+                n!("open it in the web browser")
             },
         ));
-        v.push(("o", "open its link in the web browser"));
-        v.push(("v", "open the thread"));
-        v.push(("c", "copy its address"));
+        v.push(("o", n!("open its link in the web browser")));
+        v.push(("v", n!("open the thread")));
+        v.push(("c", n!("copy its address")));
     } else if app.subject_shown().is_some() {
         // A like or a repost: these keys act on the post it is about.
         v.push((
             "space",
             if app.pictures {
-                "view the post's pictures or video"
+                n!("view the post's pictures or video")
             } else {
-                "open the post in the web browser"
+                n!("open the post in the web browser")
             },
         ));
-        v.push(("o", "open the post's link in the web browser"));
-        v.push(("v", "open the post's thread"));
-        v.push(("c", "copy the post's address"));
+        v.push(("o", n!("open the post's link in the web browser")));
+        v.push(("v", n!("open the post's thread")));
+        v.push(("c", n!("copy the post's address")));
     }
     if let Some(account) = app.shown_account() {
         if app.tab == Tab::Profile
@@ -458,12 +497,12 @@ pub fn actions(app: &App) -> Vec<Hint> {
             && app.profile.actor.is_some()
             && app.session.as_ref().is_none_or(|s| s.did != account.did)
         {
-            v.push(("m", "message them"));
+            v.push(("m", n!("message them")));
         }
         // On the Profile tab the profile is open already, and Enter opens
         // nothing.
         if app.tab != Tab::Profile || !app.threads.is_empty() {
-            v.push(("enter", "open the profile"));
+            v.push(("enter", n!("open the profile")));
         }
         let yourself = app.session.as_ref().is_some_and(|s| s.did == account.did);
         if !yourself {
@@ -474,9 +513,9 @@ pub fn actions(app: &App) -> Vec<Hint> {
                     .as_ref()
                     .is_some_and(|x| x.following.is_some())
                 {
-                    "unfollow"
+                    n!("unfollow")
                 } else {
-                    "follow"
+                    n!("follow")
                 },
             ));
         }
@@ -484,25 +523,25 @@ pub fn actions(app: &App) -> Vec<Hint> {
             v.push((
                 "M",
                 if account.muted() {
-                    "unmute them"
+                    n!("unmute them")
                 } else {
-                    "mute them"
+                    n!("mute them")
                 },
             ));
             v.push((
                 "B",
                 if account.blocking_uri().is_some() {
-                    "unblock them"
+                    n!("unblock them")
                 } else {
-                    "block them (y confirms)"
+                    n!("block them (y confirms)")
                 },
             ));
         }
     }
     if app.own_post_selected() {
-        v.push(("D", "delete your post"));
+        v.push(("D", n!("delete your post")));
     }
-    v
+    translated(v)
 }
 
 /// The key an entry of the actions list stands for.
@@ -517,21 +556,21 @@ pub fn action_key(name: &str) -> KeyEvent {
 
 fn browser_hints() -> Vec<Hint> {
     vec![
-        ("enter", "open / choose"),
-        ("space", "mark"),
-        ("h", "up"),
-        (".", "hidden"),
-        ("esc", "cancel"),
+        ("enter", n!("open / choose")),
+        ("space", n!("mark")),
+        ("h", n!("up")),
+        (".", n!("hidden")),
+        ("esc", n!("cancel")),
     ]
 }
 
 /// What Esc on the Profile tab goes back to.
 fn back_label(from: Option<Tab>) -> &'static str {
     match from {
-        Some(Tab::Search) => "back to search",
-        Some(Tab::Timeline) => "back to timeline",
-        Some(Tab::Notifications) => "back to notifications",
-        Some(Tab::Columns) => "back to timeline",
-        _ => "my profile",
+        Some(Tab::Search) => n!("back to search"),
+        Some(Tab::Timeline) => n!("back to timeline"),
+        Some(Tab::Notifications) => n!("back to notifications"),
+        Some(Tab::Columns) => n!("back to timeline"),
+        _ => n!("my profile"),
     }
 }

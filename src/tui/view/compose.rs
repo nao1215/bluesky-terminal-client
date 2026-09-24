@@ -10,9 +10,9 @@ pub(super) fn draw_compose(
     t: &Theme,
 ) {
     let (title, quoted) = match (&c.reply, &c.quote) {
-        (Some((_, handle, excerpt)), _) => (format!("Reply to @{handle}"), Some(excerpt)),
-        (None, Some((_, handle, excerpt))) => (format!("Quote @{handle}"), Some(excerpt)),
-        (None, None) => ("New post".to_string(), None),
+        (Some((_, handle, excerpt)), _) => (i18n::tf("Reply to @{}", &[handle]), Some(excerpt)),
+        (None, Some((_, handle, excerpt))) => (i18n::tf("Quote @{}", &[handle]), Some(excerpt)),
+        (None, None) => (i18n::t("New post").to_string(), None),
     };
     let n = c.media.len() as u16;
     // A row of thumbnails, then a line per picture for its alt text.
@@ -58,17 +58,20 @@ pub(super) fn draw_compose(
     };
     // Bytes are shown only once they are what limits the post.
     let bytes = if text.len() > MAX_POST_BYTES - 500 {
-        format!(" {}/{MAX_POST_BYTES} bytes", text.len())
+        format!(
+            " {}",
+            i18n::tf("{} bytes", &[&format!("{}/{MAX_POST_BYTES}", text.len())])
+        )
     } else {
         String::new()
     };
-    let action = if c.sending {
-        "sending…"
+    let action = i18n::t(if c.sending {
+        n!("sending…")
     } else if n > 0 {
-        "ctrl+s send  ctrl+o attach  tab alt text  ctrl+x remove  esc cancel"
+        n!("ctrl+s send  ctrl+o attach  tab alt text  ctrl+x remove  esc cancel")
     } else {
-        "ctrl+s send  ctrl+o attach pictures or a video  esc cancel"
-    };
+        n!("ctrl+s send  ctrl+o attach pictures or a video  esc cancel")
+    });
     frame.render_widget(
         truncate_line(
             Line::from(vec![
@@ -133,15 +136,22 @@ pub(super) fn draw_attachments(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let what = match (a.info.animated_gif, a.info.seconds) {
-            (true, _) => " (GIF, posted as a video)".to_string(),
+            (true, _) => format!(" ({})", i18n::t("GIF, posted as a video")),
             (false, Some(s)) if a.info.kind == media::Kind::Video => {
-                format!(" (video {})", format_seconds(s))
+                format!(" ({} {})", i18n::t("video"), format_seconds(s))
             }
-            (false, None) if a.info.kind == media::Kind::Video => " (video)".to_string(),
+            (false, None) if a.info.kind == media::Kind::Video => {
+                format!(" ({})", i18n::t("video"))
+            }
             _ => String::new(),
         };
-        let label = format!(" {} {}{what}  alt: ", i + 1, truncate(&name, 20));
-        let label_w = label.width() as u16;
+        let label = format!(
+            " {} {}{what}  {} ",
+            i + 1,
+            truncate(&name, 20),
+            i18n::t("alt:")
+        );
+        let label_w = crate::tui::text::cells(&label) as u16;
         let style = if focused { t.accent().bold() } else { t.dim() };
         frame.render_widget(Paragraph::new(label).style(style), row);
         let field = Rect {
@@ -151,7 +161,7 @@ pub(super) fn draw_attachments(
         };
         if a.alt.is_empty() && !focused {
             frame.render_widget(
-                Paragraph::new("(none; tab to describe it)").style(t.dim()),
+                Paragraph::new(i18n::t("(none; tab to describe it)")).style(t.dim()),
                 field,
             );
         } else {
@@ -160,7 +170,11 @@ pub(super) fn draw_attachments(
     }
     if n > shown {
         frame.render_widget(
-            Paragraph::new(format!(" and {} more", n - shown)).style(t.dim()),
+            Paragraph::new(format!(
+                " {}",
+                i18n::tf("and {} more", &[&(n - shown).to_string()])
+            ))
+            .style(t.dim()),
             Rect {
                 y: area.y + top + shown,
                 height: 1,
@@ -185,7 +199,10 @@ pub(super) fn draw_media_box(
         images.draw_file(frame, area, path);
         return;
     }
-    let mut lines = vec![Line::styled("▶ video", t.accent().bold())];
+    let mut lines = vec![Line::styled(
+        format!("▶ {}", i18n::t("video")),
+        t.accent().bold(),
+    )];
     if let Some(s) = info.seconds {
         lines.push(Line::styled(format_seconds(s), t.dim()));
     }
@@ -201,9 +218,9 @@ pub(super) fn draw_media_box(
 pub(super) fn describe(i: media::Info, bytes: u64) -> String {
     let mut parts = Vec::new();
     if i.animated_gif {
-        parts.push("animated GIF, posted as a video".to_string());
+        parts.push(i18n::t("animated GIF, posted as a video").to_string());
     } else if i.kind == media::Kind::Video {
-        parts.push("video".to_string());
+        parts.push(i18n::t("video").to_string());
     }
     if let Some(s) = i.seconds {
         parts.push(format_seconds(s));
@@ -225,10 +242,10 @@ pub(super) fn draw_browser(
     t: &Theme,
 ) {
     let title = match (b.videos, b.room) {
-        _ if b.folders => "Choose a folder".to_string(),
-        (true, n) => format!("Attach pictures (up to {n}) or a video"),
-        (false, 1) => "Choose a picture".to_string(),
-        (false, n) => format!("Attach pictures (up to {n})"),
+        _ if b.folders => i18n::t("Choose a folder").to_string(),
+        (true, n) => i18n::tf("Attach pictures (up to {}) or a video", &[&n.to_string()]),
+        (false, 1) => i18n::t("Choose a picture").to_string(),
+        (false, n) => i18n::tf("Attach pictures (up to {})", &[&n.to_string()]),
     };
     let w = area.width.saturating_sub(4).min(110);
     let h = area.height.saturating_sub(2).min(34);
@@ -341,41 +358,50 @@ pub(super) fn draw_browser(
             );
         }
         Some(_) if b.folders => frame.render_widget(
-            Paragraph::new("enter opens the folder; space chooses the one you are in")
-                .style(t.dim())
-                .wrap(ratatui::widgets::Wrap { trim: true }),
+            Paragraph::new(i18n::t(
+                "enter opens the folder; space chooses the one you are in",
+            ))
+            .style(t.dim())
+            .wrap(ratatui::widgets::Wrap { trim: true }),
             preview,
         ),
         Some(_) => frame.render_widget(
-            Paragraph::new("enter opens the folder").style(t.dim()),
+            Paragraph::new(i18n::t("enter opens the folder")).style(t.dim()),
             preview,
         ),
         None if b.folders => frame.render_widget(
-            Paragraph::new("no folders here; space chooses this one")
+            Paragraph::new(i18n::t("no folders here; space chooses this one"))
                 .style(t.dim())
                 .wrap(ratatui::widgets::Wrap { trim: true }),
             preview,
         ),
         None => frame.render_widget(
-            Paragraph::new("no folders, pictures, or videos here").style(t.dim()),
+            Paragraph::new(i18n::t("no folders, pictures, or videos here")).style(t.dim()),
             preview,
         ),
     }
     let foot_line = match &b.note {
-        Some(n) => Line::styled(format!(" {n}"), t.error()),
+        Some(n) => Line::styled(format!(" {}", i18n::t(n)), t.error()),
         None if b.folders => Line::styled(
-            " enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
+            format!(
+                " {}",
+                i18n::t("enter open  space choose this folder  h up  . hidden  ~ home  esc cancel")
+            ),
             t.dim(),
         ),
         None => {
             let marked = if b.marked.is_empty() {
                 String::new()
             } else {
-                format!("{} marked  ", b.marked.len())
+                format!(
+                    "{}  ",
+                    i18n::tf("{} marked", &[&b.marked.len().to_string()])
+                )
             };
             Line::styled(
                 format!(
-                    " {marked}enter open/choose  space mark  h up  . hidden  ~ home  esc cancel"
+                    " {marked}{}",
+                    i18n::t("enter open/choose  space mark  h up  . hidden  ~ home  esc cancel")
                 ),
                 t.dim(),
             )
@@ -385,9 +411,10 @@ pub(super) fn draw_browser(
 }
 
 pub(super) fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, t: &Theme) {
-    let inner = popup(frame, area, 72, 16, "Edit profile", t);
+    let inner = popup(frame, area, 72, 16, n!("Edit profile"), t);
     if e.loading {
-        frame.render_widget(Paragraph::new(" loading…").style(t.dim()), inner);
+        let loading = format!(" {}", i18n::t("loading…"));
+        frame.render_widget(Paragraph::new(loading).style(t.dim()), inner);
         return;
     }
     let [l0, f0, _, l1, f1, _, l2, f2, foot] = Layout::vertical([
@@ -411,7 +438,7 @@ pub(super) fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, 
             Style::new()
         };
         frame.render_widget(
-            Paragraph::new(format!(" {}", EditProfile::LABELS[i])).style(style),
+            Paragraph::new(format!(" {}", i18n::t(EditProfile::LABELS[i]))).style(style),
             label,
         );
         let field = Rect {
@@ -425,11 +452,14 @@ pub(super) fn draw_edit_profile(frame: &mut Frame, area: Rect, e: &EditProfile, 
             draw_single_input(frame, field, &e.fields[i], focused);
         }
     }
-    let action = if e.saving {
-        " saving…"
-    } else {
-        " tab next field  ctrl+o choose avatar  ctrl+s save  esc cancel"
-    };
+    let action = format!(
+        " {}",
+        i18n::t(if e.saving {
+            n!("saving…")
+        } else {
+            n!("tab next field  ctrl+o choose avatar  ctrl+s save  esc cancel")
+        })
+    );
     frame.render_widget(
         Paragraph::new(action).style(t.dim()),
         Rect { height: 1, ..foot },

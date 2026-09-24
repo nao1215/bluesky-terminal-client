@@ -32,10 +32,10 @@ impl App {
             if key.code == KeyCode::Char('y') {
                 self.overlay = None;
                 self.settings_return = None;
-                self.info("logging out…");
+                self.info(n!("logging out…"));
                 self.account_logout = Some(did);
             } else {
-                self.info("still logged in");
+                self.info(n!("still logged in"));
             }
             return;
         }
@@ -54,7 +54,7 @@ impl App {
                 if let Some(a) = self.accounts.get(selected).cloned()
                     && Some(selected) != self.current_account_index()
                 {
-                    self.info(format!("switching to @{}…", a.handle));
+                    self.info(tf("switching to @{}…", &[&a.handle]));
                     self.account_switch = Some(a.did);
                 }
             }
@@ -72,9 +72,9 @@ impl App {
             }
             KeyCode::Char('x') => {
                 if let Some(a) = self.accounts.get(selected).cloned() {
-                    self.info(format!(
+                    self.info(tf(
                         "press y to log out @{}, any other key to stay logged in",
-                        a.handle
+                        &[&a.handle],
                     ));
                     self.confirm = Some(Confirm::Logout(a.did));
                     self.asked();
@@ -106,7 +106,7 @@ impl App {
     pub fn switched_to(&mut self, session: Session) -> Vec<Job> {
         let other = self.session.as_ref().is_none_or(|s| s.did != session.did);
         self.remember_account(&session);
-        self.info(format!("now @{}", session.handle));
+        self.info(tf("now @{}", &[&session.handle]));
         self.login = None;
         if !other {
             self.session = Some(session);
@@ -134,7 +134,7 @@ impl App {
         self.accounts.retain(|a| a.did != did);
         let was_current = self.session.as_ref().is_some_and(|s| s.did == did);
         if !was_current {
-            self.info(format!("logged out @{handle}"));
+            self.info(tf("logged out @{}", &[&handle]));
             return Vec::new();
         }
         match next {
@@ -145,7 +145,7 @@ impl App {
                     .as_ref()
                     .map(|s| s.handle.clone())
                     .unwrap_or_default();
-                self.info(format!("logged out @{handle}; now @{now}"));
+                self.info(tf("logged out @{}; now @{}", &[&handle, &now]));
                 jobs
             }
             None => {

@@ -263,7 +263,7 @@ fn the_settings_screen_switches_accounts_as_a_does() {
     app.handle_key(code(KeyCode::Esc));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 6, .. })
+        Some(Overlay::Settings { selected: 7, .. })
     ));
     app.handle_key(code(KeyCode::Enter));
     app.handle_key(key('j'));

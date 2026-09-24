@@ -127,8 +127,8 @@ fn a_short_screen_keeps_the_selected_setting_in_sight() {
     }
     let screen = render_text_only(&mut app, 40, MIN_H);
     assert!(screen.contains("▶ Browser"), "{screen}");
-    // Past the last row, Account, round to the third.
-    for _ in 0..4 {
+    // Past the last rows, Language and Account, round to the third.
+    for _ in 0..5 {
         app.handle_key(crossterm::event::KeyEvent::from(
             crossterm::event::KeyCode::Char('j'),
         ));

@@ -87,6 +87,7 @@ fn the_settings_screen_names_every_setting() {
             "Picture cache",
             "Video service",
             "Browser",
+            "Language",
             "Account"
         ]
     );
@@ -96,7 +97,7 @@ fn the_settings_screen_names_every_setting() {
     app.handle_key(key('k'));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 6, .. })
+        Some(Overlay::Settings { selected: 7, .. })
     ));
     app.handle_key(key('j'));
     assert!(matches!(
@@ -486,4 +487,56 @@ fn a_failed_first_page_is_kept_as_the_reason() {
     );
     app.handle_key(key('R'));
     assert!(app.notifications.error.is_none());
+}
+
+// The Language row lists every language in its own name; the one chosen is
+// used at once and kept, and x goes back to what the environment asks for.
+#[test]
+fn the_language_is_chosen_on_the_settings_screen_and_kept() {
+    use crate::i18n::{self, Lang};
+    let mut app = logged_in();
+    app.env.locale = Some("ru_RU.UTF-8".into());
+    app.apply_settings(Settings::default(), ColorDepth::TrueColor, None);
+    assert_eq!(i18n::current(), Lang::Ru);
+    settings_on(&mut app, "Language");
+    assert_eq!(app.settings_rows()[6].value, "Русский");
+    app.handle_key(code(KeyCode::Enter));
+    let ru = Lang::ALL.iter().position(|l| *l == Lang::Ru).unwrap();
+    assert!(matches!(app.overlay, Some(Overlay::Languages { selected }) if selected == ru));
+    // Esc goes back without changing it.
+    app.handle_key(code(KeyCode::Esc));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 6, .. })
+    ));
+    assert_eq!(i18n::current(), Lang::Ru);
+    // Japanese, two above Russian in the list.
+    app.handle_key(code(KeyCode::Enter));
+    for _ in 0..(ru - 1) {
+        app.handle_key(key('k'));
+    }
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(i18n::current(), Lang::Ja);
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 6, .. })
+    ));
+    let saved = app.take_settings_save().expect("the language kept");
+    assert_eq!(saved.language.as_deref(), Some("ja"));
+    assert_eq!(app.settings_rows()[6].value, "日本語");
+    // Started again with it, the file wins over the environment.
+    let mut again = logged_in();
+    again.env.locale = Some("ru_RU.UTF-8".into());
+    again.apply_settings(saved, ColorDepth::TrueColor, None);
+    assert_eq!(i18n::current(), Lang::Ja);
+    // x: the environment's again.
+    again.handle_key(key('5'));
+    again.handle_key(key('s'));
+    for _ in 0..6 {
+        again.handle_key(key('j'));
+    }
+    again.handle_key(key('x'));
+    assert_eq!(i18n::current(), Lang::Ru);
+    assert_eq!(again.take_settings_save().unwrap().language, None);
+    i18n::set(Lang::En);
 }

@@ -617,6 +617,7 @@ scenarios:
             - send: s
             - send: k
             - send: k
+            - send: k
             - expect_screen:
                 contains: ["▶ Browser", "the default; enter types the program that opens links"]
             - send: { key: enter }

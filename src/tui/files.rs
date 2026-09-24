@@ -204,9 +204,9 @@ impl Browser {
         } else if self.marked.len() < self.room {
             self.marked.push(path);
         } else {
-            self.note = Some(format!(
+            self.note = Some(crate::i18n::tf(
                 "{} marked; there is no room for more",
-                self.marked.len()
+                &[&self.marked.len().to_string()],
             ));
             return;
         }

@@ -200,7 +200,8 @@ fn stream(
 }
 
 fn text(agent: &ureq::Agent, url: &str) -> Result<String, String> {
-    String::from_utf8(fetch(agent, url)?).map_err(|_| "the video's playlist is not text".into())
+    String::from_utf8(fetch(agent, url)?)
+        .map_err(|_| crate::i18n::n!("the video's playlist is not text").into())
 }
 
 /// Play to the end, or until `stop`.
@@ -225,7 +226,7 @@ fn play(
     };
     let segments = hls::segments(&media, &media_url);
     if segments.is_empty() {
-        return Err("the video's playlist lists nothing to play".into());
+        return Err(crate::i18n::n!("the video's playlist lists nothing to play").into());
     }
     let mut decoder = decoder()?;
     let mut demux = Demuxer::new();
@@ -261,7 +262,7 @@ fn play(
         }
         let piece = seg_rx
             .recv()
-            .map_err(|_| "the video download stopped".to_string())??;
+            .map_err(|_| crate::i18n::n!("the video download stopped").to_string())??;
         let units = match piece {
             Piece::Data(bytes) => {
                 demux.feed(&bytes);
@@ -313,7 +314,7 @@ fn play(
         }
     }
     if pacer.shown == 0 {
-        return Err("no picture of the video could be decoded".into());
+        return Err(crate::i18n::n!("no picture of the video could be decoded").into());
     }
     Ok(())
 }

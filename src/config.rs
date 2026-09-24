@@ -48,6 +48,10 @@ pub struct Settings {
     /// The program that opens links; `BSKY_BROWSER` wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// The language the client is shown in (`en`, `ja`...); without one,
+    /// the language the environment asks for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// The columns of the Timeline tab, by the DID of the account they are
     /// for.
     #[serde(
@@ -117,11 +121,12 @@ pub enum ColumnSource {
 impl ColumnSource {
     /// The title of the column.
     pub fn title(&self) -> String {
+        use crate::i18n::{t, tf};
         match self {
-            ColumnSource::Following => "Following".into(),
+            ColumnSource::Following => t("Following").into(),
             ColumnSource::Feed { name, .. } => name.clone(),
-            ColumnSource::Notifications => "Notifications".into(),
-            ColumnSource::Search { query } => format!("Search: {query}"),
+            ColumnSource::Notifications => t("Notifications").into(),
+            ColumnSource::Search { query } => tf("Search: {}", &[query]),
             ColumnSource::Author { handle, .. } => format!("@{handle}"),
         }
     }
@@ -142,6 +147,9 @@ pub struct Environment {
     pub video_service: Option<String>,
     /// `BSKY_BROWSER`
     pub browser: Option<String>,
+    /// The locale the environment asks for: `LC_ALL`, `LC_MESSAGES` or
+    /// `LANG`, the first one set, as every program reads them.
+    pub locale: Option<String>,
 }
 
 impl Environment {
@@ -158,6 +166,7 @@ impl Environment {
             cache_dir: get(CACHE_DIR_ENV),
             video_service: get(VIDEO_SERVICE_ENV),
             browser: get(crate::browser::BROWSER_ENV),
+            locale: ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(get),
         }
     }
 }
@@ -699,6 +708,32 @@ mod tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), "keep me 📝");
     }
 
+    // The locale is read as every program reads it: LC_ALL, then
+    // LC_MESSAGES, then LANG, the first one set; C is no language, so
+    // English.
+    #[rstest::rstest]
+    #[case(&[("LANG", "ja_JP.UTF-8")], Some(crate::i18n::Lang::Ja))]
+    #[case(&[("LC_ALL", "C.UTF-8"), ("LANG", "ja_JP.UTF-8")], None)]
+    #[case(&[("LC_ALL", "ru_RU.UTF-8"), ("LANG", "ja_JP.UTF-8")], Some(crate::i18n::Lang::Ru))]
+    #[case(&[("LC_MESSAGES", "pt_BR"), ("LANG", "en_US.UTF-8")], Some(crate::i18n::Lang::Pt))]
+    #[case(&[("LC_ALL", ""), ("LANG", "zh_CN.UTF-8")], Some(crate::i18n::Lang::Zh))]
+    #[case(&[("LANG", "sv_SE.UTF-8")], None)]
+    #[case(&[], None)]
+    fn the_locale_is_the_first_variable_set(
+        #[case] vars: &[(&str, &str)],
+        #[case] want: Option<crate::i18n::Lang>,
+    ) {
+        let env = Environment::from_vars(|k| {
+            vars.iter()
+                .find(|(name, _)| *name == k)
+                .map(|(_, v)| (*v).to_string())
+        });
+        assert_eq!(
+            env.locale.as_deref().and_then(crate::i18n::Lang::from_code),
+            want
+        );
+    }
+
     fn env(var: &str) -> Environment {
         Environment {
             download_dir: Some(format!("{var}/downloads")),
@@ -706,6 +741,7 @@ mod tests {
             video_service: Some(format!("https://{var}.example/")),
             browser: Some(format!("{var}-browser")),
             graphics: None,
+            locale: None,
         }
     }
 

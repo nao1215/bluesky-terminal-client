@@ -32,6 +32,8 @@ Run `bsky` and log in. An [app password](https://bsky.app/settings/app-passwords
 
 Other terminals get text, and `Space` opens a post in the browser. Photos are posted without their location data.
 
+bsky speaks English, 日本語, 简体中文, 한국어, Русский, Español, Français, Deutsch and Português: the language of your system, or the one chosen in the settings (`s` on your profile).
+
 ## Screens
 
 | `Space`: pictures and videos | `n` `Ctrl+O`: attach pictures or a video |
