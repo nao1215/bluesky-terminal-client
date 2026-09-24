@@ -916,14 +916,22 @@ fn download_name(media: &Media) -> String {
         "jpeg" => "jpg".to_string(),
         e => e.to_string(),
     };
-    let stem = clean_name(stem);
-    let stem = if stem.is_empty() || is_reserved_name(&stem) {
-        fallback.to_string()
+    let mut stem = clean_name(stem);
+    // Most file systems take 255 bytes a name; the room left leaves space
+    // for " (9999)" and the extension. The name is ASCII, so any cut is on
+    // a character boundary.
+    stem.truncate(MAX_STEM_BYTES);
+    let stem = stem.trim_end_matches('.');
+    let stem = if stem.is_empty() || is_reserved_name(stem) {
+        fallback
     } else {
         stem
     };
     format!("{stem}.{ext}")
 }
+
+/// Longest stem of a download's name, in bytes.
+const MAX_STEM_BYTES: usize = 100;
 
 /// A URL without its query and fragment.
 fn url_path(url: &str) -> &str {
@@ -1324,6 +1332,33 @@ mod tests {
         assert_eq!(saved, downloads.join("a (1).jpg"));
         assert!(!outside.exists(), "wrote through the link");
         assert_eq!(std::fs::read(saved).unwrap(), b"picture");
+    }
+
+    // A name longer than a file system allows (255 bytes on most) failed
+    // the download with "File name too long" after the whole file had come.
+    #[test]
+    fn a_long_address_still_names_a_file_that_can_be_written() {
+        let stem = "a".repeat(300);
+        let media = Media::Image {
+            url: format!("https://cdn.test/plain/did:plc:x/{stem}@jpeg"),
+            thumb: String::new(),
+            alt: String::new(),
+            aspect: None,
+        };
+        let name = download_name(&media);
+        assert!(name.len() <= 128, "{} bytes", name.len());
+        assert!(name.ends_with(".jpg") && name.starts_with("aaaa"), "{name}");
+        let video = Media::Video {
+            playlist: format!("https://video.test/watch/did/{stem}/playlist.m3u8"),
+            thumbnail: None,
+            alt: String::new(),
+            aspect: None,
+        };
+        assert!(download_name(&video).len() <= 128);
+        let dir = tempfile::tempdir().unwrap();
+        save_new(dir.path(), &name, b"x").unwrap();
+        let again = save_new(dir.path(), &name, b"x").unwrap();
+        assert!(again.to_string_lossy().ends_with(" (1).jpg"));
     }
 
     #[test]
