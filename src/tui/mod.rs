@@ -214,6 +214,11 @@ fn event_loop(
             dirty = true;
         }
         while let Some((seq, ev)) = worker.try_recv() {
+            // An account logged in is used from the jobs the app sends on
+            // taking the answer, not before.
+            if let worker::Event::LoggedIn(Ok(session)) = &ev {
+                worker.use_account(session.clone());
+            }
             for job in app.handle_answer(seq, ev) {
                 worker.send(app.stamp(&job), job);
             }
