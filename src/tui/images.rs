@@ -46,7 +46,7 @@ fn encoders() -> usize {
 }
 
 /// A decoded picture whose longest side is above this is shrunk to
-/// [`SHRUNK_SIDE`] before it is kept. Shrinking costs about as much as
+/// [`SHRUNK_SIDE`] before it is kept. Shrinking once cost about as much as
 /// decoding again (35 ms for a 2000 x 1500 photo), and every encode scales
 /// the picture to its box anyway, so a picture that is not much larger than
 /// any box is kept as it is: Bluesky's full-size pictures are at most 2000
@@ -686,7 +686,7 @@ fn load(
 /// else scaled to [`SHRUNK_SIDE`].
 fn shrink(img: DynamicImage) -> DynamicImage {
     if img.width().max(img.height()) > SHRINK_ABOVE {
-        img.thumbnail(SHRUNK_SIDE, SHRUNK_SIDE)
+        scale::thumbnail(&img, SHRUNK_SIDE, SHRUNK_SIDE)
     } else {
         img
     }

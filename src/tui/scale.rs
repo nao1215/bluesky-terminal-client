@@ -147,10 +147,151 @@ pub fn pad_to_cells(img: DynamicImage, area: Size, cell: (u16, u16)) -> DynamicI
     }
 }
 
+/// The input rows (or columns) each output row (or column) of `image`'s
+/// thumbnail averages, computed with its own `f32` arithmetic so the
+/// windows are the same to the pixel. `None` when a window would be empty,
+/// which `image` fills by interpolating instead: only when enlarging.
+fn thumbnail_windows(from: u32, to: u32) -> Option<Vec<(usize, usize)>> {
+    let ratio = from as f32 / to as f32;
+    (0..to)
+        .map(|i| {
+            let lowf = i as f32 * ratio;
+            let highf = lowf + ratio;
+            let low = (lowf.ceil() as u32).clamp(0, from - 1);
+            let high = (highf.ceil() as u32).clamp(low, from);
+            (low < high).then_some((low as usize, high as usize))
+        })
+        .collect()
+}
+
+/// `img.thumbnail(max_w, max_h)`: `img` made smaller to fit in
+/// `max_w` x `max_h` by averaging blocks of pixels, the same pixels
+/// `image` gives, faster for an RGB or RGBA picture ([`thumbnail_exact`]).
+pub fn thumbnail(img: &DynamicImage, max_w: u32, max_h: u32) -> DynamicImage {
+    let (w, h) = fit(img.width(), img.height(), max_w, max_h);
+    thumbnail_exact(img, w, h).unwrap_or_else(|| img.thumbnail_exact(w, h))
+}
+
+/// `img.thumbnail_exact(w, h)`, the same pixels, for an RGB or RGBA
+/// picture made smaller: `None` for anything else, left to `image`.
+///
+/// `image` averages each block of pixels through its generic pixel API,
+/// 55 ms for a 4000 x 3000 camera photo, longer than decoding it. Here each
+/// row of blocks sums its input rows once, column by column, then the
+/// blocks along it; and the rows of blocks are shared out among threads.
+/// The sums and their rounding are `image`'s.
+fn thumbnail_exact(img: &DynamicImage, w: u32, h: u32) -> Option<DynamicImage> {
+    let (sw, sh) = (img.width(), img.height());
+    if w == 0 || h == 0 || w > sw || h > sh {
+        return None;
+    }
+    let cols = thumbnail_windows(sw, w)?;
+    let rows = thumbnail_windows(sh, h)?;
+    match img {
+        DynamicImage::ImageRgb8(src) => {
+            let out = average_blocks::<3>(src.as_raw(), sw as usize, &cols, &rows);
+            image::RgbImage::from_raw(w, h, out).map(DynamicImage::ImageRgb8)
+        }
+        DynamicImage::ImageRgba8(src) => {
+            let out = average_blocks::<4>(src.as_raw(), sw as usize, &cols, &rows);
+            image::RgbaImage::from_raw(w, h, out).map(DynamicImage::ImageRgba8)
+        }
+        _ => None,
+    }
+}
+
+/// The rounded average of each block of `src` (`width` pixels of `C`
+/// bytes a row) that `cols` and `rows` cut it into.
+fn average_blocks<const C: usize>(
+    src: &[u8],
+    width: usize,
+    cols: &[(usize, usize)],
+    rows: &[(usize, usize)],
+) -> Vec<u8> {
+    let out_row = cols.len() * C;
+    let mut out = vec![0u8; out_row * rows.len()];
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(8));
+    let per = rows.len().div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        for (out, rows) in out.chunks_mut(per * out_row).zip(rows.chunks(per)) {
+            scope.spawn(move || {
+                let mut sums = vec![0u32; width * C];
+                for (dst, &(top, bottom)) in out.chunks_exact_mut(out_row).zip(rows) {
+                    sums.fill(0);
+                    for y in top..bottom {
+                        let line = &src[y * width * C..][..width * C];
+                        for (s, &v) in sums.iter_mut().zip(line) {
+                            *s += u32::from(v);
+                        }
+                    }
+                    let height = (bottom - top) as u32;
+                    for (px, &(left, right)) in dst.as_chunks_mut::<C>().0.iter_mut().zip(cols) {
+                        let n = (right - left) as u32 * height;
+                        let round = n / 2;
+                        let mut acc = [0u32; C];
+                        for s in sums[left * C..right * C].as_chunks::<C>().0 {
+                            for c in 0..C {
+                                acc[c] += s[c];
+                            }
+                        }
+                        for c in 0..C {
+                            px[c] = ((acc[c] + round) / n).min(255) as u8;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{GenericImageView, Rgb, RgbImage, Rgba, RgbaImage};
+
+    /// The thumbnail is `image`'s, pixel for pixel, for sizes that divide
+    /// evenly and ones that do not, wide and tall, RGB and RGBA.
+    #[test]
+    fn a_thumbnail_has_the_pixels_image_gives() {
+        let cases = [
+            (40, 30, 16, 12),
+            (41, 29, 16, 12),
+            (97, 13, 40, 5),
+            (13, 97, 5, 40),
+            (100, 100, 99, 99),
+            (64, 48, 64, 48),
+            (7, 7, 1, 1),
+            (300, 200, 7, 5),
+        ];
+        for (sw, sh, w, h) in cases {
+            let rgba = RgbaImage::from_fn(sw, sh, |x, y| {
+                Rgba([
+                    (x * 37 + y) as u8,
+                    (y * 11) as u8,
+                    (x ^ y) as u8,
+                    (x * y) as u8,
+                ])
+            });
+            for img in [
+                DynamicImage::ImageRgba8(rgba.clone()),
+                DynamicImage::ImageRgb8(DynamicImage::ImageRgba8(rgba).to_rgb8()),
+            ] {
+                let ours = thumbnail_exact(&img, w, h).expect("made smaller");
+                assert_eq!(ours, img.thumbnail_exact(w, h), "{sw}x{sh} to {w}x{h}");
+                assert_eq!(thumbnail(&img, w, h), img.thumbnail(w, h));
+            }
+        }
+        // Larger, or another format: left to image, with the same result.
+        let big = DynamicImage::new_rgb8(10, 10);
+        assert!(thumbnail_exact(&big, 20, 5).is_none());
+        let gray = DynamicImage::ImageLuma8(image::GrayImage::from_fn(30, 20, |x, y| {
+            image::Luma([(x * 7 + y) as u8])
+        }));
+        assert!(thumbnail_exact(&gray, 5, 5).is_none());
+        assert_eq!(thumbnail(&gray, 8, 8), gray.thumbnail(8, 8));
+        assert_eq!(thumbnail(&big, 20, 5), big.thumbnail(20, 5));
+    }
     use ratatui_image::picker::{Picker, ProtocolType};
     use ratatui_image::protocol::Protocol;
     use ratatui_image::{FilterType as RFilter, Resize};
