@@ -615,12 +615,7 @@ impl App {
             }
             Event::ConvoFor { did, result } => match result {
                 Ok(convo) => {
-                    if convo
-                        .others(self.session.as_ref().map_or("", |s| s.did.as_str()))
-                        .iter()
-                        .any(|m| m.did == did)
-                        || convo.members.iter().any(|m| m.did == did)
-                    {
+                    if convo.members.iter().any(|m| m.did == did) {
                         // Only while their profile is still what is looked
                         // at: after a move elsewhere the answer would take
                         // the screen, and mark the conversation read.
