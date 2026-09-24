@@ -44,13 +44,7 @@ impl App {
             // Opened from the settings, esc goes back there; anything done
             // with an account closes both.
             KeyCode::Esc | KeyCode::Char('q' | 'A') => {
-                self.overlay = self
-                    .settings_return
-                    .take()
-                    .map(|selected| Overlay::Settings {
-                        selected,
-                        edit: None,
-                    });
+                self.back_to_settings();
             }
             KeyCode::Enter => {
                 self.overlay = None;

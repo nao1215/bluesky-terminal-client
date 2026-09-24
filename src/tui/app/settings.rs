@@ -43,10 +43,21 @@ impl App {
     pub fn settings_saved(&mut self, result: crate::error::Result<()>) {
         let note = self.save_note.take();
         match result {
-            Ok(()) => self
-                .info(note.unwrap_or_else(|| format!("theme: {}", THEMES[self.theme_index].name))),
+            Ok(()) => self.info(note.unwrap_or_default()),
             Err(e) => self.error(e.message().to_string()),
         }
+    }
+
+    /// Close a list the settings screen opened (themes, accounts): back to
+    /// the settings when they opened it, else to nothing.
+    pub(super) fn back_to_settings(&mut self) {
+        self.overlay = self
+            .settings_return
+            .take()
+            .map(|selected| Overlay::Settings {
+                selected,
+                edit: None,
+            });
     }
 
     pub(super) fn open_theme_picker(&mut self) {

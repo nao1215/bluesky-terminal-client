@@ -140,33 +140,14 @@ impl App {
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(n - 1),
                     KeyCode::Enter => {
-                        self.overlay =
-                            self.settings_return
-                                .take()
-                                .map(|selected| Overlay::Settings {
-                                    selected,
-                                    edit: None,
-                                });
-                        self.settings.theme = Some(THEMES[selected].name.to_string());
-                        if self.settings_writable {
-                            self.settings_to_save = Some(self.settings.clone());
-                        } else {
-                            self.error(format!(
-                                "theme: {} for this session only; settings.json could not be \
-                                 read, so it is not overwritten (fix or remove it to save)",
-                                THEMES[selected].name
-                            ));
-                        }
+                        self.back_to_settings();
+                        let name = THEMES[selected].name;
+                        self.settings.theme = Some(name.to_string());
+                        self.save_settings(format!("theme: {name}"));
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
-                        self.overlay =
-                            self.settings_return
-                                .take()
-                                .map(|selected| Overlay::Settings {
-                                    selected,
-                                    edit: None,
-                                });
+                        self.back_to_settings();
                         self.set_theme(previous);
                         None
                     }
