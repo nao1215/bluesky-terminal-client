@@ -36,8 +36,14 @@ const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 /// Parallel downloads. Pictures are small and most of their time is spent
 /// waiting on the network, so more at once than there are cores.
 const LOADERS: usize = 8;
-/// Parallel encoders.
-const ENCODERS: usize = 2;
+/// Parallel encoders: up to four, as many as there are cores. A sixel
+/// encode takes 2 ms for a picture in a post and 30 ms for one across the
+/// screen, so a screen of twelve photos was ready in 36 ms with two
+/// encoders and in 26 ms with four; kitty and iTerm2, bound by the decode,
+/// took as long either way.
+fn encoders() -> usize {
+    thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4))
+}
 
 /// A decoded picture whose longest side is above this is shrunk to
 /// [`SHRUNK_SIDE`] before it is kept. Shrinking costs about as much as
@@ -234,7 +240,7 @@ impl Images {
         }
         let encode = Queue::new();
         let (done_tx, done_rx) = channel::<(Key, Option<Protocol>)>();
-        for _ in 0..ENCODERS {
+        for _ in 0..encoders() {
             let encode = Arc::clone(&encode);
             let done_tx = done_tx.clone();
             let picker = picker.clone();
@@ -971,6 +977,11 @@ mod tests {
                 samples[2], samples[0], samples[4]
             );
         }
+    }
+
+    #[test]
+    fn there_are_two_to_four_encoders() {
+        assert!((2..=4).contains(&encoders()));
     }
 
     #[test]
