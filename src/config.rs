@@ -63,6 +63,34 @@ pub struct Settings {
     /// drop what a newer version wrote.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
+    /// The columns [`Self::columns`] leaves out (a kind a newer version
+    /// added), by account, as they were written: saving puts them back.
+    #[serde(skip)]
+    pub unknown_columns: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
+}
+
+/// The columns of the settings file `data` that this version cannot read,
+/// by account.
+fn unknown_columns(data: &[u8]) -> std::collections::BTreeMap<String, Vec<serde_json::Value>> {
+    let Ok(serde_json::Value::Object(mut file)) = serde_json::from_slice(data) else {
+        return Default::default();
+    };
+    let Some(serde_json::Value::Object(columns)) = file.remove("columns") else {
+        return Default::default();
+    };
+    columns
+        .into_iter()
+        .filter_map(|(did, list)| {
+            let serde_json::Value::Array(list) = list else {
+                return None;
+            };
+            let unknown: Vec<serde_json::Value> = list
+                .into_iter()
+                .filter(|c| serde_json::from_value::<ColumnSource>(c.clone()).is_err())
+                .collect();
+            (!unknown.is_empty()).then_some((did, unknown))
+        })
+        .collect()
 }
 
 /// The columns of `settings.json`, leaving out any this version cannot
@@ -199,8 +227,11 @@ impl SettingsStore {
     pub fn load(&self) -> (Settings, Option<String>) {
         let path = self.path();
         match fs::read(&path) {
-            Ok(data) => match serde_json::from_slice(without_bom(&data)) {
-                Ok(settings) => (settings, None),
+            Ok(data) => match serde_json::from_slice::<Settings>(without_bom(&data)) {
+                Ok(mut settings) => {
+                    settings.unknown_columns = unknown_columns(without_bom(&data));
+                    (settings, None)
+                }
                 Err(e) => (
                     Settings::default(),
                     Some(crate::i18n::tf(
@@ -229,7 +260,27 @@ impl SettingsStore {
             ))
         })?;
         let path = self.path();
-        let mut json = serde_json::to_vec_pretty(settings).expect("settings serialize");
+        let mut value = serde_json::to_value(settings).expect("settings serialize");
+        // The columns a newer version wrote go back after the ones this
+        // version keeps, for that version to show again.
+        if !settings.unknown_columns.is_empty()
+            && let Some(file) = value.as_object_mut()
+        {
+            let columns = file
+                .entry("columns")
+                .or_insert_with(|| serde_json::Value::Object(Default::default()));
+            if let Some(columns) = columns.as_object_mut() {
+                for (did, unknown) in &settings.unknown_columns {
+                    let list = columns
+                        .entry(did.clone())
+                        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+                    if let Some(list) = list.as_array_mut() {
+                        list.extend(unknown.iter().cloned());
+                    }
+                }
+            }
+        }
+        let mut json = serde_json::to_vec_pretty(&value).expect("settings serialize");
         json.push(b'\n');
         write_private(&path, &json).map_err(|e| {
             Error::io(crate::i18n::tf(
@@ -735,6 +786,44 @@ mod tests {
                     query: "猫🐈‍⬛".into()
                 }
             ]
+        );
+    }
+
+    // A column a newer version wrote is left out of what this one shows,
+    // but not out of the file: saving another setting keeps it, as it keeps
+    // the keys this version does not know.
+    #[test]
+    fn saving_keeps_a_column_of_an_unknown_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path());
+        let list =
+            serde_json::json!({"kind": "list", "uri": "at://did:plc:me/app.bsky.graph.list/1"});
+        fs::write(
+            store.path(),
+            serde_json::to_vec(&serde_json::json!({"columns": {
+                "did:plc:me": [{"kind": "following"}, list],
+                "did:plc:work": [list],
+            }}))
+            .unwrap(),
+        )
+        .unwrap();
+        let (mut settings, _) = store.load();
+        assert_eq!(settings.columns["did:plc:me"], [ColumnSource::Following]);
+        settings.theme = Some("nord".into());
+        settings
+            .columns
+            .get_mut("did:plc:me")
+            .unwrap()
+            .push(ColumnSource::Notifications);
+        store.save(&settings).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.path()).unwrap()).unwrap();
+        assert_eq!(
+            saved["columns"],
+            serde_json::json!({
+                "did:plc:me": [{"kind": "following"}, {"kind": "notifications"}, list],
+                "did:plc:work": [list],
+            })
         );
     }
 
