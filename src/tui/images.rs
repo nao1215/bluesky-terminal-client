@@ -28,6 +28,7 @@ use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Image, Resize};
 
 use crate::tui::player::{Player, State};
+use crate::tui::scale;
 
 /// Largest image body bsky downloads.
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -35,11 +36,17 @@ const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 /// Parallel downloads. Pictures are small and most of their time is spent
 /// waiting on the network, so more at once than there are cores.
 const LOADERS: usize = 8;
-/// Parallel encoders.
-const ENCODERS: usize = 2;
+/// Parallel encoders: up to four, as many as there are cores. A sixel
+/// encode takes 2 ms for a picture in a post and 30 ms for one across the
+/// screen, so a screen of twelve photos was ready in 36 ms with two
+/// encoders and in 26 ms with four; kitty and iTerm2, bound by the decode,
+/// took as long either way.
+fn encoders() -> usize {
+    thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4))
+}
 
 /// A decoded picture whose longest side is above this is shrunk to
-/// [`SHRUNK_SIDE`] before it is kept. Shrinking costs about as much as
+/// [`SHRUNK_SIDE`] before it is kept. Shrinking once cost about as much as
 /// decoding again (35 ms for a 2000 x 1500 photo), and every encode scales
 /// the picture to its box anyway, so a picture that is not much larger than
 /// any box is kept as it is: Bluesky's full-size pictures are at most 2000
@@ -233,7 +240,7 @@ impl Images {
         }
         let encode = Queue::new();
         let (done_tx, done_rx) = channel::<(Key, Option<Protocol>)>();
-        for _ in 0..ENCODERS {
+        for _ in 0..encoders() {
             let encode = Arc::clone(&encode);
             let done_tx = done_tx.clone();
             let picker = picker.clone();
@@ -253,7 +260,11 @@ impl Images {
                     let p = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let cell = (picker.font_size().width, picker.font_size().height);
                         picker
-                            .new_protocol(crate::tui::scale::to_box(&img, size, cell), size, resize)
+                            .new_protocol(
+                                scale::pad_to_cells(scale::to_box(&img, size, cell), size, cell),
+                                size,
+                                resize,
+                            )
                             .ok()
                     }))
                     .ok()
@@ -675,7 +686,7 @@ fn load(
 /// else scaled to [`SHRUNK_SIDE`].
 fn shrink(img: DynamicImage) -> DynamicImage {
     if img.width().max(img.height()) > SHRINK_ABOVE {
-        img.thumbnail(SHRUNK_SIDE, SHRUNK_SIDE)
+        scale::thumbnail(&img, SHRUNK_SIDE, SHRUNK_SIDE)
     } else {
         img
     }
@@ -966,6 +977,11 @@ mod tests {
                 samples[2], samples[0], samples[4]
             );
         }
+    }
+
+    #[test]
+    fn there_are_two_to_four_encoders() {
+        assert!((2..=4).contains(&encoders()));
     }
 
     #[test]

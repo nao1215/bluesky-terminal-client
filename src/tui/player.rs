@@ -459,6 +459,8 @@ fn encode_picture(picker: &Picker, img: DynamicImage, area: Size, nth: usize) ->
             .ok()
             .map(Protocol::Kitty);
     }
+    let f = picker.font_size();
+    let img = scale::pad_to_cells(img, area, (f.width, f.height));
     picker
         .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
         .ok()
