@@ -500,16 +500,21 @@ fn feed_uri(client: &Client, feed: &str) -> Result<String> {
         .iter()
         .find(|f| f.name.eq_ignore_ascii_case(feed.trim()))
         .map(|f| f.uri.clone())
-        .ok_or_else(|| {
-            let names: Vec<&str> = pinned.iter().map(|f| f.name.as_str()).collect();
-            Error::new(Kind::Usage, format!("no pinned feed is named {feed:?}")).with_hint(
-                if names.is_empty() {
-                    "give the feed's at:// URI or its bsky.app address".to_string()
-                } else {
-                    format!("pinned: {}", names.join(", "))
-                },
-            )
-        })
+        .ok_or_else(|| no_pinned_feed(feed, &pinned))
+}
+
+/// That no pinned feed is named `feed`, with the names there are.
+fn no_pinned_feed(feed: &str, pinned: &[crate::api::types::FeedInfo]) -> Error {
+    // Each name as text only: a feed's name is what its maker wrote, and a
+    // control character in it would reach the terminal as a command.
+    let names: Vec<String> = pinned.iter().map(|f| format::one_line(&f.name)).collect();
+    Error::new(Kind::Usage, format!("no pinned feed is named {feed:?}")).with_hint(
+        if names.is_empty() {
+            "give the feed's at:// URI or its bsky.app address".to_string()
+        } else {
+            format!("pinned: {}", names.join(", "))
+        },
+    )
 }
 
 /// A DID from a handle, `@handle` or DID.
@@ -1495,5 +1500,24 @@ mod tests {
         .unwrap_err();
         assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
         assert!(out.is_empty());
+    }
+
+    // A feed's name is whatever its maker wrote: an escape sequence in it
+    // (one sets the clipboard, one clears the screen) must not reach the
+    // terminal with the list of pinned feeds.
+    #[test]
+    fn the_pinned_feed_names_in_the_hint_are_text_only() {
+        let pinned = [
+            crate::api::types::FeedInfo {
+                uri: "at://did:plc:x/app.bsky.feed.generator/a".into(),
+                name: "Cats 🐱\u{1b}]52;c;cHduZWQ=\u{7}\u{1b}[2J".into(),
+            },
+            crate::api::types::FeedInfo {
+                uri: "at://did:plc:x/app.bsky.feed.generator/b".into(),
+                name: "日本\n語\u{9b}".into(),
+            },
+        ];
+        let e = no_pinned_feed("dogs", &pinned);
+        assert_eq!(e.hint(), Some("pinned: Cats 🐱]52;c;cHduZWQ=[2J, 日本 語"));
     }
 }

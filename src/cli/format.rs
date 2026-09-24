@@ -16,7 +16,7 @@ fn plain(s: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// As [`plain`], on one line: for what is printed as one line of a list.
-fn one_line(s: &str) -> String {
+pub(super) fn one_line(s: &str) -> String {
     drawable(s).replace('\n', " ")
 }
 
