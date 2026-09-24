@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-24
+
 ### Changed
 
 - The Timeline tab shows the accounts you follow and no longer has a row of feeds switched with `[` and `]`. Your pinned feeds, or Discover when none is pinned, are offered by `+` and shown as columns beside the timeline.
