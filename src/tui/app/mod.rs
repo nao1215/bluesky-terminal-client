@@ -248,15 +248,16 @@ impl List<Post> {
     /// answers or its thread's first: the same author and text twice in a
     /// row, as a self-thread brings. The reply, newer, is what stays.
     fn drop_shown_above(&mut self) {
-        let mut shown: HashSet<String> = HashSet::new();
+        // Borrowed: this runs on every answer, over every list of posts.
+        let mut shown: HashSet<&str> = HashSet::new();
         let keep: Vec<bool> = self
             .items
             .iter()
             .map(|p| {
-                let kept = !shown.contains(&p.uri);
+                let kept = !shown.contains(p.uri.as_str());
                 if let Some(c) = &p.context {
-                    shown.extend(c.parent.uri().map(str::to_string));
-                    shown.extend(c.root.as_ref().and_then(|r| r.uri()).map(str::to_string));
+                    shown.extend(c.parent.uri());
+                    shown.extend(c.root.as_ref().and_then(|r| r.uri()));
                 }
                 kept
             })

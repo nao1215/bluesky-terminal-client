@@ -69,7 +69,7 @@ impl PostLines {
         let header = Line::from(header);
         let header = truncate_line(header, width);
 
-        let mut body: Vec<Line<'static>> = wrap(&record.text, width)
+        let mut body: Vec<Line<'static>> = crate::tui::text::wrap_cached(&record.text, width)
             .into_iter()
             .map(Line::from)
             .collect();

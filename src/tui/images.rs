@@ -116,6 +116,16 @@ impl<T> Queue<T> {
         self.ready.notify_one();
     }
 
+    /// Move a job waiting in the background to the front. One not found has
+    /// been taken already, and is not queued again: that would load it twice.
+    fn promote(&self, is: impl Fn(&T) -> bool) {
+        let mut jobs = self.jobs.lock().expect("queue");
+        if let Some(i) = jobs.background.iter().rposition(is) {
+            let job = jobs.background.remove(i);
+            jobs.urgent.push(job);
+        }
+    }
+
     /// The next job; `None` once the queue is closed.
     fn pop(&self) -> Option<T> {
         let mut jobs = self.jobs.lock().expect("queue");
@@ -587,9 +597,9 @@ impl Images {
                 *slot = Slot::Loading { urgent: true };
             }
             // Downloaded ahead and not there yet, and now it is on screen:
-            // ahead of the queue it goes.
+            // ahead of the queue it goes, unless it is loading already.
             Slot::Loading { urgent: false } if urgent => {
-                fetch.push(job);
+                fetch.promote(|(u, _)| *u == job.0);
                 *slot = Slot::Loading { urgent: true };
             }
             _ => {}
@@ -849,6 +859,26 @@ impl DiskCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A picture loaded ahead that comes on screen moves to the front; one
+    // a worker has taken already is not queued a second time.
+    #[test]
+    fn a_picture_loaded_ahead_moves_to_the_front_once() {
+        let q: Arc<Queue<&str>> = Queue::new();
+        q.push_background("a");
+        q.push_background("b");
+        q.promote(|j| *j == "b");
+        {
+            let jobs = q.jobs.lock().unwrap();
+            assert_eq!(jobs.urgent, ["b"]);
+            assert_eq!(jobs.background, ["a"]);
+        }
+        q.promote(|j| *j == "gone");
+        q.promote(|j| *j == "b");
+        let jobs = q.jobs.lock().unwrap();
+        assert_eq!(jobs.urgent, ["b"]);
+        assert_eq!(jobs.background, ["a"]);
+    }
 
     #[rstest::rstest]
     #[case(2000, 1500, (2000, 1500))]
