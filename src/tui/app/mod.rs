@@ -664,6 +664,8 @@ pub struct App {
     pub unread: usize,
     /// The time to mark notifications seen up to, once their tab is visited.
     pub seen_pending: Option<String>,
+    /// The time a mark of the notifications seen is on its way for.
+    seen_sending: Option<String>,
     pub overlay: Option<Overlay>,
     pub status: Option<Status>,
     /// Jobs sent and not yet answered.
@@ -897,6 +899,7 @@ impl App {
             notifications: List::default(),
             unread: 0,
             seen_pending: None,
+            seen_sending: None,
             overlay: None,
             status: None,
             pending: 0,

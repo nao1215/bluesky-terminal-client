@@ -497,3 +497,37 @@ fn a_retry_after_a_failed_first_page_keeps_the_older_messages_reachable() {
         "the earlier messages can still be asked for"
     );
 }
+
+// A list of conversations asked for before another does not replace it
+// when it comes after.
+#[test]
+fn an_older_list_of_conversations_does_not_replace_a_newer_one() {
+    let mut app = logged_in();
+    let first = press(&mut app, key('2'));
+    let again = press(&mut app, key('R'));
+    app.handle_answer(
+        again[0],
+        Event::Convos {
+            cursor: None,
+            result: Ok(vec![a_convo("a", 0), a_convo("new", 1)].into()),
+        },
+    );
+    app.handle_answer(
+        first[0],
+        Event::Convos {
+            cursor: None,
+            result: Ok(vec![a_convo("a", 3)].into()),
+        },
+    );
+    let ids: Vec<_> = app
+        .chat
+        .convos
+        .items
+        .iter()
+        .map(|c| (c.id.clone(), c.unread_count))
+        .collect();
+    assert_eq!(ids, vec![("a".to_string(), 0), ("new".to_string(), 1)]);
+}
+
+// H5: the thread read again after a reply in it: its answer is dropped, as
+// the view is not waiting (loaded), so the reply never shows.

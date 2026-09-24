@@ -112,6 +112,7 @@ impl App {
             Event::SearchActors { .. } => "search accounts".to_string(),
             Event::Profile(_) => "profile".to_string(),
             Event::Notifications { .. } => "notifications".to_string(),
+            Event::Convos { cursor: None, .. } => "conversations".to_string(),
             Event::Thread { uri, .. } => format!("thread {uri}"),
             _ => return false,
         };
@@ -385,7 +386,9 @@ impl App {
             self.login = Some(form);
             // A question asked before is not answered by the first key after
             // logging in again, and a theme being previewed was not chosen.
+            // A list the settings opened is gone with them.
             self.confirm = None;
+            self.settings_return = None;
             if let Some(Overlay::Themes { previous, .. }) = self.overlay {
                 self.set_theme(previous);
             }
@@ -427,6 +430,8 @@ impl App {
         self.notifications = List::default();
         self.unread = 0;
         self.seen_pending = None;
+        self.seen_sending = None;
+        self.settings_return = None;
         // What is on its way stays claimed, per account: switching back
         // before it is answered must not let the same key send it again.
         self.tab = Tab::Timeline;
@@ -481,6 +486,13 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Mark the notifications up to `at` seen, remembering it in case the
+    /// mark fails.
+    pub(super) fn mark_seen(&mut self, at: String) -> Vec<Job> {
+        self.seen_sending = Some(at.clone());
+        vec![Job::UpdateSeen(at)]
     }
 
     /// A write answered, taken or not: its key may be pressed again by the
@@ -656,7 +668,7 @@ impl App {
                         .count();
                     if self.unread > 0 {
                         if self.tab == Tab::Notifications {
-                            return vec![Job::UpdateSeen(seen_at)];
+                            return self.mark_seen(seen_at);
                         }
                         // Loaded in the background: seen when looked at.
                         self.seen_pending = Some(seen_at);
@@ -674,13 +686,20 @@ impl App {
                 }
             },
             Event::Seen(Ok(())) => {
+                self.seen_sending = None;
                 self.notifications
                     .items
                     .iter_mut()
                     .for_each(|i| i.n.is_read = true);
                 self.unread = 0;
             }
-            Event::Seen(Err(e)) => self.fail(&e),
+            // Not marked: the next visit to the tab marks it again.
+            Event::Seen(Err(e)) => {
+                if self.seen_pending.is_none() {
+                    self.seen_pending = self.seen_sending.take();
+                }
+                self.fail(&e);
+            }
             Event::Thread { uri, result } => {
                 // Only a thread still waiting for it takes the answer; it
                 // need not be on top (one can be opened over a reload). Every
@@ -763,17 +782,19 @@ impl App {
                     Some(uri) => {
                         self.each_post(&uri, |p| p.reply_count += 1);
                         self.info(n!("reply sent"));
-                        jobs.extend(
-                            self.threads
+                        // Waiting again, as R leaves it, so the thread takes
+                        // what comes.
+                        for th in &mut self.threads {
+                            if th
+                                .list
+                                .items
                                 .iter()
-                                .filter(|th| {
-                                    th.list
-                                        .items
-                                        .iter()
-                                        .any(|r| r.post().is_some_and(|p| p.uri == uri))
-                                })
-                                .map(|th| Job::Thread(th.uri.clone())),
-                        );
+                                .any(|r| r.post().is_some_and(|p| p.uri == uri))
+                            {
+                                th.list.loaded = false;
+                                jobs.push(Job::Thread(th.uri.clone()));
+                            }
+                        }
                     }
                     None => self.info(n!("posted")),
                 }
