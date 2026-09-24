@@ -105,6 +105,7 @@ pub(super) fn draw_actions(
     let lines: Vec<Line> = entries
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, (key, what))| {
             let marker = if i == selected { "▶ " } else { "  " };
             let key = Span::styled(format!("{marker}{key:<7}"), t.accent().bold());
@@ -254,6 +255,7 @@ pub(super) fn draw_add_column(
     let lines: Vec<Line> = titles
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, title)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let style = if i == selected {
@@ -289,9 +291,13 @@ pub(super) fn draw_account_list(
         t,
     );
     let width = usize::from(inner.width);
+    // The last two rows are a gap and the keys.
+    let rows = inner.height.saturating_sub(2);
     let mut lines: Vec<Line> = accounts
         .iter()
         .enumerate()
+        .skip(first_shown(selected, rows))
+        .take(usize::from(rows.max(1)))
         .map(|(i, a)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let used = if me == Some(a.did.as_str()) {
@@ -346,6 +352,7 @@ pub(super) fn draw_languages(
     let lines: Vec<Line> = langs
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, lang)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let style = if i == selected {
@@ -387,18 +394,38 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     }
     let intro_h = intro.len() as u16;
     let inner = popup(frame, area, 64, 14 + intro_h, n!("Log in to Bluesky"), t);
+    // A box too short for all of it gives up rows in a fixed order: the
+    // blank ones first, then the introduction, the message, and the keys,
+    // and never a field or its name. Left to the layout, the rows were
+    // squeezed anywhere, and a field lost its name or its line.
+    let mut left = inner.height.saturating_sub(6);
+    let mut take = |want: u16| {
+        let got = want.min(left);
+        left -= got;
+        got
+    };
+    // A server's reason comes before the introduction: it is what to fix.
+    let msg_want = match (&form.error, form.pending) {
+        (Some(e), false) => {
+            wrap(&format!(" {}", i18n::t(e)), usize::from(inner.width).max(1)).len()
+        }
+        _ => 1,
+    };
+    let (foot_h, msg_h) = (take(1), take(msg_want as u16));
+    let intro_h = take(intro_h);
+    let (gap_h, below_h) = (take(1), take(1));
     let rows = Layout::vertical([
         Constraint::Length(intro_h),
+        Constraint::Length(gap_h),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
+        Constraint::Length(below_h),
+        Constraint::Min(msg_h),
+        Constraint::Length(foot_h),
     ])
     .split(inner);
     frame.render_widget(Paragraph::new(intro), rows[0]);
@@ -431,17 +458,14 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     }
     // The message area takes whatever rows are left, so a server's reason,
     // which is the part the user needs, is never cut off by the wrap.
-    let msg = if form.pending {
-        Line::styled(format!(" {}", i18n::t("logging in…")), t.dim())
+    let (msg, style) = if form.pending {
+        (format!(" {}", i18n::t("logging in…")), t.dim())
     } else if let Some(e) = &form.error {
-        Line::styled(format!(" {}", i18n::t(e)), t.error())
+        (format!(" {}", i18n::t(e)), t.error())
     } else {
-        Line::raw("")
+        (String::new(), Style::new())
     };
-    frame.render_widget(
-        Paragraph::new(msg).wrap(ratatui::widgets::Wrap { trim: true }),
-        rows[9],
-    );
+    frame.render_widget(wrapped(&msg, rows[9].width).style(style), rows[9]);
     frame.render_widget(
         Paragraph::new(format!(
             " {}",
@@ -490,7 +514,12 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
             Line::from(spans)
         })
         .collect();
-    let w = (width + 2 + 10 + 4) as u16;
+    // Wide enough for its keys too, which some languages make longer than
+    // the names: cut there, the row ended in half a word.
+    let keys = i18n::t("enter apply  esc cancel");
+    let count = format!(" {}/{n}  ", selected + 1);
+    let foot_w = crate::tui::text::cells(&format!(" {n}/{n}  {keys}")) + 2;
+    let w = (width + 2 + 10 + 4).max(foot_w) as u16;
     let inner = popup(frame, area, w.max(34), rows as u16 + 4, n!("Theme"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(lines), body);
@@ -515,11 +544,13 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
             },
         );
     }
+    // On a screen too narrow for them, the keys in the middle go and the
+    // one that says how to leave stays whole.
+    let room = usize::from(foot.width).saturating_sub(crate::tui::text::cells(&count));
     frame.render_widget(
         Paragraph::new(format!(
-            " {}/{n}  {}",
-            selected + 1,
-            i18n::t("enter apply  esc cancel")
+            "{count}{}",
+            crate::tui::text::fit_hints(keys, room)
         ))
         .style(t.dim()),
         foot,

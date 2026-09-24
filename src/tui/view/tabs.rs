@@ -18,9 +18,7 @@ pub(super) fn draw_chat(
         .unwrap_or_default();
     if let Some(why) = &app.chat.refused {
         frame.render_widget(
-            Paragraph::new(format!(" {}", i18n::t(why)))
-                .style(t.error())
-                .wrap(ratatui::widgets::Wrap { trim: true }),
+            wrapped(&format!(" {}", i18n::t(why)), body.width).style(t.error()),
             body,
         );
         return;
@@ -318,13 +316,15 @@ pub(super) fn draw_thread(
     );
     if let Some(e) = &th.error {
         frame.render_widget(
-            Paragraph::new(format!(
-                " {}  {}",
-                i18n::tf("could not load the thread: {}", &[&e.to_string()]),
-                i18n::t("(R to retry)")
-            ))
-            .style(t.error())
-            .wrap(ratatui::widgets::Wrap { trim: true }),
+            wrapped(
+                &format!(
+                    " {}  {}",
+                    i18n::tf("could not load the thread: {}", &[&e.to_string()]),
+                    i18n::t("(R to retry)")
+                ),
+                list.width,
+            )
+            .style(t.error()),
             list,
         );
         return;
@@ -502,15 +502,18 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
     let t = &app.theme.clone();
     let Some(p) = app.profile.profile.clone() else {
         let msg = match &app.profile.error {
-            Some(e) => Paragraph::new(format!(
-                " {}  {}",
-                i18n::tf("could not load the profile: {}", &[e]),
-                i18n::t("(R to retry)")
-            ))
+            Some(e) => wrapped(
+                &format!(
+                    " {}  {}",
+                    i18n::tf("could not load the profile: {}", &[e]),
+                    i18n::t("(R to retry)")
+                ),
+                area.width,
+            )
             .style(t.error()),
-            None => Paragraph::new(format!(" {}", i18n::t("loading…"))).style(t.dim()),
+            None => wrapped(&format!(" {}", i18n::t("loading…")), area.width).style(t.dim()),
         };
-        frame.render_widget(msg.wrap(ratatui::widgets::Wrap { trim: true }), area);
+        frame.render_widget(msg, area);
         return;
     };
     let big = if images.shows() { BIG_AVATAR } else { (0, 0) };

@@ -163,3 +163,35 @@ fn list_avatars_use_the_small_bluesky_version() {
         "http://127.0.0.1/img/a.png"
     );
 }
+
+// On a short terminal the profile editor keeps the description on screen,
+// with the line being typed, and the keys that save and cancel. The rows
+// used to be squeezed at random: the description field got no row at all,
+// so what was typed into it was nowhere to be seen.
+#[test]
+fn a_short_profile_editor_keeps_the_description_being_typed() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    for h in [8, 10, 12] {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_key(KeyEvent::from(KeyCode::Char('5')));
+        app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
+        app.handle_key(KeyEvent::from(KeyCode::Char('e')));
+        app.handle_event(Event::ProfileEditor(Ok(
+            crate::tui::worker::ProfileFields {
+                display_name: "Nao 家族".into(),
+                description: "one\ntwo\nthree\nfour\nthe last line 日本語".into(),
+            },
+        )));
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+        let screen = render_text_only(&mut app, 80, h);
+        for want in [
+            "Display name",
+            "Nao 家族",
+            "Description",
+            "the last line 日本語",
+            "esc cancel",
+        ] {
+            assert!(screen.contains(want), "80x{h} {want}:\n{screen}");
+        }
+    }
+}

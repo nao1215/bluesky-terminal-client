@@ -25,6 +25,61 @@ fn a_long_login_error_is_shown_whole() {
     assert!(screen.contains("esc quit"), "{screen}");
 }
 
+// On a short terminal the introduction gives way, not the form: every
+// field keeps its name and its line to type on, and the keys stay shown.
+// The rows used to be squeezed at random, so the handle field lost its
+// name, or the password field its line, while empty rows stayed below.
+#[test]
+fn a_short_login_screen_keeps_every_field_and_its_name() {
+    for (w, h) in [(80, 12), (80, 10), (40, 12), (24, 8)] {
+        let (mut app, _) = App::new(None, "https://bsky.social");
+        let screen = render(&mut app, w, h);
+        for label in crate::tui::app::LoginForm::LABELS {
+            assert!(screen.contains(label), "{w}x{h} {label}:\n{screen}");
+        }
+        let fields = screen.lines().filter(|l| l.contains("│ › ")).count();
+        assert_eq!(fields, 3, "{w}x{h}:\n{screen}");
+    }
+    // A server's reason is kept over the introduction.
+    let (mut app, _) = App::new(None, "https://bsky.social");
+    app.login.as_mut().unwrap().error = Some("Invalid identifier or password".into());
+    let screen = render(&mut app, 80, 12);
+    assert!(
+        screen.contains("Invalid identifier or password"),
+        "{screen}"
+    );
+    assert!(screen.contains("Handle or email"), "{screen}");
+}
+
+// A reason with wide characters wraps inside the screen: none is drawn
+// half off the right edge, and no word after it is lost. The wrapping
+// used to let a wide character start in the last column, which pushed the
+// line one cell past the edge and dropped the words that followed.
+#[test]
+fn a_wide_reason_wraps_inside_the_screen_and_keeps_every_word() {
+    use unicode_width::UnicodeWidthStr;
+    let reason = "tail that wraps 日 日本語 x サーバー 👍🏽 応答 🇯🇵 end";
+    for w in 24..=60u16 {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Err(crate::error::Error::api(reason))));
+        // The list's own message, not the box over it.
+        app.status = None;
+        let buf = render_buffer(&mut app, w, 12);
+        for y in 0..12u16 {
+            let last = buf[(w - 1, y)].symbol();
+            assert!(
+                last.width() < 2,
+                "{w}: {last:?} half off the edge on row {y}"
+            );
+        }
+        let screen = render_text_only(&mut app, w, 12);
+        let shown: String = screen.split_whitespace().collect();
+        for word in reason.split_whitespace() {
+            assert!(shown.contains(word), "{w}: {word} is lost:\n{screen}");
+        }
+    }
+}
+
 // Without pictures the text starts where the avatar was, and a line
 // says what each post carries; descriptions keep their emoji whole.
 #[test]

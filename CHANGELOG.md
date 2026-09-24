@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- On a short terminal, the actions list (`.`), the language, column and account lists went on moving down past the bottom of their box, so Enter could follow, mute or block with the choice out of sight. The lists scroll with their selection.
+- On a short terminal the login form lost the label of a field or the row you type the password on, and the profile editor lost the row of the description being typed.
+- An error or note with Japanese, Chinese or emoji in it drew a wide character half off the right edge and dropped the words after it on that line.
+- The theme picker's keys were cut in German (`esc abbreche`) and, on narrow screens, in every language.
+- Half-width katakana with sound marks, such as `ｶﾞｲｼﾞﾝ`, lost the end of each wrapped line off the right edge, and the cursor after them sat one cell too far left.
+- Deleting what kept two pieces apart that then join (a flag's halves, an accent after a line break) left the cursor inside the joined character, and the next key went into its middle.
+
 ## [0.10.0] - 2026-09-24
 
 ### Changed
