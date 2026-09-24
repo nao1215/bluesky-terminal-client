@@ -142,19 +142,28 @@ impl App {
         }
     }
 
-    /// Take a post out of every list it is in. A thread keeps its row, as
-    /// the placeholder for a post that is not there any more, so the replies
-    /// under it keep their place.
-    pub(super) fn remove_post(&mut self, uri: &str) {
-        let feeds = self.columns.post_lists();
-        for list in [
+    /// Every list of posts: the timeline, the search, the profile, and the
+    /// columns'.
+    fn post_lists(&mut self) -> impl Iterator<Item = &mut List<Post>> {
+        [
             &mut self.timeline,
             &mut self.search.posts,
             &mut self.profile.posts,
         ]
         .into_iter()
-        .chain(feeds)
-        {
+        .chain(self.columns.post_lists())
+    }
+
+    /// Every list of notifications: the tab's and the columns'.
+    fn notification_lists(&mut self) -> impl Iterator<Item = &mut List<NotifItem>> {
+        std::iter::once(&mut self.notifications).chain(self.columns.notification_lists())
+    }
+
+    /// Take a post out of every list it is in. A thread keeps its row, as
+    /// the placeholder for a post that is not there any more, so the replies
+    /// under it keep their place.
+    pub(super) fn remove_post(&mut self, uri: &str) {
+        for list in self.post_lists() {
             list.retain(|p| p.uri != uri);
         }
         for th in &mut self.threads {
@@ -194,15 +203,7 @@ impl App {
 
     /// Apply `f` to every copy of the post `uri` on screen.
     pub(super) fn each_post(&mut self, uri: &str, mut f: impl FnMut(&mut Post)) {
-        let feeds = self.columns.post_lists();
-        for list in [
-            &mut self.timeline,
-            &mut self.search.posts,
-            &mut self.profile.posts,
-        ]
-        .into_iter()
-        .chain(feeds)
-        {
+        for list in self.post_lists() {
             list.items
                 .iter_mut()
                 .filter(|p| p.uri == uri)
@@ -216,9 +217,7 @@ impl App {
                 .filter(|p| p.uri == uri)
                 .for_each(&mut f);
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             for item in &mut list.items {
                 item.post
                     .iter_mut()
@@ -292,9 +291,7 @@ impl App {
         {
             list.retain(|p| p.author.did != did);
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             list.retain(|item| item.n.author.did != did);
         }
         // The count on the tab is of the notifications there are.
@@ -320,15 +317,7 @@ impl App {
                 f(p.viewer.get_or_insert_with(Default::default));
             }
         };
-        let feeds = self.columns.post_lists();
-        for list in [
-            &mut self.timeline,
-            &mut self.search.posts,
-            &mut self.profile.posts,
-        ]
-        .into_iter()
-        .chain(feeds)
-        {
+        for list in self.post_lists() {
             list.items.iter_mut().for_each(|p| apply(&mut p.author));
         }
         self.search.actors.items.iter_mut().for_each(apply);
@@ -339,9 +328,7 @@ impl App {
                 .filter_map(ThreadRow::post_mut)
                 .for_each(|p| apply(&mut p.author));
         }
-        let notifications =
-            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists());
-        for list in notifications {
+        for list in self.notification_lists() {
             for item in &mut list.items {
                 apply(&mut item.n.author);
             }
