@@ -6,7 +6,7 @@ use super::*;
 fn your_own_profile_shows_the_edit_and_settings_buttons() {
     let (mut app, _) = App::new(Some(session()), "x");
     app.handle_key(crossterm::event::KeyEvent::from(
-        crossterm::event::KeyCode::Char('4'),
+        crossterm::event::KeyCode::Char('5'),
     ));
     app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
     let screen = render(&mut app, 100, 24);
@@ -32,7 +32,7 @@ fn the_settings_screen_lists_each_setting_and_where_it_comes_from() {
     app.env.graphics = Some("kitty".into());
     app.env.browser = Some("firefox".into());
     app.handle_key(crossterm::event::KeyEvent::from(
-        crossterm::event::KeyCode::Char('4'),
+        crossterm::event::KeyCode::Char('5'),
     ));
     app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
     app.handle_key(crossterm::event::KeyEvent::from(
@@ -74,7 +74,7 @@ fn a_setting_is_typed_on_its_own_line_and_a_folder_chosen_in_the_browser() {
     std::fs::write(dir.path().join("photo.png"), "not listed").unwrap();
     let (mut app, _) = App::new(Some(session()), "x");
     app.settings.download_dir = Some(dir.path().display().to_string());
-    app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    app.handle_key(KeyEvent::from(KeyCode::Char('5')));
     app.handle_key(KeyEvent::from(KeyCode::Char('s')));
     for _ in 0..4 {
         app.handle_key(KeyEvent::from(KeyCode::Char('j')));
@@ -115,7 +115,7 @@ fn a_short_screen_keeps_the_selected_setting_in_sight() {
         "long/".repeat(20)
     ));
     app.handle_key(crossterm::event::KeyEvent::from(
-        crossterm::event::KeyCode::Char('4'),
+        crossterm::event::KeyCode::Char('5'),
     ));
     app.handle_key(crossterm::event::KeyEvent::from(
         crossterm::event::KeyCode::Char('s'),
@@ -205,14 +205,10 @@ fn the_columns_fit_the_width_and_say_how_many_are_off_screen() {
         narrow.lines().nth(1).unwrap().contains("‹3 Search: q3"),
         "{narrow}"
     );
-    // None yet: how to add one.
+    // None: the timeline alone, as it was before any.
     let mut empty = column_app(0);
     let screen = render(&mut empty, 80, 20);
-    assert!(
-        screen.contains("No columns yet. Press + to add one"),
-        "{screen}"
-    );
-    assert!(screen.contains("+ add a column"), "{screen}");
+    assert!(!screen.contains("column"), "{screen}");
 }
 
 #[test]
@@ -258,25 +254,28 @@ fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
     assert!(narrow.contains("1 2 3 4"), "{narrow}");
     // The words are whole and on their own rows, not cut to four cells.
     assert!(narrow.contains("the tabs,"), "{narrow}");
-    assert!(narrow.contains("Timeline to"), "{narrow}");
+    assert!(narrow.contains("order shown"), "{narrow}");
     assert!(!narrow.contains("Time\n"), "{narrow}");
     // The two columns come back where they fit, and a description too
     // long for its column wraps rather than losing its end.
     let forty = render(&mut app, 40, 16);
     assert!(
-        forty.contains("1 2 3 4 5 6    the tabs, Timeline"),
+        forty
+            .lines()
+            .any(|l| l.contains("1 2 3 4 5") && l.contains("the tabs,")),
         "{forty}"
     );
     assert!(
         forty
             .lines()
-            .any(|l| l.trim_matches('│').trim() == "to Chat"),
+            .any(|l| l.contains("shown") && !l.contains("1 2 3 4 5")),
         "{forty}"
     );
     // Wide enough, every description is one line.
     let wide = render(&mut app, 80, 24);
     assert!(
-        wide.contains("1 2 3 4 5 6    the tabs, Timeline to Chat"),
+        wide.lines()
+            .any(|l| l.contains("1 2 3 4 5") && l.contains("the tabs, in the order shown")),
         "{wide}"
     );
 }
@@ -287,7 +286,7 @@ fn help_on_a_narrow_screen_puts_each_description_under_its_keys() {
 fn a_short_conversation_sits_above_the_input_line() {
     use crossterm::event::{KeyCode, KeyEvent};
     let (mut app, _) = App::new(Some(session()), "x");
-    app.handle_key(KeyEvent::from(KeyCode::Char('6')));
+    app.handle_key(KeyEvent::from(KeyCode::Char('2')));
     let convo: crate::api::types::Convo = serde_json::from_value(json!({
         "id": "c", "rev": "r",
         "members": [{"did": "did:plc:me", "handle": "me.test"},
@@ -333,7 +332,7 @@ fn a_short_conversation_sits_above_the_input_line() {
 fn a_profile_says_muted_and_blocked_and_the_list_offers_to_undo_it() {
     use crossterm::event::{KeyCode, KeyEvent};
     let (mut app, _) = App::new(Some(session()), "x");
-    app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    app.handle_key(KeyEvent::from(KeyCode::Char('5')));
     app.profile.actor = Some("did:plc:alice".into());
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({
@@ -355,7 +354,7 @@ fn a_profile_says_muted_and_blocked_and_the_list_offers_to_undo_it() {
     assert!(screen.contains("B      unblock them"), "{screen}");
     // Your own profile: nothing to mute or block.
     let (mut own, _) = App::new(Some(session()), "x");
-    own.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    own.handle_key(KeyEvent::from(KeyCode::Char('5')));
     own.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
     own.handle_key(KeyEvent::from(KeyCode::Char('.')));
     let screen = render(&mut own, 100, 30);
@@ -368,7 +367,7 @@ fn a_profile_says_muted_and_blocked_and_the_list_offers_to_undo_it() {
 fn a_profile_muted_by_a_list_names_the_list() {
     use crossterm::event::{KeyCode, KeyEvent};
     let (mut app, _) = App::new(Some(session()), "x");
-    app.handle_key(KeyEvent::from(KeyCode::Char('4')));
+    app.handle_key(KeyEvent::from(KeyCode::Char('5')));
     app.profile.actor = Some("did:plc:alice".into());
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({

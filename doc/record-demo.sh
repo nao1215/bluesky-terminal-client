@@ -166,7 +166,7 @@ viewer() {
   use_theme bluesky
   start 1120 700
   ready "♡"
-  send "4"
+  send "5"
   ready "followers"
   sleep 2
   record
@@ -221,7 +221,7 @@ settings() {
   use_theme bluesky
   start 1120 700
   ready "♡"
-  send "4"
+  send "5"
   ready "followers"
   sleep 2
   send "s"
@@ -264,7 +264,7 @@ editor() {
   use_theme bluesky
   start 1120 700
   ready "♡"
-  send "4"
+  send "5"
   ready "followers"
   send "e"
   ready "New avatar"
@@ -310,9 +310,11 @@ text() {
 }
 
 # A config folder of its own, with two made-up accounts on the stand-in
-# server and three columns, for the screens that would otherwise show or
-# change a real account.
+# server (and three columns, given `columns`), for the screens that would
+# otherwise show or change a real account.
 demo_server() {
+  # The port of a server started before is not this one's.
+  rm -f "$WORK/port"
   python3 doc/demo-server.py "$WORK/port" &
   SPID=$!
   for _ in $(seq 1 50); do [ -s "$WORK/port" ] && break; sleep 0.1; done
@@ -322,13 +324,17 @@ demo_server() {
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:river", "handle": "river.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_river.json"
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:sea", "handle": "sea.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_sea.json"
   printf '{"current": "did:plc:river"}\n' > "$DCFG/accounts.json"
-  cat > "$DCFG/settings.json" <<JSON
+  if [ "${1:-}" = columns ]; then
+    cat > "$DCFG/settings.json" <<JSON
 {"theme": "bluesky", "columns": {"did:plc:river": [
   {"kind": "following"},
   {"kind": "feed", "uri": "at://did:plc:carol/app.bsky.feed.generator/cats", "name": "Cats"},
   {"kind": "notifications"}
 ]}}
 JSON
+  else
+    printf '{"theme": "bluesky"}\n' > "$DCFG/settings.json"
+  fi
   DEMO_ENV="BSKY_CONFIG_DIR=$DCFG BSKY_CACHE_DIR=off"
 }
 
@@ -345,10 +351,9 @@ demo_accounts() {
 }
 
 demo_columns() {
-  demo_server
+  # The columns kept for the account are what the Timeline tab shows.
+  demo_server columns
   start 1400 700
-  ready "Finished the trail"
-  send "5"
   ready "replied to you"
   sleep 3
   shot "$OUT/columns.png"
@@ -360,7 +365,7 @@ demo_chat() {
   demo_server
   start 1120 700
   ready "Finished the trail"
-  send "6"
+  send "2"
   ready "1 new"
   send "\r"
   ready "clear skies"

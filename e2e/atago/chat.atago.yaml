@@ -57,9 +57,9 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "6"
+            - send: "2"
             - expect_screen:
-                contains: ["6 Chat (2)", "家族👨‍👩‍👧 Alice @alice.test  2 new", "See you 🇯🇵", "enter open"]
+                contains: ["2 Chat (2)", "家族👨‍👩‍👧 Alice @alice.test  2 new", "See you 🇯🇵", "enter open"]
             - send: { key: enter }
             # Oldest first, the newest at the bottom; the tab has nothing
             # unread once the server has marked it read.
@@ -132,7 +132,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "6"
+            - send: "2"
             - expect_screen:
                 contains: "2 new"
                 stable_for: 300ms
@@ -163,7 +163,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "6"
+            - send: "2"
             - expect_screen:
                 contains: ["this app password cannot read direct messages", "Allow access to your direct messages"]
             - send: q
@@ -292,3 +292,47 @@ scenarios:
             header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
             body:
               json: { path: "$.message.text", equals: "from a script" }
+
+  # Logged in through an entryway (bsky.social is one), the chat calls go to
+  # the account's own PDS, which its DID document names: the entryway
+  # answers them with MethodNotImplemented.
+  - name: the chat calls go to the account's PDS, not the entryway logged in through
+    mock_servers:
+      - name: entry
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.server.getSession
+            json:
+              did: did:plc:me
+              handle: me.test
+              didDoc:
+                id: did:plc:me
+                service:
+                  - { id: "#atproto_pds", type: AtprotoPersonalDataServer, serviceEndpoint: "${pds.url}" }
+          - method: GET
+            path: /xrpc/chat.bsky.convo.listConvos
+            status: 501
+            json: { error: MethodNotImplemented, message: Method Not Implemented }
+      - name: pds
+        routes:
+          - *convos
+    steps:
+      - fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${entry.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - run:
+          command: bsky chat
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "家族👨‍👩‍👧 Alice @alice.test  (2 new)"
+      - assert:
+          mock:
+            name: pds
+            path: /xrpc/chat.bsky.convo.listConvos
+            count: 1
+            header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
+      - assert:
+          mock: { name: entry, path: /xrpc/chat.bsky.convo.listConvos, count: 0 }

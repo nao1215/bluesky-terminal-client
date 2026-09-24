@@ -60,7 +60,7 @@ fn s_opens_the_settings_only_on_your_own_profile() {
     // Not on another tab: s is nothing there.
     app.handle_key(key('s'));
     assert!(app.overlay.is_none());
-    app.handle_key(key('4'));
+    app.handle_key(key('5'));
     app.handle_key(key('s'));
     assert!(matches!(
         app.overlay,
@@ -89,7 +89,7 @@ fn the_settings_screen_names_every_setting() {
             "Browser"
         ]
     );
-    app.handle_key(key('4'));
+    app.handle_key(key('5'));
     app.handle_key(key('s'));
     // Moving wraps both ways.
     app.handle_key(key('k'));
@@ -474,7 +474,7 @@ fn pictures_are_not_saved_over_an_unreadable_settings_file() {
 #[test]
 fn a_failed_first_page_is_kept_as_the_reason() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('4'));
     app.handle_event(Event::Notifications {
         seen_at: "t".into(),
         result: Err(Error::api("listNotifications failed: boom")),

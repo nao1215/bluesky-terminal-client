@@ -33,7 +33,8 @@ mod settings;
 #[cfg(test)]
 mod tests;
 
-/// The top-level views.
+/// The top-level views. `Columns` is the Timeline tab showing columns side
+/// by side, once one has been added with `+`; it is not a tab of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Timeline,
@@ -45,28 +46,36 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 6] = [
+    /// The tabs, in the order of their keys 1 to 5.
+    pub const ALL: [Tab; 5] = [
         Tab::Timeline,
+        Tab::Chat,
         Tab::Search,
         Tab::Notifications,
         Tab::Profile,
-        Tab::Columns,
-        Tab::Chat,
     ];
 
     pub fn title(self) -> &'static str {
-        match self {
-            Tab::Timeline => "Timeline",
+        match self.shown_as() {
             Tab::Search => "Search",
             Tab::Profile => "Profile",
             Tab::Notifications => "Notifications",
-            Tab::Columns => "Columns",
             Tab::Chat => "Chat",
+            _ => "Timeline",
+        }
+    }
+
+    /// The tab this view belongs to: the columns are the Timeline tab's.
+    pub fn shown_as(self) -> Tab {
+        match self {
+            Tab::Columns => Tab::Timeline,
+            t => t,
         }
     }
 
     fn index(self) -> usize {
-        Self::ALL.iter().position(|t| *t == self).unwrap()
+        let tab = self.shown_as();
+        Self::ALL.iter().position(|t| *t == tab).unwrap()
     }
 
     /// The tab `delta` places away, wrapping around.
@@ -229,6 +238,35 @@ impl<T: Keyed> List<T> {
         self.items
             .extend(page.items.into_iter().filter(|i| !seen.contains(i.key())));
         self.cursor = page.cursor.filter(|c| c != requested);
+    }
+}
+
+impl List<Post> {
+    /// Leave out a post a reply above it already shows as the post it
+    /// answers or its thread's first: the same author and text twice in a
+    /// row, as a self-thread brings. The reply, newer, is what stays.
+    fn drop_shown_above(&mut self) {
+        let mut shown: HashSet<String> = HashSet::new();
+        let keep: Vec<bool> = self
+            .items
+            .iter()
+            .map(|p| {
+                let kept = !shown.contains(&p.uri);
+                if let Some(c) = &p.context {
+                    shown.extend(c.parent.uri().map(str::to_string));
+                    shown.extend(c.root.as_ref().and_then(|r| r.uri()).map(str::to_string));
+                }
+                kept
+            })
+            .collect();
+        if keep.iter().all(|k| *k) {
+            return;
+        }
+        let mut at = 0;
+        self.retain(|_| {
+            at += 1;
+            keep[at - 1]
+        });
     }
 }
 
@@ -531,7 +569,7 @@ pub enum Overlay {
     Accounts {
         selected: usize,
     },
-    /// What a new column can show, opened with `+` on the Columns tab;
+    /// What a new column can show, opened with `+` on the Timeline tab;
     /// `query` is the search being typed for a search column.
     AddColumn {
         selected: usize,
@@ -663,7 +701,7 @@ pub struct App {
     account_logout: Option<String>,
     /// The account `x` asked about, waiting for the `y` that logs it out.
     pub confirm_logout: Option<String>,
-    /// The Columns tab of the account in use.
+    /// The columns of the Timeline tab, of the account in use.
     pub columns: Columns,
     /// The Chat tab of the account in use.
     pub chat: ChatPane,

@@ -400,18 +400,8 @@ impl App {
             self.chat.polled = Some(Instant::now());
             return vec![Job::Convos { cursor: None }];
         }
-        if tab == Tab::Columns {
-            let waiting: Vec<u64> = self
-                .columns
-                .items
-                .iter()
-                .filter(|c| !c.asked())
-                .map(|c| c.id)
-                .collect();
-            return waiting
-                .into_iter()
-                .flat_map(|id| self.load_column(id))
-                .collect();
+        if matches!(tab, Tab::Timeline | Tab::Columns) {
+            return self.settle_timeline();
         }
         if tab == Tab::Notifications
             && let Some(at) = self.seen_pending.take()
@@ -482,6 +472,8 @@ impl App {
             {
                 self.columns.remove_focused();
                 self.save_columns();
+                // The last one gone, the timeline is shown alone again.
+                return self.settle_timeline();
             } else {
                 self.info("the column stays");
             }
@@ -496,11 +488,10 @@ impl App {
                 self.overlay = Some(Overlay::Accounts { selected: at });
             }
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
-            KeyCode::Char('2') => return self.switch_tab(Tab::Search),
-            KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
-            KeyCode::Char('4') => return self.switch_tab(Tab::Profile),
-            KeyCode::Char('5') => return self.switch_tab(Tab::Columns),
-            KeyCode::Char('6') => return self.switch_tab(Tab::Chat),
+            KeyCode::Char('2') => return self.switch_tab(Tab::Chat),
+            KeyCode::Char('3') => return self.switch_tab(Tab::Search),
+            KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
+            KeyCode::Char('5') => return self.switch_tab(Tab::Profile),
             KeyCode::Char('m') if self.tab == Tab::Profile && self.threads.is_empty() => {
                 return self.message_profile();
             }
@@ -522,7 +513,9 @@ impl App {
                 self.columns.move_focused(1);
                 self.save_columns();
             }
-            KeyCode::Char('+') if self.tab == Tab::Columns && self.threads.is_empty() => {
+            KeyCode::Char('+')
+                if matches!(self.tab, Tab::Timeline | Tab::Columns) && self.threads.is_empty() =>
+            {
                 self.overlay = Some(Overlay::AddColumn {
                     selected: 0,
                     query: None,

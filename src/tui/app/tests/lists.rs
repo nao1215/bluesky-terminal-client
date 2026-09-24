@@ -224,12 +224,12 @@ fn logging_in_as_someone_else_forgets_the_last_account() {
 fn a_tab_still_loading_is_not_asked_for_again() {
     let mut app = logged_in();
     // The notifications are on their way since the start.
-    assert!(app.handle_key(key('3')).is_empty());
-    app.handle_key(key('1'));
-    assert!(app.handle_key(key('3')).is_empty());
-    assert_eq!(app.handle_key(key('4')).len(), 1);
+    assert!(app.handle_key(key('4')).is_empty());
     app.handle_key(key('1'));
     assert!(app.handle_key(key('4')).is_empty());
+    assert_eq!(app.handle_key(key('5')).len(), 1);
+    app.handle_key(key('1'));
+    assert!(app.handle_key(key('5')).is_empty());
 }
 
 #[test]
@@ -291,7 +291,7 @@ fn reloading_the_timeline_keeps_the_pages_loaded_and_the_selection() {
 #[test]
 fn a_next_page_of_an_earlier_search_does_not_leave_the_list_waiting() {
     let mut app = logged_in();
-    app.handle_key(key('2'));
+    app.handle_key(key('3'));
     type_str(&mut app, "a");
     app.handle_key(code(KeyCode::Enter));
     let posts: Vec<Post> = (0..15)
@@ -361,4 +361,49 @@ fn a_post_taken_out_above_the_selection_leaves_it_where_it_was() {
         result: Ok(()),
     });
     assert_eq!(app.timeline.current().unwrap().uri, "at://c/p/4");
+}
+
+// A reply in a thread comes with the posts above it; the post it answers,
+// which the timeline also has further down, is not shown a second time
+// there, even when it comes on the next page.
+#[test]
+fn a_post_shown_above_a_reply_is_not_shown_again_below_it() {
+    let reply: Post = serde_json::from_value(json!({
+        "uri": "at://t/p/2", "cid": "c2",
+        "author": {"did": "did:plc:t", "handle": "trending.test", "viewer": {"following": "at://f"}},
+        "record": {"text": "(2/2) 🇯🇵", "reply": {
+            "root": {"uri": "at://t/p/1", "cid": "c1"}, "parent": {"uri": "at://t/p/1", "cid": "c1"}}},
+    }))
+    .unwrap();
+    let mut reply = reply;
+    reply.context = Some(Box::new(crate::api::types::ReplyContext {
+        root: None,
+        gap: false,
+        parent: serde_json::from_value(json!({"$type": "app.bsky.feed.defs#postView",
+            "uri": "at://t/p/1", "cid": "c1",
+            "author": {"did": "did:plc:t", "handle": "trending.test"},
+            "record": {"text": "(1/2)"}}))
+        .unwrap(),
+    }));
+    let parent = post("at://t/p/1", "did:plc:t", true);
+    let other = post("at://o/p/9", "did:plc:o", true);
+    let mut app = logged_in();
+    app.handle_event(Event::Timeline(Ok(page(
+        vec![reply.clone(), other.clone()],
+        Some("c"),
+    ))));
+    app.handle_event(Event::More {
+        feed: Feed::Timeline,
+        cursor: "c".into(),
+        result: Ok(MorePage::Posts(page(vec![parent], None))),
+    });
+    let uris: Vec<&str> = app.timeline.items.iter().map(|p| p.uri.as_str()).collect();
+    assert_eq!(uris, ["at://t/p/2", "at://o/p/9"]);
+    // On the same page too.
+    app.handle_event(Event::Timeline(Ok(page(
+        vec![reply, post("at://t/p/1", "did:plc:t", true), other],
+        None,
+    ))));
+    let uris: Vec<&str> = app.timeline.items.iter().map(|p| p.uri.as_str()).collect();
+    assert_eq!(uris, ["at://t/p/2", "at://o/p/9"]);
 }

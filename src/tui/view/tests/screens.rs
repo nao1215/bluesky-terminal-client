@@ -382,7 +382,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "search",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('2'));
+                a.handle_key(ch('3'));
                 a.handle_key(ch('/'));
                 for c in "検索👍🏽 word".chars() {
                     a.handle_key(ch(c));
@@ -394,7 +394,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "profile",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('4'));
+                a.handle_key(ch('5'));
                 a
             }),
         ),
@@ -402,7 +402,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "own profile",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('4'));
+                a.handle_key(ch('5'));
                 a.handle_event(Event::Profile(Ok((own_profile(), emoji_posts().into()))));
                 a
             }),
@@ -413,7 +413,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
                 let (mut a, _) = App::new(Some(session()), "x");
                 a.env.download_dir =
                     Some("/home/me/写真/👨\u{200d}👩\u{200d}👧 家族 🇯🇵/1️⃣ ❤️ e\u{301}".into());
-                a.handle_key(ch('4'));
+                a.handle_key(ch('5'));
                 a.handle_event(Event::Profile(Ok((own_profile(), emoji_posts().into()))));
                 a.handle_key(ch('s'));
                 a.handle_key(ch('j'));
@@ -425,7 +425,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "settings typing",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('4'));
+                a.handle_key(ch('5'));
                 a.handle_key(ch('s'));
                 for _ in 0..5 {
                     a.handle_key(ch('j'));
@@ -444,7 +444,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
                 let (mut a, _) = App::new(Some(session()), "x");
                 a.browse_from = Some(std::env::temp_dir());
                 a.env.download_dir = None;
-                a.handle_key(ch('4'));
+                a.handle_key(ch('5'));
                 a.handle_key(ch('s'));
                 a.handle_key(ch('j'));
                 a.handle_key(ch('j'));
@@ -464,7 +464,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
                         query: "家族👨\u{200d}👩\u{200d}👧 🇯🇵 1️⃣".into(),
                     },
                 ]);
-                a.handle_key(ch('5'));
+                a.handle_key(ch('1'));
                 for (i, c) in a.columns.items.clone().iter().enumerate() {
                     let (id, generation) = (c.id, c.generation);
                     let result = if i == 1 {
@@ -486,7 +486,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "chat",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('6'));
+                a.handle_key(ch('2'));
                 let convo: crate::api::types::Convo = serde_json::from_value(json!({
                     "id": "c", "rev": "r",
                     "members": [{"did": "did:plc:me", "handle": "me.test"},
@@ -507,7 +507,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "chat open",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('6'));
+                a.handle_key(ch('2'));
                 let convo: crate::api::types::Convo = serde_json::from_value(json!({
                     "id": "c", "rev": "r",
                     "members": [{"did": "did:plc:a", "handle": "alice.test", "displayName": "👨‍👩‍👧‍👦 家族 🇯🇵"}],
@@ -542,7 +542,7 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
             "add column",
             Box::new(move || {
                 let (mut a, _) = App::new(Some(session()), "x");
-                a.handle_key(ch('5'));
+                a.handle_key(ch('1'));
                 a.handle_key(ch('+'));
                 a
             }),

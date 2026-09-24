@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- The Columns tab is gone: `+` on the Timeline tab adds a column beside the timeline, which becomes a column of its own, and the Timeline tab shows them side by side from then on. `x` removes a column; with none left the timeline is shown alone again. Columns kept from 0.4 or 0.5 are shown on the Timeline tab.
+- The tabs are Timeline, Chat, Search, Notifications and Profile, on `1` to `5`: Chat is next to the Timeline.
+
+### Fixed
+
+- The Chat tab and `bsky chat` failed with "MethodNotImplemented" for an account logged in through bsky.social: the chat calls went to the entryway, which does not pass them on. They go to the account's own PDS, named by its DID document.
+- A post in a thread showed twice in a row on the timeline: once above the reply to it, and again as the next post. It is shown once, above the reply.
+
 ## [0.5.0] - 2026-09-24
 
 ### Added

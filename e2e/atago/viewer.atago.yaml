@@ -611,7 +611,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "Read this article"
-            - send: "4"
+            - send: "5"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -755,7 +755,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "One photo"
-            - send: "4"
+            - send: "5"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s

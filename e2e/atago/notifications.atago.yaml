@@ -93,7 +93,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "4"
             - expect_screen:
                 contains:
                   - "● Ann @ann.test replied to you"
@@ -106,7 +106,7 @@ scenarios:
                 not_contains: ["● Cat", "unexpected response"]
             # Once seen, the tab stops counting them.
             - expect_screen:
-                contains: "3 Notifications "
+                contains: "4 Notifications "
                 not_contains: "Notifications (2)"
                 stable_for: 300ms
             - send: q
@@ -156,7 +156,7 @@ scenarios:
           session:
             # The unread count is on the tab without opening it.
             - expect_screen:
-                contains: ["No posts from accounts you follow yet", "3 Notifications (2)"]
+                contains: ["No posts from accounts you follow yet", "4 Notifications (2)"]
                 stable_for: 300ms
             - send: q
       - assert:
@@ -196,7 +196,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "4"
             - expect_screen:
                 contains: "Ann answers your post"
             - send: r
@@ -255,7 +255,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "4"
             - expect_screen:
                 contains: "listNotifications failed: InternalServerError: try later  (R to retry)"
                 not_contains: "No notifications yet."
@@ -300,7 +300,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "4"
             - expect_screen:
                 contains: "Cat @cat.test followed you"
             # One notification, so the first move is already near the end.

@@ -107,7 +107,8 @@ impl App {
         self.account_since = self.sent + 1;
         self.session = Some(session);
         self.load_columns();
-        let jobs = self.startup_jobs();
+        let mut jobs = self.startup_jobs();
+        jobs.extend(self.settle_timeline());
         self.pending += jobs.len();
         jobs
     }

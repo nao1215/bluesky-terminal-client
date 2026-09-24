@@ -47,7 +47,7 @@ pub struct Settings {
     /// The program that opens links; `BSKY_BROWSER` wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
-    /// The columns of the Columns tab, by the DID of the account they are
+    /// The columns of the Timeline tab, by the DID of the account they are
     /// for.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub columns: std::collections::BTreeMap<String, Vec<ColumnSource>>,

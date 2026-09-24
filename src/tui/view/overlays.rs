@@ -196,7 +196,7 @@ pub(super) fn draw_settings(
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-/// The list `+` opens on the Columns tab, or the search being typed for a
+/// The list `+` opens on the Timeline tab, or the search being typed for a
 /// search column.
 pub(super) fn draw_add_column(
     frame: &mut Frame,

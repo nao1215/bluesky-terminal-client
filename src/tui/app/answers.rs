@@ -53,6 +53,13 @@ impl App {
         self.answering = seq;
         let jobs = self.event(event);
         self.answering = None;
+        self.timeline.drop_shown_above();
+        for f in &mut self.feeds {
+            f.list.drop_shown_above();
+        }
+        for l in self.columns.post_lists() {
+            l.drop_shown_above();
+        }
         if let Some(w) = written
             && !self.reads_out.is_empty()
         {
@@ -482,10 +489,12 @@ impl App {
                 self.session = Some(session);
                 self.login = None;
                 self.session_since = self.sent + 1;
+                let mut jobs = self.startup_jobs();
                 if other {
                     self.load_columns();
+                    jobs.extend(self.settle_timeline());
                 }
-                return self.startup_jobs();
+                return jobs;
             }
             Event::LoggedIn(Err(e)) => {
                 if let Some(form) = &mut self.login {

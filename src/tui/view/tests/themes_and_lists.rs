@@ -245,7 +245,7 @@ fn notifications_say_who_did_what_and_mark_the_unread() {
         ..List::default()
     };
     let screen = render(&mut app, 100, 24);
-    assert!(screen.contains("3 Notifications (1)"), "{screen}");
+    assert!(screen.contains("4 Notifications (1)"), "{screen}");
     assert!(
         screen.contains("● Eve @like.test liked your post"),
         "{screen}"

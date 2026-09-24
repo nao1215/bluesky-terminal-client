@@ -300,7 +300,7 @@ fn the_actions_list_offers_nothing_its_key_refuses() {
         .map(|(k, _)| *k)
         .collect();
     assert!(!keys.contains(&"f"), "{keys:?}");
-    app.handle_key(key('4'));
+    app.handle_key(key('5'));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({"did": "did:plc:me", "handle": "me.test"})).unwrap(),
         Vec::new().into(),

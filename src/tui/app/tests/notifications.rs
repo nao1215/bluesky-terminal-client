@@ -10,7 +10,7 @@ fn notifications_load_once_and_are_marked_seen() {
     assert!(app.notifications.items[0].fresh);
     // Coming back does not fetch again; R does.
     app.handle_key(key('1'));
-    assert!(app.handle_key(key('3')).is_empty());
+    assert!(app.handle_key(key('4')).is_empty());
     assert!(matches!(
         &app.handle_key(key('R'))[..],
         [Job::Notifications]
@@ -20,7 +20,7 @@ fn notifications_load_once_and_are_marked_seen() {
 #[test]
 fn nothing_unread_sends_no_update_seen() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('4'));
     let jobs = app.handle_event(Event::Notifications {
         seen_at: "t".into(),
         result: Ok(vec![notif("follow", "at://f", true, None, None)].into()),

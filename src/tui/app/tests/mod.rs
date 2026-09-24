@@ -101,7 +101,7 @@ fn feed_uri(name: &str) -> String {
     format!("at://did:plc:f/app.bsky.feed.generator/{name}")
 }
 
-/// On the Columns tab with the columns of `sources`, each answered with
+/// On the Timeline tab with the columns of `sources`, each answered with
 /// `posts` (notifications columns with none).
 fn columns_with(sources: &[columns::Source], posts: Vec<Post>) -> App {
     let mut app = logged_in();
@@ -110,7 +110,7 @@ fn columns_with(sources: &[columns::Source], posts: Vec<Post>) -> App {
         .columns
         .insert("did:plc:me".into(), sources.to_vec());
     app.apply_settings(settings, ColorDepth::TrueColor, None);
-    let jobs = app.handle_key(key('5'));
+    let jobs = app.handle_key(key('1'));
     assert_eq!(jobs.len(), sources.len(), "{jobs:?}");
     for job in jobs {
         let Job::Column {
@@ -162,7 +162,7 @@ fn a_message(id: &str, text: &str) -> ChatMessage {
 /// On the Chat tab with conversations `a` (2 unread) and `b` (none).
 fn chat_tab() -> App {
     let mut app = logged_in();
-    let jobs = app.handle_key(key('6'));
+    let jobs = app.handle_key(key('2'));
     assert!(
         matches!(&jobs[..], [Job::Convos { cursor: None }]),
         "{jobs:?}"
@@ -198,7 +198,7 @@ fn expire(app: &mut App) {
 
 /// The settings screen, on the row named `name`.
 fn settings_on(app: &mut App, name: &str) {
-    app.handle_key(key('4'));
+    app.handle_key(key('5'));
     app.handle_key(key('s'));
     let at = app
         .settings_rows()
@@ -285,7 +285,7 @@ fn notif(
 fn notifications_tab() -> App {
     let mut app = logged_in();
     // Loading since the start: arriving asks for nothing more.
-    assert!(app.handle_key(key('3')).is_empty());
+    assert!(app.handle_key(key('4')).is_empty());
     let reply = post("at://reply/1", "did:plc:reply", false);
     let mine = post("at://me/post", "did:plc:me", false);
     let jobs = app.handle_event(Event::Notifications {

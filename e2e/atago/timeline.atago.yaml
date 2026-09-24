@@ -100,7 +100,7 @@ scenarios:
                   - "Eve is not followed"
             # The tabs start the top row; no name of the app before them.
             - expect_screen:
-                matches: '^ 1 Timeline  +2 Search'
+                matches: '^ 1 Timeline  +2 Chat'
             - expect_screen:
                 images: { count: 3 }
                 stable_for: 300ms
@@ -749,6 +749,10 @@ scenarios:
           session:
             - expect_screen:
                 contains: "Photo from the mountains"
+            # Chat is next to the Timeline.
+            - send: { key: tab }
+            - expect_screen:
+                contains: "No conversations yet"
             - send: { key: tab }
             # The box takes the cursor, and tab leaves it rather than typing.
             - expect_screen:
@@ -761,27 +765,21 @@ scenarios:
                 contains: ["@me.test", "1 followers  2 following  3 posts"]
             - send: { key: tab }
             - expect_screen:
-                contains: "No columns yet"
-            - send: { key: tab }
-            - expect_screen:
-                contains: "No conversations yet"
-            - send: { key: tab }
-            - expect_screen:
                 contains: "Photo from the mountains"
-                not_contains: "No conversations yet"
-            # Shift+tab goes the other way, wrapping to the Chat tab.
-            - send: { key: shift-tab }
-            - expect_screen:
-                contains: "No conversations yet"
-            - send: { key: shift-tab }
-            - expect_screen:
-                contains: "No columns yet"
+                not_contains: "1 followers"
+            # Shift+tab goes the other way, wrapping to the Profile tab.
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "1 followers  2 following  3 posts"
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "No notifications yet."
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "search:"
+            - send: { key: shift-tab }
+            - expect_screen:
+                contains: "No conversations yet"
             - send: q
       - assert:
           exit_code: 0
@@ -2702,7 +2700,7 @@ scenarios:
                 contains: ["Mine, to be deleted", "Carol's post"]
             - send: j
             - send: j
-            - send: "4"
+            - send: "5"
             - expect_screen:
                 contains: ["Mine, to be deleted", "this is you"]
             - send: D
@@ -2728,3 +2726,53 @@ scenarios:
             count: 1
             body:
               json: { path: "$.record.subject.uri", equals: "at://did:plc:bob/app.bsky.feed.post/b3" }
+
+  # A thread someone posts in parts: the second part comes with the first
+  # above it, and the first, also in the timeline, is not shown again below.
+  - name: a post shown above its reply is not shown a second time
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:t/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:t, handle: trending.test, displayName: Trending, viewer: { following: at://did:plc:me/app.bsky.graph.follow/t } }
+                    record:
+                      text: "Second part (2/2)"
+                      createdAt: "2026-09-20T10:01:00.000Z"
+                      reply: { root: { uri: at://did:plc:t/app.bsky.feed.post/p1, cid: cid-p1 }, parent: { uri: at://did:plc:t/app.bsky.feed.post/p1, cid: cid-p1 } }
+                  reply:
+                    root: { $type: app.bsky.feed.defs#postView, uri: at://did:plc:t/app.bsky.feed.post/p1, cid: cid-p1, author: { did: did:plc:t, handle: trending.test, displayName: Trending }, record: { text: "First part 🚀 (1/2)", createdAt: "2026-09-20T10:00:00.000Z" } }
+                    parent: { $type: app.bsky.feed.defs#postView, uri: at://did:plc:t/app.bsky.feed.post/p1, cid: cid-p1, author: { did: did:plc:t, handle: trending.test, displayName: Trending }, record: { text: "First part 🚀 (1/2)", createdAt: "2026-09-20T10:00:00.000Z" } }
+                - post:
+                    uri: at://did:plc:t/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:t, handle: trending.test, displayName: Trending, viewer: { following: at://did:plc:me/app.bsky.graph.follow/t } }
+                    record: { text: "First part 🚀 (1/2)", createdAt: "2026-09-20T10:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:o/app.bsky.feed.post/o1
+                    cid: cid-o1
+                    author: { did: did:plc:o, handle: other.test, viewer: { following: at://did:plc:me/app.bsky.graph.follow/o } }
+                    record: { text: "Someone else", createdAt: "2026-09-20T09:00:00.000Z" }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Second part (2/2)", "Someone else"]
+            - expect_screen:
+                matches: "First part 🚀 \\(1/2\\)"
+                count: 1
+            - send: q
+      - assert:
+          exit_code: 0

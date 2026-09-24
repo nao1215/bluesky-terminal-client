@@ -271,8 +271,10 @@ pub struct Client {
     service: String,
     session: Arc<Mutex<Session>>,
     store: Option<SessionStore>,
-    /// `did:web` of the PDS the account lives on, once looked up.
-    pds_did: Arc<Mutex<Option<String>>>,
+    /// The PDS the account lives on (from its DID document), once looked
+    /// up: the entryway logged in through answers the chat calls with
+    /// MethodNotImplemented, so they go there.
+    pds: Arc<Mutex<Option<String>>>,
     /// The service the PDS passes the requests on to (`atproto-proxy`):
     /// set for the chat calls only.
     proxy: Option<&'static str>,
@@ -399,7 +401,7 @@ impl Client {
             service: session.service.clone(),
             session: Arc::new(Mutex::new(session)),
             store,
-            pds_did: Arc::default(),
+            pds: Arc::default(),
             proxy: None,
         }
     }
@@ -423,21 +425,36 @@ impl Client {
     /// names the host the account really lives on (not the entryway it
     /// logged in through), else the service logged in to.
     fn pds_did(&self) -> String {
-        if let Some(d) = self
-            .pds_did
+        did_web(&self.pds())
+    }
+
+    /// The URL of the account's PDS: from its DID document, which names the
+    /// host the account really lives on (not the entryway it logged in
+    /// through), else the service logged in to. Looked up once.
+    fn pds(&self) -> String {
+        if let Some(p) = self
+            .pds
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
         {
-            return d;
+            return p;
         }
-        let endpoint = self
-            .get::<Value>("com.atproto.server.getSession", &[])
-            .ok()
-            .and_then(|s| s.get("didDoc").and_then(pds_endpoint));
-        let did = did_web(endpoint.as_deref().unwrap_or(&self.service));
-        *self.pds_did.lock().unwrap_or_else(PoisonError::into_inner) = Some(did.clone());
-        did
+        let answer = Client {
+            proxy: None,
+            ..self.clone()
+        }
+        .get::<Value>("com.atproto.server.getSession", &[]);
+        // Not known when the question failed: asked again next time.
+        let Ok(session) = answer else {
+            return self.service.clone();
+        };
+        let pds = session
+            .get("didDoc")
+            .and_then(pds_endpoint)
+            .unwrap_or_else(|| self.service.clone());
+        *self.pds.lock().unwrap_or_else(PoisonError::into_inner) = Some(pds.clone());
+        pds
     }
 
     /// Whether the video service will take a video of `len` bytes now.
@@ -572,7 +589,12 @@ impl Client {
         payload: &Payload<'_>,
         token: &str,
     ) -> Result<ureq::http::Response<ureq::Body>> {
-        let url = xrpc_url(&self.service, nsid);
+        // A call passed on to another service goes to the account's own PDS,
+        // which passes it on; an entryway does not.
+        let url = match self.proxy {
+            Some(_) => xrpc_url(&self.pds(), nsid),
+            None => xrpc_url(&self.service, nsid),
+        };
         let auth = format!("Bearer {token}");
         let result = match payload {
             Payload::None => {

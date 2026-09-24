@@ -41,12 +41,12 @@ Other terminals get text, and `Space` opens a post in the browser. Photos are po
 | ![a thread](doc/img/thread.png) | ![accounts found for a search](doc/img/search.png) |
 | `.`: actions | `e`: edit your profile |
 | ![the list of what the keys do to a post](doc/img/actions.png) | ![the profile editor](doc/img/editor.png) |
-| `6`: chat | `A`: accounts |
+| `2`: chat | `A`: accounts |
 | ![a conversation](doc/img/chat.png) | ![the account list](doc/img/accounts.png) |
 | `s`: settings | text only |
 | ![the settings screen](doc/img/settings.png) | ![the timeline without pictures](doc/img/text.png) |
 
-`5`: columns
+`+` on the timeline: columns beside it
 
 ![the timeline, a feed and notifications side by side](doc/img/columns.png)
 
@@ -63,7 +63,8 @@ Chat, accounts and columns show made-up data from [doc/demo-server.py](doc/demo-
 
 | Key | Action |
 |---|---|
-| `1`–`6` | Timeline, Search, Notifications, Profile, Columns, Chat |
+| `1`–`5` | Timeline, Chat, Search, Notifications, Profile |
+| `+` `x` | Add a column beside the timeline, remove one |
 | `j` `k` | Move |
 | `n` `r` `Q` | Post, reply, quote |
 | `l` `b` `f` | Like, repost, follow |

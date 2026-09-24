@@ -1,12 +1,12 @@
-# The Columns tab: lists side by side, each acting as its list does on its
-# own tab, kept per account in settings.json.
+# Columns on the Timeline tab: + puts lists beside the timeline, each acting
+# as its list does on its own tab, kept per account in settings.json.
 version: "1"
 
 suite:
   name: bsky columns
 
 scenarios:
-  - name: columns are added, a like in one shows everywhere, and they are back on the next start
+  - name: columns are added beside the timeline, a like in one shows everywhere, and they are back on the next start
     mock_servers:
       - name: api
         routes:
@@ -65,23 +65,17 @@ scenarios:
           session:
             - expect_screen:
                 contains: "Alice on the timeline"
-            - send: "5"
-            - expect_screen:
-                contains: ["5 Columns", "No columns yet. Press + to add one", "+ add a column"]
-            # Following, the first in the list.
+                not_contains: "Columns"
+            # + on the timeline: notifications beside it, and the timeline a
+            # column of its own. The tab is still the Timeline tab.
             - send: +
             - expect_screen:
                 contains: ["Add a column", "▶ Following", "Notifications", "Your posts (@me.test)", "Search…"]
-            - send: { key: enter }
-            - expect_screen:
-                contains: [" Following", "Alice on the timeline"]
-                not_contains: "Add a column"
-            # Notifications.
-            - send: +
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: [" Notifications", "@bob.test followed you"]
+                contains: [" Following", "Alice on the timeline", " Notifications", "@bob.test followed you", "1 Timeline"]
+                not_contains: "Add a column"
             # A search, typed.
             - send: +
             - send: k
@@ -134,9 +128,7 @@ scenarios:
           env: *env
           timeout: 20s
           session:
-            - expect_screen:
-                contains: "Alice on the timeline"
-            - send: "5"
+            # The columns are what the Timeline tab shows from the start.
             - expect_screen:
                 contains: [" Following", " Notifications", " Search: 猫🐈‍⬛", "@bob.test followed you"]
             # x asks; y removes the focused column, the first.
@@ -147,12 +139,21 @@ scenarios:
             - expect_screen:
                 contains: "2 columns"
                 not_contains: " Following "
+            # The last ones gone, the timeline is shown alone again.
+            - send: x
+            - send: y
+            - expect_screen:
+                contains: "1 column"
+            - send: x
+            - send: y
+            - expect_screen:
+                contains: "Alice on the timeline"
+                not_contains: ["@bob.test followed you", "Search: 猫🐈‍⬛"]
             - send: q
       - assert:
           exit_code: 0
       - assert:
           file:
             path: cfg/settings.json
-            json:
-              - { path: "$.columns['did:plc:me'][0].kind", equals: "notifications" }
-              - { path: "$.columns['did:plc:me'][1].kind", equals: "search" }
+            # None kept: the next start shows the timeline alone.
+            not_contains: "did:plc:me"

@@ -417,7 +417,7 @@ scenarios:
                 contains:
                   - "1 2 3 4"
                   - "the tabs,"
-                  - "to Chat"
+                  - "order shown"
                   - "esc/q/? close"
                 stable_for: 300ms
             - send: { key: esc }

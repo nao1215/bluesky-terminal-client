@@ -121,6 +121,11 @@ fn event_loop(
     }
     app.env = env;
     app.apply_settings(loaded, depth, warning);
+    // The columns kept for the account, if any, are what the Timeline tab
+    // shows from the start.
+    for job in app.show_timeline() {
+        worker.send(app.stamp(&job), job);
+    }
     if off {
         app.pictures = false;
     } else if !images.shows() {

@@ -317,7 +317,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             }
             _ => format!(" {} {} ", i + 1, tab.title()),
         };
-        let style = if *tab == app.tab {
+        let style = if *tab == app.tab.shown_as() {
             t.selected()
         } else {
             t.dim()
