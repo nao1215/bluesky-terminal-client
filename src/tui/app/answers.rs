@@ -54,9 +54,6 @@ impl App {
         let jobs = self.event(event);
         self.answering = None;
         self.timeline.drop_shown_above();
-        for f in &mut self.feeds {
-            f.list.drop_shown_above();
-        }
         for l in self.columns.post_lists() {
             l.drop_shown_above();
         }
@@ -87,7 +84,6 @@ impl App {
         }
         let list = match event {
             Event::Timeline(_) => "timeline".to_string(),
-            Event::CustomFeed { uri, .. } => format!("feed {uri}"),
             Event::SearchPosts { .. } => "search posts".to_string(),
             Event::SearchActors { .. } => "search accounts".to_string(),
             Event::Profile(_) => "profile".to_string(),
@@ -145,11 +141,7 @@ impl App {
     /// the placeholder for a post that is not there any more, so the replies
     /// under it keep their place.
     pub(super) fn remove_post(&mut self, uri: &str) {
-        let feeds = self
-            .feeds
-            .iter_mut()
-            .map(|f| &mut f.list)
-            .chain(self.columns.post_lists());
+        let feeds = self.columns.post_lists();
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -197,11 +189,7 @@ impl App {
 
     /// Apply `f` to every copy of the post `uri` on screen.
     pub(super) fn each_post(&mut self, uri: &str, mut f: impl FnMut(&mut Post)) {
-        let feeds = self
-            .feeds
-            .iter_mut()
-            .map(|f| &mut f.list)
-            .chain(self.columns.post_lists());
+        let feeds = self.columns.post_lists();
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -245,11 +233,7 @@ impl App {
     /// every list, as the server leaves them out of the next pages. Its
     /// profile, where the change was made, and an open thread stay.
     pub(super) fn remove_posts_by(&mut self, did: &str) {
-        let feeds = self
-            .feeds
-            .iter_mut()
-            .map(|f| &mut f.list)
-            .chain(self.columns.post_lists());
+        let feeds = self.columns.post_lists();
         for list in [&mut self.timeline, &mut self.search.posts]
             .into_iter()
             .chain(feeds)
@@ -284,11 +268,7 @@ impl App {
                 f(p.viewer.get_or_insert_with(Default::default));
             }
         };
-        let feeds = self
-            .feeds
-            .iter_mut()
-            .map(|f| &mut f.list)
-            .chain(self.columns.post_lists());
+        let feeds = self.columns.post_lists();
         for list in [
             &mut self.timeline,
             &mut self.search.posts,
@@ -383,7 +363,6 @@ impl App {
         self.chat = ChatPane::default();
         self.timeline = List::default();
         self.feeds.clear();
-        self.feed = 0;
         self.search.posts = List::default();
         self.search.actors = List::default();
         self.profile = ProfilePane::default();
@@ -416,11 +395,6 @@ impl App {
         let own_did = self.profile.profile.as_ref().map(|p| p.did.clone());
         match (feed, result) {
             (Feed::Timeline, Ok(MorePage::Posts(page))) => self.timeline.append(cursor, page),
-            (Feed::Custom(uri), Ok(MorePage::Posts(page))) => {
-                if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
-                    f.list.append(cursor, page);
-                }
-            }
             (Feed::SearchPosts(q), Ok(MorePage::Posts(page))) if q == self.search.posts_query => {
                 self.search.posts.append(cursor, page)
             }
@@ -440,11 +414,8 @@ impl App {
                 match feed {
                     Feed::Notifications => self.notifications.more_pending = false,
                     Feed::Timeline => self.timeline.more_pending = false,
-                    Feed::Custom(uri) => {
-                        if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
-                            f.list.more_pending = false;
-                        }
-                    }
+                    // A feed's pages come only to its column.
+                    Feed::Custom(_) => {}
                     Feed::SearchPosts(_) => self.search.posts.more_pending = false,
                     Feed::SearchActors(_) => self.search.actors.more_pending = false,
                     Feed::Author(_) => self.profile.posts.more_pending = false,
@@ -513,32 +484,8 @@ impl App {
                 self.timeline.renew(posts);
             }
             Event::PinnedFeeds(Ok(infos)) => self.set_pinned_feeds(infos),
-            // The following timeline still works; the feeds just do not show.
+            // The timeline still works; + just offers no feeds.
             Event::PinnedFeeds(Err(_)) => {}
-            Event::CustomFeed { uri, result } => {
-                let shown = self.current_feed() == Feed::Custom(uri.clone());
-                if let Some(f) = self.feeds.iter_mut().find(|f| f.info.uri == uri) {
-                    match result {
-                        Ok(page) => {
-                            f.list.set(page);
-                            if shown
-                                && self
-                                    .status
-                                    .as_ref()
-                                    .is_some_and(|s| s.text == "refreshing…")
-                            {
-                                self.status = None;
-                            }
-                        }
-                        Err(e) => {
-                            f.list.failed(&e);
-                            if shown {
-                                self.fail(&e);
-                            }
-                        }
-                    }
-                }
-            }
             // Searches run beside each other: an answer for a query that
             // has since been replaced is dropped.
             Event::SearchPosts { query, .. } if query != self.search.posts_query => {}

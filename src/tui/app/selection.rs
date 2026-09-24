@@ -23,7 +23,7 @@ impl App {
     /// The post list of the current view, if it shows posts.
     pub fn current_posts(&mut self) -> Option<&mut List<Post>> {
         match self.tab {
-            Tab::Timeline => Some(self.feed_list()),
+            Tab::Timeline => Some(&mut self.timeline),
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&mut self.search.posts),
             Tab::Search => None,
             Tab::Profile => Some(&mut self.profile.posts),
@@ -120,7 +120,7 @@ impl App {
             return l.current().and_then(|i| i.post.as_ref());
         }
         let list = match self.tab {
-            Tab::Timeline => Some(self.shown_feed()),
+            Tab::Timeline => Some(&self.timeline),
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
             Tab::Profile => Some(&self.profile.posts),
             Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
@@ -130,30 +130,5 @@ impl App {
             _ => None,
         };
         list.and_then(List::current)
-    }
-
-    /// The list the Timeline tab shows: the following timeline, or the
-    /// pinned feed it has moved to.
-    pub(super) fn shown_feed(&self) -> &List<Post> {
-        match self.feed.checked_sub(1).and_then(|i| self.feeds.get(i)) {
-            Some(f) => &f.list,
-            None => &self.timeline,
-        }
-    }
-
-    /// The list of the feed the Timeline tab shows.
-    pub fn feed_list(&mut self) -> &mut List<Post> {
-        match self.feed.checked_sub(1).and_then(|i| self.feeds.get_mut(i)) {
-            Some(f) => &mut f.list,
-            None => &mut self.timeline,
-        }
-    }
-
-    /// The feed the Timeline tab shows, as the worker names it.
-    pub fn current_feed(&self) -> Feed {
-        match self.feed.checked_sub(1).and_then(|i| self.feeds.get(i)) {
-            Some(f) => Feed::Custom(f.info.uri.clone()),
-            None => Feed::Timeline,
-        }
     }
 }

@@ -158,8 +158,8 @@ impl App {
     pub fn column_choices(&self) -> Vec<columns::Source> {
         let mut v = vec![columns::Source::Following];
         v.extend(self.feeds.iter().map(|f| columns::Source::Feed {
-            uri: f.info.uri.clone(),
-            name: f.info.name.clone(),
+            uri: f.uri.clone(),
+            name: f.name.clone(),
         }));
         v.push(columns::Source::Notifications);
         if let Some(s) = &self.session {
@@ -215,24 +215,13 @@ impl App {
     }
 
     /// Add a column of `source`, focus it, keep it, and load it. The first
-    /// one added to the timeline comes beside the timeline or feed shown,
+    /// one added to the timeline comes beside the following timeline,
     /// which becomes a column of its own.
     pub(super) fn add_column(&mut self, source: columns::Source) -> Vec<Job> {
         self.overlay = None;
         let mut jobs = Vec::new();
         if self.columns.items.is_empty() {
-            let first = match self.current_feed() {
-                Feed::Custom(uri) => {
-                    let name = self
-                        .feeds
-                        .iter()
-                        .find(|f| f.info.uri == uri)
-                        .map(|f| f.info.name.clone())
-                        .unwrap_or_default();
-                    columns::Source::Feed { uri, name }
-                }
-                _ => columns::Source::Following,
-            };
+            let first = columns::Source::Following;
             if first != source {
                 let id = self.columns.add(first);
                 jobs.extend(self.load_column(id));

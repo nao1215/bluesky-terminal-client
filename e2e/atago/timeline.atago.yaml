@@ -185,7 +185,7 @@ scenarios:
                 - { path: "$.record.subject.cid", equals: "cid-p1" }
                 - { path: "$.record.createdAt", matches: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' }
 
-  - name: "[ and ] switch between Following and the pinned feeds, where posts can be liked"
+  - name: the pinned feeds are offered as columns in the pinned order, and posts there can be liked
     mock_servers:
       - name: api
         routes:
@@ -231,30 +231,25 @@ scenarios:
           env: *env
           timeout: 20s
           session:
-            # The bar lists Following and the pinned feeds in the pinned order.
+            # The Timeline tab shows only the accounts you follow.
             - expect_screen:
-                contains: ["Following", "Science", "Cats 🐈", "Photo from the mountains"]
-                not_contains: "comet"
-            - send: "]"
+                contains: "Photo from the mountains"
+                not_contains: ["Science", "comet"]
+            # + offers the pinned feeds in the pinned order.
+            - send: +
+            - expect_screen:
+                matches: 'Following[\s\S]*Feed: Science[\s\S]*Feed: Cats 🐈[\s\S]*Notifications'
+            - send: j
+            - send: { key: enter }
             # A custom feed shows posts by accounts you do not follow.
             - expect_screen:
-                contains: ["A new comet is visible tonight", "♡ 7"]
-                not_contains: "Photo from the mountains"
+                contains: [" Following", " Science", "Photo from the mountains", "A new comet is visible tonight", "♡ 7"]
             - send: l
             - expect_screen:
                 contains: ["♥ 8", "liked"]
-            - send: "["
-            - expect_screen:
-                contains: "Photo from the mountains"
-                not_contains: "comet"
-            # Going back round to it shows the loaded feed with the like kept.
-            - send: "]"
-            - expect_screen:
-                contains: ["A new comet is visible tonight", "♥ 8"]
             - send: q
       - assert:
           exit_code: 0
-      # The feed is loaded once, however often it is shown.
       - assert:
           mock:
             name: api
@@ -278,7 +273,7 @@ scenarios:
                 - { path: "$.record.subject.uri", equals: "at://did:plc:erin/app.bsky.feed.post/s1" }
                 - { path: "$.record.subject.cid", equals: "cid-s1" }
 
-  - name: a feed that fails to load says why, R asks again, and Following is unharmed
+  - name: a feed column that fails to load says why, R asks again, and Following is unharmed
     mock_servers:
       - name: api
         routes:
@@ -313,34 +308,34 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Science", "Photo from the mountains"]
-            - send: "]"
+                contains: "Photo from the mountains"
+            - send: +
             - expect_screen:
-                contains: "the feed is down"
-                not_contains: "Photo from the mountains"
-            # Esc closes the error box; the feed still says why it is empty.
+                contains: "Science"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["the feed is down", " Science"]
+            # Esc closes the error box; the column still says why it is empty,
+            # and the Following column beside it is whole.
             - send: { key: esc }
             - expect_screen:
-                contains: "the feed is down"
+                contains: ["the feed is down", "Photo from the mountains"]
                 stable_for: 200ms
             - send: R
             - expect_screen:
-                contains: "the feed is down"
-            - send: "["
-            - expect_screen:
-                contains: "Photo from the mountains"
-                not_contains: "the feed is down"
+                contains: ["the feed is down", "Photo from the mountains"]
             - send: q
       - assert:
           exit_code: 0
-      # One load on showing it and one on R; going back to Following loads
-      # nothing.
+      # One load on adding the column and one on R, which asks only for the
+      # focused column: the timeline once at the start and once for its column.
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getFeed, count: 2 }
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2 }
 
-  - name: with no feed pinned, Discover is offered next to Following
+  - name: with no feed pinned, Discover is offered as a column
     mock_servers:
       - name: api
         routes:
@@ -374,10 +369,15 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Following", "Discover", "Photo from the mountains"]
-            - send: "]"
+                contains: "Photo from the mountains"
+                not_contains: "Discover"
+            - send: +
             - expect_screen:
-                contains: "No posts in this feed yet"
+                contains: "Discover"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: [" Discover", "Nothing here yet."]
             - send: q
       - assert:
           exit_code: 0
@@ -656,7 +656,7 @@ scenarios:
             count: 2
             query: { name: cursor, equals: "next-page" }
 
-  - name: nearing the end of a custom feed asks for the next page once
+  - name: nearing the end of a feed column asks for the next page once
     mock_servers:
       - name: api
         routes:
@@ -699,8 +699,12 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["Following", "Science"]
-            - send: "]"
+                contains: "Photo from the mountains"
+            - send: +
+            - expect_screen:
+                contains: "Science"
+            - send: j
+            - send: { key: enter }
             - expect_screen:
                 contains: "A new comet is visible tonight"
             # One post, so the first move is already near the end. The next
@@ -719,9 +723,10 @@ scenarios:
             path: /xrpc/app.bsky.feed.getFeed
             count: 2
             query: { name: cursor, equals: "feed-page-2" }
-      # The Following timeline is not asked for again by the feed's paging.
+      # The Following timeline is asked for at the start and for its column,
+      # not again by the feed's paging.
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 2 }
 
   - name: tab moves to the next tab and shift+tab to the previous one, the search box included
     mock_servers:

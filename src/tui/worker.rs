@@ -33,8 +33,6 @@ pub enum Job {
     Timeline,
     /// The custom feeds the account pinned, with their names.
     PinnedFeeds,
-    /// The first page of the custom feed at this URI.
-    CustomFeed(String),
     SearchPosts(String),
     SearchActors(String),
     /// Load an actor's profile and recent posts.
@@ -221,11 +219,6 @@ pub enum Event {
     LoggedIn(Result<Session>),
     Timeline(Result<Page<Post>>),
     PinnedFeeds(Result<Vec<FeedInfo>>),
-    /// The first page of the custom feed `uri`.
-    CustomFeed {
-        uri: String,
-        result: Result<Page<Post>>,
-    },
     /// The first page of posts found for `query`.
     SearchPosts {
         query: String,
@@ -350,7 +343,6 @@ impl Job {
             self,
             Job::Timeline
                 | Job::PinnedFeeds
-                | Job::CustomFeed(_)
                 | Job::SearchPosts(_)
                 | Job::SearchActors(_)
                 | Job::OpenProfile(_)
@@ -514,10 +506,6 @@ impl State {
             } => Event::LoggedIn(self.login(&service, &identifier, &password)),
             Job::Timeline => Event::Timeline(self.timeline(None)),
             Job::PinnedFeeds => Event::PinnedFeeds(self.client().and_then(|c| c.pinned_feeds())),
-            Job::CustomFeed(uri) => Event::CustomFeed {
-                result: self.custom_feed(&uri, None),
-                uri,
-            },
             Job::SearchPosts(query) => Event::SearchPosts {
                 result: self.search_posts(&query, None),
                 query,

@@ -596,12 +596,6 @@ impl App {
             KeyCode::Char('o') => return self.open_link(true),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
-            KeyCode::Char('[') if self.tab == Tab::Timeline && self.threads.is_empty() => {
-                return self.switch_feed(-1);
-            }
-            KeyCode::Char(']') if self.tab == Tab::Timeline && self.threads.is_empty() => {
-                return self.switch_feed(1);
-            }
             _ => {}
         }
         Vec::new()
@@ -654,10 +648,8 @@ impl App {
                     .map(|c| (Feed::SearchPosts(self.search.posts_query.clone()), c))
             }
             Tab::Timeline => {
-                let feed = self.current_feed();
-                let list = self.feed_list();
-                list.step(delta);
-                list.want_more().map(|c| (feed, c))
+                self.timeline.step(delta);
+                self.timeline.want_more().map(|c| (Feed::Timeline, c))
             }
             Tab::Notifications => {
                 self.notifications.step(delta);

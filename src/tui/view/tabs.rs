@@ -261,8 +261,8 @@ pub(super) fn draw_columns(
     }
 }
 
-/// The Timeline tab: the following timeline or a pinned feed, with a row
-/// naming them all when there are feeds to choose from.
+/// The Timeline tab without columns: the following timeline. The pinned
+/// feeds are shown in columns, added with `+`.
 pub(super) fn draw_timeline(
     frame: &mut Frame,
     body: Rect,
@@ -270,55 +270,15 @@ pub(super) fn draw_timeline(
     images: &mut Images,
     t: &Theme,
 ) {
-    let area = if app.feeds.is_empty() {
-        body
-    } else {
-        let [bar, rest] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(body);
-        let names: Vec<&str> = std::iter::once("Following")
-            .chain(app.feeds.iter().map(|f| f.info.name.as_str()))
-            .collect();
-        frame.render_widget(feed_bar(&names, app.feed, usize::from(bar.width), t), bar);
-        rest
-    };
-    let empty = if app.feed == 0 {
-        "No posts from accounts you follow yet. Press R to refresh."
-    } else {
-        "No posts in this feed yet. Press R to refresh."
-    };
-    draw_posts(frame, area, app.feed_list(), images, empty, None, t);
-}
-
-/// The feeds to choose from, the shown one highlighted, with `[ ] feeds`
-/// at the end. When they do not all fit, the row starts as far left as it
-/// can with the shown one in sight, and an ellipsis marks each side where
-/// feeds are left out.
-pub(super) fn feed_bar(names: &[&str], shown: usize, width: usize, t: &Theme) -> Line<'static> {
-    const HINT: &str = "  [ ] feeds";
-    let room = width.saturating_sub(HINT.width() + 4);
-    // A name is cut to fit what room there is, so the shown one always does.
-    let max = room.saturating_sub(3).clamp(4, 24);
-    let labels: Vec<String> = names.iter().map(|n| truncate(n, max)).collect();
-    // " name " and the space after it.
-    let cost = |i: usize| labels[i].width() + 3;
-    let span = |from: usize, to: usize| (from..=to).map(cost).sum::<usize>();
-    let from = (0..=shown)
-        .find(|&f| span(f, shown) <= room)
-        .unwrap_or(shown);
-    let mut to = shown;
-    while to + 1 < labels.len() && span(from, to + 1) <= room {
-        to += 1;
-    }
-    let mut spans = vec![Span::raw(if from > 0 { "…" } else { " " })];
-    for (i, label) in labels.iter().enumerate().take(to + 1).skip(from) {
-        let style = if i == shown { t.selected() } else { t.dim() };
-        spans.push(Span::styled(format!(" {label} "), style));
-        spans.push(Span::raw(" "));
-    }
-    if to + 1 < labels.len() {
-        spans.push(Span::raw("…"));
-    }
-    spans.push(Span::styled(HINT, t.dim()));
-    truncate_line(Line::from(spans), width)
+    draw_posts(
+        frame,
+        body,
+        &mut app.timeline,
+        images,
+        "No posts from accounts you follow yet. Press R to refresh.",
+        None,
+        t,
+    );
 }
 
 /// A thread over the current tab: a title row, then the posts, the opened

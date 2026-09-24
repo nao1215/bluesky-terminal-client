@@ -346,13 +346,6 @@ pub struct Search {
     pub actors_query: String,
 }
 
-/// A pinned custom feed and what has been loaded of it.
-#[derive(Debug, Clone, Default)]
-pub struct CustomFeed {
-    pub info: crate::api::types::FeedInfo,
-    pub list: List<Post>,
-}
-
 /// State of the profile tab.
 #[derive(Debug, Clone, Default)]
 pub struct ProfilePane {
@@ -634,13 +627,10 @@ pub struct App {
     pub session: Option<Session>,
     pub login: Option<LoginForm>,
     pub tab: Tab,
-    /// The following timeline: the first feed on the Timeline tab.
+    /// The following timeline: what the Timeline tab shows without columns.
     pub timeline: List<Post>,
-    /// The custom feeds the account pinned, after the following timeline.
-    pub feeds: Vec<CustomFeed>,
-    /// Which feed the Timeline tab shows: 0 is the following timeline,
-    /// `n` is `feeds[n - 1]`.
-    pub feed: usize,
+    /// The custom feeds the account pinned, which `+` offers as columns.
+    pub feeds: Vec<crate::api::types::FeedInfo>,
     pub search: Search,
     pub profile: ProfilePane,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
@@ -834,7 +824,6 @@ impl App {
             tab: Tab::Timeline,
             timeline: List::default(),
             feeds: Vec::new(),
-            feed: 0,
             search: Search {
                 input: TextInput::single(""),
                 editing: false,
@@ -1066,9 +1055,6 @@ impl App {
             self.timeline.loading,
             self.timeline.more_pending,
         );
-        for f in &self.feeds {
-            list("feed", f.list.loading, f.list.more_pending);
-        }
         list(
             "search posts",
             self.search.posts.loading,

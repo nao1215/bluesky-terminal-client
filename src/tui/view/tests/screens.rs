@@ -168,58 +168,20 @@ fn emoji_in_names_and_text_are_never_cut_apart() {
     }
 }
 
+/// The Timeline tab names no feeds: the pinned ones are columns to add.
 #[test]
-fn the_feed_bar_names_the_feeds_and_keeps_the_shown_one_in_sight() {
-    let names = [
-        "Discover",
-        "Science 🔬",
-        "日本語👨\u{200d}👩\u{200d}👧\u{200d}👦フィード",
-        "Cats",
-        "A feed with a very long name that goes on",
-    ];
+fn the_timeline_tab_has_no_row_of_feeds() {
     let (mut app, _) = App::new(Some(session()), "x");
-    app.handle_event(Event::Timeline(Ok(posts(3).into())));
-    app.handle_event(Event::PinnedFeeds(Ok(names
-        .iter()
-        .map(|n| crate::api::types::FeedInfo {
-            uri: format!("at://f/{n}"),
-            name: n.to_string(),
-        })
-        .collect())));
-    let rows = cells(&mut app, 100, 12);
-    let bar = rows[1].concat();
-    assert!(
-        bar.starts_with("  Following   Discover   Science 🔬 "),
-        "{bar:?}"
-    );
-    assert!(bar.trim_end().ends_with("…  [ ] feeds"), "{bar:?}");
-    let screen = render(&mut app, 100, 12);
+    app.handle_event(Event::PinnedFeeds(Ok(vec![crate::api::types::FeedInfo {
+        uri: "at://did:plc:f/app.bsky.feed.generator/cats".into(),
+        name: "Cats 🐈".into(),
+    }])));
+    app.handle_event(Event::Timeline(Ok(posts(2).into())));
+    let screen = render(&mut app, 100, 20);
+    assert!(!screen.contains("Following"), "{screen}");
+    assert!(!screen.contains("Cats"), "{screen}");
+    assert!(!screen.contains("[ ]"), "{screen}");
     assert!(screen.contains("post number 0"), "{screen}");
-    // The last feed shown on a narrow screen: still in sight.
-    for _ in 0..5 {
-        app.handle_key(crossterm::event::KeyEvent::from(
-            crossterm::event::KeyCode::Char(']'),
-        ));
-    }
-    for width in [30u16, 40, 60, 100] {
-        let rows = cells(&mut app, width, 12);
-        let bar: String = rows[1].concat();
-        assert!(bar.contains("A feed with"), "{width}: {bar:?}");
-        assert!(bar.contains("[ ] feeds"), "{width}: {bar:?}");
-        for row in &rows {
-            for c in row {
-                assert!(!is_fragment(c), "{width}: a cut cluster {c:?} in {row:?}");
-            }
-        }
-    }
-    // Until it has loaded, the feed says so; empty, it says that.
-    assert!(render(&mut app, 100, 12).contains("loading…"));
-    app.handle_event(Event::CustomFeed {
-        uri: format!("at://f/{}", names[4]),
-        result: Ok(Vec::new().into()),
-    });
-    let screen = render(&mut app, 100, 12);
-    assert!(screen.contains("No posts in this feed yet"), "{screen}");
 }
 
 #[test]

@@ -1,98 +1,27 @@
 use super::*;
 
-/// The Timeline tab shows the following timeline first, then each
-/// pinned feed; [ and ] go through them, round, and a feed is loaded the
-/// first time it is shown.
+/// The Timeline tab shows the following timeline alone: [ and ] do
+/// nothing, and the pinned feeds are what + offers, as columns.
 #[test]
-fn brackets_go_through_the_pinned_feeds_and_load_each_once() {
+fn the_pinned_feeds_are_offered_as_columns_not_switched_to() {
     let mut app = logged_in();
-    assert!(app.handle_key(key(']')).is_empty(), "no feeds pinned yet");
     app.handle_event(Event::PinnedFeeds(Ok(vec![
         feed_info("discover"),
-        feed_info("science"),
+        feed_info("science 🔬"),
     ])));
-    let jobs = app.handle_key(key(']'));
-    assert!(
-        matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("discover")),
-        "{jobs:?}"
-    );
-    assert_eq!(app.current_feed(), Feed::Custom(feed_uri("discover")));
-    // Pressed again while it loads: not asked twice.
-    app.handle_key(key('['));
     assert!(app.handle_key(key(']')).is_empty());
-    app.handle_event(Event::CustomFeed {
-        uri: feed_uri("discover"),
-        result: Ok(vec![post("at://x/p/9", "did:plc:x", false)].into()),
-    });
-    // Posts of a feed are acted on like any other.
-    let jobs = app.handle_key(key('l'));
-    assert!(matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://x/p/9"));
-    let jobs = app.handle_key(key(']'));
-    assert!(matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("science")));
-    // Round to the following timeline, which is already there.
-    assert!(app.handle_key(key(']')).is_empty());
-    assert_eq!(app.current_feed(), Feed::Timeline);
-    assert_eq!(app.current_posts().unwrap().items.len(), 2);
-    // The like's answer arrives while another feed is shown.
-    app.handle_event(Event::Liked {
-        post_uri: "at://x/p/9".into(),
-        result: Ok("at://did:plc:me/app.bsky.feed.like/9".into()),
-    });
-    // Back to Discover: loaded, so nothing is asked; the like shows.
     assert!(app.handle_key(key('[')).is_empty());
-    assert!(app.handle_key(key('[')).is_empty());
-    let p = app.current_posts().unwrap().current().unwrap();
-    assert!(p.like_uri().is_some());
-    // R reloads the feed shown.
-    let jobs = app.handle_key(key('R'));
-    assert!(matches!(&jobs[..], [Job::CustomFeed(u)] if *u == feed_uri("discover")));
-}
-
-/// A page of a feed goes to that feed whatever is shown when it
-/// arrives, and an answer for a feed no longer pinned is dropped.
-#[test]
-fn feed_pages_land_in_their_own_feed() {
-    let mut app = logged_in();
-    app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("discover")])));
-    app.handle_key(key(']'));
-    let posts: Vec<Post> = (0..MORE_AHEAD + 1)
-        .map(|i| post(&format!("at://x/p/{i}"), "did:plc:x", false))
-        .collect();
-    app.handle_event(Event::CustomFeed {
-        uri: feed_uri("discover"),
-        result: Ok(page(posts, Some("d1"))),
-    });
-    let mut asked = Vec::new();
-    for _ in 0..3 {
-        asked.extend(app.handle_key(key('j')));
+    assert_eq!(app.tab, Tab::Timeline);
+    assert_eq!(app.timeline.current().unwrap().uri, "at://a/p/1");
+    let choices = app.column_choices();
+    for name in ["discover", "science 🔬"] {
+        assert!(
+            choices
+                .iter()
+                .any(|c| matches!(c, columns::Source::Feed { name: n, .. } if n == name)),
+            "{choices:?}"
+        );
     }
-    assert!(
-        matches!(&asked[..], [Job::More { feed: Feed::Custom(u), cursor }] if *u == feed_uri("discover") && cursor == "d1"),
-        "{asked:?}"
-    );
-    // The reader goes back to the following timeline before it arrives.
-    app.handle_key(key('['));
-    app.handle_event(Event::More {
-        feed: Feed::Custom(feed_uri("discover")),
-        cursor: "d1".into(),
-        result: Ok(MorePage::Posts(
-            vec![post("at://x/p/next", "did:plc:x", false)].into(),
-        )),
-    });
-    assert_eq!(
-        app.timeline.items.len(),
-        2,
-        "the following timeline is untouched"
-    );
-    assert_eq!(app.feeds[0].list.items.len(), MORE_AHEAD + 2);
-    // Unpinned meanwhile: its late answer goes nowhere.
-    app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("science")])));
-    app.handle_event(Event::CustomFeed {
-        uri: feed_uri("discover"),
-        result: Ok(vec![post("at://x/p/late", "did:plc:x", false)].into()),
-    });
-    assert!(app.feeds.iter().all(|f| f.list.items.is_empty()));
-    assert_eq!(app.current_feed(), Feed::Timeline);
 }
 
 /// The actions list is a way to reach the keys of a post without
