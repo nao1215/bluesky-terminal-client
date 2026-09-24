@@ -382,7 +382,10 @@ impl<'a> Pacer<'a> {
         let due = match (pts, self.clock) {
             (Some(p), Some((at, first))) => {
                 let due = at + Duration::from_secs_f64(p.saturating_sub(first) as f64 / 90_000.0);
-                if now > due + Duration::from_secs(1) {
+                // Far behind (a stall) or far ahead (the times jumped, as at
+                // a discontinuity): the clock starts again at this picture,
+                // rather than skip all that follows or wait for the jump.
+                if now > due + Duration::from_secs(1) || due > now + Duration::from_secs(1) {
                     self.clock = Some((now, p));
                     now
                 } else {
@@ -508,6 +511,30 @@ mod tests {
         drop(tx);
         let frames = rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count();
         (result, frames)
+    }
+
+    // Times that jump far ahead (the next part of a stream starting at
+    // another clock) play on at once; they do not wait out the jump.
+    #[test]
+    fn a_jump_ahead_in_the_times_does_not_stop_the_video() {
+        let played = thread::spawn(|| {
+            let (tx, _rx) = channel();
+            let size = Mutex::new((20, 10));
+            let picker = Picker::halfblocks();
+            let mut pacer = Pacer::new(&picker, &size, &tx);
+            let pic = || Some(RgbImage::from_pixel(8, 8, image::Rgb([1, 2, 3])));
+            pacer.show(pic(), Some(0)).unwrap();
+            pacer.show(pic(), Some(3600 * 90_000)).unwrap();
+        });
+        let started = Instant::now();
+        while !played.is_finished() && started.elapsed() < Duration::from_secs(3) {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            played.is_finished(),
+            "still waiting after {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
