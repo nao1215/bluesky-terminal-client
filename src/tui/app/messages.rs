@@ -211,7 +211,7 @@ impl App {
                 }
                 match cursor {
                     None => self.chat.convos.failed(&e),
-                    Some(_) => self.chat.convos.more_pending = false,
+                    Some(at) => self.chat.convos.more_failed(&at),
                 }
                 self.fail(&e);
             }

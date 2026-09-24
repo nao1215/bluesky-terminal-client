@@ -281,6 +281,15 @@ impl<T> List<T> {
         self.more_pending = false;
     }
 
+    /// The next page from `requested` could not be loaded: the next move
+    /// asks again. A failure of a page asked for before the list was loaded
+    /// again leaves the page awaited now.
+    fn more_failed(&mut self, requested: &str) {
+        if self.cursor.as_deref() == Some(requested) {
+            self.more_pending = false;
+        }
+    }
+
     /// The first page could not be loaded; what was there stays.
     fn failed(&mut self, e: &Error) {
         self.loaded = true;

@@ -49,12 +49,39 @@ pub struct Settings {
     pub browser: Option<String>,
     /// The columns of the Timeline tab, by the DID of the account they are
     /// for.
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::BTreeMap::is_empty",
+        deserialize_with = "known_columns"
+    )]
     pub columns: std::collections::BTreeMap<String, Vec<ColumnSource>>,
     /// Keys this version of bsky does not know, kept so that saving does not
     /// drop what a newer version wrote.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The columns of `settings.json`, leaving out any this version cannot
+/// read (a kind a newer version added): one column is not worth ignoring
+/// the whole file over.
+fn known_columns<'de, D>(
+    d: D,
+) -> std::result::Result<std::collections::BTreeMap<String, Vec<ColumnSource>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: std::collections::BTreeMap<String, Vec<serde_json::Value>> =
+        Deserialize::deserialize(d)?;
+    Ok(raw
+        .into_iter()
+        .map(|(did, columns)| {
+            let known = columns
+                .into_iter()
+                .filter_map(|c| serde_json::from_value(c).ok())
+                .collect();
+            (did, known)
+        })
+        .collect())
 }
 
 impl Settings {
@@ -385,6 +412,15 @@ impl SessionStore {
         })
     }
 
+    /// Save refreshed tokens, only while the file is there: an account
+    /// logged out while a load of it was on its way stays logged out.
+    pub fn update(&self, session: &Session) -> Result<()> {
+        if !self.path().exists() {
+            return Ok(());
+        }
+        self.save(session)
+    }
+
     /// Save the session, creating the directory when needed.
     pub fn save(&self, session: &Session) -> Result<()> {
         fs::create_dir_all(&self.dir)
@@ -612,6 +648,35 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A column of a kind a newer version added is left out; the rest of the
+    // file, the other columns included, is still read.
+    #[test]
+    fn a_column_of_an_unknown_kind_leaves_the_rest_of_the_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(SETTINGS_FILE),
+            r#"{"theme": "nord", "columns": {"did:plc:me": [
+                {"kind": "following"},
+                {"kind": "list", "uri": "at://did:plc:me/app.bsky.graph.list/1"},
+                {"kind": "feed", "uri": "at://x"},
+                {"kind": "search", "query": "猫🐈‍⬛"}
+            ]}}"#,
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(dir.path()).load();
+        assert_eq!(warning, None);
+        assert_eq!(settings.theme.as_deref(), Some("nord"));
+        assert_eq!(
+            settings.columns["did:plc:me"],
+            [
+                ColumnSource::Following,
+                ColumnSource::Search {
+                    query: "猫🐈‍⬛".into()
+                }
+            ]
+        );
+    }
 
     // A folder chosen in the settings is tried with a file of its own. A
     // link someone left at that name is not written through: the file it
@@ -858,6 +923,35 @@ mod tests {
             handle: handle.into(),
             ..sample()
         }
+    }
+
+    // New tokens of an account logged out meanwhile (a load of it was still
+    // on its way) do not bring its file back; one still logged in has them
+    // saved.
+    #[test]
+    fn new_tokens_are_kept_only_for_an_account_still_logged_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        store.save(&account("did:plc:a", "a.test")).unwrap();
+        store.save(&account("did:plc:b", "b.test")).unwrap();
+        let fresh = |did: &str, handle: &str| Session {
+            access_jwt: "new-access".into(),
+            ..account(did, handle)
+        };
+        store.remove("did:plc:a").unwrap();
+        store
+            .store_for("did:plc:a")
+            .update(&fresh("did:plc:a", "a.test"))
+            .unwrap();
+        assert_eq!(store.find("did:plc:a").unwrap(), None);
+        store
+            .store_for("did:plc:b")
+            .update(&fresh("did:plc:b", "b.test"))
+            .unwrap();
+        assert_eq!(
+            store.find("did:plc:b").unwrap().unwrap().access_jwt,
+            "new-access"
+        );
     }
 
     #[test]

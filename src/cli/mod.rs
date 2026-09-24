@@ -347,6 +347,26 @@ fn collect(
     field: &str,
     limit: usize,
 ) -> Result<Vec<Value>> {
+    collect_by(|q| client.get_value(nsid, q), query, field, limit)
+}
+
+/// [`collect`] for a chat call, which goes through the chat service.
+fn collect_chat(
+    client: &Client,
+    nsid: &str,
+    query: &[(&str, &str)],
+    field: &str,
+    limit: usize,
+) -> Result<Vec<Value>> {
+    collect_by(|q| client.chat_value(nsid, q), query, field, limit)
+}
+
+fn collect_by(
+    get: impl Fn(&[(&str, &str)]) -> Result<Value>,
+    query: &[(&str, &str)],
+    field: &str,
+    limit: usize,
+) -> Result<Vec<Value>> {
     let mut items = Vec::new();
     let mut cursor: Option<String> = None;
     while items.len() < limit {
@@ -356,7 +376,7 @@ fn collect(
         if let Some(c) = &cursor {
             q.push(("cursor", c));
         }
-        let v = client.get_value(nsid, &q)?;
+        let v = get(&q)?;
         let got = v
             .get(field)
             .and_then(Value::as_array)
@@ -1274,16 +1294,8 @@ fn chat(
     let client = ctx.client()?;
     let me = client.did().to_string();
     let Some(actor) = actor else {
-        let raw = client.chat_value(
-            "chat.bsky.convo.listConvos",
-            &[("limit", &limit.min(100).to_string())],
-        )?;
-        let convos = raw
-            .get("convos")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        for v in convos.iter().take(limit) {
+        let convos = collect_chat(&client, "chat.bsky.convo.listConvos", &[], "convos", limit)?;
+        for v in &convos {
             if ctx.json {
                 json_line(out, v)?;
             } else if let Ok(c) = serde_json::from_value::<crate::api::types::Convo>(v.clone()) {
@@ -1312,19 +1324,14 @@ fn chat(
             &format!("sent to {}", format::convo_with(&convo, &me)),
         );
     }
-    let raw = client.chat_value(
+    // The newest `limit`, oldest first, as a conversation reads.
+    let mut messages = collect_chat(
+        &client,
         "chat.bsky.convo.getMessages",
-        &[
-            ("convoId", &convo.id),
-            ("limit", &limit.min(100).to_string()),
-        ],
+        &[("convoId", &convo.id)],
+        "messages",
+        limit,
     )?;
-    let mut messages = raw
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    // Oldest first, as a conversation reads.
     messages.reverse();
     for v in &messages {
         if ctx.json {

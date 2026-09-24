@@ -115,8 +115,7 @@ impl App {
             Written::Follow { did, uri } => {
                 self.set_following(did, uri.clone());
                 if uri.is_none() {
-                    // The timeline shows followed accounts only.
-                    self.timeline.retain(|p| p.author.did != *did);
+                    self.drop_unfollowed(did);
                 }
             }
             Written::Mute { did, on } => {
@@ -232,6 +231,15 @@ impl App {
     /// The posts and notifications of an account muted or blocked leave
     /// every list, as the server leaves them out of the next pages. Its
     /// profile, where the change was made, and an open thread stay.
+    /// Take an unfollowed account's posts off the timeline and the Following
+    /// columns, which show followed accounts only.
+    fn drop_unfollowed(&mut self, did: &str) {
+        let following = columns::Source::Following;
+        for list in std::iter::once(&mut self.timeline).chain(self.columns.posts_of(&following)) {
+            list.retain(|p| p.author.did != did);
+        }
+    }
+
     pub(super) fn remove_posts_by(&mut self, did: &str) {
         let feeds = self.columns.post_lists();
         for list in [&mut self.timeline, &mut self.search.posts]
@@ -410,15 +418,14 @@ impl App {
                 self.notifications.append(cursor, page)
             }
             (feed, Err(e)) => {
-                // Let the next move try again.
                 match feed {
-                    Feed::Notifications => self.notifications.more_pending = false,
-                    Feed::Timeline => self.timeline.more_pending = false,
+                    Feed::Notifications => self.notifications.more_failed(cursor),
+                    Feed::Timeline => self.timeline.more_failed(cursor),
                     // A feed's pages come only to its column.
                     Feed::Custom(_) => {}
-                    Feed::SearchPosts(_) => self.search.posts.more_pending = false,
-                    Feed::SearchActors(_) => self.search.actors.more_pending = false,
-                    Feed::Author(_) => self.profile.posts.more_pending = false,
+                    Feed::SearchPosts(_) => self.search.posts.more_failed(cursor),
+                    Feed::SearchActors(_) => self.search.actors.more_failed(cursor),
+                    Feed::Author(_) => self.profile.posts.more_failed(cursor),
                 }
                 self.fail(&e);
             }
@@ -703,8 +710,7 @@ impl App {
                 result: Ok(()),
             } => {
                 self.set_following(&did, None);
-                // The timeline shows followed accounts only.
-                self.timeline.retain(|p| p.author.did != did);
+                self.drop_unfollowed(&did);
                 self.info("unfollowed");
             }
             Event::Muted {
@@ -747,9 +753,25 @@ impl App {
                     }
                     None => self.info("posted"),
                 }
-                // Your own posts are on the timeline: load it again so the
-                // new one is there.
-                return vec![Job::Timeline];
+                // Your own posts are on the timeline and in a column of
+                // them: load those again so the new one is there.
+                let me = self.session.as_ref().map(|s| s.did.clone());
+                let ids: Vec<u64> = self
+                    .columns
+                    .items
+                    .iter()
+                    .filter(|c| match &c.source {
+                        columns::Source::Following => true,
+                        columns::Source::Author { did, .. } => Some(did) == me.as_ref(),
+                        _ => false,
+                    })
+                    .map(|c| c.id)
+                    .collect();
+                let mut jobs = vec![Job::Timeline];
+                for id in ids {
+                    jobs.extend(self.load_column(id));
+                }
+                return jobs;
             }
             Event::Posted { result: Err(e), .. } => {
                 if let Some(Overlay::Compose(c)) = &mut self.overlay {

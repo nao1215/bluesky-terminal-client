@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- Unfollowing an account left its posts in the Following column, and a post you sent did not show in the Following column or a column of your posts until they were loaded again.
+- The count of columns off screen to the right was cut off when the title before it was long.
+- A `settings.json` holding a column of a kind this version does not know was ignored whole, theme included, and nothing more could be saved. Only that column is left out now.
+- A list loaded again while its next page was on its way could ask for its next page twice.
+- A post date that was not a date was printed as it was, control characters included, by the `bsky` commands: a post could send escape sequences to your terminal. They are left out.
+- A handle written with `@` in front, in `bsky login` or the login form, failed with "Invalid identifier or password".
+- `bsky chat -n 0` failed with InvalidRequest, and `-n` over 100 showed at most 100 conversations or messages.
+- An account logged out while a load of it was still on its way could be back at the next start.
+- Right after `a` logged in another account, a read receipt for what was still on screen could be sent as the new account.
+
 ## [0.7.0] - 2026-09-24
 
 ### Changed

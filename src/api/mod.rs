@@ -240,13 +240,21 @@ fn transport(nsid: &str, e: ureq::Error) -> Error {
 }
 
 /// Log in with an identifier (handle, DID, or email) and an app password.
+/// What createSession is given for what was typed at the login: a handle
+/// as it is written elsewhere, `@alice.bsky.social`, is sent without the
+/// `@`, which a PDS would take for an email address. An email is kept.
+fn login_identifier(typed: &str) -> &str {
+    let typed = typed.trim();
+    typed.strip_prefix('@').unwrap_or(typed)
+}
+
 pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session> {
     let service = normalize_service(service)?;
     let nsid = "com.atproto.server.createSession";
     let resp = agent()
         .post(xrpc_url(&service, nsid))
         .header("Content-Type", "application/json")
-        .send(json!({"identifier": identifier.trim(), "password": password}).to_string())
+        .send(json!({"identifier": login_identifier(identifier), "password": password}).to_string())
         .map_err(|e| transport(nsid, e))?;
     let tokens: SessionTokens = decode(nsid, resp)?;
     Ok(Session {
@@ -693,7 +701,7 @@ impl Client {
         session.refresh_jwt = tokens.refresh_jwt;
         session.handle = tokens.handle;
         if let Some(store) = &self.store {
-            store.save(&session)?;
+            store.update(&session)?;
         }
         Ok(session.access_jwt.clone())
     }
@@ -1254,6 +1262,16 @@ pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    #[rstest]
+    #[case("@alice.bsky.social", "alice.bsky.social")]
+    #[case("  @alice.bsky.social\n", "alice.bsky.social")]
+    #[case("alice.bsky.social", "alice.bsky.social")]
+    #[case("alice@example.com", "alice@example.com")]
+    #[case("@猫🐈‍⬛.example", "猫🐈‍⬛.example")]
+    fn a_handle_typed_with_an_at_logs_in_without_it(#[case] typed: &str, #[case] sent: &str) {
+        assert_eq!(login_identifier(typed), sent);
+    }
 
     /// The post lexicon limits text to 300 grapheme clusters and 3000 UTF-8
     /// bytes. Emoji spend the bytes first: a family is one cluster of 25

@@ -407,3 +407,61 @@ fn a_post_shown_above_a_reply_is_not_shown_again_below_it() {
     let uris: Vec<&str> = app.timeline.items.iter().map(|p| p.uri.as_str()).collect();
     assert_eq!(uris, ["at://t/p/2", "at://o/p/9"]);
 }
+
+// A next page that fails after the list was loaded again is of the list
+// before: the page asked for since is still awaited, and not asked twice.
+#[test]
+fn a_late_failure_of_an_older_next_page_leaves_the_one_awaited() {
+    let mut app = columns_with(
+        &[columns::Source::Following],
+        (0..3)
+            .map(|i| post(&format!("at://a/p/{i}"), "did:plc:alice", true))
+            .collect(),
+    );
+    let id = app.columns.items[0].id;
+    let first_page = |cursor: &str| {
+        let items: Vec<Post> = (0..3)
+            .map(|i| post(&format!("at://a/p/{i}"), "did:plc:alice", true))
+            .collect();
+        Ok(MorePage::Posts(page(items, Some(cursor))))
+    };
+    let generation = app.columns.items[0].generation;
+    app.handle_event(Event::Column {
+        id,
+        generation,
+        cursor: None,
+        result: first_page("c1"),
+    });
+    let asked = app.handle_key(key('j'));
+    assert!(
+        matches!(&asked[..], [Job::Column { cursor: Some(c), .. }] if c == "c1"),
+        "{asked:?}"
+    );
+    // R, and the new first page ends at another cursor, asked for next.
+    let reload = app.handle_key(key('R'));
+    let [Job::Column { generation, .. }] = reload[..] else {
+        panic!("{reload:?}")
+    };
+    app.handle_event(Event::Column {
+        id,
+        generation,
+        cursor: None,
+        result: first_page("c2"),
+    });
+    let asked = app.handle_key(key('j'));
+    assert!(
+        matches!(&asked[..], [Job::Column { cursor: Some(c), .. }] if c == "c2"),
+        "{asked:?}"
+    );
+    // The page from c1 fails now.
+    app.handle_event(Event::Column {
+        id,
+        generation: generation - 1,
+        cursor: Some("c1".into()),
+        result: Err(Error::new(
+            crate::error::Kind::Api,
+            "the connection was reset",
+        )),
+    });
+    assert!(app.handle_key(key('j')).is_empty());
+}

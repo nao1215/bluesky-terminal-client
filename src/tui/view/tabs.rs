@@ -231,14 +231,18 @@ pub(super) fn draw_columns(
         if slot == 0 && first > 0 {
             title = format!("‹{first} {title}");
         }
+        // The count of columns off to the right is kept whole: the title
+        // before it is what is shortened.
         let right = n - (first + fit);
-        if slot == fit - 1 && right > 0 {
-            title = format!("{title} {right}›");
-        }
+        let after = if slot == fit - 1 && right > 0 {
+            format!(" {right}›")
+        } else {
+            String::new()
+        };
         let style = if i == focus { t.selected() } else { t.dim() };
-        let width = usize::from(head.width.saturating_sub(1));
+        let width = usize::from(head.width.saturating_sub(1)).saturating_sub(after.width());
         frame.render_widget(
-            Paragraph::new(format!(" {}", truncate(&title, width))).style(style),
+            Paragraph::new(format!(" {}{after}", truncate(&title, width))).style(style),
             head,
         );
         // A gap on the right keeps the columns apart.

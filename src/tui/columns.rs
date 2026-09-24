@@ -147,6 +147,20 @@ impl Columns {
         })
     }
 
+    /// The lists of posts of the columns showing `source`.
+    pub fn posts_of<'a>(
+        &'a mut self,
+        source: &'a Source,
+    ) -> impl Iterator<Item = &'a mut List<Post>> + 'a {
+        self.items
+            .iter_mut()
+            .filter(move |c| c.source == *source)
+            .filter_map(|c| match &mut c.rows {
+                Rows::Posts(l) => Some(l),
+                Rows::Notifications(_) => None,
+            })
+    }
+
     /// Every list of notifications in the columns.
     pub fn notification_lists(&mut self) -> impl Iterator<Item = &mut List<NotifItem>> {
         self.items.iter_mut().filter_map(|c| match &mut c.rows {

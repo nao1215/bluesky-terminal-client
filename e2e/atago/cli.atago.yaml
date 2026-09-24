@@ -441,7 +441,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, query: { name: uri, equals: "at://did:plc:bob/app.bsky.feed.post/b1" } }
 
-  - name: login reads the password from stdin, adds the account, and accounts lists it
+  - name: login reads the password from stdin, takes a handle written with @, adds the account, and accounts lists it
     mock_servers:
       - name: api
         routes:
@@ -451,7 +451,7 @@ scenarios:
     steps:
       - *session
       - run:
-          command: bsky login new.test --password-stdin --service ${api.url}
+          command: bsky login @new.test --password-stdin --service ${api.url}
           env: *env
           stdin: "app-pass-cli\n"
       - assert:
@@ -569,7 +569,7 @@ scenarios:
           stdout:
             equals: "* @me.test  did:plc:me\n"
       - run:
-          command: bsky login new.test --password-stdin --service ${api.url}
+          command: bsky login @new.test --password-stdin --service ${api.url}
           env: *env_new
           stdin: "app-pass-cli\n"
       - assert:

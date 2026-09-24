@@ -366,7 +366,8 @@ const READERS: usize = 4;
 
 /// Handle to the running worker.
 pub struct Worker {
-    /// The account every job acts as, shared by every thread.
+    /// The account the jobs sent from now on act as; each job takes it when
+    /// it is sent.
     client: Arc<Mutex<Option<Client>>>,
     accounts: AccountStore,
     writes: Sender<(u64, Job, Option<Client>)>,
@@ -385,7 +386,6 @@ impl Worker {
         let (ev_tx, ev_rx) = channel::<(u64, Event)>();
         let (writes, write_rx) = channel::<(u64, Job, Option<Client>)>();
         let mut state = State {
-            client: Arc::clone(&client),
             acting: None,
             accounts: accounts.clone(),
             editor_base: None,
@@ -403,7 +403,6 @@ impl Worker {
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
             let mut state = State {
-                client: Arc::clone(&client),
                 acting: None,
                 accounts: accounts.clone(),
                 editor_base: None,
@@ -480,8 +479,6 @@ fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
 }
 
 struct State {
-    /// Shared by every thread; a login replaces it for all of them.
-    client: Arc<Mutex<Option<Client>>>,
     /// The account in use when the running job was sent, which it acts as.
     acting: Option<Client>,
     accounts: AccountStore,
@@ -660,13 +657,12 @@ impl State {
         }
     }
 
+    /// Log in and keep the account. Jobs go on acting as the account in use
+    /// until the UI takes the answer and switches (`Worker::use_account`):
+    /// one it sends before that is for what it still shows.
     fn login(&mut self, service: &str, identifier: &str, password: &str) -> Result<Session> {
         let session = api::login(service, identifier, password)?;
         self.accounts.save(&session)?;
-        *self.client.lock().unwrap_or_else(PoisonError::into_inner) = Some(Client::new(
-            session.clone(),
-            Some(self.accounts.store_for(&session.did)),
-        ));
         Ok(session)
     }
 
@@ -1065,6 +1061,112 @@ fn read_avatar(path: &std::path::Path) -> Result<(Vec<u8>, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
+
+    /// A stand-in server that answers createSession for did:plc:b and
+    /// anything else with `{}`, and keeps the path and the token of each
+    /// call.
+    type Calls = Arc<Mutex<Vec<(String, String)>>>;
+
+    fn serve() -> (String, Calls) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let log: Calls = Arc::default();
+        let kept = Arc::clone(&log);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut r = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                r.read_line(&mut line).unwrap();
+                let path = line.split(' ').nth(1).unwrap_or("").to_string();
+                let (mut auth, mut len) = (String::new(), 0);
+                loop {
+                    let mut h = String::new();
+                    r.read_line(&mut h).unwrap();
+                    if h.trim().is_empty() {
+                        break;
+                    }
+                    let (name, value) = h.split_once(':').unwrap_or_default();
+                    match name.to_ascii_lowercase().as_str() {
+                        "authorization" => auth = value.trim().to_string(),
+                        "content-length" => len = value.trim().parse().unwrap(),
+                        _ => {}
+                    }
+                }
+                r.read_exact(&mut vec![0; len]).unwrap();
+                let body = if path.contains("createSession") {
+                    r#"{"did":"did:plc:b","handle":"b.test","accessJwt":"B-access","refreshJwt":"B-refresh"}"#
+                } else {
+                    "{}"
+                };
+                kept.lock().unwrap().push((path, auth));
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (url, log)
+    }
+
+    fn answer(worker: &Worker, seq: u64) -> Event {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some((s, ev)) = worker.try_recv()
+                && s == seq
+            {
+                return ev;
+            }
+            assert!(Instant::now() < deadline, "no answer to {seq}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    // Adding an account logs it in on the worker, but the account in use
+    // changes only when the UI takes the answer: a job the UI sends before
+    // that (a read receipt for what it shows) acts as the account shown.
+    #[test]
+    fn a_login_does_not_change_the_account_jobs_act_as_until_the_ui_takes_it() {
+        let (url, log) = serve();
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = AccountStore::open(dir.path()).unwrap();
+        let a = Session {
+            service: url.clone(),
+            did: "did:plc:a".into(),
+            handle: "a.test".into(),
+            access_jwt: "A-access".into(),
+            refresh_jwt: "A-refresh".into(),
+        };
+        accounts.save(&a).unwrap();
+        let worker = Worker::spawn(Some(a), accounts);
+        worker.send(
+            1,
+            Job::Login {
+                service: url,
+                identifier: "b.test".into(),
+                password: "app-pass".into(),
+            },
+        );
+        let Event::LoggedIn(Ok(b)) = answer(&worker, 1) else {
+            panic!("the login failed")
+        };
+        worker.send(2, Job::UpdateSeen("2026-09-24T00:00:00.000Z".into()));
+        answer(&worker, 2);
+        worker.use_account(b);
+        worker.send(3, Job::UpdateSeen("2026-09-24T00:00:00.000Z".into()));
+        answer(&worker, 3);
+        let seen: Vec<String> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path.contains("updateSeen"))
+            .map(|(_, auth)| auth.clone())
+            .collect();
+        assert_eq!(seen, ["Bearer A-access", "Bearer B-access"]);
+    }
 
     #[test]
     fn seen_is_the_newest_time_whatever_the_order_or_offset() {

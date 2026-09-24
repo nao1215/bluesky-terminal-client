@@ -208,3 +208,74 @@ fn feeds_that_come_while_the_add_list_is_open_do_not_change_the_choice() {
         "{jobs:?}"
     );
 }
+
+fn column_uris(app: &App, i: usize) -> Vec<String> {
+    let Rows::Posts(l) = &app.columns.items[i].rows else {
+        panic!("column {i} holds no posts")
+    };
+    l.items.iter().map(|p| p.uri.clone()).collect()
+}
+
+// The Timeline tab shows the Following column once there are columns: an
+// unfollowed account's posts leave it as they leave the timeline, whether
+// the unfollow answers now or a page loaded before it lands later.
+#[test]
+fn an_unfollowed_account_leaves_the_following_column() {
+    let posts = vec![
+        post("at://a/p/1", "did:plc:alice", true),
+        post("at://b/p/2", "did:plc:bob", true),
+    ];
+    let mut app = columns_with(&[columns::Source::Following], posts.clone());
+    app.handle_event(Event::Unfollowed {
+        did: "did:plc:alice".into(),
+        result: Ok(()),
+    });
+    assert_eq!(column_uris(&app, 0), ["at://b/p/2"]);
+
+    let mut app = columns_with(&[columns::Source::Following], posts);
+    app.apply(&Written::Follow {
+        did: "did:plc:bob".into(),
+        uri: None,
+    });
+    assert_eq!(column_uris(&app, 0), ["at://a/p/1"]);
+}
+
+// A new post of yours is loaded where the Timeline tab shows it: in the
+// Following column and in a column of your own posts.
+#[test]
+fn a_new_post_loads_the_columns_that_show_your_posts() {
+    let mut app = columns_with(
+        &[
+            columns::Source::Following,
+            columns::Source::Notifications,
+            columns::Source::Author {
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+            },
+        ],
+        vec![post("at://a/p/1", "did:plc:alice", true)],
+    );
+    let jobs = app.handle_event(Event::Posted {
+        reply_to: None,
+        result: Ok(()),
+    });
+    assert!(
+        matches!(
+            &jobs[..],
+            [
+                Job::Timeline,
+                Job::Column {
+                    feed: Feed::Timeline,
+                    cursor: None,
+                    ..
+                },
+                Job::Column {
+                    feed: Feed::Author(_),
+                    cursor: None,
+                    ..
+                }
+            ]
+        ),
+        "{jobs:?}"
+    );
+}

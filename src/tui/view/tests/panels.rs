@@ -211,6 +211,30 @@ fn the_columns_fit_the_width_and_say_how_many_are_off_screen() {
     assert!(!screen.contains("column"), "{screen}");
 }
 
+/// A long title is shortened, not the count of columns off screen after it.
+#[test]
+fn a_long_column_title_keeps_the_count_of_columns_off_screen() {
+    let mut app = column_app(3);
+    for i in [0, 1] {
+        app.columns.items[i].source = crate::config::ColumnSource::Search {
+            query: "家族👨‍👩‍👧 and 🇯🇵 a rather long search query here".into(),
+        };
+    }
+    let screen = render(&mut app, 80, 12);
+    let head = screen.lines().nth(1).unwrap();
+    assert!(head.contains("… 1›"), "{screen}");
+    for _ in 0..2 {
+        app.handle_key(crossterm::event::KeyEvent::from(
+            crossterm::event::KeyCode::Right,
+        ));
+    }
+    let narrow = render(&mut app, 30, 12);
+    assert!(
+        narrow.lines().nth(1).unwrap().contains("‹2 Search: q2"),
+        "{narrow}"
+    );
+}
+
 #[test]
 fn the_add_column_list_names_every_source_and_asks_for_a_search() {
     let mut app = column_app(0);
