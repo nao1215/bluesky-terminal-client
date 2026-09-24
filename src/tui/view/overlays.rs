@@ -105,6 +105,7 @@ pub(super) fn draw_actions(
     let lines: Vec<Line> = entries
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, (key, what))| {
             let marker = if i == selected { "▶ " } else { "  " };
             let key = Span::styled(format!("{marker}{key:<7}"), t.accent().bold());
@@ -254,6 +255,7 @@ pub(super) fn draw_add_column(
     let lines: Vec<Line> = titles
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, title)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let style = if i == selected {
@@ -289,9 +291,13 @@ pub(super) fn draw_account_list(
         t,
     );
     let width = usize::from(inner.width);
+    // The last two rows are a gap and the keys.
+    let rows = inner.height.saturating_sub(2);
     let mut lines: Vec<Line> = accounts
         .iter()
         .enumerate()
+        .skip(first_shown(selected, rows))
+        .take(usize::from(rows.max(1)))
         .map(|(i, a)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let used = if me == Some(a.did.as_str()) {
@@ -346,6 +352,7 @@ pub(super) fn draw_languages(
     let lines: Vec<Line> = langs
         .iter()
         .enumerate()
+        .skip(first_shown(selected, inner.height))
         .map(|(i, lang)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let style = if i == selected {

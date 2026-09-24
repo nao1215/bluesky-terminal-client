@@ -341,3 +341,51 @@ fn a_short_composer_still_lists_every_picture_it_would_send() {
         );
     }
 }
+
+// A list over the screen taller than the screen scrolls with its
+// selection: the entry Enter would act on is always shown. The lists used
+// to draw from their first entry only, so on a short terminal moving down
+// went on past the bottom of the box, and Enter did what was not shown.
+#[test]
+fn a_list_taller_than_its_box_shows_the_selected_entry() {
+    use crate::tui::app::{Account, Overlay};
+    let lists: Vec<(&str, Overlay)> = vec![
+        (
+            "actions",
+            Overlay::Actions {
+                selected: 11,
+                about: None,
+            },
+        ),
+        ("languages", Overlay::Languages { selected: 8 }),
+        (
+            "add column",
+            Overlay::AddColumn {
+                selected: 11,
+                query: None,
+            },
+        ),
+        ("accounts", Overlay::Accounts { selected: 9 }),
+    ];
+    for (name, overlay) in lists {
+        for h in [8, 10, 12] {
+            let (mut app, _) = App::new(Some(session()), "x");
+            app.handle_event(Event::Timeline(Ok(posts(3).into())));
+            app.feeds = (0..8)
+                .map(|i| crate::api::types::FeedInfo {
+                    uri: format!("at://did:plc:f/app.bsky.feed.generator/{i}"),
+                    name: format!("feed {i}"),
+                })
+                .collect();
+            app.accounts = (0..10)
+                .map(|i| Account {
+                    did: format!("did:plc:{i}"),
+                    handle: format!("user{i}.test"),
+                })
+                .collect();
+            app.overlay = Some(overlay.clone());
+            let screen = render_text_only(&mut app, 80, h);
+            assert!(screen.contains('▶'), "{name} 80x{h}:\n{screen}");
+        }
+    }
+}

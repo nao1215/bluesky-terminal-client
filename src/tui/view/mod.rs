@@ -490,6 +490,13 @@ fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, 
     frame.render_widget(p, area);
 }
 
+/// The first of a list's entries to draw in `rows` rows so the selected one
+/// is among them: a list over the screen taller than its box scrolls with
+/// its selection, or Enter would act on an entry that is not shown.
+fn first_shown(selected: usize, rows: u16) -> usize {
+    (selected + 1).saturating_sub(usize::from(rows.max(1)))
+}
+
 /// A box of `w` x `h` centered in `area`, cleared.
 fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) -> Rect {
     let w = w.min(area.width);
