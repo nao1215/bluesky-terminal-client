@@ -63,7 +63,13 @@ pub fn inspect(path: &Path) -> Info {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if crate::video::is_video_name(&name) {
+    // A video by its name, or by what it starts with: one saved without
+    // its extension, or with another, is still a video.
+    let mut head = [0u8; 64];
+    let read = File::open(path)
+        .and_then(|mut f| std::io::Read::read(&mut f, &mut head))
+        .unwrap_or(0);
+    if crate::video::is_video_name(&name) || crate::video::sniff_mime(&head[..read]).is_some() {
         let v = crate::video::probe(path);
         return Info {
             kind: Kind::Video,
@@ -245,6 +251,18 @@ fn flatten(img: &DynamicImage) -> RgbImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A video without its extension, or with another, is still a video.
+    #[test]
+    fn a_video_is_known_by_what_it_holds_whatever_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let clip = Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/clip.mp4");
+        for name in ["clipnoext", "clip.mkv", "動画👍🏽"] {
+            let path = dir.path().join(name);
+            std::fs::copy(&clip, &path).unwrap();
+            assert_eq!(inspect(&path).kind, Kind::Video, "{name}");
+        }
+    }
     use image::{Rgb, Rgba, RgbaImage};
     use rstest::rstest;
 
