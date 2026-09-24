@@ -264,6 +264,7 @@ impl App {
         }
         self.info("press y to delete this post, any other key to keep it");
         self.confirm_delete = Some(post.uri);
+        self.asked();
     }
 
     pub(super) fn toggle_repost(&mut self) -> Vec<Job> {
@@ -353,6 +354,7 @@ impl App {
             account.handle
         ));
         self.confirm_block = Some(account.did);
+        self.asked();
         Vec::new()
     }
 
@@ -401,6 +403,13 @@ impl App {
     /// pinned, and the feed shown when it still is.
     pub(super) fn set_pinned_feeds(&mut self, infos: Vec<crate::api::types::FeedInfo>) {
         let shown = self.current_feed();
+        // The + list offers the feeds too: its selection stays on its choice.
+        let choosing = match &self.overlay {
+            Some(Overlay::AddColumn { selected, .. }) => {
+                self.column_choices().get(*selected).cloned()
+            }
+            _ => None,
+        };
         let mut old: Vec<CustomFeed> = std::mem::take(&mut self.feeds);
         self.feeds = infos
             .into_iter()
@@ -417,6 +426,16 @@ impl App {
                 },
             )
             .collect();
+        if let Some(chosen) = choosing {
+            let at = self
+                .column_choices()
+                .iter()
+                .position(|c| *c == chosen)
+                .unwrap_or(0);
+            if let Some(Overlay::AddColumn { selected, .. }) = &mut self.overlay {
+                *selected = at;
+            }
+        }
         self.feed = match shown {
             Feed::Custom(uri) => self
                 .feeds

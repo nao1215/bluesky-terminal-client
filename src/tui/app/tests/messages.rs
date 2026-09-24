@@ -133,8 +133,9 @@ fn m_on_a_profile_opens_the_conversation_with_them() {
         result: Ok(a_convo("new", 0)),
     });
     assert_eq!(app.tab, Tab::Chat);
+    // Its messages, and the list, never read yet, for Esc to go back to.
     assert!(
-        matches!(&jobs[..], [Job::Messages { convo_id, .. }] if convo_id == "new"),
+        matches!(&jobs[..], [Job::Messages { convo_id, .. }, Job::Convos { cursor: None }] if convo_id == "new"),
         "{jobs:?}"
     );
     assert_eq!(app.chat.open.as_ref().unwrap().convo.id, "new");
@@ -184,13 +185,10 @@ fn what_is_typed_while_a_message_is_sent_is_kept() {
     });
     let o = app.chat.open.as_ref().unwrap();
     assert_eq!(o.input.text(), "and also 🇯🇵");
-    // Sent again, then the conversation closed and opened again, and a new
-    // draft begun before the answer came.
+    // Sent again, then the box cleared and a new draft begun before the
+    // answer came.
     assert_eq!(app.handle_key(code(KeyCode::Enter)).len(), 1);
-    app.handle_key(code(KeyCode::Esc));
-    app.handle_key(code(KeyCode::Esc));
-    app.handle_key(code(KeyCode::Enter));
-    app.handle_key(key('i'));
+    app.handle_key(ctrl('u'));
     type_str(&mut app, "a new draft");
     app.handle_event(Event::MessageSent {
         convo_id: "a".into(),
@@ -288,4 +286,151 @@ fn a_late_answer_to_m_does_not_take_the_screen() {
         "{:?}",
         app.status
     );
+}
+
+// A conversation that comes from m on a profile goes at the top of the
+// list. The one selected stays selected: Enter opens it, not the one above.
+#[test]
+fn a_conversation_added_at_the_top_keeps_the_selection() {
+    let mut app = chat_tab();
+    app.handle_key(key('j'));
+    assert_eq!(app.chat.convos.current().unwrap().id, "b");
+    app.handle_event(Event::ConvoFor {
+        did: "did:plc:alice".into(),
+        result: Ok(a_convo("new", 0)),
+    });
+    assert_eq!(app.chat.convos.items[0].id, "new");
+    assert_eq!(app.chat.convos.current().unwrap().id, "b");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert!(
+        !jobs
+            .iter()
+            .any(|j| matches!(j, Job::ReadConvo { convo_id } if convo_id == "a")),
+        "{jobs:?}"
+    );
+}
+
+// A conversation cannot be closed while its message is on its way: opened
+// again, the answer to that message would let the next Enter send a second
+// one before the first is known to have gone.
+#[test]
+fn a_conversation_is_not_closed_while_its_message_is_sent() {
+    let mut app = chat_tab();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('i'));
+    type_str(&mut app, "one 👍🏽");
+    assert_eq!(app.handle_key(code(KeyCode::Enter)).len(), 1);
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Esc));
+    let o = app.chat.open.as_ref().expect("closed while sending");
+    assert!(o.sending);
+    assert!(app.status.as_ref().unwrap().text.contains("on its way"));
+}
+
+// m on the profile of someone whose conversation is open already brings
+// that conversation back as it was, the draft with it.
+#[test]
+fn m_for_the_conversation_already_open_keeps_its_draft() {
+    let mut app = chat_tab();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('i'));
+    type_str(&mut app, "draft 🇯🇵");
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('4'));
+    app.open_profile(Some("did:plc:alice".into()));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
+        Vec::new().into(),
+    ))));
+    assert_eq!(app.handle_key(key('m')).len(), 1);
+    app.handle_event(Event::ConvoFor {
+        did: "did:plc:alice".into(),
+        result: Ok(a_convo("a", 0)),
+    });
+    assert_eq!(app.tab, Tab::Chat);
+    assert_eq!(app.chat.open.as_ref().unwrap().input.text(), "draft 🇯🇵");
+}
+
+// B asked on a profile, and the answer to m took the screen to the Chat tab
+// before y: the question is answered by the next key there too, and Esc or
+// any other key calls it off, not a y pressed later.
+#[test]
+fn a_question_takes_the_next_key_on_the_chat_tab_too() {
+    let mut app = logged_in();
+    app.handle_key(key('4'));
+    app.open_profile(Some("did:plc:alice".into()));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
+        Vec::new().into(),
+    ))));
+    assert_eq!(app.handle_key(key('m')).len(), 1);
+    app.handle_key(key('B'));
+    app.handle_event(Event::ConvoFor {
+        did: "did:plc:alice".into(),
+        result: Ok(a_convo("new", 0)),
+    });
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.confirm_block.is_none());
+    assert!(app.handle_key(key('y')).is_empty());
+}
+
+// A message that comes into the conversation being read is read: it is
+// marked so, and does not come back as unread in the list or elsewhere.
+#[test]
+fn a_message_that_comes_while_the_conversation_is_open_is_marked_read() {
+    let mut app = chat_tab();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_event(Event::ConvoRead {
+        convo_id: "a".into(),
+        result: Ok(()),
+    });
+    let first = app.handle_event(Event::Messages {
+        convo_id: "a".into(),
+        cursor: None,
+        result: Ok(vec![a_message("m1", "first")].into()),
+    });
+    assert!(
+        first.is_empty(),
+        "opening marked it read already: {first:?}"
+    );
+    let jobs = app.handle_event(Event::Messages {
+        convo_id: "a".into(),
+        cursor: None,
+        result: Ok(vec![a_message("m2", "new 🇯🇵"), a_message("m1", "first")].into()),
+    });
+    assert!(
+        matches!(&jobs[..], [Job::ReadConvo { convo_id }] if convo_id == "a"),
+        "{jobs:?}"
+    );
+    // Nothing new: nothing to mark.
+    let again = app.handle_event(Event::Messages {
+        convo_id: "a".into(),
+        cursor: None,
+        result: Ok(vec![a_message("m2", "new 🇯🇵"), a_message("m1", "first")].into()),
+    });
+    assert!(again.is_empty(), "{again:?}");
+}
+
+// A conversation opened with m before the Chat tab was ever shown: the list
+// of conversations is asked for too, so Esc shows them all, not that one.
+#[test]
+fn m_before_the_chat_tab_was_shown_loads_the_list_too() {
+    let mut app = logged_in();
+    app.handle_key(key('4'));
+    app.open_profile(Some("did:plc:alice".into()));
+    app.handle_event(Event::Profile(Ok((
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
+        Vec::new().into(),
+    ))));
+    app.handle_key(key('m'));
+    let jobs = app.handle_event(Event::ConvoFor {
+        did: "did:plc:alice".into(),
+        result: Ok(a_convo("new", 0)),
+    });
+    assert!(
+        jobs.iter()
+            .any(|j| matches!(j, Job::Convos { cursor: None })),
+        "{jobs:?}"
+    );
+    assert!(app.chat.convos.loading);
 }

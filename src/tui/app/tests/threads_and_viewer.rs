@@ -252,3 +252,34 @@ fn an_unreadable_settings_file_is_never_overwritten() {
         "{status:?}"
     );
 }
+
+// A thread reloaded with R, and the same post opened again with v before
+// the reload came back: both answers come, the newer first. Neither thread
+// is left saying "loading" once Esc goes back to the first.
+#[test]
+fn a_thread_reloaded_and_opened_again_is_not_left_loading() {
+    let mut app = logged_in();
+    let open = press(&mut app, key('v'));
+    app.handle_answer(
+        open[0],
+        Event::Thread {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        },
+    );
+    let reload = press(&mut app, key('R'));
+    let again = press(&mut app, key('v'));
+    assert_eq!((reload.len(), again.len()), (1, 1));
+    for seq in [again[0], reload[0]] {
+        app.handle_answer(
+            seq,
+            Event::Thread {
+                uri: "at://a/p/1".into(),
+                result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+            },
+        );
+    }
+    assert!(app.threads.iter().all(|t| t.list.loaded));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.threads.last().unwrap().list.loaded);
+}

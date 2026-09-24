@@ -15,6 +15,15 @@ impl App {
         if self.overlay.is_some() {
             return self.overlay_key(key);
         }
+        // A question (D, B, x) takes the next key wherever the screen went
+        // meanwhile: the Chat tab or the search box would otherwise keep it
+        // open for a y pressed much later.
+        if self.confirm_delete.is_some()
+            || self.confirm_block.is_some()
+            || self.confirm_column_remove.is_some()
+        {
+            return self.main_key(key);
+        }
         if self.tab == Tab::Search && self.search.editing {
             return self.search_key(key);
         }
@@ -526,6 +535,7 @@ impl App {
                         "press y to remove the column {title}, any other key to keep it"
                     ));
                     self.confirm_column_remove = Some(id);
+                    self.asked();
                 }
             }
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
@@ -614,6 +624,13 @@ impl App {
             self.search.editing = false;
             // The next visit to the Profile tab shows your own profile.
             self.profile = ProfilePane::default();
+            // Back on the Notifications tab, what came meanwhile is seen,
+            // as on arriving there with a key.
+            if tab == Tab::Notifications
+                && let Some(at) = self.seen_pending.take()
+            {
+                return vec![Job::UpdateSeen(at)];
+            }
             return Vec::new();
         }
         if self.profile.actor.is_some() {

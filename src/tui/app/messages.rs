@@ -40,6 +40,12 @@ impl App {
             return Some(Vec::new());
         }
         match key.code {
+            // Closed while its message is on its way, the conversation opened
+            // again would take that message's answer as its own.
+            KeyCode::Esc if open.sending => {
+                self.info("the message is still on its way");
+                Some(Vec::new())
+            }
             KeyCode::Esc => {
                 self.chat.open = None;
                 Some(Vec::new())
@@ -91,6 +97,24 @@ impl App {
     pub(super) fn open_convo(&mut self, convo: Convo) -> Vec<Job> {
         self.tab = Tab::Chat;
         self.threads.clear();
+        // The conversation open already stays as it is, its draft and a
+        // message on its way with it; only its latest messages are asked for.
+        if self
+            .chat
+            .open
+            .as_ref()
+            .is_some_and(|o| o.convo.id == convo.id)
+        {
+            let mut jobs = vec![Job::Messages {
+                convo_id: convo.id.clone(),
+                cursor: None,
+            }];
+            if convo.unread_count > 0 {
+                jobs.push(Job::ReadConvo { convo_id: convo.id });
+            }
+            self.chat.polled = Some(Instant::now());
+            return jobs;
+        }
         let mut jobs = vec![Job::Messages {
             convo_id: convo.id.clone(),
             cursor: None,
@@ -100,8 +124,14 @@ impl App {
                 convo_id: convo.id.clone(),
             });
         }
+        // Opened from a profile before the tab was ever shown: the list is
+        // asked for too, for Esc to go back to.
+        if !self.chat.convos.loaded && !self.chat.convos.loading {
+            self.chat.convos.begin();
+            jobs.push(Job::Convos { cursor: None });
+        }
         if !self.chat.convos.items.iter().any(|c| c.id == convo.id) {
-            self.chat.convos.items.insert(0, convo.clone());
+            self.chat.convos.push_front(convo.clone());
         }
         self.chat.open = Some(OpenConvo::new(convo));
         self.chat.polled = Some(Instant::now());
@@ -193,13 +223,32 @@ impl App {
         convo_id: &str,
         cursor: Option<String>,
         result: crate::error::Result<Page<ChatMessage>>,
-    ) {
+    ) -> Vec<Job> {
+        let me = self
+            .session
+            .as_ref()
+            .map(|s| s.did.clone())
+            .unwrap_or_default();
+        let shown = self.tab == Tab::Chat;
         // A conversation left or changed since: its page is dropped.
         let Some(open) = self.chat.open.as_mut().filter(|o| o.convo.id == convo_id) else {
-            return;
+            return Vec::new();
         };
         match (cursor, result) {
-            (None, Ok(page)) => open.take_latest(page.items, page.cursor),
+            (None, Ok(page)) => {
+                let read_before = open.loaded;
+                let had = open.messages.len();
+                open.take_latest(page.items, page.cursor);
+                // Messages from the others that came while it is read are
+                // read: marked so, they do not come back as unread. The first
+                // page was marked when the conversation was opened.
+                let theirs = open.messages[had..].iter().any(|m| m.sender != me);
+                if read_before && theirs && shown {
+                    return vec![Job::ReadConvo {
+                        convo_id: convo_id.to_string(),
+                    }];
+                }
+            }
             (Some(at), Ok(page)) => open.take_older(&at, page.items, page.cursor),
             (cursor, Err(e)) => {
                 match cursor {
@@ -212,5 +261,6 @@ impl App {
                 self.fail(&e);
             }
         }
+        Vec::new()
     }
 }

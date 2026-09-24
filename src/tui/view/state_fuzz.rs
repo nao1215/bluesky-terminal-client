@@ -409,6 +409,31 @@ fn key(rng: &mut Rng) -> KeyEvent {
     }
 }
 
+/// The selected item of each list, by its key.
+fn selections(app: &App) -> Vec<(&'static str, Option<String>)> {
+    fn key<T: crate::tui::app::Keyed>(l: &crate::tui::app::List<T>) -> Option<String> {
+        l.current().map(|i| i.key().to_string())
+    }
+    vec![
+        ("timeline", key(&app.timeline)),
+        ("search posts", key(&app.search.posts)),
+        ("notifications", key(&app.notifications)),
+        ("conversations", key(&app.chat.convos)),
+    ]
+}
+
+/// Whether the list `name` holds the item keyed `key`.
+fn holds(app: &App, name: &str, key: &str) -> bool {
+    use crate::tui::app::Keyed;
+    match name {
+        "timeline" => app.timeline.items.iter().any(|i| i.key() == key),
+        "search posts" => app.search.posts.items.iter().any(|i| i.key() == key),
+        "notifications" => app.notifications.items.iter().any(|i| i.key() == key),
+        "conversations" => app.chat.convos.items.iter().any(|i| i.key() == key),
+        _ => false,
+    }
+}
+
 fn check_lists(app: &App, seed: u64, step: usize) {
     let bounded = |name: &str, len: usize, selected: usize| {
         assert!(
@@ -482,18 +507,39 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
         // The post D asked about, which the y after it must delete.
         let mut delete_asked: Option<String> = None;
         let mut next_id = 0u64;
-        let mut pending: Vec<Event> = Vec::new();
+        // Answers waiting to arrive, each with the number its job was sent
+        // with, as the event loop numbers them: the answer to a job the
+        // client has since overtaken is told apart by it.
+        let mut pending: Vec<(u64, Event)> = Vec::new();
         for job in jobs {
-            pending.extend(answer(&mut rng, job, &mut next_id));
+            let seq = app.stamp(&job);
+            pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
         }
         let mut images = Images::new(Picker::halfblocks(), None);
+        // Some runs get their answers at once, others keep them waiting
+        // over many keys, which is where a key meets a list still loading.
+        let answer_rate = [5, 15, 35, 60][rng.below(4)];
         for step in 0..800 {
-            if rng.chance(35) && !pending.is_empty() {
+            if rng.chance(answer_rate) && !pending.is_empty() {
                 // Any waiting answer, not only the oldest: answers arrive
                 // late and out of order.
-                let ev = pending.swap_remove(rng.below(pending.len()));
-                for job in app.handle_event(ev) {
-                    pending.extend(answer(&mut rng, job, &mut next_id));
+                let (seq, ev) = pending.swap_remove(rng.below(pending.len()));
+                let before = selections(&app);
+                let jobs = app.handle_answer(seq, ev);
+                // An answer never moves a selection off an item still in
+                // its list: the next key would act on another one.
+                for ((name, was), (_, now)) in before.into_iter().zip(selections(&app)) {
+                    if let Some(was) = was.filter(|was| holds(&app, name, was)) {
+                        assert_eq!(
+                            now.as_deref(),
+                            Some(was.as_str()),
+                            "seed {seed} step {step}: an answer moved the {name} selection off {was}"
+                        );
+                    }
+                }
+                for job in jobs {
+                    let seq = app.stamp(&job);
+                    pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
                 }
             } else {
                 let k = key(&mut rng);
@@ -612,7 +658,8 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                     }
                 }
                 for job in jobs {
-                    pending.extend(answer(&mut rng, job, &mut next_id));
+                    let seq = app.stamp(&job);
+                    pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
                 }
             }
             if app.quit {
@@ -625,5 +672,21 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
                 term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
             }
         }
+        // Every answer delivered, the ones they lead to as well: nothing may
+        // still wait for the server.
+        let mut rounds = 0;
+        while let Some((seq, ev)) = pending.pop() {
+            for job in app.handle_answer(seq, ev) {
+                let seq = app.stamp(&job);
+                pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
+            }
+            rounds += 1;
+            assert!(rounds < 10_000, "seed {seed}: answers keep asking for more");
+        }
+        let stuck = app.stuck();
+        assert!(
+            stuck.is_empty(),
+            "seed {seed}: after every answer, still {stuck:?}"
+        );
     }
 }

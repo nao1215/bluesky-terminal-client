@@ -209,3 +209,24 @@ fn a_mute_takes_its_notifications_out_of_the_unread_count() {
     });
     assert_eq!(app.unread, before - theirs);
 }
+
+// A question lasts as long as its prompt: once the prompt has gone, a y
+// pressed later answers nothing, and q quits rather than calling it off.
+#[test]
+fn a_question_ends_with_its_prompt() {
+    let mut app = logged_in();
+    app.handle_key(key('B'));
+    assert!(app.confirm_block.is_some());
+    app.expire_status(Instant::now() + STATUS_TTL + Duration::from_secs(1));
+    assert!(app.confirm_block.is_none());
+    assert!(app.handle_key(key('y')).is_empty());
+    // Another message in the prompt's place ends it too.
+    app.handle_key(key('D'));
+    app.handle_event(Event::Liked {
+        post_uri: "at://a/p/1".into(),
+        result: Ok("at://did:plc:me/app.bsky.feed.like/l".into()),
+    });
+    app.expire_status(Instant::now());
+    app.handle_key(key('q'));
+    assert!(app.quit);
+}
