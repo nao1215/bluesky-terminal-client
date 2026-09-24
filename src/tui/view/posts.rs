@@ -506,11 +506,9 @@ pub(super) fn draw_posts<T: PostRow>(
             height: visible,
             ..content
         };
-        let mut text: Vec<Line> = pl.context.clone();
-        text.push(pl.header.clone());
-        text.extend(pl.body.iter().cloned());
-        let body_rows = text.len() as u16;
-        frame.render_widget(Paragraph::new(text), c);
+        let text = pl.context.iter().chain([&pl.header]).chain(&pl.body);
+        let body_rows = (pl.context.len() + 1 + pl.body.len()) as u16;
+        draw_lines(frame, c, text);
 
         let mut next = y + body_rows;
         if !pl.images.is_empty() {
@@ -561,6 +559,22 @@ pub(super) fn draw_posts<T: PostRow>(
                 images.warm(i.url);
             }
         }
+    }
+}
+
+/// `lines` from the top of `area`, one per row, each cut at its width: what
+/// a `Paragraph` of them draws, without copying the lines into one or
+/// splitting each into a list of graphemes first. The lines of a post are
+/// already laid out for the width, so nothing is wrapped here.
+pub(super) fn draw_lines<'a>(
+    frame: &mut Frame,
+    area: Rect,
+    lines: impl IntoIterator<Item = &'a Line<'a>>,
+) {
+    let area = area.intersection(frame.area());
+    let buf = frame.buffer_mut();
+    for (y, line) in (area.top()..area.bottom()).zip(lines) {
+        buf.set_line(area.x, y, line, area.width);
     }
 }
 

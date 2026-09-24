@@ -32,7 +32,46 @@ pub fn drawable(text: &str) -> Cow<'_, str> {
 /// string as a whole and says less for some (the lam-alif ligature لا is 1
 /// there, 2 cells drawn).
 pub fn cells(s: &str) -> usize {
-    s.graphemes(true).map(UnicodeWidthStr::width).sum()
+    graphemes(s).map(|(_, g)| cluster_width(g)).sum()
+}
+
+/// The width of one grapheme cluster; a printable ASCII letter is one cell
+/// without asking the tables.
+fn cluster_width(g: &str) -> usize {
+    match g.as_bytes() {
+        [b] if b.is_ascii_graphic() || *b == b' ' => 1,
+        _ => g.width(),
+    }
+}
+
+/// `s`'s grapheme clusters with their byte offsets, as
+/// `UnicodeSegmentation::grapheme_indices` gives them. An ASCII character
+/// followed by another (other than CR before LF) is a cluster by itself,
+/// so a run of them is split without the segmentation tables, which are
+/// asked only where something else follows; most of a post is such runs.
+pub fn graphemes(s: &str) -> impl Iterator<Item = (usize, &str)> {
+    let b = s.as_bytes();
+    let mut i = 0;
+    // The tables' own iterator over the rest, kept while it is needed.
+    let mut slow: Option<unicode_segmentation::GraphemeIndices<'_>> = None;
+    std::iter::from_fn(move || {
+        let start = i;
+        let lone_ascii = |i: usize| {
+            b.get(i).is_some_and(u8::is_ascii)
+                && b.get(i + 1)
+                    .is_none_or(|n| n.is_ascii() && !(b[i] == b'\r' && *n == b'\n'))
+        };
+        if lone_ascii(i) {
+            slow = None;
+            i += 1;
+            return Some((start, &s[start..i]));
+        }
+        let (_, g) = slow
+            .get_or_insert_with(|| s[i..].grapheme_indices(true))
+            .next()?;
+        i = start + g.len();
+        Some((start, g))
+    })
 }
 
 /// [`wrap`] of a post's text, kept from one frame to the next: the same
@@ -137,8 +176,8 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
                 col = w;
                 continue;
             }
-            for g in word.graphemes(true) {
-                let gw = g.width();
+            for (_, g) in graphemes(word) {
+                let gw = cluster_width(g);
                 if col + gw > width && col > 0 {
                     out.push(std::mem::take(&mut line));
                     col = 0;
@@ -161,7 +200,7 @@ fn split_keep_spaces(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
     let mut prev: Option<Class> = None;
-    for (i, g) in s.grapheme_indices(true) {
+    for (i, g) in graphemes(s) {
         let class = Class::of(g);
         if let Some(p) = prev
             && (p != class || class == Class::Wide)
@@ -188,7 +227,7 @@ impl Class {
     fn of(g: &str) -> Self {
         if g.chars().all(char::is_whitespace) {
             Class::Space
-        } else if g.width() >= 2 {
+        } else if cluster_width(g) >= 2 {
             Class::Wide
         } else {
             Class::Narrow
@@ -206,8 +245,8 @@ pub fn truncate(s: &str, width: usize) -> String {
     }
     let mut out = String::new();
     let mut col = 0;
-    for g in s.graphemes(true) {
-        let gw = g.width();
+    for (_, g) in graphemes(&s) {
+        let gw = cluster_width(g);
         if col + gw + 1 > width {
             break;
         }
@@ -225,6 +264,76 @@ pub use crate::clock::local_time as format_time;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The ASCII shortcut splits text as the segmentation tables do, on
+    // random mixes of ASCII and the clusters that join across it.
+    #[test]
+    fn graphemes_agree_with_unicode_segmentation() {
+        const PIECES: &[&str] = &[
+            "a",
+            "Z",
+            " ",
+            "  ",
+            ".",
+            "#",
+            "\r",
+            "\n",
+            "\r\n",
+            "\t",
+            "\u{7}",
+            "1",
+            "\u{200d}",
+            "👨",
+            "👩",
+            "👧",
+            "🏽",
+            "🏻",
+            "🇯",
+            "🇵",
+            "🇺",
+            "🇸",
+            "\u{fe0f}",
+            "❤",
+            "\u{20e3}",
+            "\u{301}",
+            "\u{308}",
+            "\u{1100}",
+            "\u{1161}",
+            "\u{11a8}",
+            "가",
+            "\u{600}",
+            "\u{110bd}",
+            "\u{93f}",
+            "क",
+            "日",
+            "本",
+            "ｱ",
+            "\u{e0067}",
+            "🏴",
+            "لا",
+            "\u{200b}",
+            "\u{ad}",
+            "\u{1f3f3}",
+        ];
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..200_000 {
+            let mut s = String::new();
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            for _ in 0..(x % 12) {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                s.push_str(PIECES[(x % PIECES.len() as u64) as usize]);
+            }
+            let fast: Vec<_> = graphemes(&s).collect();
+            let slow: Vec<_> = s.grapheme_indices(true).collect();
+            assert_eq!(fast, slow, "{s:?}");
+            let widths: usize = slow.iter().map(|(_, g)| g.width()).sum();
+            assert_eq!(cells(&s), widths, "{s:?}");
+        }
+    }
 
     // A hint row too long for its place loses pairs from the middle and
     // keeps the last, which says how to leave.
