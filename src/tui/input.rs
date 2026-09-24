@@ -90,6 +90,16 @@ impl TextInput {
             after_break = false;
             self.insert(c);
         }
+        self.snap_to_stop();
+    }
+
+    /// Move the cursor on to the end of the cluster it is inside: what was
+    /// typed can join the character after it (a regional indicator before a
+    /// flag, a ZWJ before an emoji) into one.
+    fn snap_to_stop(&mut self) {
+        if let Some(&stop) = self.stops().iter().find(|&&s| s >= self.cursor) {
+            self.cursor = stop;
+        }
     }
 
     fn insert(&mut self, c: char) {
@@ -102,7 +112,10 @@ impl TextInput {
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
-            KeyCode::Char(c) if !ctrl => self.insert(c),
+            KeyCode::Char(c) if !ctrl => {
+                self.insert(c);
+                self.snap_to_stop();
+            }
             KeyCode::Char('a') if ctrl => self.cursor = self.line_start(),
             KeyCode::Char('e') if ctrl => self.cursor = self.line_end(),
             KeyCode::Char('u') if ctrl => {
@@ -226,8 +239,14 @@ impl TextInput {
         let text = self.text();
         let mut i = 0;
         for g in text.graphemes(true) {
+            // Drawn where the next character goes: in the room left on this
+            // line, else at the start of the next.
             if i == self.cursor {
-                cursor = (lines.len() - 1, col);
+                cursor = if col < width {
+                    (lines.len() - 1, col)
+                } else {
+                    (lines.len(), 0)
+                };
             }
             i += g.chars().count();
             if g == "\n" {
@@ -240,9 +259,6 @@ impl TextInput {
             if col + w > width {
                 lines.push(String::new());
                 col = 0;
-                if i - g.chars().count() == self.cursor {
-                    cursor = (lines.len() - 1, 0);
-                }
             }
             lines.last_mut().unwrap().push_str(shown);
             col += w;
@@ -253,6 +269,11 @@ impl TextInput {
                 col = 0;
             }
             cursor = (lines.len() - 1, col);
+        }
+        // Only zero-width characters after a full line: the line the cursor
+        // is on has nothing on it yet.
+        if cursor.0 == lines.len() {
+            lines.push(String::new());
         }
         Layout { lines, cursor }
     }
@@ -440,5 +461,49 @@ mod tests {
         let mut t = TextInput::multi("keep\ndrop me");
         t.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         assert_eq!(t.text(), "keep\n");
+    }
+
+    // A character that joins the one after it (a regional indicator before
+    // a flag, a ZWJ before an emoji) leaves the cursor after the cluster it
+    // made, where it is drawn, not inside it.
+    #[test]
+    fn typing_into_a_cluster_leaves_the_cursor_after_it() {
+        for (text, typed) in [("🇺🇸", "🇯"), ("👩", "👨\u{200d}")] {
+            let mut t = TextInput::multi(text);
+            t.handle_key(key(KeyCode::Home));
+            for c in typed.chars() {
+                t.handle_key(key(KeyCode::Char(c)));
+            }
+            let drawn = t.layout(40).cursor;
+            t.handle_key(key(KeyCode::Char('x')));
+            let x = t.text().find('x').unwrap();
+            let col = crate::tui::text::cells(&t.text()[..x]);
+            assert_eq!(drawn, (0, col), "{:?}", t.text());
+        }
+    }
+
+    // The cursor is drawn where the next character goes: before a wide
+    // character moved to the next line, the gap it left on this one; before
+    // a zero-width one at the end of a full line, the next line.
+    #[test]
+    fn the_cursor_is_drawn_where_the_next_character_goes() {
+        let mut t = TextInput::single("ab日");
+        t.handle_key(key(KeyCode::Left));
+        assert_eq!(t.layout(3).cursor, (0, 2));
+        t.handle_key(key(KeyCode::Char('x')));
+        assert_eq!(t.layout(3).lines, ["abx", "日"]);
+
+        let mut t = TextInput::single("abc\u{200b}d");
+        t.handle_key(key(KeyCode::Left));
+        t.handle_key(key(KeyCode::Left));
+        assert_eq!(t.layout(3).cursor, (1, 0));
+        t.handle_key(key(KeyCode::Char('x')));
+        assert_eq!(t.layout(3).lines, ["abc", "x\u{200b}d"]);
+
+        let mut t = TextInput::single("abc\u{200b}");
+        t.handle_key(key(KeyCode::Left));
+        let layout = t.layout(3);
+        assert_eq!(layout.cursor, (1, 0));
+        assert_eq!(layout.lines.len(), 2);
     }
 }
