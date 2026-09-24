@@ -1,6 +1,7 @@
 //! The columns of the Timeline tab: adding, loading, paging, and keeping them.
 
 use super::*;
+use crate::tui::columns::each_list;
 
 impl App {
     /// The Timeline tab shows the columns when there are any, the timeline
@@ -68,10 +69,7 @@ impl App {
             return Vec::new();
         };
         c.generation += 1;
-        match &mut c.rows {
-            Rows::Posts(l) => l.begin(),
-            Rows::Notifications(l) => l.begin(),
-        }
+        each_list!(&mut c.rows, |l| l.begin());
         vec![Job::Column {
             id,
             generation: c.generation,
@@ -85,16 +83,10 @@ impl App {
         let Some(c) = self.columns.focused_mut() else {
             return Vec::new();
         };
-        let cursor = match &mut c.rows {
-            Rows::Posts(l) => {
-                l.step(delta);
-                l.want_more()
-            }
-            Rows::Notifications(l) => {
-                l.step(delta);
-                l.want_more()
-            }
-        };
+        let cursor = each_list!(&mut c.rows, |l| {
+            l.step(delta);
+            l.want_more()
+        });
         cursor
             .map(|cursor| Job::Column {
                 id: c.id,
@@ -139,12 +131,10 @@ impl App {
                 None
             }
             (rows, _, Err(e)) => {
-                match (rows, &cursor) {
-                    (Rows::Posts(l), None) => l.failed(&e),
-                    (Rows::Notifications(l), None) => l.failed(&e),
-                    (Rows::Posts(l), Some(at)) => l.more_failed(at),
-                    (Rows::Notifications(l), Some(at)) => l.more_failed(at),
-                }
+                each_list!(rows, |l| match &cursor {
+                    None => l.failed(&e),
+                    Some(at) => l.more_failed(at),
+                });
                 Some(e)
             }
             _ => None,

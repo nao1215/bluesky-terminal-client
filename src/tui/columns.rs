@@ -21,6 +21,17 @@ pub fn feed_of(source: &Source) -> Feed {
     }
 }
 
+/// Run `body` on a column's list, whichever kind it is: `|l| ...` names it.
+macro_rules! each_list {
+    ($rows:expr, |$l:ident| $body:expr) => {
+        match $rows {
+            $crate::tui::columns::Rows::Posts($l) => $body,
+            $crate::tui::columns::Rows::Notifications($l) => $body,
+        }
+    };
+}
+pub(crate) use each_list;
+
 /// A column's list: posts, or notifications.
 #[derive(Debug, Clone)]
 pub enum Rows {
@@ -56,10 +67,7 @@ impl Column {
 
     /// Whether its first page has been asked for.
     pub fn asked(&self) -> bool {
-        match &self.rows {
-            Rows::Posts(l) => l.loaded || l.loading,
-            Rows::Notifications(l) => l.loaded || l.loading,
-        }
+        each_list!(&self.rows, |l| l.loaded || l.loading)
     }
 }
 

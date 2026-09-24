@@ -1093,10 +1093,7 @@ impl App {
             self.chat.convos.more_pending,
         );
         for c in &self.columns.items {
-            match &c.rows {
-                Rows::Posts(l) => list("column", l.loading, l.more_pending),
-                Rows::Notifications(l) => list("column", l.loading, l.more_pending),
-            }
+            crate::tui::columns::each_list!(&c.rows, |l| list("column", l.loading, l.more_pending));
         }
         if self.profile.loading {
             out.push("profile loading".into());
