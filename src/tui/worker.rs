@@ -1044,6 +1044,15 @@ fn picture_name(name: &str, bytes: &[u8]) -> Result<String> {
 /// overwritten or written through a link, even if it appears meanwhile.
 fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> {
     use std::io::Write;
+    save_new_with(dir, name, |f| f.write_all(bytes))
+}
+
+/// [`save_new`], with `write` filling the new file.
+fn save_new_with(
+    dir: &std::path::Path,
+    name: &str,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<PathBuf> {
     for i in 0..10_000 {
         let path = candidate_path(dir, name, i);
         let mut file = match std::fs::OpenOptions::new()
@@ -1060,12 +1069,17 @@ fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> 
                 )));
             }
         };
-        file.write_all(bytes).map_err(|e| {
-            Error::io(crate::i18n::tf(
+        if let Err(e) = write(&mut file).and_then(|()| file.sync_all()) {
+            // What was written of it is not the picture or the video: a
+            // full disk left a cut file that looked like the download, and
+            // took its name from the next try.
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return Err(Error::io(crate::i18n::tf(
                 "cannot write {}: {}",
                 &[&(path.display()).to_string(), &e.to_string()],
-            ))
-        })?;
+            )));
+        }
         return Ok(path);
     }
     Err(Error::io(crate::i18n::tf(
@@ -1359,6 +1373,25 @@ mod tests {
         save_new(dir.path(), &name, b"x").unwrap();
         let again = save_new(dir.path(), &name, b"x").unwrap();
         assert!(again.to_string_lossy().ends_with(" (1).jpg"));
+    }
+
+    // A write that fails part way (a full disk) left a cut file under the
+    // download's name, which looked saved and took the name from a retry.
+    #[test]
+    fn a_download_that_cannot_be_written_whole_leaves_no_file() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let err = save_new_with(dir.path(), "a.jpg", |f| {
+            f.write_all(b"half of it")?;
+            Err(std::io::Error::other("no space left on device"))
+        })
+        .unwrap_err();
+        assert!(err.message().contains("no space left"), "{err}");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            save_new(dir.path(), "a.jpg", b"whole").unwrap(),
+            dir.path().join("a.jpg")
+        );
     }
 
     #[test]
