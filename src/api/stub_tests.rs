@@ -143,6 +143,28 @@ fn loads_that_find_the_token_expired_together_refresh_it_once() {
     assert_eq!(refreshes.load(Ordering::SeqCst), 1);
 }
 
+// An error body with `"message": null` did not read at all, so its
+// ExpiredToken was lost: the token was not refreshed and the read failed.
+#[test]
+fn an_expired_token_is_refreshed_whatever_the_message_holds() {
+    let (url, _log) = serve(Arc::new(move |path, auth| {
+        if path.contains("refreshSession") {
+            return Some((
+                200,
+                r#"{"did":"did:plc:a","handle":"a.test","accessJwt":"new","refreshJwt":"r2"}"#
+                    .into(),
+                0,
+            ));
+        }
+        if auth == "Bearer old" {
+            return Some((400, r#"{"error":"ExpiredToken","message":null}"#.into(), 0));
+        }
+        Some((200, r#"{"feed":[]}"#.into(), 0))
+    }));
+    let c = Client::new(session(&url), None);
+    c.timeline(None).unwrap();
+}
+
 // A refresh answered with another account's tokens is not taken as this
 // one's: not saved, not sent.
 #[test]
