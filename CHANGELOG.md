@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- bsky is shown in English, Japanese, Simplified Chinese, Korean, Russian, Spanish, French, German or Portuguese: the language the system asks for (`LC_ALL`, `LC_MESSAGES`, `LANG`), or the one chosen on the settings screen's Language row, kept in `settings.json`. The `bsky` commands for scripts stay in English.
+
 ### Fixed
 
 - A tag ending in punctuation of a script other than Latin or CJK (Arabic `؟`, Hebrew `׃`, `〽`, the vertical and small forms) kept the mark in the tag it sent, unlike Bluesky's app; and a tag of 33 to 64 emoji was sent where the app sends none. Tags end at any Unicode punctuation now, and their 64 are counted as the app counts them.
@@ -13,10 +17,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - In a text box, a character typed in front of a flag or before an emoji it joins left the cursor inside the new emoji, and the next key went elsewhere. The cursor is drawn where the next character will go, also before a wide character moved to the next line and at the end of a full line.
 
 ## [0.8.0] - 2026-09-24
-
-### Added
-
-- bsky is shown in English, Japanese, Simplified Chinese, Korean, Russian, Spanish, French, German or Portuguese: the language the system asks for (`LC_ALL`, `LC_MESSAGES`, `LANG`), or the one chosen on the settings screen's Language row, kept in `settings.json`. The `bsky` commands for scripts stay in English.
 
 ### Added
 
