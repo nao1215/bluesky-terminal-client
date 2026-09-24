@@ -35,6 +35,40 @@ pub fn cells(s: &str) -> usize {
     s.graphemes(true).map(UnicodeWidthStr::width).sum()
 }
 
+/// [`wrap`] of a post's text, kept from one frame to the next: the same
+/// posts are drawn at the same width on every frame, and wrapping them is
+/// most of what drawing a list costs. The cache is the drawing thread's,
+/// and starts again once it holds more texts than a screen and its
+/// neighbours show.
+pub fn wrap_cached(text: &str, width: usize) -> Vec<String> {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    type Wrapped = (usize, Box<str>, Vec<String>);
+    thread_local! {
+        static CACHE: RefCell<HashMap<u64, Wrapped>> = RefCell::new(HashMap::new());
+    }
+    const KEPT: usize = 512;
+    let mut h = DefaultHasher::new();
+    (text, width).hash(&mut h);
+    let key = h.finish();
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some((w, t, lines)) = c.get(&key)
+            && *w == width
+            && **t == *text
+        {
+            return lines.clone();
+        }
+        let lines = wrap(text, width);
+        if c.len() >= KEPT {
+            c.clear();
+        }
+        c.insert(key, (width, text.into(), lines.clone()));
+        lines
+    })
+}
+
 /// Wrap `text` into lines at most `width` columns wide.
 ///
 /// Words move to the next line whole when they fit on one; longer words,
@@ -155,6 +189,22 @@ pub use crate::clock::local_time as format_time;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The same text at the same width wraps as wrap does, from the cache
+    // or not; another width or text is wrapped again.
+    #[test]
+    fn a_cached_wrap_is_the_wrap() {
+        let text = "家族👨‍👩‍👧 and 🇯🇵 in a post long enough to wrap twice or more";
+        for width in [3, 10, 25, 80] {
+            assert_eq!(wrap_cached(text, width), wrap(text, width));
+            assert_eq!(wrap_cached(text, width), wrap(text, width));
+        }
+        assert_eq!(wrap_cached("other", 10), wrap("other", 10));
+        for i in 0..600 {
+            let t = format!("post {i}");
+            assert_eq!(wrap_cached(&t, 4), wrap(&t, 4));
+        }
+    }
     use rstest::rstest;
 
     // A terminal draws no cell for a control character, so text measured
