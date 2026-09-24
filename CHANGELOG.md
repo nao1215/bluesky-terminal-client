@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- The settings screen has an Account row: Enter opens the account list `A` opens, to switch, add or log out an account, and Esc goes back to the settings.
+
+### Changed
+
+- The pinned feeds are asked for when `+` is first pressed, not at every start: one request fewer before the timeline shows.
+- The `?` help lists `+` once, with the other column keys.
+
+### Fixed
+
+- After `M` muted an account from a list, the status said "M again unmutes", but the next `M` acted on the author of the post selected next, and muted them. It says to press `M` on their profile now, and `B` likewise. An unmute or an unblock loads the timeline again, so their posts come back.
+- A reload sent after a like or a delete, before the server answered it, could undo it on screen: the next `l` liked again, or the deleted post came back.
+- Columns that failed because the session expired stayed failed after logging in again.
+- A post sent while your profile was open, or a reply sent in an open thread, did not show there until it was loaded again.
+- Following or unfollowing from a profile left its follower count as it was.
+- A download started before switching accounts did not say where it was saved.
+
 ## [0.7.1] - 2026-09-24
 
 ### Fixed
