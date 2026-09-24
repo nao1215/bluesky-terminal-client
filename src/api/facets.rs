@@ -651,7 +651,7 @@ mod tests {
     #[case("#tag﹗", Some((0, 4, "tag")))]
     #[case("#؟؟", None)]
     // 64 counted as the app counts, in UTF-16: 40 emoji are 80.
-    #[case(&"#😀".repeat(1).replace("😀", &"😀".repeat(40)), None)]
+    #[case(&format!("#{}", "😀".repeat(40)), None)]
     fn tags_match_the_official_app(#[case] text: &str, #[case] want: Option<(usize, usize, &str)>) {
         let got: Vec<(usize, usize, String)> = detect(text)
             .into_iter()
