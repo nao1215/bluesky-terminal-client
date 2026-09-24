@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-24
+
 ### Changed
 
 - A long text pasted into the middle of a long draft goes in at once (it took seconds).
