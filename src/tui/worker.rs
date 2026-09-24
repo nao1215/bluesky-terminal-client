@@ -491,7 +491,7 @@ impl State {
     fn client(&self) -> Result<Client> {
         self.acting
             .clone()
-            .ok_or_else(|| Error::api("not logged in"))
+            .ok_or_else(|| Error::api(crate::i18n::t("not logged in")))
     }
 
     fn run(&mut self, job: Job) -> Event {
@@ -876,21 +876,28 @@ fn author_page(r: crate::api::types::AuthorFeed) -> Page<Post> {
 const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
 
 fn fetch_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
-    let mut resp = agent
-        .get(url)
-        .call()
-        .map_err(|e| Error::api(format!("cannot download {url}: {e}")))?;
+    let mut resp = agent.get(url).call().map_err(|e| {
+        Error::api(crate::i18n::tf(
+            "cannot download {}: {}",
+            &[url, &e.to_string()],
+        ))
+    })?;
     if !resp.status().is_success() {
-        return Err(Error::api(format!(
-            "cannot download {url}: HTTP {}",
-            resp.status().as_u16()
+        return Err(Error::api(crate::i18n::tf(
+            "cannot download {}: HTTP {}",
+            &[url, &(resp.status().as_u16()).to_string()],
         )));
     }
     resp.body_mut()
         .with_config()
         .limit(MAX_DOWNLOAD_BYTES)
         .read_to_vec()
-        .map_err(|e| Error::api(format!("cannot download {url}: {e}")))
+        .map_err(|e| {
+            Error::api(crate::i18n::tf(
+                "cannot download {}: {}",
+                &[url, &e.to_string()],
+            ))
+        })
 }
 
 /// The file name a Bluesky media URL suggests: `<cid>.<ext>` for
@@ -966,8 +973,9 @@ fn candidate_path(dir: &std::path::Path, name: &str, i: usize) -> PathBuf {
 /// joined into one MPEG transport stream, which players play as it is).
 fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
     let dir = dir.ok_or_else(|| {
-        Error::io("there is no download folder")
-            .with_hint("choose one on the settings screen (s on your Profile tab)")
+        Error::io(crate::i18n::t("there is no download folder")).with_hint(crate::i18n::t(
+            "choose one on the settings screen (s on your Profile tab)",
+        ))
     })?;
     let agent = api::agent();
     let bytes = match media {
@@ -989,7 +997,9 @@ fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
                 all.extend(fetch_bytes(&agent, &seg)?);
             }
             if all.is_empty() {
-                return Err(Error::api("the video's playlist lists nothing to download"));
+                return Err(Error::api(crate::i18n::t(
+                    "the video's playlist lists nothing to download",
+                )));
             }
             all
         }
@@ -998,8 +1008,12 @@ fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
         Media::Image { .. } => picture_name(&download_name(media), &bytes)?,
         Media::Video { .. } => download_name(media),
     };
-    std::fs::create_dir_all(dir)
-        .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
+    std::fs::create_dir_all(dir).map_err(|e| {
+        Error::io(crate::i18n::tf(
+            "cannot create {}: {}",
+            &[&(dir.display()).to_string(), &e.to_string()],
+        ))
+    })?;
     save_new(dir, &name, &bytes)
 }
 
@@ -1015,8 +1029,9 @@ fn picture_name(name: &str, bytes: &[u8]) -> Result<String> {
         Ok(ImageFormat::Gif) => "gif",
         Ok(ImageFormat::WebP) => "webp",
         _ => {
-            return Err(Error::api(format!(
-                "{name} is not a picture bsky can save; nothing was written"
+            return Err(Error::api(crate::i18n::tf(
+                "{} is not a picture bsky can save; nothing was written",
+                &[name],
             )));
         }
     };
@@ -1039,15 +1054,24 @@ fn save_new(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Result<PathBuf> 
         {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(Error::io(format!("cannot write {}: {e}", path.display()))),
+            Err(e) => {
+                return Err(Error::io(crate::i18n::tf(
+                    "cannot write {}: {}",
+                    &[&(path.display()).to_string(), &e.to_string()],
+                )));
+            }
         };
-        file.write_all(bytes)
-            .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
+        file.write_all(bytes).map_err(|e| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        })?;
         return Ok(path);
     }
-    Err(Error::io(format!(
-        "{} has too many files named like {name}",
-        dir.display()
+    Err(Error::io(crate::i18n::tf(
+        "{} has too many files named like {}",
+        &[&(dir.display()).to_string(), name],
     )))
 }
 

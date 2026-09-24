@@ -483,9 +483,9 @@ impl App {
             self.settings_to_save = Some(self.settings.clone());
             self.save_note = Some(note);
         } else {
-            self.error(format!(
-                "{note} for this session only; settings.json could not be read, so it is \
-                 not overwritten (fix or remove it to save)"
+            self.error(tf(
+                "{} for this session only; settings.json could not be read, so it is not overwritten (fix or remove it to save)",
+                &[&note],
             ));
         }
     }

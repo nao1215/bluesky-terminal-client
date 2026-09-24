@@ -20,6 +20,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "Attach pictures (up to {}) or a video",
         "附加图片（最多 {} 张）或视频",
     ),
+    (
+        "Bluesky does not take videos from this account now: {}",
+        "Bluesky 目前不接受此账号上传视频：{}",
+    ),
     ("Browser", "浏览器"),
     ("Chat", "聊天"),
     ("Choose a folder", "选择文件夹"),
@@ -93,6 +97,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Your posts (@{})", "我的帖子 (@{})"),
     ("a log in another  x log out", "a 登录其他账户  x 退出登录"),
     (
+        "a post can have at most {} images",
+        "一条帖子最多附加 {} 张图片",
+    ),
+    (
         "a post can have at most {} pictures",
         "一条帖子最多附加 {} 张图片",
     ),
@@ -157,10 +165,41 @@ pub const TABLE: &[(&str, &str)] = &[
         "bsky 是非官方客户端，并非由 Bluesky 制作。",
     ),
     ("cancel", "取消"),
+    ("cannot create {}: {}", "无法创建 {}：{}"),
+    ("cannot determine the config directory", "无法确定配置目录"),
+    ("cannot download {}: HTTP {}", "无法下载 {}：HTTP {}"),
+    ("cannot download {}: {}", "无法下载 {}：{}"),
+    ("cannot load the video: HTTP {}", "无法加载视频：HTTP {}"),
+    ("cannot load the video: {}", "无法加载视频：{}"),
+    ("cannot open the link with {}: {}", "无法用 {} 打开链接：{}"),
+    (
+        "cannot open the link: {} was not found",
+        "无法打开链接：找不到 {}",
+    ),
+    ("cannot read {}: {}", "无法读取 {}：{}"),
+    ("cannot remove {}: {}", "无法删除 {}：{}"),
+    (
+        "cannot start the video decoder: {}",
+        "无法启动视频解码器：{}",
+    ),
+    (
+        "cannot write to {}: every name tried was taken",
+        "无法写入 {}：尝试过的文件名都已被占用",
+    ),
+    ("cannot write to {}: {}", "无法写入 {}：{}"),
+    ("cannot write {}: {}", "无法写入 {}：{}"),
     ("change", "更改"),
     ("change the selected setting", "更改所选设置"),
+    (
+        "check the network connection and the service URL",
+        "请检查网络连接和服务 URL",
+    ),
     ("choose a color theme", "选择配色主题"),
     ("choose avatar", "选择头像"),
+    (
+        "choose one on the settings screen (s on your Profile tab)",
+        "请在设置界面中选择（在个人资料标签页按 s）",
+    ),
     ("choose this folder", "选择此文件夹"),
     ("clear to the start of the line", "删除至行首"),
     ("close", "关闭"),
@@ -172,6 +211,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "已设置 NO_COLOR，颜色已关闭",
     ),
     ("column", "栏"),
+    (
+        "confirm the account's email address in the Bluesky app (Settings, Account)",
+        "请在 Bluesky 应用中验证账号的电子邮件地址（设置 → 账号）",
+    ),
     ("copied {}", "已复制 {}"),
     ("copy its address", "复制地址"),
     ("copy the post's address", "复制帖子地址"),
@@ -310,6 +353,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("loading earlier messages…", "正在加载更早的消息…"),
     ("loading the video…", "正在加载视频…"),
     ("loading…", "正在加载…"),
+    ("log in again", "请重新登录"),
     ("log in another account", "登录其他账户"),
     ("log out", "退出登录"),
     (
@@ -381,10 +425,14 @@ pub const TABLE: &[(&str, &str)] = &[
         "no picture of the video could be decoded",
         "无法解码视频的任何画面",
     ),
+    ("no reason given", "未说明原因"),
     ("none", "无"),
+    ("not a web link: {}", "不是网页链接：{}"),
+    ("not a {} of yours: {}", "不是你自己的 {}：{}"),
     ("not blocked", "未屏蔽"),
     ("not deleted", "未删除"),
     ("not following", "未关注"),
+    ("not logged in", "未登录"),
     ("now @{}", "当前为 @{}"),
     ("off", "关闭"),
     ("open", "打开"),
@@ -517,6 +565,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("reposted", "已转发"),
     ("reposted your post", "转发了你的帖子"),
     ("reposted your repost", "转发了你的转发"),
+    (
+        "run `bsky logout --all` to discard it and log in again",
+        "请运行 `bsky logout --all` 将其丢弃并重新登录",
+    ),
     ("save", "保存"),
     ("save it in the download folder", "保存到下载文件夹"),
     ("saved {}", "已保存 {}"),
@@ -537,6 +589,11 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("sending…", "正在发送…"),
     ("set by {} for this run", "本次由 {} 指定"),
+    ("set {} to a writable directory", "请将 {} 设为可写入的目录"),
+    (
+        "set {}, or Browser on the settings screen (s on your Profile tab), to the program that opens links",
+        "请将 {} 或设置界面（在个人资料标签页按 s）中的“浏览器”设为用于打开链接的程序",
+    ),
     ("settings", "设置"),
     (
         "settings: theme, pictures, folders",
@@ -564,14 +621,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the conversation is ready on the Chat tab",
         "对话已在聊天标签页中就绪",
     ),
+    (
+        "the daily number of videos has been reached",
+        "已达到每日视频数量上限",
+    ),
     ("the default; {}", "默认值；{}"),
     ("the folder above", "上级文件夹"),
     (
         "the last one removed, the timeline is alone",
         "移除最后一栏后只剩时间线",
     ),
+    ("the message is empty", "消息为空"),
     ("the message is still on its way", "消息仍在发送中"),
+    (
+        "the message is {} bytes; the limit is {}",
+        "消息有 {} 字节；上限为 {}",
+    ),
+    (
+        "the message is {} characters; the limit is {}",
+        "消息有 {} 个字符；上限为 {}",
+    ),
+    ("the player stopped", "播放器已停止"),
     ("the post is empty", "帖子为空"),
+    (
+        "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
+        "帖子有 {} 字节；上限为 {}（每个表情符号最多占 25 字节）",
+    ),
+    (
+        "the post is {} characters; the limit is {}",
+        "帖子有 {} 个字符；上限为 {}",
+    ),
     (
         "the post the list was about is no longer selected; press . again",
         "列表对应的帖子已不再选中；请再按一次 .",
@@ -585,6 +664,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "进入时焦点在搜索框",
     ),
     (
+        "the session expired; log in again",
+        "会话已过期；请重新登录",
+    ),
+    (
         "the session has expired; log in again",
         "会话已过期；请重新登录",
     ),
@@ -596,6 +679,18 @@ pub const TABLE: &[(&str, &str)] = &[
     ("the tabs, in the order shown", "各标签页（按显示顺序）"),
     ("the video download stopped", "视频下载已中断"),
     (
+        "the video is larger than what is left of today's upload allowance",
+        "视频大小超过了今天剩余的上传额度",
+    ),
+    (
+        "the video service could not process {}: {}",
+        "视频服务无法处理 {}：{}",
+    ),
+    (
+        "the video service did not finish {} in time",
+        "视频服务未能及时处理完 {}",
+    ),
+    (
         "the video service is a web address, such as https://video.bsky.app",
         "视频服务应为网址，例如 https://video.bsky.app",
     ),
@@ -605,10 +700,15 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("the video's playlist is not text", "视频的播放列表不是文本"),
     (
+        "the video's playlist lists nothing to download",
+        "视频的播放列表中没有可下载的内容",
+    ),
+    (
         "the video's playlist lists nothing to play",
         "视频的播放列表中没有可播放的内容",
     ),
     ("theme: {}", "主题：{}"),
+    ("there is no download folder", "没有下载文件夹"),
     (
         "this app password cannot read direct messages. Make one with \"Allow access to your direct messages\" (Settings, Privacy and security, App passwords) and log in with it (A, then a).",
         "此应用专用密码无法读取私信。请创建一个勾选“允许访问你的私信”的应用专用密码（设置 → 隐私与安全 → 应用专用密码），并用它登录（先按 A，再按 a）。",
@@ -626,12 +726,17 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("this terminal cannot show them", "此终端无法显示"),
     ("this terminal cannot show video", "此终端无法显示视频"),
+    (
+        "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
+        "此视频不是 H.264（流类型 0x{}），bsky 无法解码",
+    ),
     ("type in the search box again", "再次在搜索框中输入"),
     ("type, then enter", "输入后按 enter"),
     ("unblock them", "取消屏蔽"),
     ("unblocked", "已取消屏蔽"),
     ("unfollow", "取消关注"),
     ("unfollowed", "已取消关注"),
+    ("unknown format", "未知格式"),
     ("unknown theme {}; using {}", "未知主题 {}；改用 {}"),
     ("unmute them", "取消隐藏"),
     ("unmuted", "已取消隐藏"),
@@ -664,9 +769,46 @@ pub const TABLE: &[(&str, &str)] = &[
     ("your home folder", "主文件夹"),
     ("{}\nhint: {}", "{}\n提示：{}"),
     ("{} bytes", "{} 字节"),
+    (
+        "{} cannot be made smaller than {} bytes",
+        "无法将 {} 缩小到 {} 字节以下",
+    ),
     ("{} column", "{} 栏"),
     ("{} columns", "{} 栏"),
+    (
+        "{} for this session only; settings.json could not be read, so it is not overwritten (fix or remove it to save)",
+        "{}（仅限本次会话）；无法读取 settings.json，因此不会覆盖它（修复或删除后即可保存）",
+    ),
+    (
+        "{} has too many files named like {}",
+        "{} 中名称类似 {} 的文件过多",
+    ),
+    (
+        "{} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {}",
+        "{} 不是 bsky 能读取的图片（PNG、JPEG、GIF、WebP）：{}",
+    ),
+    (
+        "{} is not a picture bsky can save; nothing was written",
+        "{} 不是 bsky 能保存的图片；未写入任何内容",
+    ),
+    (
+        "{} is not a valid session file: {}",
+        "{} 不是有效的会话文件：{}",
+    ),
+    (
+        "{} is not a video bsky can post (MP4, MOV, WebM, MPEG)",
+        "{} 不是 bsky 能发布的视频（MP4、MOV、WebM、MPEG）",
+    ),
     ("{} is not logged in any more", "{} 已不再登录"),
+    ("{} is not valid and was ignored: {}", "{} 无效，已忽略：{}"),
+    (
+        "{} is {} MB; pictures must be at most {} MB",
+        "{} 为 {} MB；图片最大为 {} MB",
+    ),
+    (
+        "{} is {} MB; videos must be at most {} MB",
+        "{} 为 {} MB；视频最大为 {} MB",
+    ),
     ("{} marked", "已标记 {} 项"),
     (
         "{} marked; there is no room for more",
@@ -675,7 +817,12 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{} needed, now {}", "需要 {}，当前 {}"),
     ("{} new", "{} 条新消息"),
     ("{} pictures", "{} 张图片"),
+    (
+        "{} runs {}; videos can be at most {}",
+        "{} 时长为 {}；视频最长为 {}",
+    ),
     ("{}: back to the default, {}", "{}：已恢复默认（{}）"),
+    ("{}: cannot reach the server: {}", "{}：无法连接服务器：{}"),
     ("{}; showing its thumbnail", "{}；正在显示缩略图"),
     ("{}; x goes back to the default", "{}；x 恢复默认"),
     ("✓ following", "✓ 已关注"),

@@ -158,7 +158,12 @@ impl Browser {
                     });
                 }
             }
-            Err(e) => self.error = Some(format!("cannot read {}: {e}", self.dir.display())),
+            Err(e) => {
+                self.error = Some(crate::i18n::tf(
+                    "cannot read {}: {}",
+                    &[&(self.dir.display()).to_string(), &e.to_string()],
+                ))
+            }
         }
         items.sort_by(|a, b| {
             (a.kind, a.name.to_lowercase(), &a.name).cmp(&(b.kind, b.name.to_lowercase(), &b.name))

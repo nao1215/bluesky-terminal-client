@@ -20,6 +20,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "Attach pictures (up to {}) or a video",
         "画像 (最大 {} 枚) か動画を添付",
     ),
+    (
+        "Bluesky does not take videos from this account now: {}",
+        "Bluesky は現在このアカウントからの動画を受け付けていません: {}",
+    ),
     ("Browser", "ブラウザ"),
     ("Chat", "チャット"),
     ("Choose a folder", "フォルダを選択"),
@@ -96,6 +100,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "a 別のアカウントでログイン  x ログアウト",
     ),
     (
+        "a post can have at most {} images",
+        "1 つの投稿に添付できる画像は最大 {} 枚です",
+    ),
+    (
         "a post can have at most {} pictures",
         "1 つの投稿に添付できる画像は最大 {} 枚です",
     ),
@@ -160,10 +168,53 @@ pub const TABLE: &[(&str, &str)] = &[
         "bsky は Bluesky 製ではない非公式クライアントです。",
     ),
     ("cancel", "取消"),
+    ("cannot create {}: {}", "{} を作成できません: {}"),
+    (
+        "cannot determine the config directory",
+        "設定ディレクトリを特定できません",
+    ),
+    (
+        "cannot download {}: HTTP {}",
+        "{} をダウンロードできません: HTTP {}",
+    ),
+    ("cannot download {}: {}", "{} をダウンロードできません: {}"),
+    (
+        "cannot load the video: HTTP {}",
+        "動画を読み込めません: HTTP {}",
+    ),
+    ("cannot load the video: {}", "動画を読み込めません: {}"),
+    (
+        "cannot open the link with {}: {}",
+        "{} でリンクを開けません: {}",
+    ),
+    (
+        "cannot open the link: {} was not found",
+        "リンクを開けません: {} が見つかりません",
+    ),
+    ("cannot read {}: {}", "{} を読み込めません: {}"),
+    ("cannot remove {}: {}", "{} を削除できません: {}"),
+    (
+        "cannot start the video decoder: {}",
+        "動画デコーダを起動できません: {}",
+    ),
+    (
+        "cannot write to {}: every name tried was taken",
+        "{} に書き込めません: 試したファイル名はすべて使用済みです",
+    ),
+    ("cannot write to {}: {}", "{} に書き込めません: {}"),
+    ("cannot write {}: {}", "{} を書き込めません: {}"),
     ("change", "変更"),
     ("change the selected setting", "選択した設定を変更"),
+    (
+        "check the network connection and the service URL",
+        "ネットワーク接続とサービスの URL を確認してください",
+    ),
     ("choose a color theme", "配色テーマを選ぶ"),
     ("choose avatar", "アバター選択"),
+    (
+        "choose one on the settings screen (s on your Profile tab)",
+        "設定画面で選択してください (プロフィールタブで s)",
+    ),
     ("choose this folder", "このフォルダ"),
     ("clear to the start of the line", "行頭まで削除"),
     ("close", "閉じる"),
@@ -175,6 +226,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "NO_COLOR が設定されているため色なし",
     ),
     ("column", "カラム"),
+    (
+        "confirm the account's email address in the Bluesky app (Settings, Account)",
+        "Bluesky アプリでアカウントのメールアドレスを確認してください (設定 → アカウント)",
+    ),
     ("copied {}", "{} をコピーしました"),
     ("copy its address", "アドレスをコピー"),
     ("copy the post's address", "投稿のアドレスをコピー"),
@@ -325,6 +380,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("loading earlier messages…", "以前のメッセージを読み込み中…"),
     ("loading the video…", "動画を読み込み中…"),
     ("loading…", "読み込み中…"),
+    ("log in again", "もう一度ログインしてください"),
     ("log in another account", "別のアカウントでログイン"),
     ("log out", "ログアウト"),
     (
@@ -405,10 +461,14 @@ pub const TABLE: &[(&str, &str)] = &[
         "no picture of the video could be decoded",
         "動画のフレームを 1 枚もデコードできませんでした",
     ),
+    ("no reason given", "理由は示されていません"),
     ("none", "なし"),
+    ("not a web link: {}", "Web のリンクではありません: {}"),
+    ("not a {} of yours: {}", "自分の {} ではありません: {}"),
     ("not blocked", "ブロックしませんでした"),
     ("not deleted", "削除しませんでした"),
     ("not following", "未フォロー"),
+    ("not logged in", "ログインしていません"),
     ("now @{}", "現在は @{}"),
     ("off", "オフ"),
     ("open", "開く"),
@@ -562,6 +622,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "reposted your repost",
         "があなたのリポストをリポストしました",
     ),
+    (
+        "run `bsky logout --all` to discard it and log in again",
+        "`bsky logout --all` を実行して破棄し、もう一度ログインしてください",
+    ),
     ("save", "保存"),
     ("save it in the download folder", "ダウンロード先に保存"),
     ("saved {}", "{} を保存しました"),
@@ -582,6 +646,14 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("sending…", "送信中…"),
     ("set by {} for this run", "今回は {} で指定"),
+    (
+        "set {} to a writable directory",
+        "{} に書き込み可能なディレクトリを指定してください",
+    ),
+    (
+        "set {}, or Browser on the settings screen (s on your Profile tab), to the program that opens links",
+        "{} か、設定画面 (プロフィールタブで s) のブラウザに、リンクを開くプログラムを指定してください",
+    ),
     ("settings", "設定"),
     (
         "settings: theme, pictures, folders",
@@ -612,17 +684,39 @@ pub const TABLE: &[(&str, &str)] = &[
         "the conversation is ready on the Chat tab",
         "チャットタブで会話を始められます",
     ),
+    (
+        "the daily number of videos has been reached",
+        "1 日にアップロードできる動画の本数に達しました",
+    ),
     ("the default; {}", "既定値。{}"),
     ("the folder above", "一つ上のフォルダ"),
     (
         "the last one removed, the timeline is alone",
         "最後を消すとタイムラインのみ",
     ),
+    ("the message is empty", "メッセージが空です"),
     (
         "the message is still on its way",
         "メッセージはまだ送信中です",
     ),
+    (
+        "the message is {} bytes; the limit is {}",
+        "メッセージが {} バイトあります。上限は {} バイトです",
+    ),
+    (
+        "the message is {} characters; the limit is {}",
+        "メッセージが {} 文字あります。上限は {} 文字です",
+    ),
+    ("the player stopped", "プレーヤーが停止しました"),
     ("the post is empty", "投稿が空です"),
+    (
+        "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
+        "投稿が {} バイトあります。上限は {} バイトです (絵文字は 1 つで最大 25 バイト)",
+    ),
+    (
+        "the post is {} characters; the limit is {}",
+        "投稿が {} 文字あります。上限は {} 文字です",
+    ),
     (
         "the post the list was about is no longer selected; press . again",
         "一覧の対象だった投稿が選択されていません。もう一度 . を押してください",
@@ -634,6 +728,10 @@ pub const TABLE: &[(&str, &str)] = &[
     (
         "the search box has focus when you arrive",
         "開くと検索欄に入力できる",
+    ),
+    (
+        "the session expired; log in again",
+        "セッションの有効期限が切れました。もう一度ログインしてください",
     ),
     (
         "the session has expired; log in again",
@@ -650,6 +748,18 @@ pub const TABLE: &[(&str, &str)] = &[
         "動画のダウンロードが止まりました",
     ),
     (
+        "the video is larger than what is left of today's upload allowance",
+        "動画が本日のアップロード残量を超えています",
+    ),
+    (
+        "the video service could not process {}: {}",
+        "動画サービスが {} を処理できませんでした: {}",
+    ),
+    (
+        "the video service did not finish {} in time",
+        "動画サービスが時間内に {} の処理を終えませんでした",
+    ),
+    (
         "the video service is a web address, such as https://video.bsky.app",
         "動画サービスには https://video.bsky.app のような Web アドレスを指定してください",
     ),
@@ -662,10 +772,15 @@ pub const TABLE: &[(&str, &str)] = &[
         "動画のプレイリストがテキストではありません",
     ),
     (
+        "the video's playlist lists nothing to download",
+        "動画のプレイリストにダウンロードできるものがありません",
+    ),
+    (
         "the video's playlist lists nothing to play",
         "動画のプレイリストに再生できるものがありません",
     ),
     ("theme: {}", "テーマ: {}"),
+    ("there is no download folder", "ダウンロード先がありません"),
     (
         "this app password cannot read direct messages. Make one with \"Allow access to your direct messages\" (Settings, Privacy and security, App passwords) and log in with it (A, then a).",
         "このアプリパスワードではダイレクトメッセージを読めません。「ダイレクトメッセージへのアクセスを許可」を付けたアプリパスワードを作成し (設定 → プライバシーとセキュリティ → アプリパスワード)、それでログインしてください (A を押してから a)。",
@@ -692,12 +807,17 @@ pub const TABLE: &[(&str, &str)] = &[
         "this terminal cannot show video",
         "この端末は動画を表示できません",
     ),
+    (
+        "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
+        "この動画は H.264 ではないため (ストリーム種別 0x{})、bsky ではデコードできません",
+    ),
     ("type in the search box again", "検索欄に再入力"),
     ("type, then enter", "入力して enter"),
     ("unblock them", "ブロック解除"),
     ("unblocked", "ブロックを解除しました"),
     ("unfollow", "フォロー解除"),
     ("unfollowed", "フォローを解除しました"),
+    ("unknown format", "不明な形式"),
     (
         "unknown theme {}; using {}",
         "不明なテーマ {} のため {} を使います",
@@ -742,11 +862,51 @@ pub const TABLE: &[(&str, &str)] = &[
     ("your home folder", "ホームフォルダ"),
     ("{}\nhint: {}", "{}\nヒント: {}"),
     ("{} bytes", "{} バイト"),
+    (
+        "{} cannot be made smaller than {} bytes",
+        "{} を {} バイトより小さくできません",
+    ),
     ("{} column", "{} カラム"),
     ("{} columns", "{} カラム"),
     (
+        "{} for this session only; settings.json could not be read, so it is not overwritten (fix or remove it to save)",
+        "{} (このセッションのみ)。settings.json を読み込めなかったため上書きしません (保存するには修正するか削除してください)",
+    ),
+    (
+        "{} has too many files named like {}",
+        "{} には {} に似た名前のファイルが多すぎます",
+    ),
+    (
+        "{} is not a picture bsky can read (PNG, JPEG, GIF, WebP): {}",
+        "{} は bsky が読める画像ではありません (PNG, JPEG, GIF, WebP): {}",
+    ),
+    (
+        "{} is not a picture bsky can save; nothing was written",
+        "{} は bsky が保存できる画像ではありません。何も書き込んでいません",
+    ),
+    (
+        "{} is not a valid session file: {}",
+        "{} は有効なセッションファイルではありません: {}",
+    ),
+    (
+        "{} is not a video bsky can post (MP4, MOV, WebM, MPEG)",
+        "{} は bsky で投稿できる動画ではありません (MP4, MOV, WebM, MPEG)",
+    ),
+    (
         "{} is not logged in any more",
         "{} はログアウトされています",
+    ),
+    (
+        "{} is not valid and was ignored: {}",
+        "{} は無効なため無視しました: {}",
+    ),
+    (
+        "{} is {} MB; pictures must be at most {} MB",
+        "{} は {} MB あります。画像は {} MB までです",
+    ),
+    (
+        "{} is {} MB; videos must be at most {} MB",
+        "{} は {} MB あります。動画は {} MB までです",
     ),
     ("{} marked", "{} 件に印"),
     (
@@ -757,8 +917,16 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{} new", "{} 件の新着"),
     ("{} pictures", "画像 {} 枚"),
     (
+        "{} runs {}; videos can be at most {}",
+        "{} の長さは {} です。動画は {} までです",
+    ),
+    (
         "{}: back to the default, {}",
         "{}: 既定値 ({}) に戻しました",
+    ),
+    (
+        "{}: cannot reach the server: {}",
+        "{}: サーバーに接続できません: {}",
     ),
     (
         "{}; showing its thumbnail",
