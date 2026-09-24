@@ -129,7 +129,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: did, equals: "did:plc:me" } }
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "clip.mp4" } }
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "video.mp4" } }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.video.getJobStatus, query: { name: jobId, equals: "job-1" } }
       # Nothing goes to the PDS's own blob upload.
@@ -203,7 +203,7 @@ scenarios:
             count: 1
             header: { name: Content-Type, equals: "video/quicktime" }
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "classic.mov" } }
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, query: { name: name, equals: "video.mov" } }
       - assert:
           mock:
             name: api
@@ -649,6 +649,6 @@ scenarios:
             path: cfg/settings.json
             json: { path: "$.video_service", equals: "${api.url}" }
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 1, query: { name: name, equals: "clip.mp4" } }
+          mock: { name: api, path: /xrpc/app.bsky.video.uploadVideo, count: 1, query: { name: name, equals: "video.mp4" } }
       - assert:
           mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1 }
