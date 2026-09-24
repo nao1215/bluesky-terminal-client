@@ -8,6 +8,7 @@ mod compose;
 mod config;
 mod error;
 mod hls;
+mod i18n;
 mod media;
 mod terminal;
 mod timeline;

@@ -1,6 +1,7 @@
 //! The settings: the theme, pictures, the folders, the video service and the browser, and the settings screen.
 
 use super::*;
+use crate::i18n::Lang;
 
 impl App {
     /// Take the saved settings and the terminal's color depth into account.
@@ -13,10 +14,15 @@ impl App {
     ) {
         self.color_depth = depth;
         self.settings_writable = warning.is_none();
+        // First, so that what is said from here on is in it.
+        crate::i18n::set(language_of(&settings, &self.env));
         let mut warning = warning;
         let index = match settings.theme.as_deref() {
             Some(name) => theme::index_of(name).unwrap_or_else(|| {
-                warning = Some(format!("unknown theme {name:?}; using {}", THEMES[0].name));
+                warning = Some(tf(
+                    "unknown theme {}; using {}",
+                    &[&format!("{name:?}"), THEMES[0].name],
+                ));
                 0
             }),
             None => 0,
@@ -48,6 +54,31 @@ impl App {
         }
     }
 
+    /// The language the client is shown in now.
+    pub fn language(&self) -> Lang {
+        language_of(&self.settings, &self.env)
+    }
+
+    /// A key on the list of languages: the one chosen is used at once and
+    /// kept, and the settings come back.
+    pub(super) fn languages_key(&mut self, key: KeyEvent, selected: usize) {
+        let n = Lang::ALL.len();
+        let at = |selected| Some(Overlay::Languages { selected });
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => self.overlay = at((selected + 1) % n),
+            KeyCode::Char('k') | KeyCode::Up => self.overlay = at((selected + n - 1) % n),
+            KeyCode::Enter => {
+                let lang = Lang::ALL[selected.min(n - 1)];
+                self.settings.language = Some(lang.code().to_string());
+                crate::i18n::set(lang);
+                self.back_to_settings();
+                self.save_settings(tf("language: {}", &[lang.name()]));
+            }
+            KeyCode::Esc | KeyCode::Char('q') => self.back_to_settings(),
+            _ => {}
+        }
+    }
+
     /// Close a list the settings screen opened (themes, accounts): back to
     /// the settings when they opened it, else to nothing.
     pub(super) fn back_to_settings(&mut self) {
@@ -65,7 +96,7 @@ impl App {
         // says otherwise after this.
         self.settings_return = None;
         if self.color_depth == ColorDepth::None {
-            self.error("colors are off because NO_COLOR is set");
+            self.error(n!("colors are off because NO_COLOR is set"));
             return;
         }
         self.overlay = Some(Overlay::Themes {
@@ -78,7 +109,9 @@ impl App {
     pub fn without_pictures(&mut self) {
         self.pictures = false;
         if self.status.is_none() {
-            self.info("this terminal cannot show pictures; bsky runs without them");
+            self.info(n!(
+                "this terminal cannot show pictures; bsky runs without them"
+            ));
         }
     }
 
@@ -87,7 +120,9 @@ impl App {
     pub fn pictures_back(&mut self, shown: bool) {
         self.pictures = shown;
         if !shown {
-            self.info("this terminal cannot show pictures; bsky runs without them");
+            self.info(n!(
+                "this terminal cannot show pictures; bsky runs without them"
+            ));
         }
     }
 
@@ -127,49 +162,49 @@ impl App {
     /// What the settings screen lists, in order.
     pub fn settings_rows(&self) -> Vec<SettingRow> {
         use crate::config::{self, Source};
-        let fixed = |var: &str| format!("set by {var} for this run");
+        let fixed = |var: &str| tf("set by {} for this run", &[var]);
         let path = |p: Option<PathBuf>, none: &str| {
             p.map_or_else(|| none.to_string(), |p| p.display().to_string())
         };
         let theme = if self.color_depth == ColorDepth::None {
             SettingRow {
-                name: "Theme",
+                name: n!("Theme"),
                 value: THEMES[self.theme_index].name.to_string(),
-                note: "colors are off because NO_COLOR is set".into(),
+                note: n!("colors are off because NO_COLOR is set").into(),
                 editable: false,
                 resettable: false,
             }
         } else {
             SettingRow {
-                name: "Theme",
+                name: n!("Theme"),
                 value: THEMES[self.theme_index].name.to_string(),
-                note: "enter chooses one from the list, as T does".into(),
+                note: n!("enter chooses one from the list, as T does").into(),
                 editable: true,
                 resettable: false,
             }
         };
         let pictures = match &self.env.graphics {
             Some(v) => SettingRow {
-                name: "Pictures",
+                name: n!("Pictures"),
                 value: v.clone(),
                 note: fixed(crate::terminal::GRAPHICS_ENV),
                 editable: false,
                 resettable: false,
             },
             None if self.settings.pictures_off() => SettingRow {
-                name: "Pictures",
-                value: "off".into(),
-                note: "enter draws them again where the terminal can".into(),
+                name: n!("Pictures"),
+                value: n!("off").into(),
+                note: n!("enter draws them again where the terminal can").into(),
                 editable: true,
                 resettable: false,
             },
             None => SettingRow {
-                name: "Pictures",
-                value: "auto".into(),
+                name: n!("Pictures"),
+                value: n!("auto").into(),
                 note: if self.pictures {
-                    "enter turns them off: posts say what they carry".into()
+                    n!("enter turns them off: posts say what they carry").into()
                 } else {
-                    "this terminal cannot show them".into()
+                    n!("this terminal cannot show them").into()
                 },
                 editable: true,
                 resettable: false,
@@ -179,8 +214,8 @@ impl App {
         let row = |name, var: &'static str, value: String, from: Source, change: &str| {
             let note = match from {
                 Source::Env => fixed(var),
-                Source::File => format!("{change}; x goes back to the default"),
-                Source::Default => format!("the default; {change}"),
+                Source::File => tf("{}; x goes back to the default", &[crate::i18n::t(change)]),
+                Source::Default => tf("the default; {}", &[crate::i18n::t(change)]),
             };
             SettingRow {
                 name,
@@ -198,40 +233,52 @@ impl App {
             theme,
             pictures,
             row(
-                "Download folder",
+                n!("Download folder"),
                 config::DOWNLOAD_DIR_ENV,
-                path(download, "none"),
+                path(download, n!("none")),
                 download_from,
-                "enter chooses another folder",
+                n!("enter chooses another folder"),
             ),
             row(
-                "Picture cache",
+                n!("Picture cache"),
                 config::CACHE_DIR_ENV,
-                path(cache, "off"),
+                path(cache, n!("off")),
                 cache_from,
-                "enter chooses another folder",
+                n!("enter chooses another folder"),
             ),
             row(
-                "Video service",
+                n!("Video service"),
                 config::VIDEO_SERVICE_ENV,
                 video,
                 video_from,
-                "enter types another address",
+                n!("enter types another address"),
             ),
             row(
-                "Browser",
+                n!("Browser"),
                 crate::browser::BROWSER_ENV,
                 browser.unwrap_or_else(|| crate::browser::system_opener().to_string()),
                 browser_from,
-                "enter types the program that opens links",
+                n!("enter types the program that opens links"),
             ),
             SettingRow {
-                name: "Account",
+                name: n!("Language"),
+                value: self.language().name().to_string(),
+                note: if self.settings.language.is_some() {
+                    n!("enter chooses another; x goes back to the system's")
+                } else {
+                    n!("the system's; enter chooses another")
+                }
+                .into(),
+                editable: true,
+                resettable: self.settings.language.is_some(),
+            },
+            SettingRow {
+                name: n!("Account"),
                 value: self
                     .session
                     .as_ref()
-                    .map_or_else(|| "none".into(), |s| format!("@{}", s.handle)),
-                note: "enter switches, adds or logs out an account, as A does".into(),
+                    .map_or_else(|| n!("none").into(), |s| format!("@{}", s.handle)),
+                note: n!("enter switches, adds or logs out an account, as A does").into(),
                 editable: true,
                 resettable: false,
             },
@@ -307,6 +354,14 @@ impl App {
                 self.settings_return = Some(selected);
                 return;
             }
+            "Language" => {
+                let at = Lang::ALL.iter().position(|l| *l == self.language());
+                self.overlay = Some(Overlay::Languages {
+                    selected: at.unwrap_or(0),
+                });
+                self.settings_return = Some(selected);
+                return;
+            }
             "Account" => {
                 let at = self.current_account_index().unwrap_or(0);
                 self.overlay = Some(Overlay::Accounts { selected: at });
@@ -315,13 +370,13 @@ impl App {
             }
             "Pictures" => {
                 let off = !self.settings.pictures_off();
-                let value = if off { "off" } else { "auto" };
+                let value = if off { n!("off") } else { n!("auto") };
                 self.settings.pictures = Some(value.into());
                 self.pictures_change = Some(!off);
                 if off {
                     self.pictures = false;
                 }
-                self.save_settings(format!("pictures: {value}"));
+                self.save_settings(tf("pictures: {}", &[crate::i18n::t(value)]));
                 return;
             }
             "Download folder" => SettingEdit::Folder(Box::new(Browser::folder(
@@ -382,7 +437,9 @@ impl App {
             && !value.is_empty()
             && !(value.starts_with("https://") || value.starts_with("http://"))
         {
-            self.error("the video service is a web address, such as https://video.bsky.app");
+            self.error(n!(
+                "the video service is a web address, such as https://video.bsky.app"
+            ));
             return;
         }
         let kept = (!value.is_empty()).then(|| value.clone());
@@ -397,6 +454,10 @@ impl App {
             }
             "Video service" => self.settings.video_service = kept,
             "Browser" => self.settings.browser = kept,
+            "Language" => {
+                self.settings.language = kept;
+                crate::i18n::set(self.language());
+            }
             _ => return,
         }
         self.close_edit(selected);
@@ -406,9 +467,10 @@ impl App {
             .nth(selected)
             .map(|r| r.value)
             .unwrap_or_default();
-        let name = row.name.to_lowercase();
+        let name = crate::i18n::t(row.name).to_lowercase();
+        let shown = crate::i18n::t(&shown).to_string();
         self.save_settings(if value.is_empty() {
-            format!("{name}: back to the default, {shown}")
+            tf("{}: back to the default, {}", &[&name, &shown])
         } else {
             format!("{name}: {shown}")
         });
@@ -428,4 +490,15 @@ impl App {
             ));
         }
     }
+}
+
+/// The language `settings` name, else the one the environment asks for,
+/// else English.
+fn language_of(settings: &Settings, env: &Environment) -> Lang {
+    settings
+        .language
+        .as_deref()
+        .and_then(Lang::from_code)
+        .or_else(|| env.locale.as_deref().and_then(Lang::from_code))
+        .unwrap_or(Lang::En)
 }

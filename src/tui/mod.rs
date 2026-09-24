@@ -252,7 +252,7 @@ fn account_changes(app: &mut App, worker: &Worker, accounts: &AccountStore) -> V
                 worker.use_account(session.clone());
                 jobs.extend(app.switched_to(session));
             }
-            Ok(None) => app.account_error(format!("{did} is not logged in any more")),
+            Ok(None) => app.account_error(crate::i18n::tf("{} is not logged in any more", &[&did])),
             Err(e) => app.account_error(e.message().to_string()),
         }
     }

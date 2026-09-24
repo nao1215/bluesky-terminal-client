@@ -440,7 +440,7 @@ impl Images {
         generation: u32,
     ) -> State {
         if !self.shows {
-            return State::Warning("this terminal cannot show video".into());
+            return State::Warning(crate::i18n::n!("this terminal cannot show video").into());
         }
         let area = area.intersection(frame.area());
         let size = (area.width, area.height);

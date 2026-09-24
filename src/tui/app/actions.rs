@@ -44,7 +44,7 @@ impl App {
         match url {
             Some(url) => vec![self.open_url(url)],
             None => {
-                self.info("this post has no pictures, video, or link");
+                self.info(n!("this post has no pictures, video, or link"));
                 Vec::new()
             }
         }
@@ -71,7 +71,7 @@ impl App {
         }
         match self.tab {
             Tab::Timeline => {
-                self.info("refreshing…");
+                self.info(n!("refreshing…"));
                 vec![Job::Timeline]
             }
             Tab::Search => self.run_search(),
@@ -105,7 +105,7 @@ impl App {
         if self.in_flight.insert(key) {
             true
         } else {
-            self.info("still waiting for the server…");
+            self.info(n!("still waiting for the server…"));
             false
         }
     }
@@ -140,7 +140,9 @@ impl App {
         // without it, say): what it offers is not about that post any more.
         if self.actions_subject() != about {
             self.overlay = None;
-            self.info("the post the list was about is no longer selected; press . again");
+            self.info(n!(
+                "the post the list was about is no longer selected; press . again"
+            ));
             return Vec::new();
         }
         let entries = keys::actions(self);
@@ -225,10 +227,10 @@ impl App {
         };
         match post.web_url() {
             Some(url) => {
-                self.info(format!("copied {url}"));
+                self.info(tf("copied {}", &[&url]));
                 self.to_copy = Some(url);
             }
-            None => self.info("this post has no address to copy"),
+            None => self.info(n!("this post has no address to copy")),
         }
     }
 
@@ -249,14 +251,14 @@ impl App {
             .as_ref()
             .is_some_and(|s| s.did == post.author.did);
         if !mine {
-            self.info("you can only delete your own posts");
+            self.info(n!("you can only delete your own posts"));
             return;
         }
         if self.in_flight.contains(&format!("delete:{}", post.uri)) {
-            self.info("still waiting for the server…");
+            self.info(n!("still waiting for the server…"));
             return;
         }
-        self.info("press y to delete this post, any other key to keep it");
+        self.info(n!("press y to delete this post, any other key to keep it"));
         self.confirm = Some(Confirm::Delete(post.uri));
         self.asked();
     }
@@ -284,7 +286,7 @@ impl App {
             return Vec::new();
         };
         if self.session.as_ref().is_some_and(|s| s.did == account.did) {
-            self.error("you cannot follow yourself");
+            self.error(n!("you cannot follow yourself"));
             return Vec::new();
         }
         if !self.claim(format!("follow:{}", account.did)) {
@@ -308,7 +310,7 @@ impl App {
             return Vec::new();
         };
         if self.session.as_ref().is_some_and(|s| s.did == account.did) {
-            self.error("you cannot mute yourself");
+            self.error(n!("you cannot mute yourself"));
             return Vec::new();
         }
         if !self.claim(format!("mute:{}", account.did)) {
@@ -327,7 +329,7 @@ impl App {
             return Vec::new();
         };
         if self.session.as_ref().is_some_and(|s| s.did == account.did) {
-            self.error("you cannot block yourself");
+            self.error(n!("you cannot block yourself"));
             return Vec::new();
         }
         if let Some(uri) = account.blocking_uri() {
@@ -340,12 +342,12 @@ impl App {
             }];
         }
         if self.in_flight.contains(&format!("block:{}", account.did)) {
-            self.info("still waiting for the server…");
+            self.info(n!("still waiting for the server…"));
             return Vec::new();
         }
-        self.info(format!(
+        self.info(tf(
             "press y to block @{}, any other key to leave them be",
-            account.handle
+            &[&account.handle],
         ));
         self.confirm = Some(Confirm::Block(account.did));
         self.asked();
@@ -355,7 +357,7 @@ impl App {
     /// `e`: the profile editor, which waits for the record it starts from.
     pub(super) fn edit_profile(&mut self) -> Vec<Job> {
         if self.profile.actor.is_some() {
-            self.error("you can only edit your own profile (Esc returns to it)");
+            self.error(n!("you can only edit your own profile (Esc returns to it)"));
             return Vec::new();
         }
         self.overlay = Some(Overlay::EditProfile(EditProfile {

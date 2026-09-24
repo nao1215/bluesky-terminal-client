@@ -50,10 +50,19 @@ pub(super) fn draw_viewer(
                 images.draw(frame, r, url);
             }
             let (text, style) = match state {
-                State::Loading => ("  loading the video…".to_string(), t.dim()),
-                State::Playing => ("  ▶ playing (no sound)".to_string(), t.accent()),
-                State::Ended => ("  ■ ended  r plays it again".to_string(), t.dim()),
-                State::Warning(why) => (format!("  ⚠ {why}; showing its thumbnail"), t.error()),
+                State::Loading => (format!("  {}", i18n::t("loading the video…")), t.dim()),
+                State::Playing => (format!("  ▶ {}", i18n::t("playing (no sound)")), t.accent()),
+                State::Ended => (
+                    format!("  ■ {}", i18n::t("ended  r plays it again")),
+                    t.dim(),
+                ),
+                State::Warning(why) => (
+                    format!(
+                        "  ⚠ {}",
+                        i18n::tf("{}; showing its thumbnail", &[i18n::t(&why)])
+                    ),
+                    t.error(),
+                ),
             };
             head.push(Span::styled(text, style));
         }
@@ -63,7 +72,7 @@ pub(super) fn draw_viewer(
         }
     }
     let alt = if alt.is_empty() {
-        Line::styled(" (no alt text)", t.dim())
+        Line::styled(format!(" {}", i18n::t("(no alt text)")), t.dim())
     } else {
         Line::from(format!(
             " {}",
@@ -87,7 +96,7 @@ pub(super) fn draw_actions(
         area,
         ACTIONS_W,
         entries.len() as u16 + 2,
-        "Actions",
+        n!("Actions"),
         t,
     );
     let lines: Vec<Line> = entries
@@ -96,10 +105,11 @@ pub(super) fn draw_actions(
         .map(|(i, (key, what))| {
             let marker = if i == selected { "▶ " } else { "  " };
             let key = Span::styled(format!("{marker}{key:<7}"), t.accent().bold());
+            let what = i18n::t(what);
             let what = if i == selected {
-                Span::styled(*what, t.base().bold())
+                Span::styled(what, t.base().bold())
             } else {
-                Span::styled(*what, t.dim())
+                Span::styled(what, t.dim())
             };
             Line::from(vec![key, what])
         })
@@ -124,7 +134,7 @@ pub(super) fn draw_settings(
         area,
         SETTINGS_W,
         rows.len() as u16 + 5,
-        "Settings",
+        n!("Settings"),
         t,
     );
     let width = usize::from(inner.width);
@@ -144,11 +154,14 @@ pub(super) fn draw_settings(
         .take(list_h)
         .map(|(i, r)| {
             let marker = if i == selected { "▶ " } else { "  " };
-            let name = truncate(r.name, NAME_W);
-            let head = format!("{marker}{name:<NAME_W$} ");
+            // Padded by the cells it takes: a name in Japanese is twice as
+            // wide as its characters.
+            let name = truncate(i18n::t(r.name), NAME_W);
+            let pad = " ".repeat(NAME_W.saturating_sub(crate::tui::text::cells(&name)));
+            let head = format!("{marker}{name}{pad} ");
             let room = width.saturating_sub(head.width());
             // A path is cut at its start: its end names the folder.
-            let value = truncate_start(&r.value, room);
+            let value = truncate_start(i18n::t(&r.value), room);
             let style = if i == selected {
                 t.base().bold()
             } else {
@@ -166,7 +179,10 @@ pub(super) fn draw_settings(
         lines.push(Line::raw(""));
         if note_h > 1 {
             lines.push(Line::styled(
-                " enter keeps it, empty is the default, esc cancels",
+                format!(
+                    " {}",
+                    i18n::t("enter keeps it, empty is the default, esc cancels")
+                ),
                 t.dim(),
             ));
         }
@@ -184,7 +200,7 @@ pub(super) fn draw_settings(
         && let Some(r) = rows.get(selected)
     {
         lines.push(Line::raw(""));
-        let note: Vec<String> = wrap(&r.note, width.saturating_sub(1).max(1))
+        let note: Vec<String> = wrap(i18n::t(&r.note), width.saturating_sub(1).max(1))
             .into_iter()
             .take(usize::from(note_h))
             .collect();
@@ -211,14 +227,14 @@ pub(super) fn draw_add_column(
         area,
         ACTIONS_W,
         titles.len() as u16 + 4,
-        "Add a column",
+        n!("Add a column"),
         t,
     );
     let width = usize::from(inner.width);
     if let Some(input) = query {
         frame.render_widget(
             Paragraph::new(vec![
-                Line::styled(" Search posts for:", t.dim()),
+                Line::styled(format!(" {}", i18n::t("Search posts for:")), t.dim()),
                 Line::raw(""),
             ]),
             inner,
@@ -266,7 +282,7 @@ pub(super) fn draw_account_list(
         area,
         ACTIONS_W,
         accounts.len().max(1) as u16 + 4,
-        "Accounts",
+        n!("Accounts"),
         t,
     );
     let width = usize::from(inner.width);
@@ -276,13 +292,13 @@ pub(super) fn draw_account_list(
         .map(|(i, a)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let used = if me == Some(a.did.as_str()) {
-                "  in use"
+                format!("  {}", i18n::t("in use"))
             } else {
-                ""
+                String::new()
             };
             let name = truncate(
                 &format!("@{}", a.handle),
-                width.saturating_sub(marker.width() + used.width()),
+                width.saturating_sub(marker.width() + crate::tui::text::cells(&used)),
             );
             let style = if i == selected {
                 t.base().bold()
@@ -297,18 +313,58 @@ pub(super) fn draw_account_list(
         })
         .collect();
     if accounts.is_empty() {
-        lines.push(Line::styled("  no account yet", t.dim()));
+        lines.push(Line::styled(
+            format!("  {}", i18n::t("no account yet")),
+            t.dim(),
+        ));
     }
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        truncate(" a log in another  x log out", width),
+        truncate(
+            &format!(" {}", i18n::t("a log in another  x log out")),
+            width,
+        ),
         t.dim(),
     ));
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
+/// The languages the settings offer, each in its own name, the one in use
+/// marked.
+pub(super) fn draw_languages(
+    frame: &mut Frame,
+    area: Rect,
+    selected: usize,
+    now: i18n::Lang,
+    t: &Theme,
+) {
+    let langs = i18n::Lang::ALL;
+    let inner = popup(frame, area, 34, langs.len() as u16 + 2, n!("Language"), t);
+    let lines: Vec<Line> = langs
+        .iter()
+        .enumerate()
+        .map(|(i, lang)| {
+            let marker = if i == selected { "▶ " } else { "  " };
+            let style = if i == selected {
+                t.base().bold()
+            } else {
+                t.base()
+            };
+            let mut row = vec![
+                Span::styled(marker, t.accent().bold()),
+                Span::styled(lang.name(), style),
+            ];
+            if *lang == now {
+                row.push(Span::styled(format!("  {}", i18n::t("in use")), t.accent()));
+            }
+            Line::from(row)
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
 pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Theme) {
-    let inner = popup(frame, area, 64, 17, "Log in to Bluesky", t);
+    let inner = popup(frame, area, 64, 17, n!("Log in to Bluesky"), t);
     let rows = Layout::vertical([
         Constraint::Length(3),
         Constraint::Length(1),
@@ -325,10 +381,22 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     .split(inner);
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(" Your Bluesky password works; an app password is safer."),
-            Line::styled(" Settings → Privacy and security → App passwords", t.dim()),
+            Line::from(format!(
+                " {}",
+                i18n::t("Your Bluesky password works; an app password is safer.")
+            )),
             Line::styled(
-                " bsky is an unofficial client, not made by Bluesky.",
+                format!(
+                    " {}",
+                    i18n::t("Settings → Privacy and security → App passwords")
+                ),
+                t.dim(),
+            ),
+            Line::styled(
+                format!(
+                    " {}",
+                    i18n::t("bsky is an unofficial client, not made by Bluesky.")
+                ),
                 t.dim(),
             ),
         ]),
@@ -342,7 +410,7 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
             Style::new()
         };
         frame.render_widget(
-            Paragraph::new(format!(" {label}")).style(style),
+            Paragraph::new(format!(" {}", i18n::t(label))).style(style),
             rows[2 + i * 2],
         );
         let field = rows[3 + i * 2];
@@ -364,9 +432,9 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     // The message area takes whatever rows are left, so a server's reason,
     // which is the part the user needs, is never cut off by the wrap.
     let msg = if form.pending {
-        Line::styled(" logging in…", t.dim())
+        Line::styled(format!(" {}", i18n::t("logging in…")), t.dim())
     } else if let Some(e) = &form.error {
-        Line::styled(format!(" {e}"), t.error())
+        Line::styled(format!(" {}", i18n::t(e)), t.error())
     } else {
         Line::raw("")
     };
@@ -375,11 +443,14 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
         rows[9],
     );
     frame.render_widget(
-        Paragraph::new(if form.adding {
-            " enter next/submit  tab switch field  esc back"
-        } else {
-            " enter next/submit  tab switch field  esc quit"
-        })
+        Paragraph::new(format!(
+            " {}",
+            if form.adding {
+                i18n::t("enter next/submit  tab switch field  esc back")
+            } else {
+                i18n::t("enter next/submit  tab switch field  esc quit")
+            }
+        ))
         .style(t.dim()),
         rows[10],
     );
@@ -417,7 +488,7 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
         })
         .collect();
     let w = (width + 2 + 10 + 4) as u16;
-    let inner = popup(frame, area, w.max(34), rows as u16 + 4, "Theme", t);
+    let inner = popup(frame, area, w.max(34), rows as u16 + 4, n!("Theme"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(lines), body);
     // Arrows on the frame say there is more above or below.
@@ -442,7 +513,12 @@ pub(super) fn draw_themes(frame: &mut Frame, area: Rect, selected: usize, t: &Th
         );
     }
     frame.render_widget(
-        Paragraph::new(format!(" {}/{n}  enter apply  esc cancel", selected + 1)).style(t.dim()),
+        Paragraph::new(format!(
+            " {}/{n}  {}",
+            selected + 1,
+            i18n::t("enter apply  esc cancel")
+        ))
+        .style(t.dim()),
         foot,
     );
 }
@@ -491,16 +567,20 @@ pub(super) fn draw_help(
             );
         }
     }
-    let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, "Keys", t);
+    let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, n!("Keys"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     // Clamp here, where the viewport is known, and write it back so scrolling
     // up after overshooting starts at once.
     let max = (lines.len() as u16).saturating_sub(body.height);
     *scroll = (*scroll).min(max);
     frame.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), body);
-    let more = if *scroll < max { "  j/pgdn more" } else { "" };
+    let more = if *scroll < max {
+        format!("  {}", i18n::t("j/pgdn more"))
+    } else {
+        String::new()
+    };
     frame.render_widget(
-        Paragraph::new(format!(" esc/q/? close{more}")).style(t.dim()),
+        Paragraph::new(format!(" {}{more}", i18n::t("esc/q/? close"))).style(t.dim()),
         foot,
     );
 }

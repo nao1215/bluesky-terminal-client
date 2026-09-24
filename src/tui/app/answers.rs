@@ -363,7 +363,7 @@ impl App {
             let mut form = LoginForm::new(&service);
             form.fields[1] = TextInput::single(&handle);
             form.focus = 2;
-            form.error = Some("the session has expired; log in again".into());
+            form.error = Some(n!("the session has expired; log in again").into());
             self.login = Some(form);
             // A question asked before is not answered by the first key after
             // logging in again, and a theme being previewed was not chosen.
@@ -386,7 +386,7 @@ impl App {
         }
         // The hint is the part that says what to do; the error box shows it.
         match e.hint() {
-            Some(hint) => self.error(format!("{}\nhint: {hint}", e.message())),
+            Some(hint) => self.error(tf("{}\nhint: {}", &[e.message(), hint])),
             None => self.error(e.message().to_string()),
         }
     }
@@ -488,7 +488,7 @@ impl App {
         }
         match event {
             Event::LoggedIn(Ok(session)) => {
-                self.info(format!("logged in as @{}", session.handle));
+                self.info(tf("logged in as @{}", &[&session.handle]));
                 self.remember_account(&session);
                 let other = self.session.as_ref().is_none_or(|s| s.did != session.did);
                 if self.session.as_ref().is_some_and(|s| s.did != session.did) {
@@ -550,10 +550,10 @@ impl App {
                     self.profile.loading = false;
                 }
             }
-            Event::Liked { result: Ok(_), .. } => self.info("liked"),
-            Event::Unliked { result: Ok(()), .. } => self.info("like removed"),
-            Event::Reposted { result: Ok(_), .. } => self.info("reposted"),
-            Event::Unreposted { result: Ok(()), .. } => self.info("repost removed"),
+            Event::Liked { result: Ok(_), .. } => self.info(n!("liked")),
+            Event::Unliked { result: Ok(()), .. } => self.info(n!("like removed")),
+            Event::Reposted { result: Ok(_), .. } => self.info(n!("reposted")),
+            Event::Unreposted { result: Ok(()), .. } => self.info(n!("repost removed")),
             Event::More {
                 feed,
                 cursor,
@@ -595,7 +595,7 @@ impl App {
                             c.last_message = Some(last);
                         }
                     }
-                    (None, Ok(_)) => self.info("message sent"),
+                    (None, Ok(_)) => self.info(n!("message sent")),
                     (Some(o), Err(e)) => {
                         // The text stays in the box, to send again or change.
                         o.sending = false;
@@ -620,7 +620,7 @@ impl App {
                         if !self.chat.convos.items.iter().any(|c| c.id == convo.id) {
                             self.chat.convos.push_front(convo);
                         }
-                        self.info("the conversation is ready on the Chat tab");
+                        self.info(n!("the conversation is ready on the Chat tab"));
                     }
                 }
                 Err(e) => self.fail(&e),
@@ -708,23 +708,25 @@ impl App {
                     }
                 }
             }
-            Event::Followed { result: Ok(_), .. } => self.info("followed"),
-            Event::Unfollowed { result: Ok(()), .. } => self.info("unfollowed"),
+            Event::Followed { result: Ok(_), .. } => self.info(n!("followed")),
+            Event::Unfollowed { result: Ok(()), .. } => self.info(n!("unfollowed")),
             Event::Muted {
                 on, result: Ok(()), ..
             } => {
                 if on {
-                    self.info("muted: their posts leave your lists; M on their profile unmutes");
+                    self.info(n!(
+                        "muted: their posts leave your lists; M on their profile unmutes"
+                    ));
                 } else {
-                    self.info("unmuted");
+                    self.info(n!("unmuted"));
                     return self.reload_following(false);
                 }
             }
             Event::Blocked { result: Ok(_), .. } => {
-                self.info("blocked: B on their profile unblocks");
+                self.info(n!("blocked: B on their profile unblocks"));
             }
             Event::Unblocked { result: Ok(()), .. } => {
-                self.info("unblocked");
+                self.info(n!("unblocked"));
                 return self.reload_following(false);
             }
             Event::Posted {
@@ -748,7 +750,7 @@ impl App {
                 match reply_to {
                     Some(uri) => {
                         self.each_post(&uri, |p| p.reply_count += 1);
-                        self.info("reply sent");
+                        self.info(n!("reply sent"));
                         jobs.extend(
                             self.threads
                                 .iter()
@@ -761,7 +763,7 @@ impl App {
                                 .map(|th| Job::Thread(th.uri.clone())),
                         );
                     }
-                    None => self.info("posted"),
+                    None => self.info(n!("posted")),
                 }
                 return jobs;
             }
@@ -771,7 +773,7 @@ impl App {
                 }
                 self.fail(&e);
             }
-            Event::PostDeleted { result: Ok(()), .. } => self.info("post deleted"),
+            Event::PostDeleted { result: Ok(()), .. } => self.info(n!("post deleted")),
             Event::PostDeleted { result: Err(e), .. } => self.fail(&e),
             Event::ProfileEditor(result) => {
                 // Only an editor still waiting takes the answer: a late one
@@ -793,16 +795,18 @@ impl App {
                     }
                 }
             }
-            Event::Downloaded(Ok(path)) => self.info(format!("saved {}", path.display())),
+            Event::Downloaded(Ok(path)) => {
+                self.info(tf("saved {}", &[&path.display().to_string()]));
+            }
             Event::Opened {
                 url,
                 result: Ok(()),
-            } => self.info(format!("opened {url}")),
+            } => self.info(tf("opened {}", &[&url])),
             Event::Opened { result: Err(e), .. } => self.fail(&e),
             Event::Downloaded(Err(e)) => self.fail(&e),
             Event::ProfileSaved(Ok(())) => {
                 self.overlay = None;
-                self.info("profile updated");
+                self.info(n!("profile updated"));
                 if self.profile.actor.is_none() {
                     return self.open_profile(None);
                 }
@@ -812,10 +816,9 @@ impl App {
                     ed.saving = false;
                 }
                 if e.message().contains("InvalidSwap") {
-                    self.error(
-                        "the profile was changed elsewhere since the editor opened; \
-                         press Esc and e to start from the current version",
-                    );
+                    self.error(n!(
+                        "the profile was changed elsewhere since the editor opened; press Esc and e to start from the current version"
+                    ));
                 } else {
                     self.fail(&e);
                 }

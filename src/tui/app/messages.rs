@@ -43,7 +43,7 @@ impl App {
             // Closed while its message is on its way, the conversation opened
             // again would take that message's answer as its own.
             KeyCode::Esc if open.sending => {
-                self.info("the message is still on its way");
+                self.info(n!("the message is still on its way"));
                 Some(Vec::new())
             }
             KeyCode::Esc => {
@@ -144,10 +144,10 @@ impl App {
             return Vec::new();
         };
         if self.profile.actor.is_none() || self.session.as_ref().is_some_and(|s| s.did == p.did) {
-            self.info("m opens a conversation with someone else's profile");
+            self.info(n!("m opens a conversation with someone else's profile"));
             return Vec::new();
         }
-        self.info(format!("opening the conversation with @{}…", p.handle));
+        self.info(tf("opening the conversation with @{}…", &[&p.handle]));
         vec![Job::ConvoFor { did: p.did }]
     }
 
@@ -202,9 +202,7 @@ impl App {
                     self.chat.convos.loaded = true;
                     self.chat.convos.loading = false;
                     self.chat.refused = Some(
-                        "this app password cannot read direct messages. Make one with \
-                         \"Allow access to your direct messages\" (Settings, Privacy and \
-                         security, App passwords) and log in with it (A, then a)."
+                        n!("this app password cannot read direct messages. Make one with \"Allow access to your direct messages\" (Settings, Privacy and security, App passwords) and log in with it (A, then a).")
                             .into(),
                     );
                     return;

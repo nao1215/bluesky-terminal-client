@@ -52,7 +52,7 @@ impl App {
             KeyCode::Enter => {
                 let [service, id, pw] = form.fields.clone().map(|f| f.text());
                 if service.trim().is_empty() || id.trim().is_empty() || pw.is_empty() {
-                    form.error = Some("fill in all three fields".into());
+                    form.error = Some(n!("fill in all three fields").into());
                     form.focus = if service.trim().is_empty() {
                         0
                     } else if id.trim().is_empty() {
@@ -98,6 +98,10 @@ impl App {
                 let selected = *selected;
                 self.accounts_key(key, selected);
             }
+            Overlay::Languages { selected } => {
+                let selected = *selected;
+                self.languages_key(key, selected);
+            }
             Overlay::AddColumn { .. } => return self.add_column_key(key),
             Overlay::Help { scroll } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q' | '?') => self.overlay = None,
@@ -120,7 +124,7 @@ impl App {
                 KeyCode::Char('r') => *replay += 1,
                 KeyCode::Char('d') => {
                     let item = media[*index].clone();
-                    self.info("downloading…");
+                    self.info(n!("downloading…"));
                     let dir = self.download_dir();
                     return vec![Job::Download { media: item, dir }];
                 }
@@ -144,7 +148,7 @@ impl App {
                         self.back_to_settings();
                         let name = THEMES[selected].name;
                         self.settings.theme = Some(name.to_string());
-                        self.save_settings(format!("theme: {name}"));
+                        self.save_settings(tf("theme: {}", &[name]));
                         None
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
@@ -195,10 +199,11 @@ impl App {
                     KeyCode::Char('o') if ctrl => {
                         let room = MAX_POST_IMAGES.saturating_sub(c.media.len());
                         if c.media.iter().any(Attached::is_video) {
-                            self.error("a post with a video can have nothing else attached");
+                            self.error(n!("a post with a video can have nothing else attached"));
                         } else if room == 0 {
-                            self.error(format!(
-                                "a post can have at most {MAX_POST_IMAGES} pictures"
+                            self.error(tf(
+                                "a post can have at most {} pictures",
+                                &[&MAX_POST_IMAGES.to_string()],
                             ));
                         } else {
                             c.browser = Some(Browser::open(
@@ -217,7 +222,7 @@ impl App {
                     KeyCode::Char('s') if ctrl => {
                         let text = c.input.text();
                         if text.trim().is_empty() && c.media.is_empty() {
-                            self.error("the post is empty");
+                            self.error(n!("the post is empty"));
                         } else if let Some(why) = post_length_problem(text.trim_end()) {
                             self.error(why);
                         } else {
@@ -429,26 +434,26 @@ impl App {
             self.confirm.take_if(|c| matches!(c, Confirm::Delete(_)))
         {
             if key.code != KeyCode::Char('y') {
-                self.info("not deleted");
+                self.info(n!("not deleted"));
                 return Vec::new();
             }
             if !self.claim(format!("delete:{uri}")) {
                 return Vec::new();
             }
-            self.info("deleting…");
+            self.info(n!("deleting…"));
             return vec![Job::DeletePost { uri }];
         }
         // As D's: the next key answers B's question, whatever it is.
         if let Some(Confirm::Block(did)) = self.confirm.take_if(|c| matches!(c, Confirm::Block(_)))
         {
             if key.code != KeyCode::Char('y') {
-                self.info("not blocked");
+                self.info(n!("not blocked"));
                 return Vec::new();
             }
             if !self.claim(format!("block:{did}")) {
                 return Vec::new();
             }
-            self.info("blocking…");
+            self.info(n!("blocking…"));
             return vec![Job::Block { did }];
         }
         // As D's: the next key answers x's question, whatever it is.
@@ -463,7 +468,7 @@ impl App {
                 // The last one gone, the timeline is shown alone again.
                 return self.settle_timeline();
             } else {
-                self.info("the column stays");
+                self.info(n!("the column stays"));
             }
             return Vec::new();
         }
@@ -517,8 +522,9 @@ impl App {
             KeyCode::Char('x') if self.tab == Tab::Columns && self.threads.is_empty() => {
                 if let Some(c) = self.columns.focused() {
                     let (id, title) = (c.id, c.source.title());
-                    self.info(format!(
-                        "press y to remove the column {title}, any other key to keep it"
+                    self.info(tf(
+                        "press y to remove the column {}, any other key to keep it",
+                        &[&title],
                     ));
                     self.confirm = Some(Confirm::RemoveColumn(id));
                     self.asked();

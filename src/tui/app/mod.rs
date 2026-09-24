@@ -12,6 +12,7 @@ use crate::api::types::{ChatMessage, Convo};
 use crate::api::types::{Media, Post, Profile, ReplyRef, StrongRef};
 use crate::config::{Environment, Session, Settings};
 use crate::error::Error;
+use crate::i18n::{n, tf};
 use crate::media::{self, MAX_POST_IMAGES};
 use crate::tui::chat::{self, ChatPane, OpenConvo};
 use crate::tui::columns::{self, Columns, Rows};
@@ -56,12 +57,13 @@ impl Tab {
     ];
 
     pub fn title(self) -> &'static str {
+        use crate::i18n::n;
         match self.shown_as() {
-            Tab::Search => "Search",
-            Tab::Profile => "Profile",
-            Tab::Notifications => "Notifications",
-            Tab::Chat => "Chat",
-            _ => "Timeline",
+            Tab::Search => n!("Search"),
+            Tab::Profile => n!("Profile"),
+            Tab::Notifications => n!("Notifications"),
+            Tab::Chat => n!("Chat"),
+            _ => n!("Timeline"),
         }
     }
 
@@ -456,10 +458,11 @@ impl Attached {
 fn media_problem(attached: &[Attached]) -> Option<String> {
     let videos = attached.iter().filter(|a| a.is_video()).count();
     if videos > 0 && attached.len() > 1 {
-        Some("a post can have up to 4 pictures or one video, not both".into())
+        Some(n!("a post can have up to 4 pictures or one video, not both").into())
     } else if attached.len() > MAX_POST_IMAGES {
-        Some(format!(
-            "a post can have at most {MAX_POST_IMAGES} pictures"
+        Some(tf(
+            "a post can have at most {} pictures",
+            &[&MAX_POST_IMAGES.to_string()],
         ))
     } else {
         None
@@ -488,9 +491,9 @@ pub struct EditProfile {
 
 impl EditProfile {
     pub const LABELS: [&'static str; 3] = [
-        "Display name",
-        "Description",
-        "New avatar (path, or ctrl+o to browse; optional)",
+        crate::i18n::n!("Display name"),
+        crate::i18n::n!("Description"),
+        crate::i18n::n!("New avatar (path, or ctrl+o to browse; optional)"),
     ];
 }
 
@@ -508,7 +511,11 @@ pub struct LoginForm {
 }
 
 impl LoginForm {
-    pub const LABELS: [&'static str; 3] = ["Service", "Handle or email", "Password"];
+    pub const LABELS: [&'static str; 3] = [
+        crate::i18n::n!("Service"),
+        crate::i18n::n!("Handle or email"),
+        crate::i18n::n!("Password"),
+    ];
 
     fn new(service: &str) -> Self {
         Self {
@@ -569,6 +576,10 @@ pub enum Overlay {
     },
     /// The logged-in accounts, opened with `A`.
     Accounts {
+        selected: usize,
+    },
+    /// The languages, opened from the settings.
+    Languages {
         selected: usize,
     },
     /// What a new column can show, opened with `+` on the Timeline tab;
@@ -1012,6 +1023,7 @@ impl App {
                 | Overlay::Viewer { .. }
                 | Overlay::Actions { .. }
                 | Overlay::Accounts { .. }
+                | Overlay::Languages { .. }
                 | Overlay::AddColumn { query: None, .. }
                 | Overlay::Settings { .. },
             ) => {}

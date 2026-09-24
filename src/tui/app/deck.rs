@@ -59,7 +59,12 @@ impl App {
             self.settings.columns.insert(did, sources);
         }
         let n = self.columns.items.len();
-        self.save_settings(format!("{n} column{}", if n == 1 { "" } else { "s" }));
+        let count = n.to_string();
+        self.save_settings(if n == 1 {
+            tf("{} column", &[&count])
+        } else {
+            tf("{} columns", &[&count])
+        });
     }
 
     /// Ask for the first page of the column `id`, dropping any answer to an

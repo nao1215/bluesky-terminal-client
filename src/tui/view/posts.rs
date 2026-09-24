@@ -55,16 +55,16 @@ impl PostLines {
         match me {
             Some(me) if me != post.author.did => {
                 header.push(if post.author.following_uri().is_some() {
-                    Span::styled(" ✓ following", t.accent())
+                    Span::styled(format!(" ✓ {}", i18n::t("following")), t.accent())
                 } else {
-                    Span::styled(" not following", t.dim())
+                    Span::styled(format!(" {}", i18n::t("not following")), t.dim())
                 })
             }
             _ => {}
         }
         header.push(Span::styled(format!(" · {time}"), t.dim()));
         if record.reply.is_some() {
-            header.push(Span::styled(" ↩ reply", t.dim()));
+            header.push(Span::styled(format!(" ↩ {}", i18n::t("reply")), t.dim()));
         }
         let header = Line::from(header);
         let header = truncate_line(header, width);
@@ -165,9 +165,9 @@ pub(super) fn ref_post_line(p: &RefPost, width: usize, t: &Theme) -> Line<'stati
             let first = post.record().text.lines().next().unwrap_or("").to_string();
             format!("┆ {} @{}: {first}", post.author.name(), post.author.handle)
         }
-        RefPost::NotFound { .. } => "┆ (post not found)".into(),
-        RefPost::Blocked { .. } => "┆ (blocked post)".into(),
-        RefPost::Other => "┆ (post not shown)".into(),
+        RefPost::NotFound { .. } => format!("┆ {}", i18n::t("(post not found)")),
+        RefPost::Blocked { .. } => format!("┆ {}", i18n::t("(blocked post)")),
+        RefPost::Other => format!("┆ {}", i18n::t("(post not shown)")),
     };
     Line::styled(truncate(&text, width), t.dim())
 }
@@ -225,8 +225,8 @@ pub(super) fn media_line(embed: &Embed, width: usize, t: &Theme) -> Option<Line<
     };
     let text = match media.first()? {
         Media::Video { alt, .. } => match alts(alt) {
-            Some(alt) => format!("▶ video: {alt}"),
-            None => "▶ video".to_string(),
+            Some(alt) => format!("▶ {}", i18n::tf("video: {}", &[&alt])),
+            None => format!("▶ {}", i18n::t("video")),
         },
         Media::Image { .. } => {
             let described: Vec<String> = media
@@ -238,9 +238,9 @@ pub(super) fn media_line(embed: &Embed, width: usize, t: &Theme) -> Option<Line<
                 .collect();
             let n = media.len();
             let what = if n == 1 {
-                "1 picture".to_string()
+                i18n::t("1 picture").to_string()
             } else {
-                format!("{n} pictures")
+                i18n::tf("{} pictures", &[&n.to_string()])
             };
             if described.is_empty() {
                 format!("▣ {what}")
@@ -273,7 +273,7 @@ pub(super) fn embed_lines(embed: &Embed, width: usize, t: &Theme) -> Vec<Line<'s
             .map(|r| quote_line(r, width, t))
             .into_iter()
             .collect(),
-        Embed::Video { .. } => vec![Line::styled("▶ video", dim)],
+        Embed::Video { .. } => vec![Line::styled(format!("▶ {}", i18n::t("video")), dim)],
         Embed::Images { .. } | Embed::Other => Vec::new(),
     }
 }
@@ -294,15 +294,29 @@ pub(super) fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) ->
             .to_string()
     };
     let text = match kind {
-        "app.bsky.embed.record#viewNotFound" => "❝ quoted post not found".to_string(),
-        "app.bsky.embed.record#viewBlocked" => {
-            "❝ quoted post from an account you cannot see".to_string()
+        "app.bsky.embed.record#viewNotFound" => {
+            format!("❝ {}", i18n::t("quoted post not found"))
         }
-        "app.bsky.embed.record#viewDetached" => "❝ quote removed by the post's author".to_string(),
-        "app.bsky.feed.defs#generatorView" => format!("❝ feed: {}", name("/displayName")),
-        "app.bsky.graph.defs#listView" => format!("❝ list: {}", name("/name")),
+        "app.bsky.embed.record#viewBlocked" => {
+            format!(
+                "❝ {}",
+                i18n::t("quoted post from an account you cannot see")
+            )
+        }
+        "app.bsky.embed.record#viewDetached" => {
+            format!("❝ {}", i18n::t("quote removed by the post's author"))
+        }
+        "app.bsky.feed.defs#generatorView" => {
+            format!("❝ {}", i18n::tf("feed: {}", &[&name("/displayName")]))
+        }
+        "app.bsky.graph.defs#listView" => {
+            format!("❝ {}", i18n::tf("list: {}", &[&name("/name")]))
+        }
         "app.bsky.graph.defs#starterPackViewBasic" => {
-            format!("❝ starter pack: {}", name("/record/name"))
+            format!(
+                "❝ {}",
+                i18n::tf("starter pack: {}", &[&name("/record/name")])
+            )
         }
         _ => match record.pointer("/author/handle").and_then(|h| h.as_str()) {
             Some(handle) => {
@@ -310,7 +324,7 @@ pub(super) fn quote_line(record: &serde_json::Value, width: usize, t: &Theme) ->
                 let first = said.lines().next().unwrap_or("");
                 format!("❝ @{handle}: {first}")
             }
-            None => "❝ quoted post cannot be shown".to_string(),
+            None => format!("❝ {}", i18n::t("quoted post cannot be shown")),
         },
     };
     Line::styled(truncate(&text, width), t.dim())
@@ -361,7 +375,7 @@ pub trait PostRow {
     }
     /// What to show instead of a post that is not there.
     fn placeholder(&self) -> &'static str {
-        "(post not shown)"
+        n!("(post not shown)")
     }
 }
 
@@ -380,8 +394,8 @@ impl PostRow for ThreadRow {
     }
     fn placeholder(&self) -> &'static str {
         match self.kind {
-            RowKind::Blocked(_) => "(blocked post)",
-            _ => "(post not found)",
+            RowKind::Blocked(_) => n!("(blocked post)"),
+            _ => n!("(post not found)"),
         }
     }
 }
@@ -395,7 +409,7 @@ pub(super) fn row_lines<T: PostRow>(
 ) -> PostLines {
     match row.post() {
         Some(post) => PostLines::new(post, width, cell, me, t),
-        None => PostLines::placeholder(row.placeholder(), t),
+        None => PostLines::placeholder(i18n::t(row.placeholder()), t),
     }
 }
 
@@ -409,7 +423,8 @@ pub(super) fn draw_posts<T: PostRow>(
     t: &Theme,
 ) {
     if !list.loaded {
-        frame.render_widget(Paragraph::new(" loading…").style(t.dim()), area);
+        let loading = format!(" {}", i18n::t("loading…"));
+        frame.render_widget(Paragraph::new(loading).style(t.dim()), area);
         return;
     }
     if list.items.is_empty() {
@@ -575,7 +590,10 @@ pub(super) fn account_lines(p: &Profile, width: u16, t: &Theme) -> Vec<Line<'sta
         Span::styled(format!(" @{}", p.handle), t.dim()),
     ];
     if p.following_uri().is_some() {
-        head.push(Span::styled("  ✓ following", t.accent()));
+        head.push(Span::styled(
+            format!("  ✓ {}", i18n::t("following")),
+            t.accent(),
+        ));
     }
     let desc = p
         .description
@@ -598,7 +616,7 @@ pub(super) fn draw_accounts(
     images: &mut Images,
     t: &Theme,
 ) {
-    let messages = (" searching…", " No accounts found.");
+    let messages = (n!("searching…"), n!("No accounts found."));
     draw_two_line_rows(
         frame,
         area,
@@ -624,6 +642,7 @@ pub(super) fn draw_two_line_rows<T>(
     lines: impl Fn(&T, u16) -> Vec<Line<'static>>,
 ) {
     if !list.loaded {
+        let loading = format!(" {}", i18n::t(loading));
         frame.render_widget(Paragraph::new(loading).style(t.dim()), area);
         return;
     }
