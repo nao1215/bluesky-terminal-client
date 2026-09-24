@@ -526,7 +526,7 @@ fn human_bytes(n: u64) -> String {
 /// Keep the end of `s` within `width` columns: the end of a path is the part
 /// that tells where it is.
 fn truncate_start(s: &str, width: usize) -> String {
-    if s.width() <= width {
+    if crate::tui::text::cells(s) <= width {
         return s.to_string();
     }
     // Whole grapheme clusters, so an emoji keeps its modifier and a flag
