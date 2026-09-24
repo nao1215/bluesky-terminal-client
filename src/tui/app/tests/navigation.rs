@@ -508,3 +508,41 @@ fn the_error_of_a_profile_left_is_not_shown_on_the_next() {
     assert!(app.profile.error.is_none());
     assert!(app.status.is_none(), "{:?}", app.status);
 }
+
+// A new search that fails does not page on from the results of the one
+// before it.
+#[test]
+fn a_failed_search_does_not_page_the_results_of_the_one_before() {
+    let mut app = logged_in();
+    app.handle_key(key('3'));
+    type_str(&mut app, "cats");
+    app.handle_key(code(KeyCode::Enter));
+    let posts: Vec<Post> = (0..3)
+        .map(|i| post(&format!("at://cat/{i}"), "did:plc:c", false))
+        .collect();
+    app.handle_event(Event::SearchPosts {
+        query: "cats".into(),
+        result: Ok(Page {
+            items: posts,
+            cursor: Some("cats-2".into()),
+        }),
+    });
+    app.handle_key(key('/'));
+    for _ in 0..4 {
+        app.handle_key(code(KeyCode::Backspace));
+    }
+    type_str(&mut app, "dogs");
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_event(Event::SearchPosts {
+        query: "dogs".into(),
+        result: Err(Error::api("app.bsky.feed.searchPosts failed: HTTP 502")),
+    });
+    let mut asked = Vec::new();
+    for _ in 0..3 {
+        asked.extend(app.handle_key(key('j')));
+    }
+    assert!(
+        !asked.iter().any(|j| matches!(j, Job::More { feed: Feed::SearchPosts(q), cursor } if q == "dogs" && cursor == "cats-2")),
+        "the cats results' cursor is used to page the dogs query: {asked:?}"
+    );
+}
