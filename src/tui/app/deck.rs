@@ -118,9 +118,20 @@ impl App {
         if cursor.is_none() && generation != c.generation {
             return;
         }
+        // Posts in the order they were written read again as the timeline
+        // is: the first page goes on top of the pages loaded after it. A
+        // feed or a search may order them anew each time.
+        let in_time = matches!(
+            c.source,
+            columns::Source::Following | columns::Source::Author { .. }
+        );
         let failed = match (&mut c.rows, &cursor, result) {
             (Rows::Posts(l), None, Ok(MorePage::Posts(page))) => {
-                l.set(page);
+                if in_time {
+                    l.renew(page);
+                } else {
+                    l.set(page);
+                }
                 None
             }
             (Rows::Posts(l), Some(at), Ok(MorePage::Posts(page))) => {
