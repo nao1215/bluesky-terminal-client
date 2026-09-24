@@ -247,3 +247,34 @@ fn a_write_the_first_account_made_changes_nothing_of_the_second_ones() {
     assert!(p.like_uri().is_none(), "liked for the second account");
     assert!(matches!(app.handle_key(key('l'))[..], [Job::Like { .. }]));
 }
+
+// The settings screen has the accounts too: its last row opens the list A
+// opens, esc goes back to the settings, and a switch closes both.
+#[test]
+fn the_settings_screen_switches_accounts_as_a_does() {
+    let mut app = two_accounts();
+    app.handle_key(key('5'));
+    app.handle_key(key('s'));
+    app.handle_key(key('k'));
+    let row = app.settings_rows().pop().unwrap();
+    assert_eq!((row.name, row.value.as_str()), ("Account", "@me.test"));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Accounts { selected: 0 })
+    ));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 6, .. })
+    ));
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(app.overlay.is_none());
+    assert_eq!(app.take_account_switch().as_deref(), Some("did:plc:work"));
+    // Opened with A, esc closes it and nothing else comes back.
+    app.handle_key(key('A'));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.overlay.is_none());
+}

@@ -214,6 +214,16 @@ impl App {
                 browser_from,
                 "enter types the program that opens links",
             ),
+            SettingRow {
+                name: "Account",
+                value: self
+                    .session
+                    .as_ref()
+                    .map_or_else(|| "none".into(), |s| format!("@{}", s.handle)),
+                note: "enter switches, adds or logs out an account, as A does".into(),
+                editable: true,
+                resettable: false,
+            },
         ]
     }
 
@@ -283,6 +293,12 @@ impl App {
         let edit = match row.name {
             "Theme" => {
                 self.open_theme_picker();
+                self.settings_return = Some(selected);
+                return;
+            }
+            "Account" => {
+                let at = self.current_account_index().unwrap_or(0);
+                self.overlay = Some(Overlay::Accounts { selected: at });
                 self.settings_return = Some(selected);
                 return;
             }

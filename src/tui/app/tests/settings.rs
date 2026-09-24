@@ -86,7 +86,8 @@ fn the_settings_screen_names_every_setting() {
             "Download folder",
             "Picture cache",
             "Video service",
-            "Browser"
+            "Browser",
+            "Account"
         ]
     );
     app.handle_key(key('5'));
@@ -95,7 +96,7 @@ fn the_settings_screen_names_every_setting() {
     app.handle_key(key('k'));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 5, .. })
+        Some(Overlay::Settings { selected: 6, .. })
     ));
     app.handle_key(key('j'));
     assert!(matches!(

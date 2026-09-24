@@ -617,7 +617,16 @@ scenarios:
                 contains: ["this is you  [ e Edit profile ]  [ s Settings ]", "s settings"]
             - send: s
             - expect_screen:
-                contains: [" Settings ", "▶ Theme", "Pictures         auto", "Download folder", "Picture cache", "Video service", "Browser", "j k move  enter change  esc close"]
+                contains: [" Settings ", "▶ Theme", "Pictures         auto", "Download folder", "Picture cache", "Video service", "Browser", "Account          @me.test", "j k move  enter change  esc close"]
+            # The last row opens the account list A opens; esc comes back.
+            - send: k
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Accounts", "in use", "a log in another"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["▶ Account          @me.test", "Picture cache"]
+            - send: j
             - send: j
             - send: { key: enter }
             - expect_screen:
