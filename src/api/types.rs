@@ -746,14 +746,15 @@ pub struct Preferences {
 #[serde(rename_all = "camelCase")]
 pub struct FeedGenerator {
     pub uri: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "any_string")]
     pub display_name: String,
 }
 
-/// `app.bsky.feed.getFeedGenerators` output.
+/// `app.bsky.feed.getFeedGenerators` output. A feed the server describes
+/// oddly (no address) is left out, not the whole list.
 #[derive(Debug, Deserialize)]
 pub struct FeedGenerators {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "readable_items")]
     pub feeds: Vec<FeedGenerator>,
 }
 

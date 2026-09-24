@@ -867,6 +867,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("you: {}", "вы: {}"),
     ("your home folder", "домашняя папка"),
     ("{}\nhint: {}", "{}\nподсказка: {}"),
+    (
+        "{} answered with the tokens of another account ({})",
+        "{} вернул токены другой учётной записи ({})",
+    ),
     ("{} bytes", "{} байт"),
     (
         "{} cannot be made smaller than {} bytes",

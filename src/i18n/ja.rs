@@ -861,6 +861,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("you: {}", "あなた: {}"),
     ("your home folder", "ホームフォルダ"),
     ("{}\nhint: {}", "{}\nヒント: {}"),
+    (
+        "{} answered with the tokens of another account ({})",
+        "{} が別のアカウントのトークンを返しました ({})",
+    ),
     ("{} bytes", "{} バイト"),
     (
         "{} cannot be made smaller than {} bytes",

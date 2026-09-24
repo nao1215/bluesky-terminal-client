@@ -855,6 +855,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("you: {}", "나: {}"),
     ("your home folder", "홈 폴더"),
     ("{}\nhint: {}", "{}\n힌트: {}"),
+    (
+        "{} answered with the tokens of another account ({})",
+        "{}이(가) 다른 계정의 토큰을 반환했습니다 ({})",
+    ),
     ("{} bytes", "{}바이트"),
     (
         "{} cannot be made smaller than {} bytes",

@@ -701,15 +701,38 @@ impl Client {
         if session.access_jwt != expired {
             return Ok(session.access_jwt.clone());
         }
+        // Another bsky (a command in another terminal, the client started
+        // twice) may have refreshed already: its tokens are in the file, and
+        // the refresh token held here is spent.
+        if let Some(access) = self.tokens_from_file(&mut session, expired) {
+            return Ok(access);
+        }
         let nsid = "com.atproto.server.refreshSession";
         let resp = self
             .agent
             .post(xrpc_url(&self.service, nsid))
             .header("Authorization", &format!("Bearer {}", session.refresh_jwt))
             .send_empty()
-            .map_err(|e| transport(nsid, e))?;
-        let tokens: SessionTokens = decode(nsid, resp)
-            .map_err(|e| e.with_hint(crate::i18n::t("the session expired; log in again")))?;
+            .map_err(|e| transport(nsid, e));
+        let tokens: Result<SessionTokens> = resp.and_then(|r| decode(nsid, r));
+        let tokens = match tokens {
+            Ok(t) => t,
+            // One that refreshed while this one was asking wins.
+            Err(e) => {
+                return match self.tokens_from_file(&mut session, expired) {
+                    Some(access) => Ok(access),
+                    None => Err(e.with_hint(crate::i18n::t("the session expired; log in again"))),
+                };
+            }
+        };
+        // Tokens of another account are not this one's, to send or to keep.
+        if tokens.did != session.did {
+            return Err(Error::api(crate::i18n::tf(
+                "{} answered with the tokens of another account ({})",
+                &[nsid, &tokens.did],
+            ))
+            .with_hint(crate::i18n::t("the session expired; log in again")));
+        }
         session.access_jwt = tokens.access_jwt;
         session.refresh_jwt = tokens.refresh_jwt;
         session.handle = tokens.handle;
@@ -717,6 +740,18 @@ impl Client {
             store.update(&session)?;
         }
         Ok(session.access_jwt.clone())
+    }
+
+    /// Take the tokens the account's file holds, when they are newer than
+    /// `expired` (another bsky refreshed them): the new access token.
+    fn tokens_from_file(&self, session: &mut Session, expired: &str) -> Option<String> {
+        let saved = self.store.as_ref()?.load().ok()??;
+        if saved.did != session.did || saved.access_jwt == expired {
+            return None;
+        }
+        session.access_jwt = saved.access_jwt;
+        session.refresh_jwt = saved.refresh_jwt;
+        Some(session.access_jwt.clone())
     }
 
     /// Any read, answered as the server wrote it: what `--json` prints.
@@ -734,9 +769,16 @@ impl Client {
     /// cannot be resolved stays plain text rather than failing the send.
     fn facets(&self, text: &str) -> Vec<Value> {
         let mut out = Vec::new();
+        // Each handle is looked up once, however often it is mentioned: a
+        // lookup holds up the post and every write behind it.
+        let mut dids: std::collections::HashMap<String, Option<String>> =
+            std::collections::HashMap::new();
         for span in facets::detect(text) {
             let did = match &span.target {
-                facets::Target::Mention(handle) => self.resolve_handle(handle).ok(),
+                facets::Target::Mention(handle) => dids
+                    .entry(handle.to_lowercase())
+                    .or_insert_with(|| self.resolve_handle(handle).ok())
+                    .clone(),
                 _ => None,
             };
             if let Some(f) = facets::to_json(&span, did.as_deref()) {
@@ -1273,6 +1315,9 @@ pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod stub_tests;
 
 #[cfg(test)]
 mod tests {

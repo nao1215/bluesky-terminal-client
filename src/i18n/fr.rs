@@ -936,6 +936,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("you: {}", "toi : {}"),
     ("your home folder", "ton dossier personnel"),
     ("{}\nhint: {}", "{}\nastuce : {}"),
+    (
+        "{} answered with the tokens of another account ({})",
+        "{} a répondu avec les jetons d'un autre compte ({})",
+    ),
     ("{} bytes", "{} octets"),
     (
         "{} cannot be made smaller than {} bytes",

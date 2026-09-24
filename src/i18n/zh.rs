@@ -768,6 +768,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("you: {}", "你：{}"),
     ("your home folder", "主文件夹"),
     ("{}\nhint: {}", "{}\n提示：{}"),
+    (
+        "{} answered with the tokens of another account ({})",
+        "{} 返回了另一个账号的令牌 ({})",
+    ),
     ("{} bytes", "{} 字节"),
     (
         "{} cannot be made smaller than {} bytes",
