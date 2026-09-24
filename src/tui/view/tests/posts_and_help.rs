@@ -230,3 +230,33 @@ fn a_line_break_in_alt_text_keeps_its_words_apart() {
         "the line break of the alt text glues two words: {s}"
     );
 }
+
+// Half-width katakana with a sound mark (ｶﾞ, ﾊﾟ) takes two cells, as the
+// terminal draws it: a post of it wraps inside the screen and loses no
+// character. Measured as one cell, each line was laid out shorter than it
+// is drawn, and its last characters fell off the right edge.
+#[test]
+fn half_width_katakana_with_sound_marks_wraps_without_losing_any() {
+    let text = "ｶﾞｲｼﾞﾝ ﾊﾟﾝﾀﾞﾀﾞﾖ ﾃﾞﾌﾞｿﾞｳｶﾞﾊﾞﾝｻﾞｲ ｵﾜﾘ";
+    let post: Post = serde_json::from_value(json!({
+        "uri": "at://p/k", "cid": "c",
+        "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice"},
+        "record": {"text": text, "createdAt": "2026-09-22T00:00:00Z"},
+    }))
+    .unwrap();
+    for w in 24..=40u16 {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.without_pictures();
+        app.handle_event(Event::Timeline(Ok(vec![post.clone()].into())));
+        let screen = render_text_only(&mut app, w, 16);
+        // The post's rows run on from one to the next past the selection
+        // marker.
+        let shown: String = screen
+            .split_whitespace()
+            .collect::<String>()
+            .replace('▌', "");
+        for word in text.split_whitespace() {
+            assert!(shown.contains(word), "{w}: {word} is cut:\n{screen}");
+        }
+    }
+}

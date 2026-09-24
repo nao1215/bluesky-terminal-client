@@ -310,7 +310,7 @@ pub(super) fn draw_browser(
         };
         let size_w = size.width();
         let name = truncate(&name, width.saturating_sub(size_w + 4));
-        let pad = width.saturating_sub(2 + name.width() + size_w + 1);
+        let pad = width.saturating_sub(2 + crate::tui::text::cells(&name) + size_w + 1);
         let line = format!("{mark}{name}{}{size} ", " ".repeat(pad));
         let style = if i == b.list.selected {
             t.selected()

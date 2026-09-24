@@ -199,7 +199,7 @@ pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> 
     for (text, style) in spans {
         let mut kept = String::new();
         for g in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
-            let gw = g.width();
+            let gw = crate::tui::text::cluster_width(g);
             if gw > left {
                 if width > 0 {
                     kept.push('…');

@@ -574,7 +574,7 @@ fn truncate_start(s: &str, width: usize) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut used = 1;
     for g in unicode_segmentation::UnicodeSegmentation::graphemes(s, true).rev() {
-        let w = g.width();
+        let w = crate::tui::text::cluster_width(g);
         if used + w > width {
             break;
         }

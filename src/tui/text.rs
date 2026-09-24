@@ -36,11 +36,19 @@ pub fn cells(s: &str) -> usize {
 }
 
 /// The width of one grapheme cluster; a printable ASCII letter is one cell
-/// without asking the tables.
-fn cluster_width(g: &str) -> usize {
+/// without asking the tables. A half-width sound mark (the ﾞ of ｶﾞ, the ﾟ
+/// of ﾊﾟ) joins the letter before it into one cluster and has no width in
+/// the tables, yet ratatui and terminals give it a cell of its own: counted
+/// as none, a line of such text was drawn longer than it was laid out.
+pub fn cluster_width(g: &str) -> usize {
     match g.as_bytes() {
         [b] if b.is_ascii_graphic() || *b == b' ' => 1,
-        _ => g.width(),
+        _ => {
+            g.width()
+                + g.chars()
+                    .filter(|c| matches!(c, '\u{ff9e}' | '\u{ff9f}'))
+                    .count()
+        }
     }
 }
 
@@ -333,6 +341,19 @@ mod tests {
             let widths: usize = slow.iter().map(|(_, g)| g.width()).sum();
             assert_eq!(cells(&s), widths, "{s:?}");
         }
+    }
+
+    // A half-width sound mark takes a cell of its own, as ratatui and the
+    // terminal draw it, alone or after its letter; so does a field's cursor
+    // after one.
+    #[test]
+    fn a_half_width_sound_mark_takes_its_own_cell() {
+        assert_eq!(cells("ｶﾞｲｼﾞﾝ"), 6);
+        assert_eq!(cells("ﾊﾟ"), 2);
+        assert_eq!(cells("\u{ff9e}"), 1);
+        let input = crate::tui::input::TextInput::single("ﾊﾟﾝ");
+        assert_eq!(input.layout(20).cursor, (0, 3));
+        assert_eq!(wrap("ﾊﾟﾊﾟﾊﾟ", 4), ["ﾊﾟﾊﾟ", "ﾊﾟ"]);
     }
 
     // A hint row too long for its place loses pairs from the middle and

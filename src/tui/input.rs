@@ -9,7 +9,6 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use crate::tui::text::drawable;
 
@@ -261,7 +260,7 @@ impl TextInput {
                 continue;
             }
             let shown = if self.masked { "•" } else { g };
-            let w = shown.width();
+            let w = crate::tui::text::cluster_width(shown);
             if col + w > width {
                 lines.push(String::new());
                 col = 0;
