@@ -146,14 +146,6 @@ fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
         } else {
             Err(fail())
         }),
-        Job::CustomFeed(uri) => Event::CustomFeed {
-            uri,
-            result: if ok {
-                Ok(page(rng, next_id))
-            } else {
-                Err(fail())
-            },
-        },
         Job::Timeline => Event::Timeline(if ok {
             Ok(page(rng, next_id))
         } else {

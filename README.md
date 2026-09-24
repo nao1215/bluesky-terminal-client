@@ -9,7 +9,7 @@
 
 A [Bluesky](https://bsky.app) client for the terminal. Pictures and videos are drawn in place.
 
-![the timeline scrolled, the Discover feed, then a search](doc/img/demo.gif)
+![the timeline scrolled, then a search](doc/img/demo.gif)
 
 ## Install
 
@@ -46,9 +46,9 @@ Other terminals get text, and `Space` opens a post in the browser. Photos are po
 | `s`: settings | text only |
 | ![the settings screen](doc/img/settings.png) | ![the timeline without pictures](doc/img/text.png) |
 
-`+` on the timeline: columns beside it
+`+` on the timeline: your pinned feeds, notifications or a search in columns beside it
 
-![the timeline, a feed and notifications side by side](doc/img/columns.png)
+![a feed and notifications added beside the timeline, then scrolled](doc/img/columns.gif)
 
 `T`: 42 themes
 
@@ -57,21 +57,20 @@ Other terminals get text, and `Space` opens a post in the browser. Photos are po
 | ![bluesky](doc/img/theme-bluesky.png) | ![bluesky-light](doc/img/theme-bluesky-light.png) | ![dracula](doc/img/theme-dracula.png) |
 | ![nord](doc/img/theme-nord.png) | ![gruvbox](doc/img/theme-gruvbox.png) | ![catppuccin-latte](doc/img/theme-catppuccin-latte.png) |
 
-Chat, accounts and columns show made-up data from [doc/demo-server.py](doc/demo-server.py).
+Chat, accounts, columns and the composer show made-up data and the pictures of [doc/demo](doc/demo), served by [doc/demo-server.py](doc/demo-server.py).
 
 ## Keys
 
 | Key | Action |
 |---|---|
 | `1`–`5` | Timeline, Chat, Search, Notifications, Profile |
-| `+` `x` | Add a column beside the timeline, remove one |
+| `+` `x` | Add a column (a pinned feed, notifications, a search), remove one |
 | `j` `k` | Move |
 | `n` `r` `Q` | Post, reply, quote |
 | `l` `b` `f` | Like, repost, follow |
 | `M` `B` | Mute, block |
 | `D` | Delete your post |
 | `v` `Space` `o` | Thread, pictures or video, link |
-| `[` `]` | Pinned feeds |
 | `/` | Search |
 | `m` | Message the profile shown |
 | `A` `T` `s` | Accounts, themes, settings |

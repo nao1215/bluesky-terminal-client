@@ -72,13 +72,7 @@ impl App {
         match self.tab {
             Tab::Timeline => {
                 self.info("refreshing…");
-                match self.current_feed() {
-                    Feed::Custom(uri) => {
-                        self.feed_list().begin();
-                        vec![Job::CustomFeed(uri)]
-                    }
-                    _ => vec![Job::Timeline],
-                }
+                vec![Job::Timeline]
             }
             Tab::Search => self.run_search(),
             Tab::Profile => self.open_profile(self.profile.actor.clone()),
@@ -380,52 +374,16 @@ impl App {
         vec![Job::LoadProfileEditor]
     }
 
-    /// Show the next (`1`) or previous (`-1`) feed, going round, and load
-    /// it the first time it is shown.
-    pub(super) fn switch_feed(&mut self, delta: isize) -> Vec<Job> {
-        if self.feeds.is_empty() {
-            return Vec::new();
-        }
-        let count = self.feeds.len() as isize + 1;
-        self.feed = (self.feed as isize + delta).rem_euclid(count) as usize;
-        let feed = self.current_feed();
-        let list = self.feed_list();
-        match feed {
-            Feed::Custom(uri) if !list.loaded && !list.loading => {
-                list.begin();
-                vec![Job::CustomFeed(uri)]
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    /// Take the pinned feeds, keeping what was loaded of a feed still
-    /// pinned, and the feed shown when it still is.
+    /// Take the pinned feeds, which `+` offers as columns.
     pub(super) fn set_pinned_feeds(&mut self, infos: Vec<crate::api::types::FeedInfo>) {
-        let shown = self.current_feed();
-        // The + list offers the feeds too: its selection stays on its choice.
+        // The + list offers the feeds: its selection stays on its choice.
         let choosing = match &self.overlay {
             Some(Overlay::AddColumn { selected, .. }) => {
                 self.column_choices().get(*selected).cloned()
             }
             _ => None,
         };
-        let mut old: Vec<CustomFeed> = std::mem::take(&mut self.feeds);
-        self.feeds = infos
-            .into_iter()
-            .map(
-                |info| match old.iter().position(|f| f.info.uri == info.uri) {
-                    Some(i) => CustomFeed {
-                        info,
-                        list: std::mem::take(&mut old[i].list),
-                    },
-                    None => CustomFeed {
-                        info,
-                        list: List::default(),
-                    },
-                },
-            )
-            .collect();
+        self.feeds = infos;
         if let Some(chosen) = choosing {
             let at = self
                 .column_choices()
@@ -436,13 +394,5 @@ impl App {
                 *selected = at;
             }
         }
-        self.feed = match shown {
-            Feed::Custom(uri) => self
-                .feeds
-                .iter()
-                .position(|f| f.info.uri == uri)
-                .map_or(0, |i| i + 1),
-            _ => 0,
-        };
     }
 }

@@ -97,10 +97,6 @@ fn feed_info(name: &str) -> crate::api::types::FeedInfo {
     }
 }
 
-fn feed_uri(name: &str) -> String {
-    format!("at://did:plc:f/app.bsky.feed.generator/{name}")
-}
-
 /// On the Timeline tab with the columns of `sources`, each answered with
 /// `posts` (notifications columns with none).
 fn columns_with(sources: &[columns::Source], posts: Vec<Post>) -> App {

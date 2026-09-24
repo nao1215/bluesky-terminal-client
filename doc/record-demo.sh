@@ -2,8 +2,7 @@
 # Record the README's demos in a real kitty window, with the account logged
 # in with bsky:
 #
-#   doc/record-demo.sh demo     doc/img/demo.gif: the timeline, a pinned feed,
-#                               then a search
+#   doc/record-demo.sh demo     doc/img/demo.gif: the timeline, then a search
 #   doc/record-demo.sh viewer   doc/img/viewer.gif: a picture and a video of
 #                               your profile's posts, full screen
 #   doc/record-demo.sh themes   doc/img/theme-*.png: the timeline in a few themes
@@ -14,10 +13,12 @@
 #   doc/record-demo.sh search   doc/img/search.png: accounts found for "bluesky"
 #   doc/record-demo.sh editor   doc/img/editor.png: the profile editor, not saved
 #   doc/record-demo.sh compose  doc/img/compose.png: the picture browser of the
-#                               composer, over sample pictures; nothing is sent
+#                               composer, over the pictures of doc/demo;
+#                               nothing is sent
 #   doc/record-demo.sh text     doc/img/text.png: the timeline with pictures off
 #   doc/record-demo.sh accounts doc/img/accounts.png: the account list
-#   doc/record-demo.sh columns  doc/img/columns.png: three columns
+#   doc/record-demo.sh columns  doc/img/columns.gif: a feed and notifications
+#                               added as columns, and scrolled
 #   doc/record-demo.sh chat     doc/img/chat.png: a conversation, a reply typed
 #                               but not sent
 #                               These three run against doc/demo-server.py,
@@ -141,14 +142,6 @@ demo() {
   ready "♡"
   record
   keys j 4 1.2
-  sleep 1
-  # The next feed (the first one pinned, or Discover), a look down it, and
-  # back to Following.
-  send "]"
-  sleep 4
-  keys j 3 1.2
-  sleep 1
-  send "["
   sleep 1.5
   send "/"
   sleep 0.6
@@ -280,8 +273,9 @@ editor() {
 compose() {
   use_theme bluesky
   mkdir -p "$WORK/pictures"
-  cp doc/img/theme-dracula.png "$WORK/pictures/terminal.png"
-  cp e2e/atago/testdata/clip.mp4 "$WORK/pictures/clip.mp4"
+  cp doc/demo/burger.jpg "$WORK/pictures/lunch.jpg"
+  cp doc/demo/desk.jpg "$WORK/pictures/desk.jpg"
+  cp doc/demo/owl.jpg "$WORK/pictures/owl.jpg"
   START_DIR="$WORK/pictures" start 1120 700
   ready "♡"
   send "n"
@@ -310,8 +304,7 @@ text() {
 }
 
 # A config folder of its own, with two made-up accounts on the stand-in
-# server (and three columns, given `columns`), for the screens that would
-# otherwise show or change a real account.
+# server, for the screens that would otherwise show or change a real account.
 demo_server() {
   # The port of a server started before is not this one's.
   rm -f "$WORK/port"
@@ -324,17 +317,7 @@ demo_server() {
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:river", "handle": "river.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_river.json"
   printf '{"service": "http://127.0.0.1:%s", "did": "did:plc:sea", "handle": "sea.example", "accessJwt": "a", "refreshJwt": "r"}\n' "$PORT" > "$DCFG/accounts/did_plc_sea.json"
   printf '{"current": "did:plc:river"}\n' > "$DCFG/accounts.json"
-  if [ "${1:-}" = columns ]; then
-    cat > "$DCFG/settings.json" <<JSON
-{"theme": "bluesky", "columns": {"did:plc:river": [
-  {"kind": "following"},
-  {"kind": "feed", "uri": "at://did:plc:carol/app.bsky.feed.generator/cats", "name": "Cats"},
-  {"kind": "notifications"}
-]}}
-JSON
-  else
-    printf '{"theme": "bluesky"}\n' > "$DCFG/settings.json"
-  fi
+  printf '{"theme": "bluesky"}\n' > "$DCFG/settings.json"
   DEMO_ENV="BSKY_CONFIG_DIR=$DCFG BSKY_CACHE_DIR=off"
 }
 
@@ -351,12 +334,31 @@ demo_accounts() {
 }
 
 demo_columns() {
-  # The columns kept for the account are what the Timeline tab shows.
-  demo_server columns
+  demo_server
   start 1400 700
-  ready "replied to you"
-  sleep 3
-  shot "$OUT/columns.png"
+  ready "Finished the trail"
+  record
+  sleep 1.5
+  # + offers the pinned feeds: Watercolours goes beside the timeline.
+  send "+"
+  sleep 1.5
+  send "j"
+  sleep 0.8
+  send "\r"
+  sleep 2.5
+  keys j 4 0.9
+  sleep 1
+  # Then the notifications.
+  send "+"
+  sleep 1.5
+  keys j 2 0.8
+  send "\r"
+  sleep 2.5
+  # Back to the timeline's column, and down it.
+  keys "\x1b[D" 2 0.8
+  keys j 5 0.9
+  sleep 1.5
+  stop "$OUT/columns.gif" 1120
   quit
   kill "$SPID" || true
 }
