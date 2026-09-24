@@ -1,8 +1,8 @@
-//! Columns on the Timeline tab: lists the client already has, side by
-//! side. Each column is one source (the following timeline, a pinned feed,
-//! the notifications, a search, an account's posts) with a list of its own,
-//! loaded and paged as the same list is on its own tab. Which columns there
-//! are is kept in `settings.json`, per account.
+//! Columns on the Timeline tab: lists side by side. Each column is one
+//! source (the following timeline, a pinned feed, the notifications, a
+//! search, an account's posts) with a list of its own, loaded and paged on
+//! its own. Which columns there are is kept in `settings.json`, per
+//! account.
 
 use crate::api::types::Post;
 use crate::tui::app::List;
