@@ -68,6 +68,7 @@ impl App {
                         a.handle
                     ));
                     self.confirm_logout = Some(a.did);
+                    self.asked();
                 }
             }
             _ => {}

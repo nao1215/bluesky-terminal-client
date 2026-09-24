@@ -39,6 +39,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - On a profile opened from the Columns tab, the key hints said Esc goes to your profile; it goes back to the columns, and the hint says so.
 - After `M` or `B`, the notifications of that account left the list but still counted on the Notifications tab.
 - When the session had expired, each request of the start that found it out brought up the login form again, emptying the password being typed. The form the first one brings up stays; and after logging in again, an answer to a request sent before no longer asks for a login.
+- A post taken out of a list elsewhere (deleted on the Profile tab, its author muted, blocked or unfollowed) above the selected one moved the selection onto the next post, so `l`, `b` or `D` then acted on a post that was not selected. The selection stays on its post.
+- A conversation that came from `m` went to the top of the Chat list and moved the selection onto the one above, so Enter opened, and marked read, a conversation not chosen. The selection stays.
+- Closing a conversation while its message was being sent, and opening it again, let the next Enter send a second message before the first was answered. A conversation cannot be closed while its message is on its way.
+- `m` on the profile of someone whose conversation was open already opened it anew, dropping the draft. It brings the open one back as it was.
+- A question waiting for its `y` (`D`, `B`, `x`) outlived its prompt: on the Chat tab it could not be called off with Esc, and a `y` pressed long after the prompt had gone still deleted, blocked or removed. It is answered by the next key wherever the screen went, and ends with its prompt.
+- The error of a profile left for another before it came was shown on the next profile, which stopped loading.
+- A thread reloaded with `R` and opened again with `v` before the answer came could stay "loading" for good.
+- After a search for another word failed while the next page of the first search was on its way, that list never loaded more.
+- With the `+` list open, pinned feeds that came in moved the selection, and Enter added another column than the one selected.
+- Back on the Notifications tab with Esc from a profile opened there, what came meanwhile was not marked seen.
+- Messages that came into the conversation being read were not marked read, and came back as unread in the list and in other apps.
+- On a like or a repost notification, the `.` list left out `v`, `Space`, `o` and `c`, which act on the post liked.
+- A conversation opened with `m` before the Chat tab was ever shown left the list of conversations unloaded, so Esc showed that one alone.
 
 ## [0.4.0] - 2026-09-24
 

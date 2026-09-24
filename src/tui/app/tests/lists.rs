@@ -284,3 +284,81 @@ fn reloading_the_timeline_keeps_the_pages_loaded_and_the_selection() {
         "{jobs:?}"
     );
 }
+
+// A search for another word, which fails, while the next page of the first
+// search is on its way: that page is dropped (another query), and the
+// results left on screen can still load their next page.
+#[test]
+fn a_next_page_of_an_earlier_search_does_not_leave_the_list_waiting() {
+    let mut app = logged_in();
+    app.handle_key(key('2'));
+    type_str(&mut app, "a");
+    app.handle_key(code(KeyCode::Enter));
+    let posts: Vec<Post> = (0..15)
+        .map(|i| post(&format!("at://s/{i}"), "did:plc:a", true))
+        .collect();
+    app.handle_event(Event::SearchPosts {
+        query: "a".into(),
+        result: Ok(page(posts, Some("c1"))),
+    });
+    let more = app.handle_key(key('G'));
+    assert!(
+        matches!(&more[..], [Job::More { cursor, .. }] if cursor == "c1"),
+        "{more:?}"
+    );
+    app.handle_key(key('/'));
+    app.handle_key(ctrl('u'));
+    type_str(&mut app, "b");
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_event(Event::SearchPosts {
+        query: "b".into(),
+        result: Err(Error::api("app.bsky.feed.searchPosts failed: HTTP 502")),
+    });
+    app.handle_event(Event::More {
+        feed: Feed::SearchPosts("a".into()),
+        cursor: "c1".into(),
+        result: Ok(MorePage::Posts(page(Vec::new(), None))),
+    });
+    assert!(!app.search.posts.more_pending);
+}
+
+// A post taken out of a list elsewhere (deleted on the Profile tab, its
+// author muted or unfollowed) above the selection: the selection stays on
+// the post it was on, so the next l likes that one and not the one below.
+#[test]
+fn a_post_taken_out_above_the_selection_leaves_it_where_it_was() {
+    let mut app = logged_in();
+    app.handle_event(Event::Timeline(Ok(vec![
+        post("at://did:plc:me/app.bsky.feed.post/1", "did:plc:me", false),
+        post("at://a/p/2", "did:plc:alice", true),
+        post("at://b/p/3", "did:plc:bob", true),
+        post("at://c/p/4", "did:plc:carol", true),
+    ]
+    .into())));
+    app.handle_key(key('j'));
+    app.handle_key(key('j'));
+    assert_eq!(app.timeline.current().unwrap().uri, "at://b/p/3");
+    app.handle_event(Event::PostDeleted {
+        uri: "at://did:plc:me/app.bsky.feed.post/1".into(),
+        result: Ok(()),
+    });
+    assert_eq!(app.timeline.current().unwrap().uri, "at://b/p/3");
+    app.handle_event(Event::Muted {
+        did: "did:plc:alice".into(),
+        on: true,
+        result: Ok(()),
+    });
+    assert_eq!(app.timeline.current().unwrap().uri, "at://b/p/3");
+    let jobs = app.handle_key(key('l'));
+    assert!(
+        matches!(&jobs[..], [Job::Like { subject }] if subject.uri == "at://b/p/3"),
+        "{jobs:?}"
+    );
+    // The selected one itself taken out: the one after it is selected.
+    app.handle_event(Event::Muted {
+        did: "did:plc:bob".into(),
+        on: true,
+        result: Ok(()),
+    });
+    assert_eq!(app.timeline.current().unwrap().uri, "at://c/p/4");
+}

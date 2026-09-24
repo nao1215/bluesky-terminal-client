@@ -233,11 +233,14 @@ impl<T: Keyed> List<T> {
 }
 
 impl<T> List<T> {
-    /// A first page has been asked for.
+    /// A first page has been asked for. A next page still on its way is
+    /// of the list before: it is not waited for, and if the first page
+    /// fails, the next one can be asked for again.
     fn begin(&mut self) {
         self.loaded = false;
         self.loading = true;
         self.error = None;
+        self.more_pending = false;
     }
 
     /// The first page could not be loaded; what was there stays.
@@ -245,6 +248,16 @@ impl<T> List<T> {
         self.loaded = true;
         self.loading = false;
         self.error = Some(e.message().to_string());
+    }
+
+    /// Put `item` at the top, the selection and the scroll staying on what
+    /// they were on.
+    fn push_front(&mut self, item: T) {
+        if !self.items.is_empty() {
+            self.selected += 1;
+            self.offset += 1;
+        }
+        self.items.insert(0, item);
     }
 
     pub fn current(&self) -> Option<&T> {
@@ -259,10 +272,25 @@ impl<T> List<T> {
         self.selected = (self.selected as isize + delta).clamp(0, last) as usize;
     }
 
-    fn retain(&mut self, keep: impl FnMut(&T) -> bool) {
-        self.items.retain(keep);
-        self.selected = self.selected.min(self.items.len().saturating_sub(1));
-        self.offset = self.offset.min(self.selected);
+    /// Keep the items `keep` says to. The selection and the scroll stay on
+    /// the item they were on, or the next one when it went: counted by
+    /// position, one taken out above them would move them onto another.
+    fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
+        let (mut selected, mut offset, mut at) = (0, 0, 0);
+        let (was_selected, was_offset) = (self.selected, self.offset);
+        self.items.retain(|item| {
+            let kept = keep(item);
+            if kept && at < was_selected {
+                selected += 1;
+            }
+            if kept && at < was_offset {
+                offset += 1;
+            }
+            at += 1;
+            kept
+        });
+        self.selected = selected.min(self.items.len().saturating_sub(1));
+        self.offset = offset.min(self.selected);
     }
 }
 
@@ -598,6 +626,9 @@ pub struct App {
     pub confirm_delete: Option<String>,
     /// The account `B` asked to block, waiting for the `y` that confirms it.
     pub confirm_block: Option<String>,
+    /// When the question waiting for its y was asked: it lasts as long as
+    /// its prompt is on screen.
+    question_at: Option<Instant>,
     /// Text `c` has put up for the terminal's clipboard, which the event
     /// loop writes: the state machine has no terminal of its own.
     to_copy: Option<String>,
@@ -662,6 +693,9 @@ pub struct App {
     session_since: u64,
     /// The number of the job whose answer is being taken, if it has one.
     answering: Option<u64>,
+    /// The number of the last profile asked for: an answer to an earlier
+    /// one is of a profile left since.
+    profile_asked: u64,
 }
 
 /// A write the server confirmed, as it shows on a post or an account.
@@ -783,6 +817,7 @@ impl App {
             in_flight: HashSet::new(),
             confirm_delete: None,
             confirm_block: None,
+            question_at: None,
             to_copy: None,
             theme: THEMES[0],
             theme_index: 0,
@@ -811,6 +846,7 @@ impl App {
             account_since: 0,
             session_since: 0,
             answering: None,
+            profile_asked: 0,
         };
         let jobs = if app.session.is_some() {
             app.startup_jobs()
@@ -853,6 +889,30 @@ impl App {
     /// Clear a status message older than [`STATUS_TTL`]. Returns whether the
     /// screen changed.
     pub fn expire_status(&mut self, now: Instant) -> bool {
+        let changed = self.expire_message(now);
+        // A question lasts while its prompt is on screen: gone (its time up,
+        // or another message in its place), a y pressed later answers
+        // nothing.
+        let asking = self.confirm_delete.is_some()
+            || self.confirm_block.is_some()
+            || self.confirm_column_remove.is_some()
+            || self.confirm_logout.is_some();
+        if asking && self.status.as_ref().map(|s| s.at) != self.question_at {
+            self.confirm_delete = None;
+            self.confirm_block = None;
+            self.confirm_column_remove = None;
+            self.confirm_logout = None;
+            self.question_at = None;
+        }
+        changed
+    }
+
+    /// Note that the prompt just shown asks a question.
+    pub(super) fn asked(&mut self) {
+        self.question_at = self.status.as_ref().map(|s| s.at);
+    }
+
+    fn expire_message(&mut self, now: Instant) -> bool {
         match &self.status {
             Some(s)
                 if now.saturating_duration_since(s.at)
@@ -940,4 +1000,94 @@ fn browse_start(last: &Option<PathBuf>) -> PathBuf {
         .or_else(|| std::env::current_dir().ok())
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(test)]
+impl App {
+    /// What still says it waits for the server: once every job has been
+    /// answered, a flag left on is a spinner that never stops or a key that
+    /// never works again.
+    pub fn stuck(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.pending != 0 {
+            out.push(format!("pending {}", self.pending));
+        }
+        if !self.in_flight.is_empty() {
+            out.push(format!("in flight {:?}", self.in_flight));
+        }
+        let mut list = |name: &str, loading: bool, more: bool| {
+            if loading {
+                out.push(format!("{name} loading"));
+            }
+            if more {
+                out.push(format!("{name} waiting for a next page"));
+            }
+        };
+        list(
+            "timeline",
+            self.timeline.loading,
+            self.timeline.more_pending,
+        );
+        for f in &self.feeds {
+            list("feed", f.list.loading, f.list.more_pending);
+        }
+        list(
+            "search posts",
+            self.search.posts.loading,
+            self.search.posts.more_pending,
+        );
+        list(
+            "search accounts",
+            self.search.actors.loading,
+            self.search.actors.more_pending,
+        );
+        list(
+            "profile posts",
+            self.profile.posts.loading,
+            self.profile.posts.more_pending,
+        );
+        list(
+            "notifications",
+            self.notifications.loading,
+            self.notifications.more_pending,
+        );
+        list(
+            "conversations",
+            self.chat.convos.loading,
+            self.chat.convos.more_pending,
+        );
+        for c in &self.columns.items {
+            match &c.rows {
+                Rows::Posts(l) => list("column", l.loading, l.more_pending),
+                Rows::Notifications(l) => list("column", l.loading, l.more_pending),
+            }
+        }
+        if self.profile.loading {
+            out.push("profile loading".into());
+        }
+        for th in &self.threads {
+            if !th.list.loaded && th.error.is_none() {
+                out.push(format!("thread {} loading", th.uri));
+            }
+        }
+        if let Some(o) = &self.chat.open {
+            if o.loading_older {
+                out.push("conversation loading older messages".into());
+            }
+            if o.sending {
+                out.push("message sending".into());
+            }
+        }
+        match &self.overlay {
+            Some(Overlay::Compose(c)) if c.sending => out.push("post sending".into()),
+            Some(Overlay::EditProfile(e)) if e.loading || e.saving => {
+                out.push("profile editor waiting".into())
+            }
+            _ => {}
+        }
+        if self.login.as_ref().is_some_and(|f| f.pending) {
+            out.push("login pending".into());
+        }
+        out
+    }
 }

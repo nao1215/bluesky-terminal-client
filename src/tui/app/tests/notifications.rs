@@ -110,3 +110,52 @@ fn a_sent_post_reloads_the_timeline_so_it_shows() {
     assert!(matches!(&jobs[..], [Job::Timeline]), "{jobs:?}");
     assert!(app.overlay.is_none());
 }
+
+// New notifications that came while a profile opened from the tab was
+// shown are marked seen on the way back with Esc, as on arriving with 3.
+#[test]
+fn notifications_that_came_meanwhile_are_marked_seen_on_the_way_back() {
+    let mut app = notifications_tab();
+    app.handle_event(Event::Seen(Ok(())));
+    app.handle_key(key('R'));
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tab, Tab::Profile);
+    let jobs = app.handle_event(Event::Notifications {
+        seen_at: "2026-09-22T02:00:00.000Z".into(),
+        result: Ok(Page {
+            items: vec![notif(
+                "reply",
+                "at://reply/2",
+                false,
+                Some(post("at://reply/2", "did:plc:reply", false)),
+                None,
+            )],
+            cursor: None,
+        }),
+    });
+    assert!(jobs.is_empty(), "not seen while elsewhere: {jobs:?}");
+    let jobs = app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.tab, Tab::Notifications);
+    assert!(
+        matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-22T02:00:00.000Z"),
+        "{jobs:?}"
+    );
+}
+
+// On a like of your post, v, space, o and c act on the post liked; the
+// actions list offers them, and not like or reply, which have nothing to
+// act on there.
+#[test]
+fn the_actions_list_of_a_like_offers_what_acts_on_the_post_liked() {
+    let mut app = notifications_tab();
+    app.handle_key(key('j'));
+    let keys: Vec<&str> = crate::tui::keys::actions(&app)
+        .iter()
+        .map(|(k, _)| *k)
+        .collect();
+    for k in ["v", "space", "o", "c"] {
+        assert!(keys.contains(&k), "{k} missing: {keys:?}");
+    }
+    assert!(!keys.contains(&"l"), "{keys:?}");
+    assert!(!keys.contains(&"r"), "{keys:?}");
+}

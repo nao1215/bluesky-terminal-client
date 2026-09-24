@@ -169,3 +169,25 @@ fn a_profile_opened_from_a_column_says_esc_goes_back_to_the_columns() {
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.tab, Tab::Columns);
 }
+
+// The pinned feeds come while the + list is open: the choice selected stays
+// the one Enter adds, not the one that moved into its place.
+#[test]
+fn feeds_that_come_while_the_add_list_is_open_do_not_change_the_choice() {
+    let mut app = logged_in();
+    app.handle_key(key('5'));
+    app.handle_key(key('+'));
+    app.handle_key(key('j'));
+    app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("cats 🐈")])));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert!(
+        matches!(
+            &jobs[..],
+            [Job::Column {
+                feed: Feed::Notifications,
+                ..
+            }]
+        ),
+        "{jobs:?}"
+    );
+}

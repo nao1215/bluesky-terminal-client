@@ -7,6 +7,9 @@ impl App {
     /// the same number, which tells what was sent after it.
     pub fn stamp(&mut self, job: &Job) -> u64 {
         self.sent += 1;
+        if matches!(job, Job::OpenProfile(_)) {
+            self.profile_asked = self.sent;
+        }
         if job.reads() {
             self.reads_out.insert(self.sent);
         }
@@ -589,7 +592,7 @@ impl App {
                 convo_id,
                 cursor,
                 result,
-            } => self.messages_page(&convo_id, cursor, result),
+            } => return self.messages_page(&convo_id, cursor, result),
             Event::MessageSent {
                 convo_id,
                 text,
@@ -642,7 +645,7 @@ impl App {
                             return self.open_convo(convo);
                         }
                         if !self.chat.convos.items.iter().any(|c| c.id == convo.id) {
-                            self.chat.convos.items.insert(0, convo);
+                            self.chat.convos.push_front(convo);
                         }
                         self.info("the conversation is ready on the Chat tab");
                     }
@@ -695,37 +698,39 @@ impl App {
             Event::Seen(Err(e)) => self.fail(&e),
             Event::Thread { uri, result } => {
                 // Only a thread still waiting for it takes the answer; it
-                // need not be on top (one can be opened over a reload).
-                let Some(th) = self
-                    .threads
-                    .iter_mut()
-                    .rev()
-                    .find(|t| t.uri == uri && !t.list.loaded)
-                else {
+                // need not be on top (one can be opened over a reload). Every
+                // view of that post still waiting takes it: the answer to the
+                // other one's request, older, is dropped as superseded.
+                let waiting = |t: &ThreadView| t.uri == uri && !t.list.loaded;
+                if !self.threads.iter().any(waiting) {
                     return Vec::new();
-                };
+                }
                 match result {
                     Ok(node) => {
-                        // A reload keeps the row that was selected, as every
-                        // other list does; only a first load jumps to the
-                        // post the thread was opened on.
-                        let was = th
-                            .list
-                            .items
-                            .get(th.list.selected)
-                            .map(|r| r.key().to_string());
                         let (rows, focus) = thread_rows::flatten(node);
-                        th.list.selected = was
-                            .and_then(|key| rows.iter().position(|r| r.key() == key))
-                            .unwrap_or(focus);
-                        th.list.items = rows;
-                        // The view scrolls the selection into sight from here.
-                        th.list.offset = th.list.offset.min(th.list.selected);
-                        th.list.loaded = true;
+                        for th in self.threads.iter_mut().filter(|t| waiting(t)) {
+                            // A reload keeps the row that was selected, as
+                            // every other list does; only a first load jumps
+                            // to the post the thread was opened on.
+                            let was = th
+                                .list
+                                .items
+                                .get(th.list.selected)
+                                .map(|r| r.key().to_string());
+                            th.list.selected = was
+                                .and_then(|key| rows.iter().position(|r| r.key() == key))
+                                .unwrap_or(focus);
+                            th.list.items = rows.clone();
+                            // The view scrolls the selection into sight from here.
+                            th.list.offset = th.list.offset.min(th.list.selected);
+                            th.list.loaded = true;
+                        }
                     }
                     Err(e) => {
-                        th.list.loaded = true;
-                        th.error = Some(e.message().to_string());
+                        for th in self.threads.iter_mut().filter(|t| waiting(t)) {
+                            th.list.loaded = true;
+                            th.error = Some(e.message().to_string());
+                        }
                         self.fail(&e);
                     }
                 }
@@ -865,6 +870,9 @@ impl App {
                 self.search.actors.failed(&e);
                 self.fail(&e);
             }
+            // An error of a profile left for another since is not that one's
+            // (an answer that came is checked by who it is about).
+            Event::Profile(Err(_)) if self.answering.is_some_and(|s| s < self.profile_asked) => {}
             Event::Profile(Err(e)) => {
                 self.profile.error = Some(e.message().to_string());
                 self.profile.loading = false;

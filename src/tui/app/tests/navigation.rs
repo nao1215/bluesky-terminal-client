@@ -484,3 +484,24 @@ fn an_expired_answer_from_before_logging_in_again_is_old_news() {
         "an old answer brought the login form back"
     );
 }
+
+// A profile left for another before it came: its error is not the other
+// one's, which goes on loading without an error box.
+#[test]
+fn the_error_of_a_profile_left_is_not_shown_on_the_next() {
+    let mut app = logged_in();
+    let alice = press(&mut app, code(KeyCode::Enter));
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('j'));
+    let bob = press(&mut app, code(KeyCode::Enter));
+    assert_eq!((alice.len(), bob.len()), (1, 1));
+    app.handle_answer(
+        alice[0],
+        Event::Profile(Err(Error::api(
+            "app.bsky.actor.getProfile failed: Profile not found",
+        ))),
+    );
+    assert!(app.profile.loading);
+    assert!(app.profile.error.is_none());
+    assert!(app.status.is_none(), "{:?}", app.status);
+}

@@ -454,6 +454,19 @@ pub fn actions(app: &App) -> Vec<Hint> {
         v.push(("o", "open its link in the web browser"));
         v.push(("v", "open the thread"));
         v.push(("c", "copy its address"));
+    } else if app.subject_shown().is_some() {
+        // A like or a repost: these keys act on the post it is about.
+        v.push((
+            "space",
+            if app.pictures {
+                "view the post's pictures or video"
+            } else {
+                "open the post in the web browser"
+            },
+        ));
+        v.push(("o", "open the post's link in the web browser"));
+        v.push(("v", "open the post's thread"));
+        v.push(("c", "copy the post's address"));
     }
     if let Some(account) = app.shown_account() {
         if app.tab == Tab::Profile

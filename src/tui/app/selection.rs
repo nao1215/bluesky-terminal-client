@@ -75,6 +75,17 @@ impl App {
         }
     }
 
+    /// The post a notification of a like or a repost is about, when the
+    /// selected notification carries no post of its own: what `v`, Space, `o`
+    /// and `c` act on there.
+    pub fn subject_shown(&self) -> Option<&Post> {
+        let item = self.shown_notifications()?.current()?;
+        item.post
+            .is_none()
+            .then_some(item.subject.as_ref())
+            .flatten()
+    }
+
     /// The account the keys act on here, without taking a copy of it.
     pub fn shown_account(&self) -> Option<&Profile> {
         if !self.threads.is_empty() {
