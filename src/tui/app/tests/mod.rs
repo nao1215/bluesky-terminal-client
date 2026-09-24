@@ -13,6 +13,7 @@ mod moderation;
 mod navigation;
 mod notifications;
 mod settings;
+mod sync;
 mod threads_and_viewer;
 
 fn session() -> Session {

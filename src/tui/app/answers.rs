@@ -29,7 +29,14 @@ impl App {
     pub(super) fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
         self.pending = self.pending.saturating_sub(1);
         let read = seq.filter(|s| self.reads_out.remove(s));
+        // A download or a link opened belongs to no account: it is said
+        // whoever is logged in when it is done.
+        let anyone = matches!(
+            event,
+            Event::Downloaded(_) | Event::Opened { .. } | Event::LoggedIn(_)
+        );
         if let Some(seq) = read
+            && !anyone
             && self.superseded(seq, &event)
         {
             self.forget_writes();
@@ -37,14 +44,10 @@ impl App {
         }
         // A write the account before made (it is sent as that account) is
         // not the one in use's: a like shown on its lists would be undone
-        // with a record it does not own. A download or a link opened
-        // belongs to no account.
+        // with a record it does not own.
         if let Some(seq) = seq
             && seq < self.account_since
-            && !matches!(
-                event,
-                Event::Downloaded(_) | Event::Opened { .. } | Event::LoggedIn(_)
-            )
+            && !anyone
         {
             self.forget_writes();
             return Vec::new();
@@ -62,11 +65,14 @@ impl App {
         {
             self.written.push((self.sent, w));
         }
+        // A write is kept with the last job sent when its answer came: a
+        // read sent up to then, that one included, may have been read
+        // before the write was made.
         if let Some(seq) = read {
             let since: Vec<Written> = self
                 .written
                 .iter()
-                .filter(|(at, _)| *at > seq)
+                .filter(|(at, _)| *at >= seq)
                 .map(|(_, w)| w.clone())
                 .collect();
             since.iter().for_each(|w| self.apply(w));
@@ -102,7 +108,7 @@ impl App {
     /// Writes older than every read still out can no longer be undone by one.
     pub(super) fn forget_writes(&mut self) {
         match self.reads_out.first().copied() {
-            Some(oldest) => self.written.retain(|(at, _)| *at > oldest),
+            Some(oldest) => self.written.retain(|(at, _)| *at >= oldest),
             None => self.written.clear(),
         }
     }
@@ -225,12 +231,25 @@ impl App {
 
     /// Set the follow state of `did` everywhere it is shown.
     pub(super) fn set_following(&mut self, did: &str, uri: Option<String>) {
+        // The profile shown counts you among its followers, or not, when
+        // this changes whether you follow it.
+        if let Some(p) = &mut self.profile.profile
+            && p.did == did
+        {
+            let was = p.viewer.as_ref().is_some_and(|v| v.following.is_some());
+            if was != uri.is_some() {
+                p.followers_count = p.followers_count.map(|n| {
+                    if uri.is_some() {
+                        n + 1
+                    } else {
+                        n.saturating_sub(1)
+                    }
+                });
+            }
+        }
         self.set_account(did, move |v| v.following = uri.clone());
     }
 
-    /// The posts and notifications of an account muted or blocked leave
-    /// every list, as the server leaves them out of the next pages. Its
-    /// profile, where the change was made, and an open thread stay.
     /// Load the timeline and the Following columns again, and with `own` a
     /// column of your own posts: what shows posts a write just changed.
     fn reload_following(&mut self, own: bool) -> Vec<Job> {
@@ -262,6 +281,9 @@ impl App {
         }
     }
 
+    /// The posts and notifications of an account muted or blocked leave
+    /// every list, as the server leaves them out of the next pages. Its
+    /// profile, where the change was made, and an open thread stay.
     pub(super) fn remove_posts_by(&mut self, did: &str) {
         let feeds = self.columns.post_lists();
         for list in [&mut self.timeline, &mut self.search.posts]
@@ -494,6 +516,13 @@ impl App {
                 if other {
                     self.load_columns();
                     jobs.extend(self.settle_timeline());
+                } else {
+                    // The same account again: its columns, which the expired
+                    // session left failed or waiting, are loaded again.
+                    let ids: Vec<u64> = self.columns.items.iter().map(|c| c.id).collect();
+                    for id in ids {
+                        jobs.extend(self.load_column(id));
+                    }
                 }
                 return jobs;
             }
@@ -767,16 +796,38 @@ impl App {
                 result: Ok(()),
             } => {
                 self.overlay = None;
+                // Your own posts are on the timeline, in a column of them
+                // and on your profile: load those again so the new one is
+                // there, and a thread it answers in, so it shows under the
+                // post.
+                let mut jobs = self.reload_following(true);
+                let me = self.session.as_ref().map(|s| s.did.clone());
+                if let Some(me) = me
+                    && self.profile.actor.is_none()
+                    && (self.tab == Tab::Profile
+                        || self.profile.profile.as_ref().is_some_and(|p| p.did == me))
+                {
+                    jobs.push(Job::OpenProfile(me));
+                }
                 match reply_to {
                     Some(uri) => {
                         self.each_post(&uri, |p| p.reply_count += 1);
                         self.info("reply sent");
+                        jobs.extend(
+                            self.threads
+                                .iter()
+                                .filter(|th| {
+                                    th.list
+                                        .items
+                                        .iter()
+                                        .any(|r| r.post().is_some_and(|p| p.uri == uri))
+                                })
+                                .map(|th| Job::Thread(th.uri.clone())),
+                        );
                     }
                     None => self.info("posted"),
                 }
-                // Your own posts are on the timeline and in a column of
-                // them: load those again so the new one is there.
-                return self.reload_following(true);
+                return jobs;
             }
             Event::Posted { result: Err(e), .. } => {
                 if let Some(Overlay::Compose(c)) = &mut self.overlay {
