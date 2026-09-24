@@ -25,10 +25,18 @@ pub const MAX_VIDEO_ALT_BYTES: usize = 10000;
 pub fn video_alt_problem(alt: &str) -> Option<String> {
     let alt = alt.trim();
     let n = crate::api::grapheme_len(alt);
-    (n > MAX_VIDEO_ALT_GRAPHEMES || alt.len() > MAX_VIDEO_ALT_BYTES).then(|| {
-        crate::i18n::tf(
+    if n > MAX_VIDEO_ALT_GRAPHEMES {
+        return Some(crate::i18n::tf(
             "the video's alt text is {} characters long; it can have {}",
             &[&n.to_string(), &MAX_VIDEO_ALT_GRAPHEMES.to_string()],
+        ));
+    }
+    // Emoji reach the byte limit well under the character one, and then
+    // the count of characters would be under the limit it is compared to.
+    (alt.len() > MAX_VIDEO_ALT_BYTES).then(|| {
+        crate::i18n::tf(
+            "the video's alt text is {} bytes; the limit is {}",
+            &[&alt.len().to_string(), &MAX_VIDEO_ALT_BYTES.to_string()],
         )
     })
 }
@@ -101,4 +109,26 @@ pub fn send_post(
         }
     };
     client.create_post(text, reply, quote, &embed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Emoji reach the 10000 bytes long before the 1000 characters: the
+    // message then says the bytes, not a count under the limit it names.
+    #[test]
+    fn a_video_alt_text_says_which_limit_it_is_over() {
+        assert_eq!(video_alt_problem(&"a".repeat(1000)), None);
+        assert_eq!(
+            video_alt_problem(&"a".repeat(1001)).as_deref(),
+            Some("the video's alt text is 1001 characters long; it can have 1000")
+        );
+        let family = "👨‍👩‍👧‍👦"; // 25 bytes
+        assert_eq!(video_alt_problem(&family.repeat(400)), None);
+        assert_eq!(
+            video_alt_problem(&format!(" {} ", family.repeat(401))).as_deref(),
+            Some("the video's alt text is 10025 bytes; the limit is 10000")
+        );
+    }
 }

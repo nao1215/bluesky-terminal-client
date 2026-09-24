@@ -942,4 +942,8 @@ pub const TABLE: &[(&str, &str)] = &[
         "the description is {} bytes; the limit is {}",
         "소개가 {}바이트입니다. 한도는 {}바이트입니다",
     ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "동영상 대체 텍스트가 {}바이트입니다. 한도는 {}바이트입니다",
+    ),
 ];

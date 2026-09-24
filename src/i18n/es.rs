@@ -1023,4 +1023,8 @@ pub const TABLE: &[(&str, &str)] = &[
         "the description is {} bytes; the limit is {}",
         "la descripción tiene {} bytes; el límite es {}",
     ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "el texto alternativo del vídeo tiene {} bytes; el límite es {}",
+    ),
 ];

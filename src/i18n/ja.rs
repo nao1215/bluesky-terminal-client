@@ -954,4 +954,8 @@ pub const TABLE: &[(&str, &str)] = &[
         "the description is {} bytes; the limit is {}",
         "自己紹介が {} バイトあります。上限は {} バイトです",
     ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "動画の代替テキストが {} バイトあります。上限は {} バイトです",
+    ),
 ];

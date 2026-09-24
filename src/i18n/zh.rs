@@ -846,4 +846,8 @@ pub const TABLE: &[(&str, &str)] = &[
         "the description is {} bytes; the limit is {}",
         "简介有 {} 字节；上限为 {}",
     ),
+    (
+        "the video's alt text is {} bytes; the limit is {}",
+        "视频的替代文本有 {} 字节；上限为 {}",
+    ),
 ];
