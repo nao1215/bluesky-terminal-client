@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- With bsky running in two places (the client and a command in another terminal), the second one to refresh the session sent a spent token, and the session ended. It takes the tokens the other one saved.
+- A refresh answered with another account's tokens was saved as this account's, and the next write was sent with them. It is refused, and the login form comes back.
+- A picture the encoder could not draw (its panic caught) left the terminal half restored, with the client still drawing; and a crash left the terminal wrapping pasted text in escape codes.
+- A handle mentioned many times in one post was looked up once per mention, holding up the post and the writes behind it.
+- One pinned feed the server described oddly hid all the pinned feeds from `+`.
+
+### Changed
+
+- A long text pasted into the middle of a long draft goes in at once (it took seconds).
+
 ### Changed
 
 - Messages about files, downloads, videos, the network and the settings are in the language chosen too, not only the screens. The `bsky` commands still write English.
