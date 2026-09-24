@@ -52,7 +52,12 @@ impl App {
             self.forget_writes();
             return Vec::new();
         }
+        // A write the server confirmed shows everywhere as it would on a
+        // late read: the same `apply`, and `event` only says so.
         let written = Written::of(&event);
+        if let Some(w) = &written {
+            self.apply(w);
+        }
         self.answering = seq;
         let jobs = self.event(event);
         self.answering = None;
@@ -545,34 +550,10 @@ impl App {
                     self.profile.loading = false;
                 }
             }
-            Event::Liked {
-                post_uri,
-                result: Ok(like),
-            } => {
-                self.set_like(&post_uri, Some(like));
-                self.info("liked");
-            }
-            Event::Unliked {
-                post_uri,
-                result: Ok(()),
-            } => {
-                self.set_like(&post_uri, None);
-                self.info("like removed");
-            }
-            Event::Reposted {
-                post_uri,
-                result: Ok(repost),
-            } => {
-                self.set_repost(&post_uri, Some(repost));
-                self.info("reposted");
-            }
-            Event::Unreposted {
-                post_uri,
-                result: Ok(()),
-            } => {
-                self.set_repost(&post_uri, None);
-                self.info("repost removed");
-            }
+            Event::Liked { result: Ok(_), .. } => self.info("liked"),
+            Event::Unliked { result: Ok(()), .. } => self.info("like removed"),
+            Event::Reposted { result: Ok(_), .. } => self.info("reposted"),
+            Event::Unreposted { result: Ok(()), .. } => self.info("repost removed"),
             Event::More {
                 feed,
                 cursor,
@@ -727,48 +708,22 @@ impl App {
                     }
                 }
             }
-            Event::Followed {
-                did,
-                result: Ok(uri),
-            } => {
-                self.set_following(&did, Some(uri));
-                self.info("followed");
-            }
-            Event::Unfollowed {
-                did,
-                result: Ok(()),
-            } => {
-                self.set_following(&did, None);
-                self.drop_unfollowed(&did);
-                self.info("unfollowed");
-            }
+            Event::Followed { result: Ok(_), .. } => self.info("followed"),
+            Event::Unfollowed { result: Ok(()), .. } => self.info("unfollowed"),
             Event::Muted {
-                did,
-                on,
-                result: Ok(()),
+                on, result: Ok(()), ..
             } => {
-                self.set_account(&did, |v| v.muted = on);
                 if on {
-                    self.remove_posts_by(&did);
                     self.info("muted: their posts leave your lists; M on their profile unmutes");
                 } else {
                     self.info("unmuted");
                     return self.reload_following(false);
                 }
             }
-            Event::Blocked {
-                did,
-                result: Ok(uri),
-            } => {
-                self.set_account(&did, move |v| v.blocking = Some(uri.clone()));
-                self.remove_posts_by(&did);
+            Event::Blocked { result: Ok(_), .. } => {
                 self.info("blocked: B on their profile unblocks");
             }
-            Event::Unblocked {
-                did,
-                result: Ok(()),
-            } => {
-                self.set_account(&did, |v| v.blocking = None);
+            Event::Unblocked { result: Ok(()), .. } => {
                 self.info("unblocked");
                 return self.reload_following(false);
             }
@@ -816,13 +771,7 @@ impl App {
                 }
                 self.fail(&e);
             }
-            Event::PostDeleted {
-                uri,
-                result: Ok(()),
-            } => {
-                self.remove_post(&uri);
-                self.info("post deleted");
-            }
+            Event::PostDeleted { result: Ok(()), .. } => self.info("post deleted"),
             Event::PostDeleted { result: Err(e), .. } => self.fail(&e),
             Event::ProfileEditor(result) => {
                 // Only an editor still waiting takes the answer: a late one
