@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Deleting your post left the post count on your profile as it was.
 - `bsky notifications --seen` compared times as text, so a time with fractions of a second could be taken for older, and the newest notification stayed unread.
 - A tag written inside a link that follows another tag (`#a,https://x.test/(#b)`) was made both a link and a tag.
+- Deleting your reply left the reply count of the post it answered as it was.
 
 ## [0.9.0] - 2026-09-24
 

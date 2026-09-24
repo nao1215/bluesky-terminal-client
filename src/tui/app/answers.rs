@@ -201,15 +201,36 @@ impl App {
     /// the placeholder for a post that is not there any more, so the replies
     /// under it keep their place.
     pub(super) fn remove_post(&mut self, uri: &str) {
+        // A reply is taken off its parent's count only where the reply was
+        // still shown: there the count is from before the delete, while a
+        // list that no longer holds it was counted already.
+        fn parent_of<'a>(posts: impl Iterator<Item = &'a Post>, uri: &str) -> Option<String> {
+            posts
+                .filter(|p| p.uri == uri)
+                .find_map(|p| p.record().reply)
+                .map(|r| r.parent.uri)
+        }
+        fn uncount<'a>(posts: impl Iterator<Item = &'a mut Post>, parent: Option<&str>) {
+            for p in posts.filter(|p| Some(p.uri.as_str()) == parent) {
+                p.reply_count = p.reply_count.saturating_sub(1);
+            }
+        }
         for list in self.post_lists() {
+            let parent = parent_of(list.items.iter(), uri);
             list.retain(|p| p.uri != uri);
+            uncount(list.items.iter_mut(), parent.as_deref());
         }
         for th in &mut self.threads {
+            let parent = parent_of(th.list.items.iter().filter_map(ThreadRow::post), uri);
             for row in &mut th.list.items {
                 if row.post().is_some_and(|p| p.uri == uri) {
                     row.kind = RowKind::NotFound(uri.to_string());
                 }
             }
+            uncount(
+                th.list.items.iter_mut().filter_map(ThreadRow::post_mut),
+                parent.as_deref(),
+            );
         }
     }
 
