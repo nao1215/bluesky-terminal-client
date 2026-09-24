@@ -444,3 +444,57 @@ fn a_video_alt_text_over_the_limit_is_refused_before_the_upload() {
         jobs.len()
     );
 }
+
+// The profile lexicon holds a display name to 64 characters (640 bytes)
+// and a description to 256 (2560 bytes). Longer text is refused in the
+// editor, which stays open with the text, rather than by the PDS after the
+// avatar was uploaded.
+#[test]
+fn a_profile_over_the_lexicon_limits_is_refused_before_it_is_saved() {
+    let open = || {
+        let mut app = logged_in();
+        app.handle_key(key('5'));
+        app.handle_key(key('e'));
+        app.handle_event(Event::ProfileEditor(Ok(
+            crate::tui::worker::ProfileFields {
+                display_name: "Me".into(),
+                description: String::new(),
+            },
+        )));
+        app
+    };
+    for (field, text, said) in [
+        (0, "a".repeat(65), "65"),
+        (0, "👨‍👩‍👧‍👦".repeat(30), "750 bytes"),
+        (1, "日".repeat(257), "257"),
+        (1, "👨‍👩‍👧‍👦".repeat(103), "2575 bytes"),
+    ] {
+        let mut app = open();
+        let Some(Overlay::EditProfile(e)) = &mut app.overlay else {
+            panic!()
+        };
+        e.fields[field] = crate::tui::input::TextInput::single(&text);
+        let jobs = app.handle_key(ctrl('s'));
+        assert!(jobs.is_empty(), "{field} {said}: {jobs:?}");
+        let status = app.status.as_ref().expect("an error");
+        assert!(
+            status.error && status.text.contains(said),
+            "{}",
+            status.text
+        );
+        let Some(Overlay::EditProfile(e)) = &app.overlay else {
+            panic!("the editor closed")
+        };
+        assert!(!e.saving, "the editor is not left saving");
+        assert_eq!(e.fields[field].text(), text);
+    }
+    // At the limits, with spaces around that are not kept, it is sent.
+    let mut app = open();
+    let Some(Overlay::EditProfile(e)) = &mut app.overlay else {
+        panic!()
+    };
+    e.fields[0] = crate::tui::input::TextInput::single(&format!(" {} ", "a".repeat(64)));
+    e.fields[1] = crate::tui::input::TextInput::single(&"日".repeat(256));
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(matches!(&jobs[..], [Job::SaveProfile { .. }]), "{jobs:?}");
+}

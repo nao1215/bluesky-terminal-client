@@ -935,4 +935,20 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}; showing its thumbnail", "{}; показана миниатюра"),
     ("{}; x goes back to the default", "{}; x — по умолчанию"),
     ("✓ following", "✓ вы подписаны"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "в отображаемом имени {} символов; лимит — {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "в отображаемом имени {} байт; лимит — {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "в описании {} символов; лимит — {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "в описании {} байт; лимит — {}",
+    ),
 ];

@@ -938,4 +938,20 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("{}; x goes back to the default", "{}。x で既定値に戻す"),
     ("✓ following", "✓ フォロー中"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "表示名が {} 文字あります。上限は {} 文字です",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "表示名が {} バイトあります。上限は {} バイトです",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "自己紹介が {} 文字あります。上限は {} 文字です",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "自己紹介が {} バイトあります。上限は {} バイトです",
+    ),
 ];

@@ -830,4 +830,20 @@ pub const TABLE: &[(&str, &str)] = &[
     ("{}; showing its thumbnail", "{}；正在显示缩略图"),
     ("{}; x goes back to the default", "{}；x 恢复默认"),
     ("✓ following", "✓ 已关注"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "显示名称有 {} 个字符；上限为 {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "显示名称有 {} 字节；上限为 {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "简介有 {} 个字符；上限为 {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "简介有 {} 字节；上限为 {}",
+    ),
 ];

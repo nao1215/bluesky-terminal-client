@@ -1010,4 +1010,20 @@ pub const TABLE: &[(&str, &str)] = &[
         "{} ; x revient à la valeur par défaut",
     ),
     ("✓ following", "✓ suivi"),
+    (
+        "the display name is {} characters; the limit is {}",
+        "le nom d'affichage fait {} caractères ; la limite est {}",
+    ),
+    (
+        "the display name is {} bytes; the limit is {}",
+        "le nom d'affichage fait {} octets ; la limite est {}",
+    ),
+    (
+        "the description is {} characters; the limit is {}",
+        "la description fait {} caractères ; la limite est {}",
+    ),
+    (
+        "the description is {} bytes; the limit is {}",
+        "la description fait {} octets ; la limite est {}",
+    ),
 ];
