@@ -546,3 +546,31 @@ fn a_failed_search_does_not_page_the_results_of_the_one_before() {
         "the cats results' cursor is used to page the dogs query: {asked:?}"
     );
 }
+
+// R on a profile reads it again where the reader is, as it does on every
+// other list: the posts stay while it loads, and the selection stays on the
+// post it was on.
+#[test]
+fn reloading_a_profile_keeps_the_place_in_its_posts() {
+    let mut app = logged_in();
+    app.handle_key(code(KeyCode::Enter)); // alice
+    let alice: Profile =
+        serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap();
+    let posts: Vec<Post> = (0..5)
+        .map(|i| post(&format!("at://alice/{i}"), "did:plc:alice", true))
+        .collect();
+    app.handle_event(Event::Profile(Ok((alice.clone(), posts.clone().into()))));
+    for _ in 0..3 {
+        app.handle_key(key('j'));
+    }
+    let jobs = app.handle_key(key('R'));
+    assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:alice"));
+    assert_eq!(
+        app.profile.posts.items.len(),
+        5,
+        "the posts stay while it loads"
+    );
+    assert_eq!(app.profile.came_from, Some(Tab::Timeline));
+    app.handle_event(Event::Profile(Ok((alice, posts.into()))));
+    assert_eq!(app.profile.posts.current().unwrap().uri, "at://alice/3");
+}
