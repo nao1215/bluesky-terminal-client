@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-24
+
 ### Changed
 
 - The Columns tab is gone: `+` on the Timeline tab adds a column beside the timeline, which becomes a column of its own, and the Timeline tab shows them side by side from then on. `x` removes a column; with none left the timeline is shown alone again. Columns kept from 0.4 or 0.5 are shown on the Timeline tab.
