@@ -451,17 +451,14 @@ pub(super) fn draw_login(frame: &mut Frame, area: Rect, form: &LoginForm, t: &Th
     }
     // The message area takes whatever rows are left, so a server's reason,
     // which is the part the user needs, is never cut off by the wrap.
-    let msg = if form.pending {
-        Line::styled(format!(" {}", i18n::t("logging in…")), t.dim())
+    let (msg, style) = if form.pending {
+        (format!(" {}", i18n::t("logging in…")), t.dim())
     } else if let Some(e) = &form.error {
-        Line::styled(format!(" {}", i18n::t(e)), t.error())
+        (format!(" {}", i18n::t(e)), t.error())
     } else {
-        Line::raw("")
+        (String::new(), Style::new())
     };
-    frame.render_widget(
-        Paragraph::new(msg).wrap(ratatui::widgets::Wrap { trim: true }),
-        rows[9],
-    );
+    frame.render_widget(wrapped(&msg, rows[9].width).style(style), rows[9]);
     frame.render_widget(
         Paragraph::new(format!(
             " {}",

@@ -360,11 +360,11 @@ pub(super) fn draw_browser(
             );
         }
         Some(_) if b.folders => frame.render_widget(
-            Paragraph::new(i18n::t(
-                "enter opens the folder; space chooses the one you are in",
-            ))
-            .style(t.dim())
-            .wrap(ratatui::widgets::Wrap { trim: true }),
+            wrapped(
+                i18n::t("enter opens the folder; space chooses the one you are in"),
+                preview.width,
+            )
+            .style(t.dim()),
             preview,
         ),
         Some(_) => frame.render_widget(
@@ -372,9 +372,11 @@ pub(super) fn draw_browser(
             preview,
         ),
         None if b.folders => frame.render_widget(
-            Paragraph::new(i18n::t("no folders here; space chooses this one"))
-                .style(t.dim())
-                .wrap(ratatui::widgets::Wrap { trim: true }),
+            wrapped(
+                i18n::t("no folders here; space chooses this one"),
+                preview.width,
+            )
+            .style(t.dim()),
             preview,
         ),
         None => frame.render_widget(

@@ -467,12 +467,24 @@ fn scroll_offset(
     top
 }
 
+/// `text` wrapped to `width` cells by the client's own rule. Ratatui's
+/// wrapping lets a wide character start in the last column, which draws it
+/// half off the edge and loses the words after it on that line.
+fn wrapped(text: &str, width: u16) -> Paragraph<'static> {
+    Paragraph::new(
+        wrap(text, usize::from(width))
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<_>>(),
+    )
+}
+
 /// What an empty list says: why it failed to load, or that it is empty.
 fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, t: &Theme) {
     let p = match &list.error {
-        Some(e) => Paragraph::new(format!(" {e}  {}", i18n::t("(R to retry)")))
-            .style(t.error())
-            .wrap(ratatui::widgets::Wrap { trim: true }),
+        Some(e) => {
+            wrapped(&format!(" {e}  {}", i18n::t("(R to retry)")), area.width).style(t.error())
+        }
         None => Paragraph::new(format!(" {}", i18n::t(empty.trim_start()))).style(t.dim()),
     };
     frame.render_widget(p, area);

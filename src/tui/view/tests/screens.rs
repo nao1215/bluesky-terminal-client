@@ -51,6 +51,35 @@ fn a_short_login_screen_keeps_every_field_and_its_name() {
     assert!(screen.contains("Handle or email"), "{screen}");
 }
 
+// A reason with wide characters wraps inside the screen: none is drawn
+// half off the right edge, and no word after it is lost. The wrapping
+// used to let a wide character start in the last column, which pushed the
+// line one cell past the edge and dropped the words that followed.
+#[test]
+fn a_wide_reason_wraps_inside_the_screen_and_keeps_every_word() {
+    use unicode_width::UnicodeWidthStr;
+    let reason = "tail that wraps 日 日本語 x サーバー 👍🏽 応答 🇯🇵 end";
+    for w in 24..=60u16 {
+        let (mut app, _) = App::new(Some(session()), "x");
+        app.handle_event(Event::Timeline(Err(crate::error::Error::api(reason))));
+        // The list's own message, not the box over it.
+        app.status = None;
+        let buf = render_buffer(&mut app, w, 12);
+        for y in 0..12u16 {
+            let last = buf[(w - 1, y)].symbol();
+            assert!(
+                last.width() < 2,
+                "{w}: {last:?} half off the edge on row {y}"
+            );
+        }
+        let screen = render_text_only(&mut app, w, 12);
+        let shown: String = screen.split_whitespace().collect();
+        for word in reason.split_whitespace() {
+            assert!(shown.contains(word), "{w}: {word} is lost:\n{screen}");
+        }
+    }
+}
+
 // Without pictures the text starts where the avatar was, and a line
 // says what each post carries; descriptions keep their emoji whole.
 #[test]
