@@ -20,7 +20,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use crate::config::{AccountStore, Session, SessionStore, SettingsStore};
+use crate::config::{AccountStore, Session, SettingsStore};
 use crate::error::{Error, Kind, Result};
 
 /// Command line: `bsky` opens the client; the commands read and write
@@ -137,25 +137,16 @@ fn chosen_account(accounts: &AccountStore, who: Option<&str>) -> Result<Option<S
 
 /// `bsky logout`: the account in use, the one `-a` names, or all of them.
 fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Result<()> {
-    // A session.json of a version with one login, readable or not, is one
-    // more login: it goes, before the accounts are read (which would take it
-    // in as an account), and the accounts asked for go too.
-    let old = SessionStore::new(dir);
-    let old_gone = who.is_none() && old.path().exists();
-    if old_gone {
-        old.clear()?;
-    }
     let accounts = AccountStore::open(dir)?;
     let chosen: Vec<Session> = if all {
-        accounts.list()?
-    } else if old_gone {
-        Vec::new()
+        accounts.remove_all()?
     } else {
-        chosen_account(&accounts, who)?.into_iter().collect()
+        let chosen: Vec<Session> = chosen_account(&accounts, who)?.into_iter().collect();
+        for s in &chosen {
+            accounts.remove(&s.did)?;
+        }
+        chosen
     };
-    for s in &chosen {
-        accounts.remove(&s.did)?;
-    }
     if json {
         let gone: Vec<serde_json::Value> = chosen
             .iter()
@@ -163,11 +154,7 @@ fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Re
             .collect();
         say(&serde_json::json!({ "loggedOut": gone }).to_string());
     } else if chosen.is_empty() {
-        say(if old_gone {
-            "logged out"
-        } else {
-            "not logged in"
-        });
+        say("not logged in");
     } else {
         for s in &chosen {
             say(&format!("logged out @{}", s.handle));

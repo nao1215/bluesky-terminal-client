@@ -270,7 +270,7 @@ scenarios:
   - name: a corrupt session file is a local-file error that names the way out
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: "{not json"
       - pty:
           command: bsky
@@ -285,17 +285,29 @@ scenarios:
           screen:
             contains:
               - "is not a valid session file"
-              - "hint: run `bsky logout` to discard it and log in again"
+              - "hint: run `bsky logout --all` to discard it and log in again"
           # The broken file is reported, not repaired or deleted behind the user's back.
           changes:
             created: []
             modified: []
             deleted: []
+      # The way out it names works on the broken file.
+      - run:
+          command: bsky logout --all
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            exists: false
 
   - name: logout removes the saved session and nothing else, and is idempotent
     steps:
       - fixture:
-          file: cfg/session.json
+          file: cfg/accounts/did_plc_me.json
           content: |
             {"service": "https://pds.example", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
       - fixture:
@@ -309,13 +321,13 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "logged out\n"
+            equals: "logged out @me.test\n"
           stderr:
             empty: true
           changes:
             created: []
             modified: []
-            deleted: [cfg/session.json]
+            deleted: [cfg/accounts/did_plc_me.json]
       - run:
           command: bsky logout
           env:
