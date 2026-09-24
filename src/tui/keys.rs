@@ -21,7 +21,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            ("1 2 3 4 5 6", "the tabs, Timeline to Chat"),
+            ("1 2 3 4 5", "the tabs, in the order shown"),
             ("tab shift+tab", "next / previous tab"),
             ("T", "choose a color theme"),
             ("A", "accounts: switch, add, log out"),
@@ -41,7 +41,10 @@ pub const HELP: &[Section] = &[
     },
     Section {
         title: "Timeline",
-        keys: &[("[ ]", "previous / next feed: Following, pinned")],
+        keys: &[
+            ("[ ]", "previous / next feed: Following, pinned"),
+            ("+", "add a column beside the timeline"),
+        ],
     },
     Section {
         title: "Posts",
@@ -148,7 +151,8 @@ pub const HELP: &[Section] = &[
         title: "Columns",
         keys: &[
             ("← → H L", "the column to the left / right"),
-            ("+", "add a column: a feed, alerts, a search"),
+            ("+", "add a column: a feed, notifications, search"),
+            ("", "the last one removed, the timeline is alone"),
             ("< >", "move the column left / right"),
             ("x", "remove the column: y confirms"),
             ("R", "load the column again"),
@@ -359,7 +363,6 @@ fn view_hints(app: &App) -> Vec<Hint> {
             Some(_) => vec![("i", "write"), ("j k", "scroll"), ("esc", "back")],
             None => vec![("j k", "move"), ("enter", "open"), ("R", "refresh")],
         },
-        Tab::Columns if app.columns.items.is_empty() => vec![("+", "add a column")],
         Tab::Columns => vec![
             ("← →", "column"),
             ("j k", "move"),
@@ -547,7 +550,7 @@ fn back_label(from: Option<Tab>) -> &'static str {
         Some(Tab::Search) => "back to search",
         Some(Tab::Timeline) => "back to timeline",
         Some(Tab::Notifications) => "back to notifications",
-        Some(Tab::Columns) => "back to columns",
+        Some(Tab::Columns) => "back to timeline",
         _ => "my profile",
     }
 }

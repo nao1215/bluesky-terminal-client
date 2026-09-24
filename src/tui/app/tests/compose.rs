@@ -347,10 +347,10 @@ fn notifications_loaded_at_start_are_seen_only_when_their_tab_is() {
     });
     assert!(jobs.is_empty(), "not seen from the timeline: {jobs:?}");
     assert_eq!(app.unread, 1, "but counted on the tab");
-    let jobs = app.handle_key(key('3'));
+    let jobs = app.handle_key(key('4'));
     assert!(matches!(&jobs[..], [Job::UpdateSeen(at)] if at == "2026-09-22T01:00:00.000Z"));
     app.handle_key(key('1'));
-    assert!(app.handle_key(key('3')).is_empty(), "marked once");
+    assert!(app.handle_key(key('4')).is_empty(), "marked once");
 }
 
 // The error box closes on any key. In the composer Esc only closes it:
@@ -394,7 +394,7 @@ fn a_paste_while_the_post_is_sent_is_not_taken() {
 #[test]
 fn the_profile_editor_sends_only_the_fields_that_were_changed() {
     let mut app = logged_in();
-    app.handle_key(key('4'));
+    app.handle_key(key('5'));
     app.handle_key(key('e'));
     app.handle_paste("pasted while loading");
     app.handle_event(Event::ProfileEditor(Ok(

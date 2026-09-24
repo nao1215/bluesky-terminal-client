@@ -202,7 +202,7 @@ pub(super) fn convo_lines(
 /// Narrowest a column is drawn; fewer columns show on a narrow screen.
 pub(super) const COLUMN_MIN_W: u16 = 36;
 
-/// The Columns tab: the columns side by side, as many as fit, the focused
+/// The Timeline tab with columns: side by side, as many as fit, the focused
 /// one among them, each with its title above its list; how many are off
 /// screen on either side is said in the titles of the outermost ones.
 pub(super) fn draw_columns(
@@ -213,13 +213,8 @@ pub(super) fn draw_columns(
     t: &Theme,
 ) {
     let n = app.columns.items.len();
+    // Without columns the Timeline tab shows the timeline instead.
     if n == 0 {
-        frame.render_widget(
-            Paragraph::new(" No columns yet. Press + to add one: the timeline, a feed, notifications, your posts, or a search.")
-                .style(t.dim())
-                .wrap(ratatui::widgets::Wrap { trim: true }),
-            body,
-        );
         return;
     }
     let fit = usize::from((body.width / COLUMN_MIN_W).max(1)).min(n);

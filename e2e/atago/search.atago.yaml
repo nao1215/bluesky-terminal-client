@@ -91,7 +91,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "2"
+            - send: "3"
             - expect_screen:
                 contains: ["type, then enter", "enter search"]
             # Letters bound to commands on a result list go into the box.
@@ -102,7 +102,7 @@ scenarios:
             # With a query in the box, coming back leaves the keys to the
             # results, and q quits as usual.
             - send: "1"
-            - send: "2"
+            - send: "3"
             - expect_screen:
                 contains: ["quit like", "/ edit query"]
                 not_contains: "type, then enter"

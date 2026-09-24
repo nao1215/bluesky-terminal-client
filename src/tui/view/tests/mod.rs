@@ -137,7 +137,7 @@ fn column_app(n: usize) -> App {
         .collect();
     app.columns = crate::tui::columns::Columns::from_sources(&sources);
     app.handle_key(crossterm::event::KeyEvent::from(
-        crossterm::event::KeyCode::Char('5'),
+        crossterm::event::KeyCode::Char('1'),
     ));
     for c in app.columns.items.clone() {
         app.handle_event(Event::Column {

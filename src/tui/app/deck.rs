@@ -1,8 +1,40 @@
-//! The Columns tab: adding, loading, paging, and keeping its columns.
+//! The columns of the Timeline tab: adding, loading, paging, and keeping them.
 
 use super::*;
 
 impl App {
+    /// The Timeline tab shows the columns when there are any, the timeline
+    /// alone when there are none; the columns not asked for yet are loaded.
+    pub fn settle_timeline(&mut self) -> Vec<Job> {
+        if !matches!(self.tab, Tab::Timeline | Tab::Columns) {
+            return Vec::new();
+        }
+        if self.columns.items.is_empty() {
+            self.tab = Tab::Timeline;
+            return Vec::new();
+        }
+        self.tab = Tab::Columns;
+        let waiting: Vec<u64> = self
+            .columns
+            .items
+            .iter()
+            .filter(|c| !c.asked())
+            .map(|c| c.id)
+            .collect();
+        waiting
+            .into_iter()
+            .flat_map(|id| self.load_column(id))
+            .collect()
+    }
+
+    /// [`Self::settle_timeline`] for the event loop, at the start: the jobs
+    /// it returns are counted as out.
+    pub fn show_timeline(&mut self) -> Vec<Job> {
+        let jobs = self.settle_timeline();
+        self.pending += jobs.len();
+        jobs
+    }
+
     /// The columns `settings.json` keeps for the account in use.
     pub(super) fn load_columns(&mut self) {
         let did = self
@@ -182,11 +214,34 @@ impl App {
         Vec::new()
     }
 
-    /// Add a column of `source`, focus it, keep it, and load it.
+    /// Add a column of `source`, focus it, keep it, and load it. The first
+    /// one added to the timeline comes beside the timeline or feed shown,
+    /// which becomes a column of its own.
     pub(super) fn add_column(&mut self, source: columns::Source) -> Vec<Job> {
         self.overlay = None;
+        let mut jobs = Vec::new();
+        if self.columns.items.is_empty() {
+            let first = match self.current_feed() {
+                Feed::Custom(uri) => {
+                    let name = self
+                        .feeds
+                        .iter()
+                        .find(|f| f.info.uri == uri)
+                        .map(|f| f.info.name.clone())
+                        .unwrap_or_default();
+                    columns::Source::Feed { uri, name }
+                }
+                _ => columns::Source::Following,
+            };
+            if first != source {
+                let id = self.columns.add(first);
+                jobs.extend(self.load_column(id));
+            }
+        }
         let id = self.columns.add(source);
         self.save_columns();
-        self.load_column(id)
+        self.tab = Tab::Columns;
+        jobs.extend(self.load_column(id));
+        jobs
     }
 }

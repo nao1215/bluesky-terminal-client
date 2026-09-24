@@ -166,7 +166,7 @@ fn a_late_thread_answer_is_dropped_and_a_tab_switch_closes_threads() {
     });
     assert!(app.threads.is_empty());
     app.handle_key(key('v'));
-    app.handle_key(key('2'));
+    app.handle_key(key('3'));
     assert!(app.threads.is_empty());
 }
 

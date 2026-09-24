@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn a_column_is_added_from_the_list_kept_and_loaded() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('1'));
     assert!(app.columns.items.is_empty());
     app.handle_key(key('+'));
     let choices = app.column_choices();
@@ -14,22 +14,33 @@ fn a_column_is_added_from_the_list_kept_and_loaded() {
     for _ in 0..at {
         app.handle_key(key('j'));
     }
+    // The first column comes beside the timeline, which becomes a column
+    // of its own: the Timeline tab shows both.
     let jobs = app.handle_key(code(KeyCode::Enter));
     assert!(
         matches!(
             &jobs[..],
-            [Job::Column {
-                feed: Feed::Notifications,
-                cursor: None,
-                ..
-            }]
+            [
+                Job::Column {
+                    feed: Feed::Timeline,
+                    cursor: None,
+                    ..
+                },
+                Job::Column {
+                    feed: Feed::Notifications,
+                    cursor: None,
+                    ..
+                }
+            ]
         ),
         "{jobs:?}"
     );
+    assert_eq!(app.tab, Tab::Columns);
+    assert_eq!(app.tab.title(), "Timeline");
     let saved = app.take_settings_save().expect("settings to save");
     assert_eq!(
         saved.columns["did:plc:me"],
-        [columns::Source::Notifications]
+        [columns::Source::Following, columns::Source::Notifications]
     );
     // A search column asks for its query first.
     app.handle_key(key('+'));
@@ -45,7 +56,7 @@ fn a_column_is_added_from_the_list_kept_and_loaded() {
         matches!(&jobs[..], [Job::Column { feed: Feed::SearchPosts(q), .. }] if q == "猫🐈‍⬛ 1️⃣"),
         "{jobs:?}"
     );
-    assert_eq!(app.columns.focus, 1);
+    assert_eq!(app.columns.focus, 2);
     assert!(app.overlay.is_none());
 }
 
@@ -165,7 +176,7 @@ fn a_profile_opened_from_a_column_says_esc_goes_back_to_the_columns() {
     app.handle_key(code(KeyCode::Enter));
     assert_eq!(app.tab, Tab::Profile);
     let hints = crate::tui::keys::hints(&app);
-    assert!(hints.contains(&("esc", "back to columns")), "{hints:?}");
+    assert!(hints.contains(&("esc", "back to timeline")), "{hints:?}");
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.tab, Tab::Columns);
 }
@@ -175,7 +186,7 @@ fn a_profile_opened_from_a_column_says_esc_goes_back_to_the_columns() {
 #[test]
 fn feeds_that_come_while_the_add_list_is_open_do_not_change_the_choice() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('1'));
     app.handle_key(key('+'));
     app.handle_key(key('j'));
     app.handle_event(Event::PinnedFeeds(Ok(vec![feed_info("cats 🐈")])));
@@ -183,10 +194,16 @@ fn feeds_that_come_while_the_add_list_is_open_do_not_change_the_choice() {
     assert!(
         matches!(
             &jobs[..],
-            [Job::Column {
-                feed: Feed::Notifications,
-                ..
-            }]
+            [
+                Job::Column {
+                    feed: Feed::Timeline,
+                    ..
+                },
+                Job::Column {
+                    feed: Feed::Notifications,
+                    ..
+                }
+            ]
         ),
         "{jobs:?}"
     );
