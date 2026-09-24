@@ -336,3 +336,43 @@ scenarios:
             header: { name: atproto-proxy, equals: "did:web:api.bsky.chat#bsky_chat" }
       - assert:
           mock: { name: entry, path: /xrpc/chat.bsky.convo.listConvos, count: 0 }
+
+  # -n counts as it does for the other commands: 0 asks for nothing, and
+  # more than one page follows the cursor.
+  - name: bsky chat -n 0 asks for nothing, and more than a page follows the cursor
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/chat.bsky.convo.listConvos
+            json:
+              cursor: "convos-2"
+              convos:
+                - id: convo-a
+                  rev: r1
+                  members:
+                    - { did: did:plc:me, handle: me.test }
+                    - { did: did:plc:alice, handle: alice.test, displayName: "家族👨‍👩‍👧 Alice" }
+                  muted: false
+                  unreadCount: 0
+    steps:
+      - *session
+      - run:
+          command: bsky chat -n 0
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ""
+      - assert:
+          mock: { name: api, path: /xrpc/chat.bsky.convo.listConvos, count: 0 }
+      - run:
+          command: bsky chat -n 150
+          env: *env
+      - assert:
+          exit_code: 0
+      # The first page and the one after it; the same cursor again ends it.
+      - assert:
+          mock: { name: api, path: /xrpc/chat.bsky.convo.listConvos, count: 2 }
+      - assert:
+          mock: { name: api, path: /xrpc/chat.bsky.convo.listConvos, query: { name: cursor, equals: "convos-2" } }
