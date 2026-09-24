@@ -7,6 +7,9 @@ impl App {
     /// the same number, which tells what was sent after it.
     pub fn stamp(&mut self, job: &Job) -> u64 {
         self.sent += 1;
+        if let Some(s) = &self.session {
+            self.sent_as.insert(self.sent, s.did.clone());
+        }
         if matches!(job, Job::OpenProfile(_)) {
             self.profile_asked = self.sent;
         }
@@ -29,6 +32,13 @@ impl App {
     pub(super) fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
         self.pending = self.pending.saturating_sub(1);
         let read = seq.filter(|s| self.reads_out.remove(s));
+        // The account the job was sent as: its write is answered, and the
+        // same key may be pressed again, whichever account is in use now.
+        let sent_as = seq
+            .and_then(|s| self.sent_as.remove(&s))
+            .or_else(|| self.session.as_ref().map(|s| s.did.clone()))
+            .unwrap_or_default();
+        self.release(&event, &sent_as);
         // A download or a link opened belongs to no account: it is said
         // whoever is logged in when it is done.
         let anyone = matches!(
@@ -42,13 +52,16 @@ impl App {
             self.forget_writes();
             return Vec::new();
         }
-        // A write the account before made (it is sent as that account) is
-        // not the one in use's: a like shown on its lists would be undone
-        // with a record it does not own.
-        if let Some(seq) = seq
-            && seq < self.account_since
-            && !anyone
-        {
+        // A read asked for before the account changed is of lists that are
+        // gone. A write another account made (it is sent as that account)
+        // is not the one in use's: a like shown on its lists would be
+        // undone with a record it does not own. One the account in use made,
+        // before switching away and back, is its own.
+        let other_account = match read {
+            Some(seq) => seq < self.account_since,
+            None => seq.is_some() && self.session.as_ref().is_none_or(|s| s.did != sent_as),
+        };
+        if other_account && !anyone {
             self.forget_writes();
             return Vec::new();
         }
@@ -414,7 +427,8 @@ impl App {
         self.notifications = List::default();
         self.unread = 0;
         self.seen_pending = None;
-        self.in_flight.clear();
+        // What is on its way stays claimed, per account: switching back
+        // before it is answered must not let the same key send it again.
         self.tab = Tab::Timeline;
     }
 
@@ -469,28 +483,26 @@ impl App {
         }
     }
 
-    pub(super) fn event(&mut self, event: Event) -> Vec<Job> {
-        match &event {
+    /// A write answered, taken or not: its key may be pressed again by the
+    /// account that sent it.
+    fn release(&mut self, event: &Event, sent_as: &str) {
+        let key = match event {
             Event::Liked { post_uri, .. } | Event::Unliked { post_uri, .. } => {
-                self.in_flight.remove(&format!("like:{post_uri}"));
+                format!("like:{post_uri}")
             }
             Event::Reposted { post_uri, .. } | Event::Unreposted { post_uri, .. } => {
-                self.in_flight.remove(&format!("repost:{post_uri}"));
+                format!("repost:{post_uri}")
             }
-            Event::Followed { did, .. } | Event::Unfollowed { did, .. } => {
-                self.in_flight.remove(&format!("follow:{did}"));
-            }
-            Event::Muted { did, .. } => {
-                self.in_flight.remove(&format!("mute:{did}"));
-            }
-            Event::Blocked { did, .. } | Event::Unblocked { did, .. } => {
-                self.in_flight.remove(&format!("block:{did}"));
-            }
-            Event::PostDeleted { uri, .. } => {
-                self.in_flight.remove(&format!("delete:{uri}"));
-            }
-            _ => {}
-        }
+            Event::Followed { did, .. } | Event::Unfollowed { did, .. } => format!("follow:{did}"),
+            Event::Muted { did, .. } => format!("mute:{did}"),
+            Event::Blocked { did, .. } | Event::Unblocked { did, .. } => format!("block:{did}"),
+            Event::PostDeleted { uri, .. } => format!("delete:{uri}"),
+            _ => return,
+        };
+        self.in_flight.remove(&format!("{sent_as} {key}"));
+    }
+
+    pub(super) fn event(&mut self, event: Event) -> Vec<Job> {
         match event {
             Event::LoggedIn(Ok(session)) => {
                 self.info(tf("logged in as @{}", &[&session.handle]));

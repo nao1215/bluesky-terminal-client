@@ -101,8 +101,15 @@ impl App {
     }
 
     /// Claim `key` for a like or follow; false when one is already in flight.
+    /// A write key of the account in use (`like:<uri>`...), as `in_flight`
+    /// keeps it: per account.
+    pub(super) fn flight(&self, key: &str) -> String {
+        let me = self.session.as_ref().map_or("", |s| s.did.as_str());
+        format!("{me} {key}")
+    }
+
     pub(super) fn claim(&mut self, key: String) -> bool {
-        if self.in_flight.insert(key) {
+        if self.in_flight.insert(self.flight(&key)) {
             true
         } else {
             self.info(n!("still waiting for the server…"));
@@ -254,7 +261,10 @@ impl App {
             self.info(n!("you can only delete your own posts"));
             return;
         }
-        if self.in_flight.contains(&format!("delete:{}", post.uri)) {
+        if self
+            .in_flight
+            .contains(&self.flight(&format!("delete:{}", post.uri)))
+        {
             self.info(n!("still waiting for the server…"));
             return;
         }
@@ -341,7 +351,10 @@ impl App {
                 did: account.did,
             }];
         }
-        if self.in_flight.contains(&format!("block:{}", account.did)) {
+        if self
+            .in_flight
+            .contains(&self.flight(&format!("block:{}", account.did)))
+        {
             self.info(n!("still waiting for the server…"));
             return Vec::new();
         }

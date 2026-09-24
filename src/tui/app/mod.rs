@@ -672,6 +672,8 @@ pub struct App {
     /// `follow:<did>`. A second press on the same target is refused until the
     /// first is answered, or two presses would create two records.
     pub in_flight: HashSet<String>,
+    /// The account each job still unanswered was sent as, by its number.
+    sent_as: HashMap<u64, String>,
     /// The question waiting for its `y`: what `D`, `B` or `x` asked about.
     pub confirm: Option<Confirm>,
     /// When the question waiting for its y was asked: it lasts as long as
@@ -899,6 +901,7 @@ impl App {
             status: None,
             pending: 0,
             in_flight: HashSet::new(),
+            sent_as: HashMap::new(),
             confirm: None,
             question_at: None,
             to_copy: None,
