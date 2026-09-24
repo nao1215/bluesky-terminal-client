@@ -520,6 +520,11 @@ impl App {
                     selected: 0,
                     query: None,
                 });
+                // The pinned feeds come into the list when they are in.
+                if !self.feeds_asked {
+                    self.feeds_asked = true;
+                    return vec![Job::PinnedFeeds];
+                }
             }
             KeyCode::Char('x') if self.tab == Tab::Columns && self.threads.is_empty() => {
                 if let Some(c) = self.columns.focused() {

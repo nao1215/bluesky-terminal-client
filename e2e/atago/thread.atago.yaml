@@ -157,7 +157,7 @@ scenarios:
                 - { path: "$.record.subject.uri", equals: "at://did:plc:fay/app.bsky.feed.post/f1" }
                 - { path: "$.record.subject.cid", equals: "cid-f1" }
 
-  # The notifications and the pinned feeds, loaded at the start, do not
+  # The notifications, loaded at the start, do not
   # answer before the run ends. Opening a thread and liking in it must not
   # wait behind them.
   - name: a thread opens and a like is sent while slower loads are still waiting

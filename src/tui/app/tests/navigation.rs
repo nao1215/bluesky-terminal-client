@@ -174,16 +174,15 @@ fn choosing_a_tab_forgets_the_way_back() {
 #[test]
 fn pending_counts_jobs_in_flight() {
     let mut app = logged_in();
-    // The notifications and the pinned feeds, loading in the
-    // background since the start.
-    assert_eq!(app.pending, 2);
+    // The notifications, loading in the background since the start.
+    assert_eq!(app.pending, 1);
     app.handle_key(key('l'));
-    assert_eq!(app.pending, 3);
+    assert_eq!(app.pending, 2);
     app.handle_event(Event::Liked {
         post_uri: "at://a/p/1".into(),
         result: Err(Error::api("x")),
     });
-    assert_eq!(app.pending, 2);
+    assert_eq!(app.pending, 1);
 }
 
 #[test]

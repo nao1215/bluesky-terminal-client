@@ -359,9 +359,9 @@ impl Job {
     }
 }
 
-/// Threads that run reads. The start asks for three things at once (the
-/// timeline, the notifications, the pinned feeds); one more keeps a thread
-/// the user opens meanwhile from waiting behind them.
+/// Threads that run reads. The start asks for the timeline and the
+/// notifications at once, and for each column shown; the others keep a
+/// thread the user opens meanwhile from waiting behind them.
 const READERS: usize = 4;
 
 /// Handle to the running worker.

@@ -393,6 +393,7 @@ impl App {
         self.chat = ChatPane::default();
         self.timeline = List::default();
         self.feeds.clear();
+        self.feeds_asked = false;
         self.search.posts = List::default();
         self.search.actors = List::default();
         self.profile = ProfilePane::default();
@@ -513,8 +514,9 @@ impl App {
                 self.timeline.renew(posts);
             }
             Event::PinnedFeeds(Ok(infos)) => self.set_pinned_feeds(infos),
-            // The timeline still works; + just offers no feeds.
-            Event::PinnedFeeds(Err(_)) => {}
+            // The timeline still works; + offers no feeds, and asks again
+            // the next time.
+            Event::PinnedFeeds(Err(_)) => self.feeds_asked = false,
             // Searches run beside each other: an answer for a query that
             // has since been replaced is dropped.
             Event::SearchPosts { query, .. } if query != self.search.posts_query => {}

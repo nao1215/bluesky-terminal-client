@@ -19,10 +19,7 @@ fn the_account_list_switches_to_another_account_and_drops_the_first_ones_lists()
     // The event loop gives the worker the session, then:
     let jobs = app.switched_to(work());
     assert!(
-        matches!(
-            jobs[..],
-            [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
-        ),
+        matches!(jobs[..], [Job::Timeline, Job::Notifications]),
         "{jobs:?}"
     );
     assert_eq!(app.session.as_ref().unwrap().did, "did:plc:work");

@@ -53,10 +53,7 @@ fn ctrl(c: char) -> KeyEvent {
 
 fn logged_in() -> App {
     let (mut app, jobs) = App::new(Some(session()), "https://bsky.social");
-    assert!(matches!(
-        jobs[..],
-        [Job::Timeline, Job::Notifications, Job::PinnedFeeds]
-    ));
+    assert!(matches!(jobs[..], [Job::Timeline, Job::Notifications]));
     app.handle_event(Event::Timeline(Ok(vec![
         post("at://a/p/1", "did:plc:alice", true),
         post("at://b/p/2", "did:plc:bob", true),

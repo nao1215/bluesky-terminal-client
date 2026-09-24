@@ -640,6 +640,8 @@ pub struct App {
     pub timeline: List<Post>,
     /// The custom feeds the account pinned, which `+` offers as columns.
     pub feeds: Vec<crate::api::types::FeedInfo>,
+    /// Whether they were asked for: the first `+` does, not the start.
+    feeds_asked: bool,
     pub search: Search,
     pub profile: ProfilePane,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
@@ -833,6 +835,7 @@ impl App {
             tab: Tab::Timeline,
             timeline: List::default(),
             feeds: Vec::new(),
+            feeds_asked: false,
             search: Search {
                 input: TextInput::single(""),
                 editing: false,
@@ -898,7 +901,7 @@ impl App {
     /// without waiting. They are marked seen only when the tab is visited.
     fn startup_jobs(&mut self) -> Vec<Job> {
         self.notifications.begin();
-        vec![Job::Timeline, Job::Notifications, Job::PinnedFeeds]
+        vec![Job::Timeline, Job::Notifications]
     }
 
     fn info(&mut self, text: impl Into<String>) {

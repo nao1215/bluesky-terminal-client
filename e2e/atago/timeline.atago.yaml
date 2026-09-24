@@ -132,10 +132,10 @@ scenarios:
       - assert:
           mock: { name: api, path: /img/alice.png, count: 1 }
       # The unshown authors have no avatar URL here, and nothing else was
-      # fetched but the notifications and the pinned feeds, loaded in the
-      # background at the start.
+      # fetched but the notifications, loaded in the background at the
+      # start: the pinned feeds wait for the first +.
       - assert:
-          mock: { name: api, count: 6 }
+          mock: { name: api, count: 5 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
@@ -1871,11 +1871,6 @@ scenarios:
             status: 400
             delay: 300ms
             json: { error: "ExpiredToken", message: "Token has expired" }
-          - method: GET
-            path: /xrpc/app.bsky.actor.getPreferences
-            status: 400
-            delay: 300ms
-            json: { error: "ExpiredToken", message: "Token has expired" }
           - method: POST
             path: /xrpc/com.atproto.server.refreshSession
             json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-2", refreshJwt: "ref-2" }
@@ -1904,12 +1899,6 @@ scenarios:
           mock:
             name: api
             path: /xrpc/app.bsky.notification.listNotifications
-            count: 2
-            header: { name: Authorization, equals: "Bearer acc-2" }
-      - assert:
-          mock:
-            name: api
-            path: /xrpc/app.bsky.actor.getPreferences
             count: 2
             header: { name: Authorization, equals: "Bearer acc-2" }
       - assert:
