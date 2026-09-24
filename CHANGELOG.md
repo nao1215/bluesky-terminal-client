@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A long text pasted into the middle of a long draft goes in at once (it took seconds).
 - Messages about files, downloads, videos, the network and the settings are in the language chosen too, not only the screens. The `bsky` commands still write English.
 - Scrolling a timeline draws each frame about a fifth quicker: post lines are drawn straight into the screen, runs of plain ASCII text are split without the Unicode tables, and times are written without parsing a pattern each time.
+- Pictures show sooner. A large photo (such as a 4000 x 3000 camera picture attached from disk) is shrunk in about 4 ms rather than 55 ms, a screen of twelve such photos is ready in 105 ms rather than 214 ms, a picture that does not fill whole cells is encoded up to three times quicker (a 720p video picture in iTerm2: 2.5 ms to 0.8 ms), and pictures are encoded on up to four threads rather than two (twelve photos in sixel: 36 ms to 26 ms).
 
 ### Removed
 
