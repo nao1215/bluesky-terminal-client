@@ -491,6 +491,9 @@ impl App {
     /// Mark the notifications up to `at` seen, remembering it in case the
     /// mark fails.
     pub(super) fn mark_seen(&mut self, at: String) -> Vec<Job> {
+        // A mark still waiting (one that failed) is of notifications this
+        // one covers too: sent later, it would put the time back.
+        self.seen_pending = None;
         self.seen_sending = Some(at.clone());
         vec![Job::UpdateSeen(at)]
     }
