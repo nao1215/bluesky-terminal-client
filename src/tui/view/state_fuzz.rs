@@ -176,7 +176,7 @@ fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
             let node: ThreadNode = serde_json::from_value(json!({
                 "$type": "app.bsky.feed.defs#threadViewPost",
                 "post": {
-                    "uri": uri.clone(), "cid": "c",
+                    "uri": uri, "cid": "c",
                     "author": {"did": "did:plc:bob", "handle": "bob.test"},
                     "record": {"text": TEXTS[rng.below(TEXTS.len())], "createdAt": "2026-09-22T00:00:00Z"},
                 },

@@ -333,7 +333,7 @@ fn pictures_and_a_video_cannot_share_a_post() {
     assert_eq!(media_problem(&[photo.clone(), photo.clone()]), None);
     let mixed = media_problem(&[photo.clone(), clip.clone()]).unwrap();
     assert!(mixed.contains("up to 4 pictures or one video"), "{mixed}");
-    assert!(media_problem(&[clip.clone(), gif]).is_some());
+    assert!(media_problem(&[clip, gif]).is_some());
     let five = vec![photo; 5];
     assert!(media_problem(&five).unwrap().contains("at most 4 pictures"));
 }

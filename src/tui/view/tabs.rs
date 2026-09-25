@@ -251,7 +251,8 @@ pub(super) fn draw_columns(
             String::new()
         };
         let style = if i == focus { t.selected() } else { t.dim() };
-        let width = usize::from(head.width.saturating_sub(1)).saturating_sub(after.width());
+        let width = usize::from(head.width.saturating_sub(1))
+            .saturating_sub(crate::tui::text::cells(&after));
         frame.render_widget(
             Paragraph::new(format!(" {}{after}", truncate(&title, width))).style(style),
             head,
@@ -319,7 +320,7 @@ pub(super) fn draw_thread(
             wrapped(
                 &format!(
                     " {}  {}",
-                    i18n::tf("could not load the thread: {}", &[&e.to_string()]),
+                    i18n::tf("could not load the thread: {}", &[&e.clone()]),
                     i18n::t("(R to retry)")
                 ),
                 list.width,
@@ -420,7 +421,7 @@ pub(super) fn draw_notification_list(
 
 pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
     let t = &app.theme.clone();
-    let [bar, input, gap, results] = Layout::vertical([
+    let [bar, input, _, results] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
@@ -474,7 +475,6 @@ pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: 
         }
         _ => draw_single_input(frame, field, &app.search.input, app.search.editing),
     }
-    let _ = gap;
     match mode {
         SearchMode::Posts => {
             if app.search.posts.loaded || !app.search.posts.items.is_empty() || app.pending > 0 {

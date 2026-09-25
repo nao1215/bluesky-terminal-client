@@ -97,6 +97,15 @@ fn a_long_path_is_not_cut_inside_a_grapheme_cluster() {
     assert_eq!(truncate_start("/pics/🇯🇵🇯🇵", 3), "…🇯🇵");
 }
 
+// A tab in a folder's name was measured as no cell and drawn as four, and
+// no room at all still drew the ellipsis.
+#[test]
+fn a_path_is_cut_as_it_is_drawn() {
+    assert_eq!(truncate_start("/a/\tb", 20), "/a/    b");
+    assert_eq!(truncate_start("/pics/\tcats", 6), "… cats");
+    assert_eq!(truncate_start("/pics", 0), "");
+}
+
 /// Time to draw one frame of the timeline while `j` walks down 200 posts,
 /// the cost a held key pays per step. Prints the median and the slowest.
 #[test]

@@ -196,7 +196,7 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
         }
         out.push(line.trim_end().to_string());
     }
-    while out.last().is_some_and(|l| l.is_empty()) {
+    while out.last().is_some_and(std::string::String::is_empty) {
         out.pop();
     }
     out
@@ -265,6 +265,31 @@ pub fn truncate(s: &str, width: usize) -> String {
         out.push('…');
     }
     out
+}
+
+/// Keep the end of `s` within `width` columns, starting with `…` when
+/// shortened: the end of a path is the part that tells where it is. Cut
+/// between grapheme clusters, as [`truncate`] is.
+pub fn truncate_start(s: &str, width: usize) -> String {
+    let s = drawable(s);
+    if cells(&s) <= width {
+        return s.into_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let kept: Vec<&str> = graphemes(&s).map(|(_, g)| g).collect();
+    let mut used = 1;
+    let mut from = kept.len();
+    for g in kept.iter().rev() {
+        let w = cluster_width(g);
+        if used + w > width {
+            break;
+        }
+        used += w;
+        from -= 1;
+    }
+    format!("…{}", kept[from..].concat())
 }
 
 pub use crate::clock::local_time as format_time;

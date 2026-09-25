@@ -106,6 +106,11 @@ impl Lang {
         Lang::ALL.into_iter().find(|l| l.code() == head)
     }
 
+    /// Where the language is in [`Lang::ALL`].
+    fn index(self) -> usize {
+        Lang::ALL.iter().position(|l| *l == self).unwrap_or(0)
+    }
+
     /// The translations, by the English they translate.
     fn table(self) -> &'static [(&'static str, &'static str)] {
         match self {
@@ -123,8 +128,7 @@ impl Lang {
 
     fn lookup(self) -> &'static HashMap<&'static str, &'static str> {
         static MAPS: [OnceLock<HashMap<&str, &str>>; 9] = [const { OnceLock::new() }; 9];
-        let at = Lang::ALL.iter().position(|l| *l == self).unwrap_or(0);
-        MAPS[at].get_or_init(|| self.table().iter().copied().collect())
+        MAPS[self.index()].get_or_init(|| self.table().iter().copied().collect())
     }
 }
 
@@ -140,10 +144,7 @@ thread_local! {
 pub fn set(lang: Lang) {
     CURRENT.with(|c| c.set(Some(lang)));
     #[cfg(not(test))]
-    PROCESS.store(
-        Lang::ALL.iter().position(|l| *l == lang).unwrap_or(0),
-        Ordering::Relaxed,
-    );
+    PROCESS.store(lang.index(), Ordering::Relaxed);
 }
 
 /// The language in use on this thread: its own choice, else the process's.

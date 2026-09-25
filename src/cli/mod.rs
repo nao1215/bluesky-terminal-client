@@ -12,6 +12,7 @@ use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
 
 use clap::Subcommand;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::api::types::{FeedItem, Notification, Post, Profile};
@@ -439,7 +440,7 @@ fn timeline(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
         let next = v.get("cursor").and_then(Value::as_str).map(str::to_string);
         let empty = got.is_empty();
         for raw in got {
-            let Ok(item) = serde_json::from_value::<FeedItem>(raw.clone()) else {
+            let Ok(item) = FeedItem::deserialize(&raw) else {
                 continue;
             };
             let Some(p) = crate::timeline::followed_posts(vec![item], &did)
@@ -478,7 +479,7 @@ fn custom_feed(ctx: &Ctx, out: &mut dyn Write, feed: &str, limit: usize) -> Resu
     let posts: Vec<(Value, Post)> = raw
         .into_iter()
         .filter_map(|v| {
-            let item: FeedItem = serde_json::from_value(v.clone()).ok()?;
+            let item = FeedItem::deserialize(&v).ok()?;
             Some((v, item.post))
         })
         .collect();
@@ -608,7 +609,7 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Re
             json_line(out, v)?;
             continue;
         }
-        let Ok(n) = serde_json::from_value::<Notification>(v.clone()) else {
+        let Ok(n) = Notification::deserialize(v) else {
             continue;
         };
         if i > 0 {
@@ -666,7 +667,7 @@ fn print_profiles(ctx: &Ctx, out: &mut dyn Write, raw: &[Value]) -> Result<()> {
     for v in raw {
         if ctx.json {
             json_line(out, v)?;
-        } else if let Ok(p) = serde_json::from_value::<Profile>(v.clone()) {
+        } else if let Ok(p) = Profile::deserialize(v) {
             text(out, &format::account_line(&p))?;
         }
     }
@@ -688,10 +689,7 @@ fn likes(ctx: &Ctx, out: &mut dyn Write, post: &str, limit: usize) -> Result<()>
     for v in &raw {
         if ctx.json {
             json_line(out, v)?;
-        } else if let Some(p) = v
-            .get("actor")
-            .and_then(|a| serde_json::from_value::<Profile>(a.clone()).ok())
-        {
+        } else if let Some(p) = v.get("actor").and_then(|a| Profile::deserialize(a).ok()) {
             text(out, &format::account_line(&p))?;
         }
     }
@@ -768,10 +766,7 @@ fn list_members(ctx: &Ctx, out: &mut dyn Write, list: &str, limit: usize) -> Res
     for v in &raw {
         if ctx.json {
             json_line(out, v)?;
-        } else if let Some(p) = v
-            .get("subject")
-            .and_then(|a| serde_json::from_value::<Profile>(a.clone()).ok())
-        {
+        } else if let Some(p) = v.get("subject").and_then(|a| Profile::deserialize(a).ok()) {
             text(out, &format::account_line(&p))?;
         }
     }
@@ -954,11 +949,7 @@ fn repost(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
 
 fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
     let client = ctx.client()?;
-    let actor = actor.trim().trim_start_matches('@');
-    let p = client.profile(actor)?;
-    if p.did == client.did() {
-        return Err(Error::new(Kind::Usage, "you cannot follow yourself"));
-    }
+    let p = other_account(&client, actor, "follow")?;
     let following = p.following_uri().map(str::to_string);
     if on {
         if let Some(uri) = following {
@@ -1127,7 +1118,7 @@ fn report(
         let p = fetch_post(&client, t)?;
         (
             json!({"$type": "com.atproto.repo.strongRef", "uri": p.uri, "cid": p.cid}),
-            p.uri.clone(),
+            p.uri,
         )
     } else {
         let did = resolve_actor(&client, t)?;
@@ -1356,7 +1347,7 @@ fn chat(
         for v in &convos {
             if ctx.json {
                 json_line(out, v)?;
-            } else if let Ok(c) = serde_json::from_value::<crate::api::types::Convo>(v.clone()) {
+            } else if let Ok(c) = crate::api::types::Convo::deserialize(v) {
                 text(out, &format::convo(&c, &me))?;
             }
         }
@@ -1505,7 +1496,7 @@ mod tests {
     #[case(&"👨‍👩‍👧‍👦".repeat(401))]
     fn a_message_that_cannot_be_sent_starts_no_conversation(#[case] body: &str) {
         let dir = tempfile::tempdir().unwrap();
-        let accounts = AccountStore::open(dir.path()).unwrap();
+        let accounts = AccountStore::open(dir.path());
         let ctx = Ctx {
             dir: dir.path(),
             accounts: &accounts,
@@ -1540,7 +1531,7 @@ mod tests {
     #[case(&"👨‍👩‍👧‍👦".repeat(801))]
     fn a_report_comment_over_the_limit_is_refused_before_it_is_sent(#[case] comment: &str) {
         let dir = tempfile::tempdir().unwrap();
-        let accounts = AccountStore::open(dir.path()).unwrap();
+        let accounts = AccountStore::open(dir.path());
         let ctx = Ctx {
             dir: dir.path(),
             accounts: &accounts,

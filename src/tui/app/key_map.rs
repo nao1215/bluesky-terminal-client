@@ -493,9 +493,8 @@ impl App {
                 self.save_columns();
                 // The last one gone, the timeline is shown alone again.
                 return self.settle_timeline();
-            } else {
-                self.info(n!("the column stays"));
             }
+            self.info(n!("the column stays"));
             return Vec::new();
         }
         match key.code {

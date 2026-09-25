@@ -184,7 +184,7 @@ fn a_refresh_answered_for_another_account_is_refused() {
             0,
         ))
     }));
-    let accounts = crate::config::AccountStore::open(dir.path()).unwrap();
+    let accounts = crate::config::AccountStore::open(dir.path());
     accounts.save(&session(&url)).unwrap();
     let c = Client::new(session(&url), Some(accounts.store_for("did:plc:a")));
     let subject = StrongRef {
@@ -214,7 +214,9 @@ fn one_odd_feed_does_not_fail_the_others() {
     let r: std::result::Result<FeedGenerators, _> = serde_json::from_str(body);
     println!(
         "{:?}",
-        r.as_ref().map(|f| f.feeds.len()).map_err(|e| e.to_string())
+        r.as_ref()
+            .map(|f| f.feeds.len())
+            .map_err(std::string::ToString::to_string)
     );
     let body = r#"{"feeds":[{"uri":"at://a/app.bsky.feed.generator/good","displayName":"Good"},{"uri":"at://b/app.bsky.feed.generator/x","displayName":null}]}"#;
     let r2: std::result::Result<FeedGenerators, _> = serde_json::from_str(body);
@@ -222,7 +224,7 @@ fn one_odd_feed_does_not_fail_the_others() {
         "{:?}",
         r2.as_ref()
             .map(|f| f.feeds.len())
-            .map_err(|e| e.to_string())
+            .map_err(std::string::ToString::to_string)
     );
     assert!(r.is_ok() && r2.is_ok());
 }
@@ -266,7 +268,7 @@ fn tokens_another_bsky_rotated_are_taken_from_the_file() {
             0,
         ))
     }));
-    let accounts = crate::config::AccountStore::open(dir.path()).unwrap();
+    let accounts = crate::config::AccountStore::open(dir.path());
     accounts.save(&session(&url)).unwrap();
     let tui = Client::new(
         accounts.find("did:plc:a").unwrap().unwrap(),

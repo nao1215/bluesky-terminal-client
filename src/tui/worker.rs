@@ -524,20 +524,17 @@ impl Worker {
             editor_base: None,
         };
         let events = ev_tx.clone();
-        thread::Builder::new()
-            .name("bsky-write".into())
-            .spawn(move || {
-                for (seq, job, acting) in write_rx {
-                    state.acting = acting;
-                    if events
-                        .send((seq, guarded(job, |job| state.run(job))))
-                        .is_err()
-                    {
-                        break;
-                    }
+        crate::tui::spawn("bsky-write", move || {
+            for (seq, job, acting) in write_rx {
+                state.acting = acting;
+                if events
+                    .send((seq, guarded(job, |job| state.run(job))))
+                    .is_err()
+                {
+                    break;
                 }
-            })
-            .expect("the write thread starts");
+            }
+        });
         let (reads, read_rx) = channel::<(u64, Job, Option<Client>)>();
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
@@ -548,23 +545,20 @@ impl Worker {
             };
             let jobs = Arc::clone(&read_rx);
             let events = ev_tx.clone();
-            thread::Builder::new()
-                .name("bsky-read".into())
-                .spawn(move || {
-                    loop {
-                        // Held only while waiting for a job, not while running it.
-                        let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                        let Ok((seq, job, acting)) = job else { break };
-                        state.acting = acting;
-                        if events
-                            .send((seq, guarded(job, |job| state.run(job))))
-                            .is_err()
-                        {
-                            break;
-                        }
+            crate::tui::spawn("bsky-read", move || {
+                loop {
+                    // Held only while waiting for a job, not while running it.
+                    let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                    let Ok((seq, job, acting)) = job else { break };
+                    state.acting = acting;
+                    if events
+                        .send((seq, guarded(job, |job| state.run(job))))
+                        .is_err()
+                    {
+                        break;
                     }
-                })
-                .expect("a read thread starts");
+                }
+            });
         }
         Self {
             client,
@@ -797,7 +791,7 @@ impl State {
     /// Log in and keep the account. Jobs go on acting as the account in use
     /// until the UI takes the answer and switches (`Worker::use_account`):
     /// one it sends before that is for what it still shows.
-    fn login(&mut self, service: &str, identifier: &str, password: &str) -> Result<Session> {
+    fn login(&self, service: &str, identifier: &str, password: &str) -> Result<Session> {
         let session = api::login(service, identifier, password)?;
         self.accounts.save(&session)?;
         Ok(session)
@@ -808,7 +802,7 @@ impl State {
     /// A raw page can be all reposts and own posts, which filters down to
     /// nothing; then the next raw pages are read (a few at most) so that the
     /// user gets posts, not an empty page that ends the scrolling.
-    fn timeline(&mut self, cursor: Option<&str>) -> Result<Page<Post>> {
+    fn timeline(&self, cursor: Option<&str>) -> Result<Page<Post>> {
         const RAW_PAGES: usize = 3;
         let client = self.client()?;
         let did = client.did().to_string();
@@ -828,7 +822,7 @@ impl State {
 
     /// A page of a custom feed, as the feed chose it: reposts and posts by
     /// accounts you do not follow included, replies with their context.
-    fn custom_feed(&mut self, uri: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+    fn custom_feed(&self, uri: &str, cursor: Option<&str>) -> Result<Page<Post>> {
         let raw = self.client()?.feed(uri, cursor)?;
         Ok(Page {
             items: timeline::feed_posts(raw.feed),
@@ -836,7 +830,7 @@ impl State {
         })
     }
 
-    fn search_posts(&mut self, q: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+    fn search_posts(&self, q: &str, cursor: Option<&str>) -> Result<Page<Post>> {
         let r = self.client()?.search_posts(q, cursor)?;
         Ok(Page {
             items: r.posts,
@@ -844,7 +838,7 @@ impl State {
         })
     }
 
-    fn search_actors(&mut self, q: &str, cursor: Option<&str>) -> Result<Page<Profile>> {
+    fn search_actors(&self, q: &str, cursor: Option<&str>) -> Result<Page<Profile>> {
         let r = self.client()?.search_actors(q, cursor)?;
         Ok(Page {
             items: r.actors,
@@ -853,12 +847,12 @@ impl State {
     }
 
     /// An account's own posts: reposts are left out, as on the timeline.
-    fn author_feed(&mut self, did: &str, cursor: Option<&str>) -> Result<Page<Post>> {
+    fn author_feed(&self, did: &str, cursor: Option<&str>) -> Result<Page<Post>> {
         Ok(author_page(self.client()?.author_feed(did, cursor)?))
     }
 
     /// A page of notifications, joined with the posts they are about.
-    fn notifications(&mut self, cursor: Option<&str>) -> Result<Page<NotifItem>> {
+    fn notifications(&self, cursor: Option<&str>) -> Result<Page<NotifItem>> {
         let client = self.client()?;
         let page = client.notifications(cursor)?;
         // One getPosts for the whole page. A like or repost of a repost
@@ -910,7 +904,7 @@ impl State {
 
     /// The profile and its posts, asked for at once: getAuthorFeed takes a
     /// handle as well as a DID, so it need not wait for the profile.
-    fn open_profile(&mut self, actor: &str) -> Result<(Profile, Page<Post>)> {
+    fn open_profile(&self, actor: &str) -> Result<(Profile, Page<Post>)> {
         let client = self.client()?;
         let (profile, posts) = thread::scope(|s| {
             let posts = s.spawn(|| client.author_feed(actor, None));
@@ -960,7 +954,7 @@ impl State {
     /// so a file that cannot be read stops the post before anything reaches
     /// the server.
     fn post(
-        &mut self,
+        &self,
         text: &str,
         reply: Option<&ReplyRef>,
         quote: Option<&StrongRef>,
@@ -1400,7 +1394,7 @@ mod tests {
     fn a_login_does_not_change_the_account_jobs_act_as_until_the_ui_takes_it() {
         let (url, log) = serve();
         let dir = tempfile::tempdir().unwrap();
-        let accounts = AccountStore::open(dir.path()).unwrap();
+        let accounts = AccountStore::open(dir.path());
         let a = Session {
             service: url.clone(),
             did: "did:plc:a".into(),
@@ -1460,7 +1454,10 @@ mod tests {
             .unwrap();
         let (bytes, mime) = read_avatar(&webp).unwrap();
         assert!(mime == "image/png" || mime == "image/jpeg", "{mime}");
-        assert_eq!(api::sniff_image_mime(&bytes), Some(mime.as_str()));
+        assert_eq!(
+            image::guess_format(&bytes).map(|f| f.to_mime_type()).ok(),
+            Some(mime.as_str())
+        );
         let text = dir.path().join("notes.txt");
         std::fs::write(&text, "not an image").unwrap();
         let err = read_avatar(&text).unwrap_err();

@@ -163,7 +163,7 @@ pub(super) fn draw_settings(
             let name = truncate(i18n::t(r.name), NAME_W);
             let pad = " ".repeat(NAME_W.saturating_sub(crate::tui::text::cells(&name)));
             let head = format!("{marker}{name}{pad} ");
-            let room = width.saturating_sub(head.width());
+            let room = width.saturating_sub(crate::tui::text::cells(&head));
             // A path is cut at its start: its end names the folder.
             let value = truncate_start(&r.value, room);
             let style = if i == selected {
@@ -307,7 +307,9 @@ pub(super) fn draw_account_list(
             };
             let name = truncate(
                 &format!("@{}", a.handle),
-                width.saturating_sub(marker.width() + crate::tui::text::cells(&used)),
+                width.saturating_sub(
+                    crate::tui::text::cells(marker) + crate::tui::text::cells(&used),
+                ),
             );
             let style = if i == selected {
                 t.base().bold()

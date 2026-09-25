@@ -213,7 +213,7 @@ impl Images {
         let cache = cache.map(Arc::new);
         if let Some(c) = &cache {
             let c = Arc::clone(c);
-            thread::spawn(move || c.trim());
+            crate::tui::spawn("bsky-cache-trim", move || c.trim());
         }
         let fetch = Queue::new();
         let (img_tx, img_rx) = channel::<Loaded>();
@@ -221,7 +221,7 @@ impl Images {
             let fetch = Arc::clone(&fetch);
             let img_tx: Sender<Loaded> = img_tx.clone();
             let cache = cache.clone();
-            thread::spawn(move || {
+            crate::tui::spawn("bsky-picture-load", move || {
                 let agent = crate::api::agent();
                 loop {
                     let Some((key, source)) = fetch.pop() else {
@@ -244,7 +244,7 @@ impl Images {
             let encode = Arc::clone(&encode);
             let done_tx = done_tx.clone();
             let picker = picker.clone();
-            thread::spawn(move || {
+            crate::tui::spawn("bsky-picture-encode", move || {
                 loop {
                     let Some((key, img)): Option<(Key, Arc<DynamicImage>)> = encode.pop() else {
                         return;

@@ -357,7 +357,7 @@ impl Embed {
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
-                .filter_map(|e| serde_json::from_value::<Embed>(e.clone()).ok())
+                .filter_map(|e| Embed::deserialize(e).ok())
                 .map(|e| match e {
                     Embed::RecordWithMedia { media, .. } => *media,
                     other => other,
@@ -556,7 +556,7 @@ pub enum ThreadNode {
     #[serde(rename = "app.bsky.feed.defs#threadViewPost")]
     Post {
         post: Box<Post>,
-        #[serde(default, deserialize_with = "lenient_parent")]
+        #[serde(default, deserialize_with = "any_opt")]
         parent: Option<Box<ThreadNode>>,
         #[serde(default, deserialize_with = "lenient_replies")]
         replies: Vec<ThreadNode>,
@@ -573,16 +573,6 @@ pub enum ThreadNode {
     },
     #[serde(other)]
     Other,
-}
-
-fn lenient_parent<'de, D>(de: D) -> Result<Option<Box<ThreadNode>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<Value>::deserialize(de)?;
-    Ok(value
-        .and_then(|v| serde_json::from_value(v).ok())
-        .map(Box::new))
 }
 
 fn lenient_replies<'de, D>(de: D) -> Result<Vec<ThreadNode>, D::Error>
@@ -715,17 +705,8 @@ pub struct FeedItem {
     /// Present when the item is in the feed because of a repost.
     pub reason: Option<Value>,
     /// Present when the post is a reply: the thread it belongs under.
-    #[serde(deserialize_with = "lenient_reply")]
+    #[serde(deserialize_with = "any_opt")]
     pub reply: Option<FeedReply>,
-}
-
-fn lenient_reply<'de, D>(de: D) -> Result<Option<FeedReply>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // A reply context the client cannot read must not hide the reply.
-    let value = Option::<Value>::deserialize(de)?;
-    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 /// `app.bsky.feed.getTimeline` output.
@@ -888,6 +869,103 @@ pub struct XrpcError {
     pub error: String,
     #[serde(deserialize_with = "any_string")]
     pub message: String,
+}
+
+/// A message of a conversation, `chat.bsky.convo.defs#messageView`, or one
+/// that was deleted or is the service's own note, read the same way.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ChatMessage {
+    pub id: String,
+    /// Empty for a deleted message.
+    pub text: String,
+    /// The sender's DID.
+    pub sender: String,
+    pub sent_at: String,
+    /// Deleted by its sender: there is no text to show.
+    pub deleted: bool,
+    /// A note of the service (someone joined, left...), not a message.
+    pub system: bool,
+}
+
+impl ChatMessage {
+    /// Read one message of any kind; `None` for what is not one at all.
+    pub fn from_value(v: &Value) -> Option<Self> {
+        let kind = v.get("$type").and_then(Value::as_str).unwrap_or("");
+        let text = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let id = text("id");
+        if id.is_empty() {
+            return None;
+        }
+        Some(Self {
+            id,
+            text: text("text"),
+            sender: v
+                .pointer("/sender/did")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            sent_at: text("sentAt"),
+            deleted: kind.ends_with("#deletedMessageView"),
+            system: kind.ends_with("#systemMessageView"),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatMessage {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let v = Value::deserialize(de)?;
+        ChatMessage::from_value(&v).ok_or_else(|| serde::de::Error::custom("not a message"))
+    }
+}
+
+/// A conversation, `chat.bsky.convo.defs#convoView`.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Convo {
+    #[serde(deserialize_with = "any_string")]
+    pub id: String,
+    #[serde(deserialize_with = "readable_items")]
+    pub members: Vec<Profile>,
+    #[serde(deserialize_with = "lenient_message")]
+    pub last_message: Option<ChatMessage>,
+    #[serde(deserialize_with = "any_count")]
+    pub unread_count: u64,
+    #[serde(deserialize_with = "any_bool")]
+    pub muted: bool,
+}
+
+impl Convo {
+    /// Everyone in it but `me`: the other person of a one-to-one chat.
+    pub fn others(&self, me: &str) -> Vec<&Profile> {
+        self.members.iter().filter(|m| m.did != me).collect()
+    }
+}
+
+fn lenient_message<'de, D: Deserializer<'de>>(de: D) -> Result<Option<ChatMessage>, D::Error> {
+    Ok(ChatMessage::from_value(&Value::deserialize(de)?))
+}
+
+/// `chat.bsky.convo.listConvos` output.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Convos {
+    #[serde(deserialize_with = "readable_items")]
+    pub convos: Vec<Convo>,
+    pub cursor: Option<String>,
+}
+
+/// `chat.bsky.convo.getMessages` output: newest first.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Messages {
+    #[serde(deserialize_with = "readable_items")]
+    pub messages: Vec<ChatMessage>,
+    pub cursor: Option<String>,
 }
 
 #[cfg(test)]
@@ -1377,101 +1455,4 @@ mod tests {
         );
         assert_eq!(item.reply.unwrap().root, RefPost::Other);
     }
-}
-
-/// A message of a conversation, `chat.bsky.convo.defs#messageView`, or one
-/// that was deleted or is the service's own note, read the same way.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct ChatMessage {
-    pub id: String,
-    /// Empty for a deleted message.
-    pub text: String,
-    /// The sender's DID.
-    pub sender: String,
-    pub sent_at: String,
-    /// Deleted by its sender: there is no text to show.
-    pub deleted: bool,
-    /// A note of the service (someone joined, left...), not a message.
-    pub system: bool,
-}
-
-impl ChatMessage {
-    /// Read one message of any kind; `None` for what is not one at all.
-    pub fn from_value(v: &Value) -> Option<Self> {
-        let kind = v.get("$type").and_then(Value::as_str).unwrap_or("");
-        let text = |k: &str| {
-            v.get(k)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string()
-        };
-        let id = text("id");
-        if id.is_empty() {
-            return None;
-        }
-        Some(Self {
-            id,
-            text: text("text"),
-            sender: v
-                .pointer("/sender/did")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            sent_at: text("sentAt"),
-            deleted: kind.ends_with("#deletedMessageView"),
-            system: kind.ends_with("#systemMessageView"),
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for ChatMessage {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        let v = Value::deserialize(de)?;
-        ChatMessage::from_value(&v).ok_or_else(|| serde::de::Error::custom("not a message"))
-    }
-}
-
-/// A conversation, `chat.bsky.convo.defs#convoView`.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Convo {
-    #[serde(deserialize_with = "any_string")]
-    pub id: String,
-    #[serde(deserialize_with = "readable_items")]
-    pub members: Vec<Profile>,
-    #[serde(deserialize_with = "lenient_message")]
-    pub last_message: Option<ChatMessage>,
-    #[serde(deserialize_with = "any_count")]
-    pub unread_count: u64,
-    #[serde(deserialize_with = "any_bool")]
-    pub muted: bool,
-}
-
-impl Convo {
-    /// Everyone in it but `me`: the other person of a one-to-one chat.
-    pub fn others(&self, me: &str) -> Vec<&Profile> {
-        self.members.iter().filter(|m| m.did != me).collect()
-    }
-}
-
-fn lenient_message<'de, D: Deserializer<'de>>(de: D) -> Result<Option<ChatMessage>, D::Error> {
-    Ok(ChatMessage::from_value(&Value::deserialize(de)?))
-}
-
-/// `chat.bsky.convo.listConvos` output.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct Convos {
-    #[serde(deserialize_with = "readable_items")]
-    pub convos: Vec<Convo>,
-    pub cursor: Option<String>,
-}
-
-/// `chat.bsky.convo.getMessages` output: newest first.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct Messages {
-    #[serde(deserialize_with = "readable_items")]
-    pub messages: Vec<ChatMessage>,
-    pub cursor: Option<String>,
 }

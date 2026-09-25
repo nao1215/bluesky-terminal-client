@@ -33,6 +33,18 @@ use app::App;
 use images::{DiskCache, Images};
 use worker::Worker;
 
+/// `thread::spawn` with a name, so a panic message and a profiler say which
+/// of bsky's threads it was.
+pub fn spawn<T: Send + 'static>(
+    name: &str,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> std::thread::JoinHandle<T> {
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .spawn(f)
+        .expect("a thread starts")
+}
+
 /// How long the loop waits for a key before checking the worker again.
 const TICK: Duration = Duration::from_millis(50);
 /// How long the loop waits while a video plays.

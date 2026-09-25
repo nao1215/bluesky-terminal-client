@@ -90,7 +90,7 @@ fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Some(Command::Logout { all }) => logout(&dir, cli.account.as_deref(), all, cli.json),
         Some(Command::Other(cmd)) => {
-            let accounts = AccountStore::open(&dir)?;
+            let accounts = AccountStore::open(&dir);
             // Logging in and listing the accounts act as no account, so an
             // account named that is not logged in (yet) is no error there.
             let session = match cmd {
@@ -107,7 +107,7 @@ fn run(cli: Cli) -> Result<()> {
             cli::run(cmd, &ctx)
         }
         None => {
-            let accounts = AccountStore::open(&dir)?;
+            let accounts = AccountStore::open(&dir);
             let session = chosen_account(&accounts, cli.account.as_deref())?;
             tui::run(accounts, session, SettingsStore::new(&dir), &service)
         }
@@ -138,7 +138,7 @@ fn chosen_account(accounts: &AccountStore, who: Option<&str>) -> Result<Option<S
 
 /// `bsky logout`: the account in use, the one `-a` names, or all of them.
 fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Result<()> {
-    let accounts = AccountStore::open(dir)?;
+    let accounts = AccountStore::open(dir);
     let chosen: Vec<Session> = if all {
         accounts.remove_all()?
     } else {

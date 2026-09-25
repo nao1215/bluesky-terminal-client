@@ -10,7 +10,11 @@ impl App {
         let Some(post) = self.post_to_view() else {
             return Vec::new();
         };
-        let media = post.embed.as_ref().map(|e| e.media()).unwrap_or_default();
+        let media = post
+            .embed
+            .as_ref()
+            .map(crate::api::types::Embed::media)
+            .unwrap_or_default();
         if media.is_empty() {
             return self.open_link(false);
         }
@@ -104,7 +108,7 @@ impl App {
             let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
             self.overlay = Some(Overlay::Compose(Compose::new(Some((
                 post.reply_ref(),
-                post.author.handle.clone(),
+                post.author.handle,
                 excerpt,
             )))));
         }
@@ -231,7 +235,7 @@ impl App {
             let excerpt = post.record().text.lines().next().unwrap_or("").to_string();
             self.overlay = Some(Overlay::Compose(Compose::quoting((
                 post.strong_ref(),
-                post.author.handle.clone(),
+                post.author.handle,
                 excerpt,
             ))));
         }
