@@ -766,13 +766,9 @@ impl App {
             {
                 return self.event(Event::Thread { uri, result });
             }
-            Event::ReadAhead {
-                uri,
-                result: Ok(node),
-            } => self.read_ahead(uri, node),
-            // Nobody asked for it yet: `v` reads it again and says why it
-            // failed.
-            Event::ReadAhead { result: Err(_), .. } => {}
+            // Nobody asked for it yet: kept for `v`, a failure too, which
+            // says nothing until then.
+            Event::ReadAhead { uri, result } => self.read_ahead(uri, result),
             Event::Thread { uri, result } => {
                 // Only a thread still waiting for it takes the answer; it
                 // need not be on top (one can be opened over a reload). Every

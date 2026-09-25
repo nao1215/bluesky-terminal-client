@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use super::{App, ThreadView, thread_rows};
 use crate::api::types::{Media, ThreadNode};
+use crate::error::Error;
 use crate::tui::images::small_avatar;
 use crate::tui::worker::Job;
 
@@ -28,7 +29,8 @@ pub(super) struct ReadThread {
     /// The number of the job that read it.
     seq: u64,
     pub(super) at: Instant,
-    node: ThreadNode,
+    /// The thread, or why it could not be read.
+    answer: Result<ThreadNode, Error>,
 }
 
 /// Where reading ahead is.
@@ -75,9 +77,10 @@ impl ReadAhead {
 impl App {
     /// Read ahead the thread of the post the selection has rested on for
     /// [`REST`], once while it rests there. The job is not counted as
-    /// pending: the screen does not wait for it.
+    /// pending: the screen does not wait for it. Only on a list: the rows
+    /// of a thread open are mostly that thread again.
     pub fn poll_read_ahead(&mut self, now: Instant) -> Vec<Job> {
-        let shown = if self.overlay.is_none() && self.login.is_none() {
+        let shown = if self.overlay.is_none() && self.login.is_none() && self.threads.is_empty() {
             self.shown_post().or_else(|| self.subject_shown())
         } else {
             None
@@ -98,10 +101,9 @@ impl App {
             self.read_ahead.resting = None;
             return Vec::new();
         };
-        let open = self.threads.last().is_some_and(|t| t.uri == uri);
         match &mut self.read_ahead.resting {
             Some((on, since, asked)) if *on == uri => {
-                if *asked || open || now.saturating_duration_since(*since) < REST {
+                if *asked || now.saturating_duration_since(*since) < REST {
                     return Vec::new();
                 }
                 *asked = true;
@@ -119,14 +121,18 @@ impl App {
         }
     }
 
-    /// Keep a thread read ahead, unless a write was sent after it was asked
-    /// for or a login made it another account's.
-    pub(super) fn read_ahead(&mut self, uri: String, node: ThreadNode) {
+    /// Keep a thread read ahead, or why it could not be read, unless a
+    /// write was sent after it was asked for or a login made it another
+    /// account's.
+    pub(super) fn read_ahead(&mut self, uri: String, answer: Result<ThreadNode, Error>) {
         let Some(seq) = self.answering else { return };
         if seq < self.read_ahead.wrote_at || seq < self.account_since {
             return;
         }
-        let (rows, _) = thread_rows::flatten(node.clone());
+        let rows = match &answer {
+            Ok(node) => thread_rows::flatten(node.clone()).0,
+            Err(_) => Vec::new(),
+        };
         for post in rows.iter().filter_map(|r| r.post()).take(WARM) {
             if let Some(url) = &post.author.avatar {
                 self.read_ahead
@@ -148,7 +154,7 @@ impl App {
             uri,
             seq,
             at: Instant::now(),
-            node,
+            answer,
         });
     }
 
@@ -166,7 +172,8 @@ impl App {
     }
 
     /// Fill `view` from the thread read ahead for its post, if there is one:
-    /// loaded when it is fresh, else shown while it is read again. Returns
+    /// loaded when it is fresh, else shown while it is read again; one that
+    /// could not be read just now says why, and R reads it again. Returns
     /// whether it still has to be read.
     pub(super) fn fill_from_read_ahead(&mut self, view: &mut ThreadView) -> bool {
         let kept = &mut self.read_ahead.threads;
@@ -182,10 +189,22 @@ impl App {
             return true;
         };
         let t = kept.remove(i);
-        let (rows, focus) = thread_rows::flatten(t.node);
-        view.list.items = rows;
-        view.list.selected = focus;
-        view.list.loaded = t.at.elapsed() < FRESH;
-        !view.list.loaded
+        let fresh = t.at.elapsed() < FRESH;
+        match t.answer {
+            Ok(node) => {
+                let (rows, focus) = thread_rows::flatten(node);
+                view.list.items = rows;
+                view.list.selected = focus;
+                view.list.loaded = fresh;
+                !fresh
+            }
+            Err(e) if fresh => {
+                view.list.loaded = true;
+                view.error = Some(e.message().to_string());
+                self.fail(&e);
+                false
+            }
+            Err(_) => true,
+        }
     }
 }
