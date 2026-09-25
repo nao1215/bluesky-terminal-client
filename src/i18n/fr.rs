@@ -322,10 +322,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter suivant/valider  tab changer de champ  esc quitter",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter ouvrir  space choisir ce dossier  h parent  . cachés  ~ accueil  esc annuler",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter ouvrir/choisir  space marquer  h parent  . cachés  ~ accueil  esc annuler",
     ),
@@ -1031,4 +1027,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "le texte alternatif de la vidéo fait {} octets ; la limite est {}",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter ouvrir  space choisir ce dossier  n nouveau dossier  h parent  . cachés  ~ accueil  esc annuler",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "nouveau dossier, pour choisir un dossier",
+    ),
+    ("make it", "le créer"),
+    ("new folder", "nouveau dossier"),
+    ("New folder:", "Nouveau dossier :"),
+    (
+        "type a name for the new folder",
+        "saisissez un nom pour le nouveau dossier",
+    ),
+    (
+        "a folder name cannot contain / or \\",
+        "un nom de dossier ne peut pas contenir / ni \\",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "un nom de dossier ne peut pas être . ni ..",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "un nom de dossier ne peut pas contenir de caractères de contrôle",
+    ),
+    (
+        "{} is a file, not a folder",
+        "{} est un fichier, pas un dossier",
+    ),
+    ("cannot make {}: {}", "impossible de créer {} : {}"),
 ];

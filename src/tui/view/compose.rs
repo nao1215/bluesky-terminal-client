@@ -384,6 +384,34 @@ pub(super) fn draw_browser(
             preview,
         ),
     }
+    // A new folder's name is typed on the bottom row, with the reason a
+    // name was refused above it.
+    if let Some(input) = &b.naming {
+        if let Some(why) = &b.note {
+            let above = Rect {
+                y: foot.y.saturating_sub(1),
+                ..foot
+            };
+            frame.render_widget(Clear, above);
+            frame.render_widget(
+                truncate_line(
+                    Line::styled(format!(" {why}"), t.error()),
+                    usize::from(above.width),
+                ),
+                above,
+            );
+        }
+        let label = format!(" {} ", i18n::t("New folder:"));
+        let label_w = crate::tui::text::cells(&label) as u16;
+        frame.render_widget(Paragraph::new(label.as_str()).style(t.accent()), foot);
+        let field = Rect {
+            x: foot.x + label_w.min(foot.width),
+            width: foot.width.saturating_sub(label_w + 1),
+            ..foot
+        };
+        draw_single_input(frame, field, input, true);
+        return;
+    }
     let foot_line = match &b.note {
         Some(n) => Line::styled(format!(" {}", i18n::t(n)), t.error()),
         None if b.folders => Line::styled(
@@ -391,7 +419,7 @@ pub(super) fn draw_browser(
                 " {}",
                 crate::tui::text::fit_hints(
                     i18n::t(
-                        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel"
+                        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel"
                     ),
                     usize::from(foot.width.saturating_sub(1))
                 )

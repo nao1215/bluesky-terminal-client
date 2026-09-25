@@ -885,3 +885,107 @@ scenarios:
             json:
               - { path: "$.download_dir", matches: 'first-写真👨‍👩‍👧$' }
               - { path: "$.theme", equals: "nord" }
+
+  # The folder chooser had no way to make a folder, so a download folder that
+  # did not exist yet could not be chosen from it. n names one in the folder
+  # shown, enter makes it and goes in, and space chooses it.
+  - name: a folder made in the folder chooser becomes the download folder
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p9
+                    cid: cid-p9
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "One photo", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/img/t.png", fullsize: "${api.url}/img/full.png", alt: "The lake", aspectRatio: { width: 1, height: 1 } }
+          - { method: GET, path: /img/t.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/full.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "Me" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: |
+            {"download_dir": "saved"}
+      - fixture: { file: saved/keep.txt, content: "the folder settings.json names" }
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "One photo"
+            - send: "5"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: j
+            - send: j
+            - expect_screen:
+                contains: "▶ Download folder"
+            - send: { key: enter }
+            - expect_screen:
+                matches: '[/\\]saved\s'
+                contains: ["Choose a folder", "n new folder"]
+            - send: n
+            - send: "a/b"
+            - send: { key: enter }
+            # Refused with the reason; the name stays to be fixed.
+            - expect_screen:
+                contains: ["a folder name cannot contain / or \\", "New folder: a/b"]
+            - send: { key: backspace }
+            - send: { key: backspace }
+            - send: { key: backspace }
+            - send: "写真 🏔️👨‍👩‍👧"
+            - send: { key: enter }
+            # Made, and gone into: space chooses it.
+            - expect_screen:
+                matches: '[/\\]写真 🏔️👨‍👩‍👧\s'
+                contains: "space chooses the one you"
+            - send: " "
+            - expect_screen:
+                contains: "download folder: "
+                not_contains: "Choose a folder"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - send: " "
+            - expect_screen:
+                contains: ["1/1", "The lake"]
+            - send: d
+            - expect_screen:
+                contains: "saved "
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          dir: { path: "saved/写真 🏔️👨‍👩‍👧", count: 1, contains: [full.png] }
+      - assert:
+          dir: { path: saved, count: 2 }
+      - assert:
+          file:
+            path: cfg/settings.json
+            json: { path: "$.download_dir", matches: 'saved[/\\]写真 🏔️👨‍👩‍👧$' }

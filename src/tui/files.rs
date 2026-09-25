@@ -9,8 +9,10 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
+use crate::i18n::{n, tf};
 use crate::media::{self, is_image_name};
 use crate::tui::app::List;
+use crate::tui::input::TextInput;
 use crate::video::is_video_name;
 
 /// What an entry of the listing is.
@@ -66,6 +68,8 @@ pub struct Browser {
     pub folders: bool,
     /// What each file looked at so far is, read from its header once.
     pub info: HashMap<PathBuf, media::Info>,
+    /// The name being typed for a new folder, in the folder mode (`n`).
+    pub naming: Option<TextInput>,
 }
 
 /// `dir` without `..` in it, each taking off the name before it, as going
@@ -100,6 +104,7 @@ impl Browser {
             note: None,
             folders: false,
             info: HashMap::new(),
+            naming: None,
         };
         b.read(None);
         b
@@ -249,10 +254,56 @@ impl Browser {
         chosen
     }
 
+    /// Make the folder named in [`Self::naming`] in the one shown, and go
+    /// into it, where space chooses it. One that is there already is gone
+    /// into as it is. A name that cannot be a folder's keeps the name open,
+    /// with the reason.
+    fn make_folder(&mut self) {
+        let Some(input) = &self.naming else { return };
+        let name = input.text().trim().to_string();
+        if let Some(why) = folder_name_problem(&name) {
+            self.note = Some(why);
+            return;
+        }
+        let path = self.dir.join(&name);
+        match fs::create_dir(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                self.note = Some(tf("{} is a file, not a folder", &[&name]));
+                return;
+            }
+            Err(e) => {
+                self.note = Some(tf("cannot make {}: {}", &[&name, &e.to_string()]));
+                return;
+            }
+        }
+        self.naming = None;
+        self.enter(path, None);
+    }
+
+    /// A key while a new folder's name is typed.
+    fn naming_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => self.naming = None,
+            KeyCode::Enter => self.make_folder(),
+            _ => {
+                if let Some(input) = &mut self.naming {
+                    input.handle_key(key);
+                }
+            }
+        }
+    }
+
     /// Handle a key.
     pub fn key(&mut self, key: KeyEvent) -> Action {
         self.note = None;
+        if self.naming.is_some() {
+            self.naming_key(key);
+            return Action::None;
+        }
         match key.code {
+            KeyCode::Char('n') if self.folders => self.naming = Some(TextInput::single("")),
             KeyCode::Esc | KeyCode::Char('q') => return Action::Close,
             KeyCode::Char('j') | KeyCode::Down => self.list.step(1),
             KeyCode::Char('k') | KeyCode::Up => self.list.step(-1),
@@ -288,6 +339,23 @@ impl Browser {
         self.look_at_current();
         Action::None
     }
+}
+
+/// Why `name` cannot name a new folder in the one shown, if it cannot.
+/// Anything a file system takes otherwise is left to it to refuse.
+fn folder_name_problem(name: &str) -> Option<String> {
+    let why = if name.is_empty() {
+        n!("type a name for the new folder")
+    } else if name.contains(['/', '\\']) {
+        n!("a folder name cannot contain / or \\")
+    } else if name == "." || name == ".." {
+        n!("a folder name cannot be . or ..")
+    } else if name.chars().any(char::is_control) {
+        n!("a folder name cannot contain control characters")
+    } else {
+        return None;
+    };
+    Some(crate::i18n::t(why).to_string())
 }
 
 #[cfg(test)]
@@ -476,5 +544,115 @@ mod tests {
         );
         b.key(key('h'));
         assert_eq!(b.dir, std::path::absolute(dir.path().join("pics")).unwrap());
+    }
+
+    fn type_str(b: &mut Browser, s: &str) {
+        for c in s.chars() {
+            b.key(key(c));
+        }
+    }
+
+    // The folder chooser of the settings had no way to make a folder: one
+    // that did not exist yet could not be chosen from it. n names a new one
+    // in the folder shown, enter makes it and goes in, and space chooses it.
+    #[rstest::rstest]
+    #[case::plain("Saved")]
+    #[case::cjk_and_emoji("写真 2026 🏔️")]
+    #[case::family("家族👨‍👩‍👧")]
+    #[case::flag_and_keycap("🇯🇵 1️⃣")]
+    fn n_makes_a_folder_and_goes_into_it(#[case] name: &str) {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        let mut b = Browser::folder(&pics);
+        assert_eq!(b.key(key('n')), Action::None);
+        assert!(b.naming.is_some());
+        type_str(&mut b, &format!("  {name} "));
+        assert_eq!(b.key(code(KeyCode::Enter)), Action::None);
+        assert!(b.naming.is_none(), "{:?}", b.note);
+        assert!(pics.join(name).is_dir());
+        assert_eq!(b.dir, pics.join(name));
+        assert_eq!(b.key(key(' ')), Action::Choose(vec![pics.join(name)]));
+    }
+
+    #[rstest::rstest]
+    #[case::empty("", "type a name")]
+    #[case::slash("a/b", "cannot contain /")]
+    #[case::backslash("a\\b", "cannot contain /")]
+    #[case::dot_dot("..", "cannot be .")]
+    #[case::dot(".", "cannot be .")]
+    fn a_name_that_cannot_be_a_folders_says_why_and_stays(#[case] name: &str, #[case] why: &str) {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        let before: Vec<_> = fs::read_dir(&pics)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        let mut b = Browser::folder(&pics);
+        b.key(key('n'));
+        type_str(&mut b, name);
+        b.key(code(KeyCode::Enter));
+        assert!(
+            b.note.as_deref().is_some_and(|n| n.contains(why)),
+            "{:?}",
+            b.note
+        );
+        assert!(b.naming.is_some(), "the name stays to be fixed");
+        assert_eq!(b.dir, pics);
+        let after: Vec<_> = fs::read_dir(&pics)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        assert_eq!(before.len(), after.len());
+    }
+
+    #[test]
+    fn a_folder_there_already_is_gone_into_and_a_file_is_refused() {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        let mut b = Browser::folder(&pics);
+        b.key(key('n'));
+        type_str(&mut b, "Zoo");
+        b.key(code(KeyCode::Enter));
+        assert_eq!(b.dir, pics.join("Zoo"));
+        let mut b = Browser::folder(&pics);
+        b.key(key('n'));
+        type_str(&mut b, "notes.txt");
+        b.key(code(KeyCode::Enter));
+        assert!(
+            b.note.as_deref().is_some_and(|n| n.contains("is a file")),
+            "{:?}",
+            b.note
+        );
+        assert_eq!(b.dir, pics);
+    }
+
+    #[test]
+    fn esc_while_naming_cancels_the_name_not_the_chooser() {
+        let dir = tree();
+        let pics = dir.path().join("pics");
+        let mut b = Browser::folder(&pics);
+        b.key(key('n'));
+        type_str(&mut b, "Never");
+        assert_eq!(b.key(code(KeyCode::Esc)), Action::None);
+        assert!(b.naming.is_none());
+        assert!(!pics.join("Never").exists());
+        // j and q are letters of the name while it is typed, not keys.
+        b.key(key('n'));
+        type_str(&mut b, "jq");
+        assert_eq!(b.dir, pics);
+        assert_eq!(b.naming.as_ref().unwrap().text(), "jq");
+        assert_eq!(b.key(code(KeyCode::Esc)), Action::None);
+        assert_eq!(b.key(code(KeyCode::Esc)), Action::Close);
+    }
+
+    // Choosing pictures makes no folder: n is not a key there.
+    #[test]
+    fn n_does_nothing_when_choosing_pictures() {
+        let dir = tree();
+        let mut b = Browser::open(&dir.path().join("pics"), 4, false);
+        b.key(key('n'));
+        assert!(b.naming.is_none());
     }
 }

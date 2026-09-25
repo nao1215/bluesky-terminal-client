@@ -100,9 +100,36 @@ fn a_setting_is_typed_on_its_own_line_and_a_folder_chosen_in_the_browser() {
     assert!(screen.contains("写真👨\u{200d}👩\u{200d}👧/"), "{screen}");
     assert!(!screen.contains("photo.png"), "{screen}");
     assert!(
-        screen.contains("enter open  space choose this folder"),
+        screen.contains("enter open  space choose this folder  n new folder"),
         "{screen}"
     );
+    // n names a new folder on the bottom row, typed or pasted.
+    app.handle_key(KeyEvent::from(KeyCode::Char('n')));
+    for c in "新しい ".chars() {
+        app.handle_key(KeyEvent::from(KeyCode::Char(c)));
+    }
+    app.handle_paste("🏔️👨\u{200d}👩\u{200d}👧");
+    let hints = crate::tui::keys::hints(&app);
+    assert_eq!(hints, [("enter", "make it"), ("esc", "cancel")]);
+    let screen = render_text_only(&mut app, 100, 30);
+    assert!(
+        screen.contains("New folder: 新しい 🏔️👨\u{200d}👩\u{200d}👧"),
+        "{screen}"
+    );
+    // A name that cannot be a folder's says why above it.
+    app.handle_paste("/");
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+    let screen = render_text_only(&mut app, 100, 30);
+    assert!(
+        screen.contains("a folder name cannot contain / or \\"),
+        "{screen}"
+    );
+    app.handle_key(KeyEvent::from(KeyCode::Backspace));
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+    let made = dir.path().join("新しい 🏔️👨\u{200d}👩\u{200d}👧");
+    assert!(made.is_dir());
+    app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+    assert_eq!(app.settings.download_dir, Some(made.display().to_string()));
 }
 
 /// A long path keeps its end, where the folder's own name is, and the

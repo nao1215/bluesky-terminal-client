@@ -295,10 +295,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter 次へ/送信  tab 項目切替  esc 終了",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter 開く  space このフォルダを選ぶ  h 上へ  . 隠し  ~ ホーム  esc 取消",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter 開く/選択  space 印  h 上へ  . 隠し  ~ ホーム  esc 取消",
     ),
@@ -962,4 +958,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "動画の代替テキストが {} バイトあります。上限は {} バイトです",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter 開く  space このフォルダを選ぶ  n 新しいフォルダ  h 上へ  . 隠し  ~ ホーム  esc 取消",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "新しいフォルダを作る (フォルダ選択時)",
+    ),
+    ("make it", "作成"),
+    ("new folder", "新しいフォルダ"),
+    ("New folder:", "新しいフォルダ:"),
+    (
+        "type a name for the new folder",
+        "新しいフォルダの名前を入力してください",
+    ),
+    (
+        "a folder name cannot contain / or \\",
+        "フォルダ名に / や \\ は使えません",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "フォルダ名を . や .. にはできません",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "フォルダ名に制御文字は使えません",
+    ),
+    (
+        "{} is a file, not a folder",
+        "{} はファイルで、フォルダではありません",
+    ),
+    ("cannot make {}: {}", "{} を作れません: {}"),
 ];
