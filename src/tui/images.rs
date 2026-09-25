@@ -694,24 +694,14 @@ fn load(
 }
 
 /// A downloaded picture as it is kept: decoded and, when much larger than
-/// any box, shrunk ([`shrink`]). A WebP, what Bluesky serves, is decoded
-/// at that size by libwebp.
+/// any box, shrunk ([`shrink`]). WebP, what Bluesky serves, is decoded by
+/// the image crate in Rust rather than by libwebp: libwebp was two to three
+/// times faster, a few milliseconds a picture, but it is C reading what
+/// anyone posts, and its CVE-2023-4863 was exploited through such pictures.
 fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
-    if let Some(img) = crate::tui::webp::decode(bytes, kept_size) {
-        return Ok(img);
-    }
     image::load_from_memory(bytes)
         .map(shrink)
         .map_err(|e| e.to_string())
-}
-
-/// The size a picture of `w` x `h` is kept at: [`shrink`]'s.
-fn kept_size(w: u32, h: u32) -> (u32, u32) {
-    if w.max(h) > SHRINK_ABOVE {
-        scale::fit(w, h, SHRUNK_SIDE, SHRUNK_SIDE)
-    } else {
-        (w, h)
-    }
 }
 
 /// The picture as it is kept decoded: unchanged up to [`SHRINK_ABOVE`],

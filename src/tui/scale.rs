@@ -14,7 +14,7 @@ use ratatui::layout::Size;
 
 /// Width and height of `w` x `h` fitted inside `bw` x `bh`, keeping its
 /// shape: `image`'s `resize_dimensions` without filling.
-pub fn fit(w: u32, h: u32, bw: u32, bh: u32) -> (u32, u32) {
+fn fit(w: u32, h: u32, bw: u32, bh: u32) -> (u32, u32) {
     let ratio = f64::min(f64::from(bw) / f64::from(w), f64::from(bh) / f64::from(h));
     let nw = ((f64::from(w) * ratio).round() as u64).max(1);
     let nh = ((f64::from(h) * ratio).round() as u64).max(1);
