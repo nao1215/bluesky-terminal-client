@@ -47,6 +47,11 @@ pub(super) struct ReadAhead {
     /// Videos of the posts the selection rested on, whose playlists are to
     /// be read before they are played.
     videos: Vec<String>,
+    /// Threads being read ahead now.
+    reading: Vec<String>,
+    /// Threads being read ahead that `v` opened meanwhile: the view waits
+    /// for that answer, counted as pending, instead of asking again.
+    adopted: Vec<String>,
 }
 
 impl ReadAhead {
@@ -55,6 +60,15 @@ impl ReadAhead {
     pub(super) fn wrote(&mut self, seq: u64) {
         self.wrote_at = seq;
         self.threads.clear();
+    }
+
+    /// The answer for `uri` has come: whether a view waited for it, so it
+    /// was counted as pending.
+    pub(super) fn answered(&mut self, uri: &str) -> bool {
+        self.reading.retain(|u| u != uri);
+        let adopted = self.adopted.iter().any(|u| u == uri);
+        self.adopted.retain(|u| u != uri);
+        adopted
     }
 }
 
@@ -92,6 +106,10 @@ impl App {
                 }
                 *asked = true;
                 self.read_ahead.videos.extend(videos);
+                if self.read_ahead.reading.contains(&uri) {
+                    return Vec::new();
+                }
+                self.read_ahead.reading.push(uri.clone());
                 vec![Job::ReadAhead(uri)]
             }
             _ => {
@@ -155,6 +173,12 @@ impl App {
         let Some(i) = kept.iter().position(|t| {
             t.uri == view.uri && t.seq >= self.account_since && t.seq >= self.read_ahead.wrote_at
         }) else {
+            // Being read ahead now: that answer is waited for.
+            if self.read_ahead.reading.contains(&view.uri) {
+                self.read_ahead.adopted.push(view.uri.clone());
+                self.pending += 1;
+                return false;
+            }
             return true;
         };
         let t = kept.remove(i);

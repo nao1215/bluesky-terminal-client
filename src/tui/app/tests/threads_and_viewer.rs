@@ -579,3 +579,57 @@ fn the_video_of_the_post_the_selection_rests_on_is_readied() {
     app.poll_read_ahead(t0 + read_ahead::REST * 3);
     assert!(app.take_videos_ahead().is_empty());
 }
+
+// v while the thread was still being read ahead asked the server again: the
+// view waits for that answer instead, counted as pending until it comes.
+#[test]
+fn v_while_the_thread_is_read_ahead_waits_for_that_answer() {
+    let mut app = logged_in();
+    let pending = app.pending;
+    let jobs = rest(&mut app);
+    let jobs_v = app.handle_key(key('v'));
+    assert!(jobs_v.is_empty(), "{jobs_v:?}");
+    assert!(!app.threads.last().unwrap().list.loaded);
+    assert_eq!(app.pending, pending + 1);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(th.list.items.len(), 4);
+    assert_eq!(th.list.selected, 1);
+    assert_eq!(app.pending, pending);
+}
+
+#[test]
+fn a_read_ahead_that_fails_after_v_says_why() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    app.handle_key(key('v'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Err(crate::error::Error::api(
+                "app.bsky.feed.getPostThread failed: NotFound",
+            )),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert!(
+        th.error.as_deref().is_some_and(|e| e.contains("NotFound")),
+        "{:?}",
+        th.error
+    );
+    // R reads it again, as for any thread that failed.
+    let jobs = app.handle_key(key('R'));
+    assert!(
+        matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+}

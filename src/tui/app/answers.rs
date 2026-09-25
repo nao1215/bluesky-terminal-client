@@ -32,8 +32,12 @@ impl App {
     /// the likes, reposts, and follows confirmed since it was asked for are
     /// put back on what it brought.
     pub(super) fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
-        // A thread read ahead is not waited for.
-        if !matches!(event, Event::ReadAhead { .. }) {
+        // A thread read ahead is not waited for, unless v opened it meanwhile.
+        let counted = match &event {
+            Event::ReadAhead { uri, .. } => self.read_ahead.answered(uri),
+            _ => true,
+        };
+        if counted {
             self.pending = self.pending.saturating_sub(1);
         }
         let read = seq.filter(|s| self.reads_out.remove(s));
@@ -755,6 +759,12 @@ impl App {
                     self.seen_pending = self.seen_sending.take();
                 }
                 self.fail(&e);
+            }
+            // A view opened while it was read ahead takes it as its answer.
+            Event::ReadAhead { uri, result }
+                if self.threads.iter().any(|t| t.uri == uri && !t.list.loaded) =>
+            {
+                return self.event(Event::Thread { uri, result });
             }
             Event::ReadAhead {
                 uri,
