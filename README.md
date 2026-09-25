@@ -16,6 +16,7 @@ A [Bluesky](https://bsky.app) client for the terminal. Pictures and videos are d
 ```sh
 brew install nao1215/tap/bsky
 cargo install --locked bluesky-terminal-client
+cargo binstall bluesky-terminal-client
 ```
 
 Binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/bluesky-terminal-client/releases).

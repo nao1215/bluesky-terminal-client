@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-25
+
 ### Added
 
 - A post says which language it is in (`langs`), so Bluesky's language filters and translation work on it. The language is guessed from its letters: kana is Japanese, hangul Korean, and where languages share letters (kanji, the Latin alphabet) the language bsky is shown in decides.
