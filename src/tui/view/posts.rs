@@ -198,7 +198,7 @@ pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> 
     let mut out = Vec::new();
     for (text, style) in spans {
         let mut kept = String::new();
-        for g in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
+        for (_, g) in crate::tui::text::graphemes(&text) {
             let gw = crate::tui::text::cluster_width(g);
             if gw > left {
                 if width > 0 {

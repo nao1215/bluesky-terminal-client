@@ -342,14 +342,18 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     }
     // With several accounts, the one in use is named at the right, where
     // it fits whole; with one it is on the Profile tab, and nowhere else.
-    let used: usize = spans.iter().map(|s| s.content.width()).sum();
+    let used: usize = spans
+        .iter()
+        .map(|s| crate::tui::text::cells(&s.content))
+        .sum();
     if app.accounts.len() > 1
         && let Some(s) = &app.session
     {
         let name = format!("@{} ", s.handle);
         let room = usize::from(area.width).saturating_sub(used);
-        if name.width() < room {
-            spans.push(Span::raw(" ".repeat(room - name.width())));
+        let name_w = crate::tui::text::cells(&name);
+        if name_w < room {
+            spans.push(Span::raw(" ".repeat(room - name_w)));
             spans.push(Span::styled(name, t.accent()));
         }
     }
@@ -363,7 +367,7 @@ fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>>
     let mut lines: Vec<Vec<Span<'static>>> = vec![vec![Span::raw(" ")]];
     let mut used = 1;
     for (key, what) in hints {
-        let w = key.width() + 1 + what.width();
+        let w = crate::tui::text::cells(key) + 1 + crate::tui::text::cells(what);
         let row = lines.last_mut().expect("one row");
         let first = row.len() == 1;
         let gap = if first { 0 } else { 2 };
@@ -572,24 +576,4 @@ fn human_bytes(n: u64) -> String {
     }
 }
 
-/// Keep the end of `s` within `width` columns: the end of a path is the part
-/// that tells where it is.
-fn truncate_start(s: &str, width: usize) -> String {
-    if crate::tui::text::cells(s) <= width {
-        return s.to_string();
-    }
-    // Whole grapheme clusters, so an emoji keeps its modifier and a flag
-    // both of its letters.
-    let mut out: Vec<&str> = Vec::new();
-    let mut used = 1;
-    for g in unicode_segmentation::UnicodeSegmentation::graphemes(s, true).rev() {
-        let w = crate::tui::text::cluster_width(g);
-        if used + w > width {
-            break;
-        }
-        used += w;
-        out.push(g);
-    }
-    out.push("…");
-    out.into_iter().rev().collect()
-}
+use crate::tui::text::truncate_start;

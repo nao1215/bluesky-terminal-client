@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A link card with a missing title or an odd field lost the card and its link.
 - The PDS address an account's DID document names was used as written: a trailing slash broke chat, and an http address took the token behind an https login. Such an address is not used.
 - A video that grew while it was read for posting got past the 100 MB check.
+- A folder path with a tab in it was drawn wider than its box in the composer and the settings.
 
 ## [0.10.1] - 2026-09-24
 
