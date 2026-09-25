@@ -10,7 +10,30 @@ readme = "README.md"
 repository = "https://github.com/nao1215/bluesky-terminal-client"
 keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
 categories = ["command-line-utilities"]
-exclude = ["e2e/", ".github/", "doc/", "scripts/"]
+# The unit tests read e2e/atago/testdata, so it ships; the rest of the
+# repository's tooling does not.
+exclude = [
+    ".github/",
+    ".gitignore",
+    ".octocov.yml",
+    "bench/",
+    "deny.toml",
+    "doc/",
+    "e2e/*.sh",
+    "e2e/atago/*.yaml",
+    "justfile",
+    "scripts/",
+]
+
+# `cargo binstall bluesky-terminal-client` fetches the release archive instead
+# of building it.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/bsky-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [[bin]]
 name = "bsky"
