@@ -822,8 +822,7 @@ impl State {
         video_service: &str,
     ) -> Result<()> {
         let client = self.client()?;
-        // The worker's own thread speaks English; the language chosen for
-        // the screens is the process's.
+        // The post says it is written in the language chosen for the screens.
         let writer = crate::i18n::current();
         crate::compose::send_post(&client, text, reply, quote, media, video_service, writer)
             .map(|_| ())

@@ -264,8 +264,8 @@ pub fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
     out
 }
 
-/// The actor and record key of a bsky.app address of `kind` (`post` or
-/// `feed`): `https://bsky.app/profile/<actor>/<kind>/<rkey>`.
+/// The actor and record key of a bsky.app address of `kind` (`post`,
+/// `feed` or `lists`): `https://bsky.app/profile/<actor>/<kind>/<rkey>`.
 pub fn bsky_app_path(url: &str, kind: &str) -> Option<(String, String)> {
     let rest = url
         .trim()

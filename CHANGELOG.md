@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Added
 
 - A post says which language it is in (`langs`), so Bluesky's language filters and translation work on it. The language is guessed from its letters: kana is Japanese, hangul Korean, and where languages share letters (kanji, the Latin alphabet) the language bsky is shown in decides.
+- Each release archive and the SBOM carry a build provenance attestation: `gh attestation verify <archive> --repo nao1215/bluesky-terminal-client` checks it.
+- `cargo binstall bluesky-terminal-client` installs the release binary.
+- The published crate carries the test data, so `cargo test` runs on it.
 
 ### Fixed
 

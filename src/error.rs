@@ -8,7 +8,7 @@
 //! |------|-----------|----------------------------------------------------------------|
 //! | 0    | success   |                                                                |
 //! | 1    | usage     | unknown flag, malformed `--service` URL, unknown `BSKY_GRAPHICS` |
-//! | 2    | terminal  | stdin or stdout is not a terminal, no image protocol           |
+//! | 2    | terminal  | stdin or stdout is not a terminal, raw mode cannot be set      |
 //! | 3    | local I/O | session file unreadable, corrupt, or unwritable                |
 //! | 4    | API       | a command's request failed on the network or the server said no |
 //!

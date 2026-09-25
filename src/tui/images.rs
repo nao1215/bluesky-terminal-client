@@ -36,7 +36,7 @@ const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 /// Parallel downloads. Pictures are small and most of their time is spent
 /// waiting on the network, so more at once than there are cores.
 const LOADERS: usize = 8;
-/// Parallel encoders: up to four, as many as there are cores. A sixel
+/// Parallel encoders: two to four, as many as there are cores. A sixel
 /// encode takes 2 ms for a picture in a post and 30 ms for one across the
 /// screen, so a screen of twelve photos was ready in 36 ms with two
 /// encoders and in 26 ms with four; kitty and iTerm2, bound by the decode,

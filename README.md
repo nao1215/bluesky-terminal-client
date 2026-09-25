@@ -59,7 +59,7 @@ bsky speaks English, 日本語, 简体中文, 한국어, Русский, Españo
 | ![bluesky](doc/img/theme-bluesky.png) | ![bluesky-light](doc/img/theme-bluesky-light.png) | ![dracula](doc/img/theme-dracula.png) |
 | ![nord](doc/img/theme-nord.png) | ![gruvbox](doc/img/theme-gruvbox.png) | ![catppuccin-latte](doc/img/theme-catppuccin-latte.png) |
 
-Chat, accounts, columns and the composer show made-up data and the pictures of [doc/demo](doc/demo), served by [doc/demo-server.py](doc/demo-server.py).
+Chat, accounts and columns show made-up data served by [doc/demo-server.py](doc/demo-server.py); the composer browses the pictures in [doc/demo](doc/demo).
 
 ## Keys
 
@@ -98,8 +98,9 @@ bsky search rust --json | jq -r .uri
 | `BSKY_DOWNLOAD_DIR` | Where `d` saves |
 | `BSKY_GRAPHICS` | `kitty`, `sixel` or `iterm2` |
 | `BSKY_BROWSER` | Program that opens links |
-| `BSKY_SERVICE` | PDS (also `--service`) |
+| `BSKY_SERVICE` | PDS to log in to (also `--service`) |
 | `BSKY_VIDEO_SERVICE` | Video upload service |
+| `LANG` | Language, unless one is chosen in the settings |
 | `NO_COLOR` | No color |
 
 ## Other terminal clients

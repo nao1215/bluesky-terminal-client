@@ -533,7 +533,6 @@ fn bare_at_uri(uri: &str) -> String {
     uri.trim_end_matches('/').to_string()
 }
 
-/// A post's at:// URI from its URI or its bsky.app address.
 /// An at:// URI with its handle, if written with one, put as the DID it
 /// stands for: the server and the checks of whose a record is compare DIDs.
 fn with_did(client: &Client, uri: &str) -> Result<String> {
@@ -553,6 +552,7 @@ fn with_did(client: &Client, uri: &str) -> Result<String> {
     Ok(format!("at://{}{path}", resolve_actor(client, authority)?))
 }
 
+/// A post's at:// URI from its URI or its bsky.app address.
 fn post_uri(client: &Client, post: &str) -> Result<String> {
     let p = post.trim();
     if p.starts_with("at://") {

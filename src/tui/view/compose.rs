@@ -186,9 +186,9 @@ pub(super) fn draw_attachments(
     }
 }
 
-/// A picture drawn in its box. A video has no frame to show (bsky does not
-/// decode video), so its box says what it is and how long it runs; an
-/// animated GIF shows its first frame.
+/// A picture drawn in its box. A video attached from disk is not decoded
+/// here, so its box says what it is and how long it runs; an animated GIF
+/// shows its first frame.
 pub(super) fn draw_media_box(
     frame: &mut Frame,
     area: Rect,
