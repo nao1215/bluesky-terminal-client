@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-25
+
 ### Added
 
 - `n` in the folder chooser of the settings (the download folder, the picture cache) makes a new folder in the one shown and goes into it, where `Space` chooses it. A name with `/` or `\`, or `.` or `..`, is refused with the reason.
