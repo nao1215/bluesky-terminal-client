@@ -31,8 +31,6 @@ pub const MAX_AVATAR_BYTES: usize = 1_000_000;
 
 const USER_AGENT: &str = concat!("bsky/", env!("CARGO_PKG_VERSION"));
 
-/// Build the HTTP agent every request uses. Non-2xx statuses are returned as
-/// responses so the XRPC error body can be read.
 /// How long a read that hit a busy server waits before trying once more.
 const RETRY_AFTER: Duration = Duration::from_secs(1);
 
@@ -49,6 +47,8 @@ fn is_transient(e: &Error) -> bool {
 /// How long an upload may take.
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Build the HTTP agent every request uses. Non-2xx statuses are returned as
+/// responses so the XRPC error body can be read.
 pub fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -133,8 +133,6 @@ pub fn grapheme_len(text: &str) -> usize {
 /// this.
 pub const MAX_POST_BYTES: usize = 3000;
 
-/// Why `text` is too long to post, by either limit of the post lexicon, or
-/// `None` when it fits.
 /// Most graphemes and bytes a direct message may have.
 pub const MAX_MESSAGE_GRAPHEMES: usize = 1000;
 pub const MAX_MESSAGE_BYTES: usize = 10000;
@@ -193,6 +191,8 @@ pub fn profile_length_problem(display_name: &str, description: &str) -> Option<S
     ))
 }
 
+/// Why `text` is too long to post, by either limit of the post lexicon, or
+/// `None` when it fits.
 pub fn post_length_problem(text: &str) -> Option<String> {
     let len = grapheme_len(text);
     if len > MAX_POST_GRAPHEMES {
@@ -292,7 +292,6 @@ fn transport(nsid: &str, e: ureq::Error) -> Error {
     ))
 }
 
-/// Log in with an identifier (handle, DID, or email) and an app password.
 /// What createSession is given for what was typed at the login: a handle
 /// as it is written elsewhere, `@alice.bsky.social`, is sent without the
 /// `@`, which a PDS would take for an email address. An email is kept.
@@ -301,6 +300,7 @@ fn login_identifier(typed: &str) -> &str {
     typed.strip_prefix('@').unwrap_or(typed)
 }
 
+/// Log in with an identifier (handle, DID, or email) and an app password.
 pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session> {
     let service = normalize_service(service)?;
     let nsid = "com.atproto.server.createSession";

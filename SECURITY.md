@@ -4,6 +4,12 @@
 
 If you discover any security-related issues or vulnerabilities, please contact us at [n.chika156@gmail.com](mailto:n.chika156@gmail.com). We appreciate your responsible disclosure and will work with you to address the issue promptly.
 
+## Verifying a Release
+
+```sh
+gh attestation verify <downloaded archive> --repo nao1215/bluesky-terminal-client
+```
+
 ## Supported Versions
 
 We recommend using the latest release for the most up-to-date and secure experience. Security updates are provided for the latest stable version.

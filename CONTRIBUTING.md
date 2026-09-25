@@ -19,7 +19,7 @@ just bench       # performance with himorime (see bench/README.md)
 just coverage    # line coverage of the unit tests and the E2E suite together (needs cargo-llvm-cov)
 ```
 
-`just ci` runs all of them.
+`just ci` runs all of them except the benchmarks and coverage.
 
 ## End-to-end tests
 
@@ -45,7 +45,7 @@ The pictures in the README are recorded with `doc/record-demo.sh` (kitty, xdotoo
 
 - Comments and documentation in English, explaining why rather than what.
 - Errors reach the user as `error:` plus, when there is a next step, `hint:`, with the exit code of their class (see `src/error.rs`).
-- The client is what `bsky` opens, and its behavior belongs in keys, not flags. The commands (`bsky timeline`, `bsky post`...) are for scripts: each is one thing a script needs from Bluesky, lives in `src/cli`, calls the same API, account and post code as the client, supports `--json`, and comes with an E2E scenario in `e2e/atago/cli.atago.yaml`. A command that only repeats a key of the client without being useful to a script does not belong.
+- The client is what `bsky` opens, and its behavior belongs in keys, not flags. The commands (`bsky timeline`, `bsky post`...) are for scripts: each is one thing a script needs from Bluesky, lives in `src/cli`, calls the same API, account and post code as the client, supports `--json`, and comes with an E2E scenario in `e2e/atago/` (most are in `cli.atago.yaml`). A command that only repeats a key of the client without being useful to a script does not belong.
 
 ## Commits and pull requests
 
@@ -53,7 +53,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ## Releasing
 
-A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`, the same flow as nao1215/truss: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN`, packs reproducible archives, writes `checksums.txt` and a CycloneDX SBOM, creates the GitHub release with the CHANGELOG section as its text, publishes the crate, and updates the formula in nao1215/homebrew-tap.
+A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN` and no build cache, packs reproducible archives, writes `checksums.txt` and a CycloneDX SBOM, attests the build provenance of the archives and the SBOM, creates the GitHub release with the CHANGELOG section as its text, publishes the crate, and updates the formula in nao1215/homebrew-tap.
 
 1. In a pull request, set `version` in `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
 2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.

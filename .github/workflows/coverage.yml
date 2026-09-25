@@ -44,33 +44,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           components: llvm-tools-preview
 
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      # The same pinned atago as e2e.yml; see the comment there.
-      - name: Install Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
         with:
-          go-version: stable
+          tool: cargo-llvm-cov
 
+      # The same atago as e2e.yml.
       - name: Install atago
-        env:
-          ATAGO_REF: 6f7034cfd2fcdb6f68d955af74fb2f07f6998aff
-        run: |
-          go install "github.com/nao1215/atago@${ATAGO_REF}"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        uses: nao1215/setup-atago@7cae89595fcbba334db0fe16fc9a24ed5b0a3fea # v0.1.2
+        with:
+          version: v0.24.0
+          verify-attestation: "true"
 
       - name: Measure unit + E2E coverage
         run: ./scripts/coverage.sh lcov.info

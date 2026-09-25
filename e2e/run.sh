@@ -19,7 +19,7 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 if ! command -v atago >/dev/null 2>&1; then
 	echo "e2e: atago is not installed. Install it from https://github.com/nao1215/atago" >&2
-	echo "e2e: e.g. 'go install github.com/nao1215/atago@latest' (CI uses nao1215/setup-atago)" >&2
+	echo "e2e: e.g. 'go install github.com/nao1215/atago@latest' (CI uses the release pinned in .github/workflows/e2e.yml)" >&2
 	exit 127
 fi
 

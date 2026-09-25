@@ -577,7 +577,6 @@ impl AccountStore {
         }
     }
 
-    /// Every account, by handle.
     /// Log every account out: each account file goes, one that cannot be
     /// read too (that is the way out of it). The accounts that could be read
     /// are returned, to say who was logged out.
@@ -613,6 +612,7 @@ impl AccountStore {
         Ok(gone)
     }
 
+    /// Every account, by handle.
     pub fn list(&self) -> Result<Vec<Session>> {
         let dir = self.accounts_dir();
         let entries = match fs::read_dir(&dir) {

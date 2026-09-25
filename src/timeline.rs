@@ -7,11 +7,6 @@
 
 use crate::api::types::{FeedItem, Post, ReplyContext};
 
-/// Keep only posts written by `viewer_did` or by accounts it follows.
-///
-/// A reply keeps the thread above it ([`Post::context`]), whoever wrote those
-/// posts: the rule is about who wrote the item, and the context is what makes
-/// a followed account's reply readable.
 /// Every post of a custom feed's page, in its order, each reply with the
 /// thread it belongs under. A feed decides what it shows, so nothing is
 /// filtered out; a post the feed lists twice is kept once.
@@ -27,6 +22,11 @@ pub fn feed_posts(feed: Vec<FeedItem>) -> Vec<Post> {
         .collect()
 }
 
+/// Keep only posts written by `viewer_did` or by accounts it follows.
+///
+/// A reply keeps the thread above it ([`Post::context`]), whoever wrote those
+/// posts: the rule is about who wrote the item, and the context is what makes
+/// a followed account's reply readable.
 pub fn followed_posts(feed: Vec<FeedItem>, viewer_did: &str) -> Vec<Post> {
     feed.into_iter()
         .filter(|item| item.reason.is_none())
