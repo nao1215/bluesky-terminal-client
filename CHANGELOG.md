@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- Starting after the access token has expired (it lasts about two hours) takes one round trip less: the token is refreshed before the first request instead of after the server refuses it.
+
 ## [0.11.0] - 2026-09-25
 
 ### Added

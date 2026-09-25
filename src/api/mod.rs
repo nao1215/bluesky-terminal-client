@@ -1,12 +1,15 @@
 //! A small blocking XRPC client for the calls bsky makes.
 //!
 //! Every request goes to the account's PDS, which answers `com.atproto.*`
-//! itself and proxies `app.bsky.*` to the AppView. When the access token
-//! expires the client refreshes it once, persists the new tokens, and retries.
+//! itself and proxies `app.bsky.*` to the AppView. An access token past the
+//! expiry it carries is refreshed before it is sent; one the server still
+//! finds expired is refreshed once and the request retried. The new tokens
+//! are persisted.
 
 pub mod facets;
 pub mod types;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -42,6 +45,52 @@ fn is_transient(e: &Error) -> bool {
         || ["HTTP 502", "HTTP 503", "HTTP 504"]
             .iter()
             .any(|code| m.ends_with(code))
+}
+
+/// Seconds before its expiry a token is taken as expired, so it does not run
+/// out on its way to the server.
+const EXPIRY_MARGIN: i64 = 10;
+
+/// When the JWT `token` expires, in seconds since the epoch: the `exp` of its
+/// payload, read without checking the signature (the server does that). A
+/// token that is not a JWT has none.
+fn jwt_expiry(token: &str) -> Option<i64> {
+    #[derive(Deserialize)]
+    struct Claims {
+        exp: i64,
+    }
+    let mut parts = token.split('.');
+    let (_, payload, _) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+    serde_json::from_slice::<Claims>(&base64url(payload)?)
+        .ok()
+        .map(|c| c.exp)
+}
+
+/// Decode unpadded base64url, as a JWT's parts are written.
+fn base64url(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for b in s.bytes() {
+        let v = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            _ => return None,
+        };
+        acc = (acc << 6) | u32::from(v);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
 }
 
 /// How long an upload may take.
@@ -348,6 +397,10 @@ pub struct Client {
     /// The service the PDS passes the requests on to (`atproto-proxy`):
     /// set for the chat calls only.
     proxy: Option<&'static str>,
+    /// Whether this computer's clock disagrees with the server's: a token
+    /// it had just issued already looked expired here. Expiry is then left
+    /// to the server to report, or every request would refresh first.
+    clock_off: Arc<AtomicBool>,
 }
 
 /// Where the PDS sends the `chat.bsky.*` calls: Bluesky's chat service.
@@ -480,6 +533,7 @@ impl Client {
             store,
             pds: Arc::default(),
             proxy: None,
+            clock_off: Arc::default(),
         }
     }
 
@@ -713,7 +767,16 @@ impl Client {
         query: &[(&str, &str)],
         payload: Payload<'_>,
     ) -> Result<T> {
-        let token = self.tokens().access_jwt.clone();
+        let mut token = self.tokens().access_jwt.clone();
+        // An access token lasts a couple of hours, so the one saved when bsky
+        // last ran has usually run out: sent anyway, it costs a round trip
+        // only to be refused before the refresh and the request again.
+        if self.looks_expired(&token) {
+            token = self.refresh(&token)?;
+            if self.looks_expired(&token) {
+                self.clock_off.store(true, Ordering::Relaxed);
+            }
+        }
         let resp = self.send(nsid, query, &payload, &token)?;
         match decode(nsid, resp) {
             Err(err) if err.message().contains("ExpiredToken") => {
@@ -741,6 +804,13 @@ impl Client {
     fn post<B: Serialize, T: DeserializeOwned>(&self, nsid: &str, body: &B) -> Result<T> {
         let body = serde_json::to_string(body).expect("request body serializes");
         self.call(nsid, &[], Payload::Json(body))
+    }
+
+    /// Whether `token` is past the expiry it carries, by this computer's
+    /// clock, when that clock can be trusted.
+    fn looks_expired(&self, token: &str) -> bool {
+        !self.clock_off.load(Ordering::Relaxed)
+            && jwt_expiry(token).is_some_and(|exp| exp <= Utc::now().timestamp() + EXPIRY_MARGIN)
     }
 
     /// A new access token in place of `expired`. The tokens stay locked
@@ -1367,6 +1437,42 @@ mod tests {
     #[case("@猫🐈‍⬛.example", "猫🐈‍⬛.example")]
     fn a_handle_typed_with_an_at_logs_in_without_it(#[case] typed: &str, #[case] sent: &str) {
         assert_eq!(login_identifier(typed), sent);
+    }
+
+    #[rstest]
+    #[case::bare(
+        "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJleHAiOjE3MDAwMDAwMDB9.sig",
+        Some(1_700_000_000)
+    )]
+    #[case::pds_access_token(
+        "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJzY29wZSI6ImNvbS5hdHByb3RvLmFjY2VzcyIsInN1YiI6ImRpZDpwbGM6YSIsImlhdCI6MTY5OTk5MjgwMCwiZXhwIjoxNzAwMDAwMDAwLCJhdWQiOiJkaWQ6d2ViOnBkcy50ZXN0In0.c2ln",
+        Some(1_700_000_000)
+    )]
+    #[case::no_exp(
+        "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJzdWIiOiJkaWQ6cGxjOmEifQ.sig",
+        None
+    )]
+    #[case::not_a_jwt("acc", None)]
+    #[case::two_parts("a.eyJleHAiOjE3MDAwMDAwMDB9", None)]
+    #[case::four_parts("a.eyJleHAiOjE3MDAwMDAwMDB9.b.c", None)]
+    #[case::not_base64url("a.eyJleHAiOjE3MDAwMDAwMDB9+/.b", None)]
+    #[case::not_json("a.bm90IGpzb24.b", None)]
+    #[case::emoji("a.🎉.b", None)]
+    fn the_expiry_is_read_from_the_payload_of_a_jwt(
+        #[case] token: &str,
+        #[case] want: Option<i64>,
+    ) {
+        assert_eq!(jwt_expiry(token), want);
+    }
+
+    #[rstest]
+    #[case("", b"")]
+    #[case("YQ", b"a")]
+    #[case("YWI", b"ab")]
+    #[case("YWJj", b"abc")]
+    #[case("-_8", &[0xfb, 0xff])]
+    fn base64url_without_padding_decodes(#[case] s: &str, #[case] want: &[u8]) {
+        assert_eq!(base64url(s).as_deref(), Some(want));
     }
 
     /// The post lexicon limits text to 300 grapheme clusters and 3000 UTF-8

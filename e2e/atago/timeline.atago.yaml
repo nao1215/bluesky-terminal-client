@@ -1854,6 +1854,57 @@ scenarios:
               - { path: "$.refreshJwt", equals: "ref-2" }
               - { path: "$.service", equals: "${api.url}" }
 
+  # The access token saved when bsky last ran has usually expired by the next
+  # start. Its JWT says when; one past that is refreshed before the first
+  # load, which is then sent once, not refused first and sent again.
+  - name: an access token past the expiry it carries is refreshed before the first load
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-2", refreshJwt: "ref-2" }
+    steps:
+      # The access token is a JWT that expired in November 2023.
+      - fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJleHAiOjE3MDAwMDAwMDB9.sig", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.refreshSession
+            count: 1
+            header: { name: Authorization, equals: "Bearer ref" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            count: 1
+            header: { name: Authorization, equals: "Bearer acc-2" }
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            json:
+              - { path: "$.accessJwt", equals: "acc-2" }
+              - { path: "$.refreshJwt", equals: "ref-2" }
+
   # The loads at the start run at once and all find the token expired. A
   # refresh token works only once, so one of them refreshes and the others
   # take the new token instead of refreshing with the spent one.

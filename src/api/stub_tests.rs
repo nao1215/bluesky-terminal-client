@@ -144,6 +144,80 @@ fn loads_that_find_the_token_expired_together_refresh_it_once() {
     assert_eq!(refreshes.load(Ordering::SeqCst), 1);
 }
 
+/// A JWT that expired in 2023 and one that expires in 2100.
+const EXPIRED_JWT: &str = "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJleHAiOjE3MDAwMDAwMDB9.sig";
+const FRESH_JWT: &str = "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
+
+// The access token saved when bsky last ran has usually expired. Sent
+// anyway, it cost a round trip only to be refused before the refresh.
+#[test]
+fn an_access_token_past_its_expiry_is_refreshed_before_it_is_sent() {
+    let (url, log) = serve(Arc::new(move |path, auth| {
+        if path.contains("refreshSession") {
+            return Some((
+                200,
+                format!(
+                    r#"{{"did":"did:plc:a","handle":"a.test","accessJwt":"{FRESH_JWT}","refreshJwt":"r2"}}"#
+                ),
+                0,
+            ));
+        }
+        if auth == format!("Bearer {EXPIRED_JWT}") {
+            return Some((400, r#"{"error":"ExpiredToken"}"#.into(), 0));
+        }
+        Some((200, r#"{"feed":[]}"#.into(), 0))
+    }));
+    let mut s = session(&url);
+    s.access_jwt = EXPIRED_JWT.into();
+    let c = Client::new(s, None);
+    c.timeline(None).unwrap();
+    c.timeline(None).unwrap();
+    let calls: Vec<(String, String)> = log.lock().unwrap().clone();
+    let paths: Vec<&str> = calls
+        .iter()
+        .map(|(p, _)| p.split('?').next().unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "/xrpc/com.atproto.server.refreshSession",
+            "/xrpc/app.bsky.feed.getTimeline",
+            "/xrpc/app.bsky.feed.getTimeline",
+        ]
+    );
+    assert_eq!(calls[1].1, format!("Bearer {FRESH_JWT}"));
+}
+
+// A computer whose clock runs ahead of the server's sees every new token as
+// expired already; it refreshes once, and then leaves expiry to the server
+// instead of refreshing before every request.
+#[test]
+fn a_clock_that_runs_ahead_refreshes_once_not_before_every_request() {
+    let refreshes = Arc::new(AtomicUsize::new(0));
+    let r2 = Arc::clone(&refreshes);
+    let (url, _log) = serve(Arc::new(move |path, _| {
+        if path.contains("refreshSession") {
+            let n = r2.fetch_add(1, Ordering::SeqCst);
+            // Valid for the server; past its expiry by this computer's clock.
+            return Some((
+                200,
+                format!(
+                    r#"{{"did":"did:plc:a","handle":"a.test","accessJwt":"{EXPIRED_JWT}{n}","refreshJwt":"r{n}"}}"#
+                ),
+                0,
+            ));
+        }
+        Some((200, r#"{"feed":[]}"#.into(), 0))
+    }));
+    let mut s = session(&url);
+    s.access_jwt = EXPIRED_JWT.into();
+    let c = Client::new(s, None);
+    for _ in 0..3 {
+        c.timeline(None).unwrap();
+    }
+    assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+}
+
 // An error body with `"message": null` did not read at all, so its
 // ExpiredToken was lost: the token was not refreshed and the read failed.
 #[test]
