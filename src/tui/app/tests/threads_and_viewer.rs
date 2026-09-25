@@ -491,9 +491,11 @@ fn an_old_thread_read_ahead_is_shown_while_it_is_read_again() {
     assert_eq!(th.list.items.len(), 4);
 }
 
-// A thread that failed to read ahead says nothing: nobody asked for it.
+// A thread that failed to read ahead says nothing until v asks for it; v
+// then says why at once, as a load that failed just now, and R reads it
+// again. Asking again at v made the number of reads depend on the timing.
 #[test]
-fn a_thread_that_failed_to_read_ahead_says_nothing() {
+fn a_thread_that_failed_to_read_ahead_says_why_at_v() {
     let mut app = logged_in();
     let jobs = rest(&mut app);
     let status = app.status.clone();
@@ -501,12 +503,49 @@ fn a_thread_that_failed_to_read_ahead_says_nothing() {
         jobs[0].0,
         Event::ReadAhead {
             uri: "at://a/p/1".into(),
-            result: Err(crate::error::Error::api("HTTP 502")),
+            result: Err(crate::error::Error::api(
+                "app.bsky.feed.getPostThread failed: NotFound",
+            )),
         },
     );
     assert_eq!(app.status, status);
     let jobs = app.handle_key(key('v'));
-    assert!(matches!(&jobs[..], [Job::Thread(_)]), "{jobs:?}");
+    assert!(jobs.is_empty(), "{jobs:?}");
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert!(
+        th.error.as_deref().is_some_and(|e| e.contains("NotFound")),
+        "{:?}",
+        th.error
+    );
+    assert!(
+        app.status
+            .as_ref()
+            .is_some_and(|s| s.text.contains("NotFound")),
+        "{:?}",
+        app.status
+    );
+    let jobs = app.handle_key(key('R'));
+    assert!(
+        matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+}
+
+// The rows of a thread open are mostly that thread again: resting on one
+// reads nothing ahead.
+#[test]
+fn nothing_is_read_ahead_inside_a_thread() {
+    let mut app = logged_in();
+    app.handle_key(key('v'));
+    app.handle_event(Event::Thread {
+        uri: "at://a/p/1".into(),
+        result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+    });
+    app.handle_key(key('j'));
+    let t0 = Instant::now();
+    assert!(app.poll_read_ahead(t0).is_empty());
+    assert!(app.poll_read_ahead(t0 + read_ahead::REST * 3).is_empty());
 }
 
 // The thread read ahead opened at once, and then waited for its pictures:
