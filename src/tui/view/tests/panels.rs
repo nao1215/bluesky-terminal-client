@@ -147,7 +147,7 @@ fn the_account_list_marks_the_one_in_use_and_the_tabs_name_it() {
         handle: "me.test".into(),
     };
     // One account: the tab bar names nobody.
-    app.accounts = vec![me.clone()];
+    app.accounts = vec![me];
     let screen = render(&mut app, 100, 24);
     assert!(
         !screen.lines().next().unwrap().contains("@me.test"),

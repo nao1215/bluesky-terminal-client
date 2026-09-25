@@ -233,7 +233,7 @@ fn a_mute_takes_its_notifications_out_of_the_unread_count() {
         "the test needs an unread notification of theirs"
     );
     app.handle_event(Event::Muted {
-        did: did.clone(),
+        did,
         on: true,
         result: Ok(()),
     });

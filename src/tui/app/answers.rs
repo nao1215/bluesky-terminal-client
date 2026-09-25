@@ -93,7 +93,9 @@ impl App {
                 .filter(|(at, _)| *at >= seq)
                 .map(|(_, w)| w.clone())
                 .collect();
-            since.iter().for_each(|w| self.apply(w));
+            for w in &since {
+                self.apply(w);
+            }
         }
         self.forget_writes();
         self.pending += jobs.len();

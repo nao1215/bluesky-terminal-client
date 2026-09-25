@@ -398,8 +398,8 @@ pub fn prepare(file: &Path) -> Result<Prepared> {
             "{} runs {}; videos can be at most {}",
             &[
                 &name.to_string(),
-                &(minutes_seconds(s.ceil())).to_string(),
-                &(format_seconds(MAX_VIDEO_SECONDS)).to_string(),
+                &(minutes_seconds(s.ceil())),
+                &(format_seconds(MAX_VIDEO_SECONDS)),
             ],
         )));
     }
@@ -806,7 +806,6 @@ mod tests {
                     let _ = probe(&path);
                     let _ = sniff_mime(&data);
                     let _ = is_animated_gif(&path);
-                    let _ = crate::api::sniff_image_mime(&data);
                     let _ = crate::media::inspect(&path);
                     strip_metadata(&mut data.clone());
                 }

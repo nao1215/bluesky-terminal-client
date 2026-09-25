@@ -176,4 +176,16 @@ mod tests {
         assert_eq!(ids(&o).last(), Some(&"6"));
         assert_eq!(o.messages.len(), 7);
     }
+
+    // The help names the interval in words; a change to the constant left
+    // it saying another.
+    #[test]
+    fn the_help_says_how_often_a_conversation_is_read_again() {
+        let said = format!("read again every {} s while shown", POLL_EVERY.as_secs());
+        let help: Vec<&str> = crate::tui::keys::HELP
+            .iter()
+            .flat_map(|s| s.keys.iter().map(|(_, what)| *what))
+            .collect();
+        assert!(help.contains(&said.as_str()), "{help:?}");
+    }
 }

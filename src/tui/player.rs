@@ -69,7 +69,7 @@ impl Player {
         {
             let (url, stop, shared) =
                 (playlist.to_string(), Arc::clone(&stop), Arc::clone(&shared));
-            thread::spawn(move || {
+            crate::tui::spawn("bsky-player", move || {
                 let state = match play(&picker, &url, &stop, &shared, &tx) {
                     Ok(()) => State::Ended,
                     Err(why) => State::Warning(why),
@@ -247,7 +247,7 @@ fn play(
     let (seg_tx, seg_rx) = std::sync::mpsc::sync_channel::<Result<Piece, String>>(64);
     {
         let (segments, agent) = (segments.clone(), agent.clone());
-        thread::spawn(move || {
+        crate::tui::spawn("bsky-segments", move || {
             for url in segments {
                 match stream(&agent, &url, &seg_tx) {
                     Ok(true) => {}
@@ -775,7 +775,11 @@ mod tests {
                 assert_eq!(p.size(), theirs.size());
                 let mut buf = ratatui::buffer::Buffer::empty(rect);
                 ratatui::widgets::Widget::render(ratatui_image::Image::new(&p), rect, &mut buf);
-                let seq: String = buf.content.iter().map(|c| c.symbol()).collect();
+                let seq: String = buf
+                    .content
+                    .iter()
+                    .map(ratatui::buffer::Cell::symbol)
+                    .collect();
                 // The transmission starts "\x1b_Gq=2,i=<id>,a=T".
                 let at = seq.find("_Gq=2,i=").unwrap() + 6;
                 (seq[at..].split(',').next().unwrap().to_string(), buf)

@@ -150,7 +150,7 @@ fn a_deleted_post_leaves_every_column_and_each_account_has_its_own_columns() {
     app.handle_key(key('D'));
     app.handle_key(key('y'));
     app.handle_event(Event::PostDeleted {
-        uri: mine.uri.clone(),
+        uri: mine.uri,
         result: Ok(()),
     });
     let Rows::Posts(l) = &app.columns.items[0].rows else {
