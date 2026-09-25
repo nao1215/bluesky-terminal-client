@@ -46,6 +46,8 @@ crossterm = "0.29"
 dirs = "7"
 fast_image_resize = { version = "6.1.0", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+# Decodes the WebP pictures Bluesky serves; see src/tui/webp.rs.
+libwebp-sys = { version = "0.14", default-features = false, features = ["std"] }
 openh264 = "0.9"
 ratatui = "0.30"
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }

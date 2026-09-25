@@ -63,6 +63,17 @@ const SHRUNK_SIDE: u32 = 1600;
 /// last frames are dropped, least recently drawn first.
 const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 
+/// The small version of a Bluesky avatar: a list draws avatars 4 cells
+/// wide, and the full-size one is many times the bytes. Other URLs are kept.
+pub fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
+    if url.contains("/img/avatar/") {
+        url.replacen("/img/avatar/", "/img/avatar_thumbnail/", 1)
+            .into()
+    } else {
+        url.into()
+    }
+}
+
 /// The key of a picture on the user's disk. Only [`Images::draw_file`] reads
 /// the file; a URL from the server that looks like this is never opened.
 fn file_key(path: &Path) -> String {
@@ -659,7 +670,7 @@ fn load(
 ) -> Result<DynamicImage, String> {
     let img = match source {
         Source::Local(path) => crate::media::load(path)
-            .map(|(img, _)| img)
+            .map(|(img, _)| shrink(img))
             .map_err(|e| e.message().to_string())?,
         Source::Connect(url) => return Err(format!("{url} is a connection, not a picture")),
         Source::Remote(url) => {
@@ -668,7 +679,7 @@ fn load(
             }
             let cached = cache.and_then(|c| c.get(url).map(|b| (c, b)));
             match cached {
-                Some((c, bytes)) => match image::load_from_memory(&bytes) {
+                Some((c, bytes)) => match decode(&bytes) {
                     Ok(img) => img,
                     Err(_) => {
                         c.remove(url);
@@ -679,7 +690,28 @@ fn load(
             }
         }
     };
-    Ok(shrink(img))
+    Ok(img)
+}
+
+/// A downloaded picture as it is kept: decoded and, when much larger than
+/// any box, shrunk ([`shrink`]). A WebP, what Bluesky serves, is decoded
+/// at that size by libwebp.
+fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
+    if let Some(img) = crate::tui::webp::decode(bytes, kept_size) {
+        return Ok(img);
+    }
+    image::load_from_memory(bytes)
+        .map(shrink)
+        .map_err(|e| e.to_string())
+}
+
+/// The size a picture of `w` x `h` is kept at: [`shrink`]'s.
+fn kept_size(w: u32, h: u32) -> (u32, u32) {
+    if w.max(h) > SHRINK_ABOVE {
+        scale::fit(w, h, SHRUNK_SIDE, SHRUNK_SIDE)
+    } else {
+        (w, h)
+    }
 }
 
 /// The picture as it is kept decoded: unchanged up to [`SHRINK_ABOVE`],
@@ -698,7 +730,7 @@ fn download(
     url: &str,
 ) -> Result<DynamicImage, String> {
     let bytes = fetch(agent, url)?;
-    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let img = decode(&bytes)?;
     if let Some(c) = cache {
         c.put(url, &bytes);
     }
@@ -1314,6 +1346,38 @@ mod latency {
                 "warm {warm}: {} pictures in {:?}",
                 urls.len(),
                 start.elapsed()
+            );
+        }
+    }
+
+    /// How long a downloaded picture takes to be decoded as it is kept, for
+    /// the files in $BSKY_PICTURE_FILES (one per line), median of 9:
+    /// `BSKY_PICTURE_FILES=... cargo test --release decode_time -- --ignored --nocapture`.
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn decode_time() {
+        let Ok(list) = std::env::var("BSKY_PICTURE_FILES") else {
+            return;
+        };
+        for path in list.lines().filter(|l| !l.is_empty()) {
+            let bytes = fs::read(path).unwrap();
+            let mut ms: Vec<f64> = (0..9)
+                .map(|_| {
+                    let t = Instant::now();
+                    let img = decode(&bytes).unwrap();
+                    assert!(img.width() > 0);
+                    t.elapsed().as_secs_f64() * 1000.0
+                })
+                .collect();
+            ms.sort_by(f64::total_cmp);
+            let img = decode(&bytes).unwrap();
+            println!(
+                "{:>5} KB -> {}x{}: {:.1} ms",
+                bytes.len() / 1024,
+                img.width(),
+                img.height(),
+                ms[4]
             );
         }
     }

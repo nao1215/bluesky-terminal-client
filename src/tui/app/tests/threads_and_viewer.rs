@@ -508,3 +508,128 @@ fn a_thread_that_failed_to_read_ahead_says_nothing() {
     let jobs = app.handle_key(key('v'));
     assert!(matches!(&jobs[..], [Job::Thread(_)]), "{jobs:?}");
 }
+
+// The thread read ahead opened at once, and then waited for its pictures:
+// they are downloaded ahead too, the small avatars as a list draws them.
+#[test]
+fn the_pictures_of_a_thread_read_ahead_are_downloaded_ahead() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    let node = serde_json::from_value(json!({
+        "$type": "app.bsky.feed.defs#threadViewPost",
+        "post": {"uri": "at://a/p/1", "cid": "c", "record": {"text": "山 🏔️"},
+                 "author": {"did": "did:plc:a", "handle": "a.test",
+                            "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:a/bafa@jpeg"},
+                 "embed": {"$type": "app.bsky.embed.images#view",
+                           "images": [{"thumb": "https://cdn.test/t1", "fullsize": "https://cdn.test/f1", "alt": ""},
+                                      {"thumb": "https://cdn.test/t2", "fullsize": "https://cdn.test/f2", "alt": ""}]}},
+        "replies": [{
+            "$type": "app.bsky.feed.defs#threadViewPost",
+            "post": {"uri": "at://r/1", "cid": "c", "record": {"text": "👨‍👩‍👧"},
+                     "author": {"did": "did:plc:r", "handle": "r.test",
+                                "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:r/bafr@jpeg"}},
+            "replies": []
+        }]
+    }))
+    .unwrap();
+    assert!(app.take_pictures_ahead().is_empty());
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(node),
+        },
+    );
+    assert_eq!(
+        app.take_pictures_ahead(),
+        [
+            "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:a/bafa@jpeg",
+            "https://cdn.test/t1",
+            "https://cdn.test/t2",
+            "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:r/bafr@jpeg",
+        ]
+    );
+    assert!(
+        app.take_pictures_ahead().is_empty(),
+        "each is asked for once"
+    );
+}
+
+// Space on a video waited for its playlists; the selection resting on a
+// post with a video has them read, once while it rests there.
+#[test]
+fn the_video_of_the_post_the_selection_rests_on_is_readied() {
+    let mut app = logged_in();
+    app.handle_event(Event::Timeline(Ok(vec![with_pictures(
+        "at://a/p/1",
+        json!({"$type": "app.bsky.embed.video#view", "cid": "c",
+               "playlist": "https://video.bsky.app/watch/did%3Aplc%3Aa/bafv/playlist.m3u8",
+               "thumbnail": "https://video.cdn.test/t.jpg", "alt": "山の動画 🏔️"}),
+    )]
+    .into())));
+    assert!(app.take_videos_ahead().is_empty());
+    let t0 = Instant::now();
+    app.poll_read_ahead(t0);
+    assert!(app.take_videos_ahead().is_empty(), "not before it rests");
+    app.poll_read_ahead(t0 + read_ahead::REST);
+    assert_eq!(
+        app.take_videos_ahead(),
+        ["https://video.bsky.app/watch/did%3Aplc%3Aa/bafv/playlist.m3u8"]
+    );
+    app.poll_read_ahead(t0 + read_ahead::REST * 3);
+    assert!(app.take_videos_ahead().is_empty());
+}
+
+// v while the thread was still being read ahead asked the server again: the
+// view waits for that answer instead, counted as pending until it comes.
+#[test]
+fn v_while_the_thread_is_read_ahead_waits_for_that_answer() {
+    let mut app = logged_in();
+    let pending = app.pending;
+    let jobs = rest(&mut app);
+    let jobs_v = app.handle_key(key('v'));
+    assert!(jobs_v.is_empty(), "{jobs_v:?}");
+    assert!(!app.threads.last().unwrap().list.loaded);
+    assert_eq!(app.pending, pending + 1);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(th.list.items.len(), 4);
+    assert_eq!(th.list.selected, 1);
+    assert_eq!(app.pending, pending);
+}
+
+#[test]
+fn a_read_ahead_that_fails_after_v_says_why() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    app.handle_key(key('v'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Err(crate::error::Error::api(
+                "app.bsky.feed.getPostThread failed: NotFound",
+            )),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert!(
+        th.error.as_deref().is_some_and(|e| e.contains("NotFound")),
+        "{:?}",
+        th.error
+    );
+    // R reads it again, as for any thread that failed.
+    let jobs = app.handle_key(key('R'));
+    assert!(
+        matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+}

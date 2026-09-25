@@ -407,7 +407,12 @@ scenarios:
                       cid: cid-f1
                       author: { did: did:plc:fay, handle: fay.test, displayName: Fay }
                       record: { text: "Fay answers 👨‍👩‍👧", createdAt: "2026-09-20T10:00:00.000Z" }
+                      embed:
+                        $type: app.bsky.embed.images#view
+                        images: [ { thumb: "${api.url}/img/photo.png", fullsize: "${api.url}/img/photo.png", alt: "", aspectRatio: { width: 4, height: 3 } } ]
                     replies: []
+          # The picture is downloaded while the selection rests, too.
+          - { method: GET, path: /img/photo.png, delay: 2s, body_file: testdata/photo.png, header: { Content-Type: image/png } }
     steps:
       - fixture:
           file: cfg/accounts/did_plc_me.json
@@ -422,16 +427,20 @@ scenarios:
             BSKY_CACHE_DIR: ${workdir}/cache
           timeout: 20s
           session:
-            # The selection rests on Bob's post while the thread is read.
+            # The selection rests on Bob's post while the thread and its
+            # picture are read.
             - expect_screen:
                 contains: "Bob's post"
-                stable_for: 3s
+                stable_for: 5s
             - send: v
             - expect_screen:
                 contains: ["Thread", "Bob's post 🏔️", "Fay answers 👨‍👩‍👧"]
+                images: { count: 1 }
                 timeout: 500ms
             - send: q
       - assert:
           exit_code: 0
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getPostThread, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 1 }

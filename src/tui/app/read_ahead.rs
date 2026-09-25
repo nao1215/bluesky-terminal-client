@@ -5,7 +5,8 @@
 use std::time::{Duration, Instant};
 
 use super::{App, ThreadView, thread_rows};
-use crate::api::types::ThreadNode;
+use crate::api::types::{Media, ThreadNode};
+use crate::tui::images::small_avatar;
 use crate::tui::worker::Job;
 
 /// How long the selection rests on a post before its thread is read: longer
@@ -16,6 +17,9 @@ pub(super) const REST: Duration = Duration::from_millis(400);
 pub(super) const FRESH: Duration = Duration::from_secs(15);
 /// Threads kept read ahead.
 const KEPT: usize = 8;
+/// Posts of a thread read ahead whose pictures are downloaded ahead too:
+/// as many as a list downloads ahead of the screen.
+const WARM: usize = 20;
 
 /// A thread read ahead.
 #[derive(Debug, Clone)]
@@ -37,6 +41,17 @@ pub(super) struct ReadAhead {
     pub(super) threads: Vec<ReadThread>,
     /// A thread read before this job may not show a write sent since.
     wrote_at: u64,
+    /// Pictures of the threads read ahead, to download before they are
+    /// shown.
+    pictures: Vec<String>,
+    /// Videos of the posts the selection rested on, whose playlists are to
+    /// be read before they are played.
+    videos: Vec<String>,
+    /// Threads being read ahead now.
+    reading: Vec<String>,
+    /// Threads being read ahead that `v` opened meanwhile: the view waits
+    /// for that answer, counted as pending, instead of asking again.
+    adopted: Vec<String>,
 }
 
 impl ReadAhead {
@@ -45,6 +60,15 @@ impl ReadAhead {
     pub(super) fn wrote(&mut self, seq: u64) {
         self.wrote_at = seq;
         self.threads.clear();
+    }
+
+    /// The answer for `uri` has come: whether a view waited for it, so it
+    /// was counted as pending.
+    pub(super) fn answered(&mut self, uri: &str) -> bool {
+        self.reading.retain(|u| u != uri);
+        let adopted = self.adopted.iter().any(|u| u == uri);
+        self.adopted.retain(|u| u != uri);
+        adopted
     }
 }
 
@@ -58,6 +82,18 @@ impl App {
         } else {
             None
         };
+        let videos: Vec<String> = shown
+            .and_then(|p| p.embed.as_ref())
+            .map(|e| {
+                e.media()
+                    .into_iter()
+                    .filter_map(|m| match m {
+                        Media::Video { playlist, .. } => Some(playlist),
+                        Media::Image { .. } => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let Some(uri) = shown.map(|p| p.uri.clone()) else {
             self.read_ahead.resting = None;
             return Vec::new();
@@ -69,6 +105,11 @@ impl App {
                     return Vec::new();
                 }
                 *asked = true;
+                self.read_ahead.videos.extend(videos);
+                if self.read_ahead.reading.contains(&uri) {
+                    return Vec::new();
+                }
+                self.read_ahead.reading.push(uri.clone());
                 vec![Job::ReadAhead(uri)]
             }
             _ => {
@@ -85,6 +126,19 @@ impl App {
         if seq < self.read_ahead.wrote_at || seq < self.account_since {
             return;
         }
+        let (rows, _) = thread_rows::flatten(node.clone());
+        for post in rows.iter().filter_map(|r| r.post()).take(WARM) {
+            if let Some(url) = &post.author.avatar {
+                self.read_ahead
+                    .pictures
+                    .push(small_avatar(url).into_owned());
+            }
+            if let Some(embed) = &post.embed {
+                for i in embed.images().into_iter().take(4) {
+                    self.read_ahead.pictures.push(i.url.to_string());
+                }
+            }
+        }
         let kept = &mut self.read_ahead.threads;
         kept.retain(|t| t.uri != uri);
         if kept.len() == KEPT {
@@ -98,6 +152,19 @@ impl App {
         });
     }
 
+    /// The pictures of the threads read ahead since this was last asked,
+    /// for the event loop to download: the thread opens with its pictures
+    /// ready, not only its text.
+    pub fn take_pictures_ahead(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.read_ahead.pictures)
+    }
+
+    /// The videos of the post the selection has rested on since this was
+    /// last asked, for the event loop to read their playlists ahead.
+    pub fn take_videos_ahead(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.read_ahead.videos)
+    }
+
     /// Fill `view` from the thread read ahead for its post, if there is one:
     /// loaded when it is fresh, else shown while it is read again. Returns
     /// whether it still has to be read.
@@ -106,6 +173,12 @@ impl App {
         let Some(i) = kept.iter().position(|t| {
             t.uri == view.uri && t.seq >= self.account_since && t.seq >= self.read_ahead.wrote_at
         }) else {
+            // Being read ahead now: that answer is waited for.
+            if self.read_ahead.reading.contains(&view.uri) {
+                self.read_ahead.adopted.push(view.uri.clone());
+                self.pending += 1;
+                return false;
+            }
             return true;
         };
         let t = kept.remove(i);

@@ -15,6 +15,7 @@ pub mod text;
 pub mod theme;
 pub mod thread;
 pub mod view;
+pub mod webp;
 pub mod worker;
 
 use std::io;
@@ -309,6 +310,15 @@ fn event_loop(
                 worker.send(app.stamp(&job), job);
             }
             dirty = true;
+        }
+        for url in app.take_pictures_ahead() {
+            images.warm(&url);
+        }
+        // Played only where pictures are shown.
+        for playlist in app.take_videos_ahead() {
+            if images.shows() {
+                player::read_ahead(&playlist);
+            }
         }
         if images.poll() {
             dirty = true;
