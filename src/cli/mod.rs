@@ -1088,6 +1088,10 @@ fn own_list(ctx: &Ctx, out: &mut dyn Write, limit: usize, nsid: &str, field: &st
     print_profiles(ctx, out, &raw)
 }
 
+/// The most a report's comment may hold (`com.atproto.moderation.createReport`).
+const MAX_REPORT_GRAPHEMES: usize = 2000;
+const MAX_REPORT_BYTES: usize = 20000;
+
 fn report(
     ctx: &Ctx,
     out: &mut dyn Write,
@@ -1095,6 +1099,27 @@ fn report(
     reason: ReportReason,
     comment: Option<&str>,
 ) -> Result<()> {
+    let comment = comment.map(str::trim).filter(|c| !c.is_empty());
+    if let Some(c) = comment {
+        // createReport's limits on the reason: over them the server
+        // refuses it, and only after the post or account was looked up.
+        let n = crate::api::grapheme_len(c);
+        if n > MAX_REPORT_GRAPHEMES {
+            return Err(Error::new(
+                Kind::Usage,
+                format!("the comment is {n} characters long; it can have {MAX_REPORT_GRAPHEMES}"),
+            ));
+        }
+        if c.len() > MAX_REPORT_BYTES {
+            return Err(Error::new(
+                Kind::Usage,
+                format!(
+                    "the comment is {} bytes; the limit is {MAX_REPORT_BYTES}",
+                    c.len()
+                ),
+            ));
+        }
+    }
     let client = ctx.client()?;
     let t = target.trim();
     let is_post = t.starts_with("at://") || format::bsky_app_path(t, "post").is_some();
@@ -1112,7 +1137,7 @@ fn report(
         )
     };
     let mut body = json!({"reasonType": reason.token(), "subject": subject});
-    if let Some(c) = comment.map(str::trim).filter(|c| !c.is_empty()) {
+    if let Some(c) = comment {
         body["reason"] = json!(c);
     }
     let answer = client.post_value("com.atproto.moderation.createReport", &body)?;
@@ -1504,6 +1529,42 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
+        assert!(out.is_empty());
+    }
+
+    // A comment over createReport's limits (2000 characters, 20000 bytes)
+    // is refused before anything is asked of the server, not after it was
+    // sent and refused as a network error.
+    #[rstest]
+    #[case(&"a".repeat(2001))]
+    #[case(&"👨‍👩‍👧‍👦".repeat(801))]
+    fn a_report_comment_over_the_limit_is_refused_before_it_is_sent(#[case] comment: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = AccountStore::open(dir.path()).unwrap();
+        let ctx = Ctx {
+            dir: dir.path(),
+            accounts: &accounts,
+            session: Some(crate::config::Session {
+                service: "http://127.0.0.1:9".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            }),
+            service: "http://127.0.0.1:9",
+            json: false,
+        };
+        let mut out = Vec::new();
+        let e = report(
+            &ctx,
+            &mut out,
+            "at://did:plc:alice/app.bsky.feed.post/p",
+            ReportReason::Spam,
+            Some(comment),
+        )
+        .unwrap_err();
+        assert_eq!(e.kind(), Kind::Usage, "{}", e.message());
+        assert!(e.message().contains("the comment is"), "{}", e.message());
         assert!(out.is_empty());
     }
 
