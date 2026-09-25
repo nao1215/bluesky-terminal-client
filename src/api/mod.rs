@@ -1043,6 +1043,7 @@ impl Client {
         reply: Option<&ReplyRef>,
         quote: Option<&StrongRef>,
         media: &PostMedia,
+        writer: crate::i18n::Lang,
     ) -> Result<CreatedRecord> {
         let text = text.trim_end();
         if text.trim().is_empty() && matches!(media, PostMedia::None) {
@@ -1070,6 +1071,9 @@ impl Client {
         });
         if !facet_json.is_empty() {
             record["facets"] = Value::Array(facet_json);
+        }
+        if let Some(lang) = crate::langs::guess(text, writer) {
+            record["langs"] = json!([lang]);
         }
         if let Some(reply) = reply {
             record["reply"] = serde_json::to_value(reply).expect("reply serializes");

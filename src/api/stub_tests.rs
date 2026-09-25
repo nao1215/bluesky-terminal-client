@@ -92,7 +92,8 @@ fn a_handle_mentioned_many_times_is_resolved_once() {
     let c = Client::new(session(&url), None);
     let text = "@same.test ".repeat(20);
     let t = Instant::now();
-    c.create_post(&text, None, None, &PostMedia::None).unwrap();
+    c.create_post(&text, None, None, &PostMedia::None, crate::i18n::Lang::En)
+        .unwrap();
     let n = log
         .lock()
         .unwrap()

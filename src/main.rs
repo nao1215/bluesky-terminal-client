@@ -9,6 +9,7 @@ mod config;
 mod error;
 mod hls;
 mod i18n;
+mod langs;
 mod media;
 mod terminal;
 mod timeline;

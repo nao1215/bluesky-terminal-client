@@ -822,7 +822,11 @@ impl State {
         video_service: &str,
     ) -> Result<()> {
         let client = self.client()?;
-        crate::compose::send_post(&client, text, reply, quote, media, video_service).map(|_| ())
+        // The worker's own thread speaks English; the language chosen for
+        // the screens is the process's.
+        let writer = crate::i18n::current();
+        crate::compose::send_post(&client, text, reply, quote, media, video_service, writer)
+            .map(|_| ())
     }
 
     fn save_profile(

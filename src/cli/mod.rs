@@ -880,7 +880,11 @@ fn post(
         None => None,
     };
     let settings = SettingsStore::new(ctx.dir).load().0;
-    let video_service = crate::config::video_service(&Environment::read(), &settings).0;
+    let env = Environment::read();
+    let video_service = crate::config::video_service(&env, &settings).0;
+    // The commands write English, but the post is in the language the
+    // client would be shown in.
+    let writer = crate::config::language(&settings, &env);
     let created = send_post(
         &client,
         &body,
@@ -888,6 +892,7 @@ fn post(
         quote.as_ref(),
         &media,
         &video_service,
+        writer,
     )?;
     let said = created.uri.clone();
     wrote(
