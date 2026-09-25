@@ -1904,6 +1904,15 @@ scenarios:
             json:
               - { path: "$.accessJwt", equals: "acc-2" }
               - { path: "$.refreshJwt", equals: "ref-2" }
+      # Meanwhile a connection is opened for each load the start sends at
+      # once, with a request that asks nothing of the account.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/_health
+            method: HEAD
+            count: 4
+            header: { name: Authorization, equals: "" }
 
   # The loads at the start run at once and all find the token expired. A
   # refresh token works only once, so one of them refreshes and the others

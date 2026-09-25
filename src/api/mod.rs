@@ -96,6 +96,9 @@ fn base64url(s: &str) -> Option<Vec<u8>> {
 /// How long an upload may take.
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Connections kept open to one server between requests.
+const IDLE_PER_HOST: usize = 8;
+
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
 pub fn agent() -> ureq::Agent {
@@ -108,6 +111,12 @@ pub fn agent() -> ureq::Agent {
         // more than 15 s before the next ones are wanted. One the server has
         // closed is noticed before it is used.
         .max_idle_age(Duration::from_secs(120))
+        // As many kept per server as bsky sends to it at once: four reads,
+        // a write, and the two halves of a profile. ureq keeps three, so
+        // after a burst the rest were closed, and the next burst opened
+        // them again, a handshake each.
+        .max_idle_connections_per_host(IDLE_PER_HOST)
+        .max_idle_connections(4 * IDLE_PER_HOST)
         .user_agent(USER_AGENT)
         .build()
         .into()
@@ -700,6 +709,24 @@ impl Client {
                 .call()
                 .map_err(|e| transport(nsid, e))?;
             job = decode::<JobStatusAnswer>(nsid, resp)?.job_status;
+        }
+    }
+
+    /// Open `n` connections to the service at once and keep them for the
+    /// requests to come. At the start the loads wait while the expired
+    /// token is refreshed, and then each opened its own connection, a TCP
+    /// and a TLS handshake after the refresh; opened meanwhile, they only
+    /// wait for their answers. Nothing is asked of the account.
+    pub fn preconnect(&self, n: usize) {
+        let url = xrpc_url(&self.service, "_health");
+        for _ in 0..n {
+            let (agent, url) = (self.agent.clone(), url.clone());
+            std::thread::Builder::new()
+                .name("bsky-preconnect".into())
+                .spawn(move || {
+                    let _ = agent.head(&url).call();
+                })
+                .ok();
         }
     }
 

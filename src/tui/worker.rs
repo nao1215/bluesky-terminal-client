@@ -512,10 +512,15 @@ impl Worker {
     /// Start the worker. `session` is the account to act as, if any; its
     /// refreshed tokens are saved to its file in `accounts`.
     pub fn spawn(session: Option<Session>, accounts: AccountStore) -> Self {
-        let client = Arc::new(Mutex::new(session.map(|s| {
+        let client = session.map(|s| {
             let store = accounts.store_for(&s.did);
             Client::new(s, Some(store))
-        })));
+        });
+        // One for each read the start sends at once.
+        if let Some(c) = &client {
+            c.preconnect(READERS);
+        }
+        let client = Arc::new(Mutex::new(client));
         let (ev_tx, ev_rx) = channel::<(u64, Event)>();
         let (writes, write_rx) = channel::<(u64, Job, Option<Client>)>();
         let mut state = State {
