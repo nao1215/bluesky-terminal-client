@@ -126,7 +126,11 @@ impl Keyed for NotifItem {
 
 /// How close to the end the selection gets before the next page is fetched:
 /// far enough that the page has usually arrived before the end is reached.
-const MORE_AHEAD: usize = 10;
+/// A held j moves about 30 posts a second, and a page of the timeline can
+/// take the server a second to put together: 10 ahead made the list stop at
+/// its end for most of that second. Half a page ahead is asked for when
+/// the reader is halfway through it.
+const MORE_AHEAD: usize = 25;
 
 /// A scrollable list with a selection.
 #[derive(Debug, Clone)]

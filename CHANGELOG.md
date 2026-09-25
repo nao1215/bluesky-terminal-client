@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Starting after the access token has expired (it lasts about two hours) takes one round trip less: the token is refreshed before the first request instead of after the server refuses it.
 - Loads at the start, and a profile or thread opened soon after, no longer wait for a new connection to the server each: bsky opens them while it starts and keeps up to eight.
+- A held `j` no longer stops at the end of a list while the next page loads, on a server that takes a second to answer: the page is asked for halfway through the one being read, not ten posts before its end.
 
 ## [0.11.0] - 2026-09-25
 
