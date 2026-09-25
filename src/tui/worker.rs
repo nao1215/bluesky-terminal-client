@@ -39,6 +39,9 @@ pub enum Job {
     OpenProfile(String),
     /// A post's thread, by the post's URI.
     Thread(String),
+    /// The thread of the post the selection rests on, read before it is
+    /// asked for so that `v` shows it at once.
+    ReadAhead(String),
     /// The first page of notifications.
     Notifications,
     /// Notifications up to this time have been seen.
@@ -272,6 +275,10 @@ pub enum Event {
         uri: String,
         result: Result<ThreadNode>,
     },
+    ReadAhead {
+        uri: String,
+        result: Result<ThreadNode>,
+    },
     /// The first page of notifications; `seen_at` is the newest one's time.
     Notifications {
         seen_at: String,
@@ -347,6 +354,7 @@ impl Job {
                 | Job::SearchActors(_)
                 | Job::OpenProfile(_)
                 | Job::Thread(_)
+                | Job::ReadAhead(_)
                 | Job::Notifications
                 | Job::More { .. }
                 | Job::Column { .. }
@@ -380,6 +388,10 @@ impl Job {
             },
             Job::UpdateSeen(_) => Event::Seen(Err(e)),
             Job::Thread(uri) => Event::Thread {
+                uri,
+                result: Err(e),
+            },
+            Job::ReadAhead(uri) => Event::ReadAhead {
                 uri,
                 result: Err(e),
             },
@@ -512,10 +524,15 @@ impl Worker {
     /// Start the worker. `session` is the account to act as, if any; its
     /// refreshed tokens are saved to its file in `accounts`.
     pub fn spawn(session: Option<Session>, accounts: AccountStore) -> Self {
-        let client = Arc::new(Mutex::new(session.map(|s| {
+        let client = session.map(|s| {
             let store = accounts.store_for(&s.did);
             Client::new(s, Some(store))
-        })));
+        });
+        // One for each read the start sends at once.
+        if let Some(c) = &client {
+            c.preconnect(READERS);
+        }
+        let client = Arc::new(Mutex::new(client));
         let (ev_tx, ev_rx) = channel::<(u64, Event)>();
         let (writes, write_rx) = channel::<(u64, Job, Option<Client>)>();
         let mut state = State {
@@ -657,6 +674,10 @@ impl State {
             }
             Job::UpdateSeen(at) => Event::Seen(self.client().and_then(|c| c.update_seen(&at))),
             Job::Thread(uri) => Event::Thread {
+                result: self.client().and_then(|c| c.post_thread(&uri)),
+                uri,
+            },
+            Job::ReadAhead(uri) => Event::ReadAhead {
                 result: self.client().and_then(|c| c.post_thread(&uri)),
                 uri,
             },

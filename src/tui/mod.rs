@@ -83,9 +83,8 @@ pub fn run(
     // restores it, bracketed paste too, only when the thread drawing
     // panics.
     let default_hook = std::panic::take_hook();
-    let mut term = ratatui::try_init()
+    let mut term = init_terminal()
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot set up the terminal: {e}")))?;
-    let _ratatui_hook = std::panic::take_hook();
     let drawing = std::thread::current().id();
     std::panic::set_hook(Box::new(move |info| {
         if std::thread::current().id() == drawing {
@@ -113,9 +112,66 @@ pub fn run(
     result
 }
 
+/// The terminal bsky draws on: a frame goes out whole.
+type Term = ratatui::Terminal<ratatui::backend::CrosstermBackend<FrameWriter>>;
+
+/// Raw mode and the alternate screen, as `ratatui::try_init` sets them up,
+/// with the frames written through a [`FrameWriter`].
+fn init_terminal() -> io::Result<Term> {
+    crossterm::terminal::enable_raw_mode()?;
+    if let Err(e) = execute!(io::stdout(), crossterm::terminal::EnterAlternateScreen) {
+        let _ = crossterm::terminal::disable_raw_mode();
+        return Err(e);
+    }
+    ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(FrameWriter::new(
+        io::stdout(),
+    )))
+}
+
+/// Holds what a frame writes until the frame is flushed, then hands it to
+/// the terminal in one write, marked as one synchronized update (mode 2026)
+/// so a terminal that knows the mode shows the frame only once it is whole;
+/// one that does not ignores the marks. Through stdout's own buffer a
+/// frame went out 1 KB at a time, and the terminal could show the screen
+/// half drawn: the old posts below the new ones while scrolling.
+pub struct FrameWriter<W: io::Write = io::Stdout> {
+    out: W,
+    /// [`BEGIN_UPDATE`], then the frame written so far.
+    frame: Vec<u8>,
+}
+
+/// Starts and ends a synchronized update.
+const BEGIN_UPDATE: &[u8] = b"\x1b[?2026h";
+const END_UPDATE: &[u8] = b"\x1b[?2026l";
+
+impl<W: io::Write> FrameWriter<W> {
+    pub fn new(out: W) -> Self {
+        let mut frame = Vec::with_capacity(64 * 1024);
+        frame.extend_from_slice(BEGIN_UPDATE);
+        Self { out, frame }
+    }
+}
+
+impl<W: io::Write> io::Write for FrameWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.frame.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.frame.len() > BEGIN_UPDATE.len() {
+            self.frame.extend_from_slice(END_UPDATE);
+            let written = self.out.write_all(&self.frame);
+            self.frame.truncate(BEGIN_UPDATE.len());
+            written?;
+        }
+        self.out.flush()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn event_loop(
-    term: &mut ratatui::DefaultTerminal,
+    term: &mut Term,
     picker: Option<ratatui_image::picker::Picker>,
     app: &mut App,
     worker: &Worker,
@@ -260,6 +316,11 @@ fn event_loop(
         if app.expire_status(std::time::Instant::now()) {
             dirty = true;
         }
+        // The thread of the post the selection rests on is read ahead; the
+        // screen does not change for it.
+        for job in app.poll_read_ahead(std::time::Instant::now()) {
+            worker.send(app.stamp(&job), job);
+        }
         // The Chat tab reads the server again now and then while it is shown.
         for job in app.poll_chat(std::time::Instant::now()) {
             worker.send(app.stamp(&job), job);
@@ -317,7 +378,66 @@ fn picture_server(service: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::picture_server;
+    use super::{FrameWriter, picture_server};
+    use std::io::Write;
+
+    /// Each write it is given, as the terminal would receive it.
+    #[derive(Default, Clone)]
+    struct Writes(std::rc::Rc<std::cell::RefCell<Vec<Vec<u8>>>>);
+
+    impl Write for Writes {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.borrow_mut().push(buf.to_vec());
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_frame_reaches_the_terminal_in_one_write_as_one_update() {
+        let writes = Writes::default();
+        let mut w = FrameWriter::new(writes.clone());
+        for part in ["\x1b[1;1H", "家族👨‍👩‍👧", &"x".repeat(5000)] {
+            w.write_all(part.as_bytes()).unwrap();
+        }
+        assert!(
+            writes.0.borrow().is_empty(),
+            "nothing goes out before the frame ends"
+        );
+        w.flush().unwrap();
+        let want = format!("\x1b[?2026h\x1b[1;1H家族👨‍👩‍👧{}\x1b[?2026l", "x".repeat(5000));
+        assert_eq!(*writes.0.borrow(), [want.into_bytes()]);
+        // The next frame starts empty; a flush with nothing drawn sends nothing.
+        w.flush().unwrap();
+        w.write_all(b"b").unwrap();
+        w.flush().unwrap();
+        assert_eq!(writes.0.borrow().len(), 2);
+        assert_eq!(writes.0.borrow()[1], b"\x1b[?2026hb\x1b[?2026l");
+    }
+
+    /// Draws a screen of posts through ratatui and counts the writes the
+    /// terminal gets.
+    #[test]
+    fn a_drawn_screen_is_one_write() {
+        use ratatui::backend::CrosstermBackend;
+        use ratatui::widgets::Paragraph;
+        let writes = Writes::default();
+        let mut term = ratatui::Terminal::with_options(
+            CrosstermBackend::new(FrameWriter::new(writes.clone())),
+            ratatui::TerminalOptions {
+                viewport: ratatui::Viewport::Fixed(ratatui::layout::Rect::new(0, 0, 120, 50)),
+            },
+        )
+        .unwrap();
+        let text = "今日は山に登りました 🏔️ the view from the top 👨‍👩‍👧\n".repeat(50);
+        term.draw(|f| f.render_widget(Paragraph::new(text.as_str()), f.area()))
+            .unwrap();
+        let writes = writes.0.borrow();
+        assert_eq!(writes.len(), 1);
+        assert!(writes[0].len() > 4096, "{} bytes", writes[0].len());
+    }
 
     #[test]
     fn the_picture_server_is_warmed_only_for_a_service_on_the_internet() {

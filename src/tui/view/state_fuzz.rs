@@ -172,17 +172,15 @@ fn answer(rng: &mut Rng, job: Job, next_id: &mut u64) -> Option<Event> {
         } else {
             Err(fail())
         }),
+        Job::ReadAhead(uri) => {
+            let node = a_thread(rng, &uri);
+            Event::ReadAhead {
+                uri,
+                result: if ok { Ok(node) } else { Err(fail()) },
+            }
+        }
         Job::Thread(uri) => {
-            let node: ThreadNode = serde_json::from_value(json!({
-                "$type": "app.bsky.feed.defs#threadViewPost",
-                "post": {
-                    "uri": uri, "cid": "c",
-                    "author": {"did": "did:plc:bob", "handle": "bob.test"},
-                    "record": {"text": TEXTS[rng.below(TEXTS.len())], "createdAt": "2026-09-22T00:00:00Z"},
-                },
-                "replies": [],
-            }))
-            .unwrap();
+            let node = a_thread(rng, &uri);
             Event::Thread {
                 uri,
                 result: if ok { Ok(node) } else { Err(fail()) },
@@ -511,6 +509,7 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
         // Some runs get their answers at once, others keep them waiting
         // over many keys, which is where a key meets a list still loading.
         let answer_rate = [5, 15, 35, 60][rng.below(4)];
+        let start = std::time::Instant::now();
         for step in 0..800 {
             if rng.chance(answer_rate) && !pending.is_empty() {
                 // Any waiting answer, not only the oldest: answers arrive
@@ -667,6 +666,13 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
             if app.quit {
                 break;
             }
+            // A step is a tenth of a second of the event loop's clock: a
+            // selection left on a post for four has its thread read ahead.
+            let now = start + std::time::Duration::from_millis(100 * step as u64);
+            for job in app.poll_read_ahead(now) {
+                let seq = app.stamp(&job);
+                pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
+            }
             check_lists(&app, seed, step);
             if step % 7 == 0 {
                 let (w, h) = (1 + rng.below(120) as u16, 1 + rng.below(50) as u16);
@@ -691,4 +697,18 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
             "seed {seed}: after every answer, still {stuck:?}"
         );
     }
+}
+
+/// A thread of one post, `uri`, with a text of the fuzz's.
+fn a_thread(rng: &mut Rng, uri: &str) -> ThreadNode {
+    serde_json::from_value(json!({
+        "$type": "app.bsky.feed.defs#threadViewPost",
+        "post": {
+            "uri": uri, "cid": "c",
+            "author": {"did": "did:plc:bob", "handle": "bob.test"},
+            "record": {"text": TEXTS[rng.below(TEXTS.len())], "createdAt": "2026-09-22T00:00:00Z"},
+        },
+        "replies": [],
+    }))
+    .unwrap()
 }

@@ -29,6 +29,7 @@ mod answers;
 mod deck;
 mod key_map;
 mod messages;
+mod read_ahead;
 mod selection;
 mod settings;
 #[cfg(test)]
@@ -126,7 +127,11 @@ impl Keyed for NotifItem {
 
 /// How close to the end the selection gets before the next page is fetched:
 /// far enough that the page has usually arrived before the end is reached.
-const MORE_AHEAD: usize = 10;
+/// A held j moves about 30 posts a second, and a page of the timeline can
+/// take the server a second to put together: 10 ahead made the list stop at
+/// its end for most of that second. Half a page ahead is asked for when
+/// the reader is halfway through it.
+const MORE_AHEAD: usize = 25;
 
 /// A scrollable list with a selection.
 #[derive(Debug, Clone)]
@@ -744,6 +749,8 @@ pub struct App {
     /// The number of the last profile asked for: an answer to an earlier
     /// one is of a profile left since.
     profile_asked: u64,
+    /// Threads read before `v` asks for them.
+    read_ahead: read_ahead::ReadAhead,
 }
 
 /// A question that takes a `y`, and what it is about.
@@ -934,6 +941,7 @@ impl App {
             session_since: 0,
             answering: None,
             profile_asked: 0,
+            read_ahead: read_ahead::ReadAhead::default(),
         };
         let jobs = if app.session.is_some() {
             app.startup_jobs()

@@ -101,9 +101,11 @@ scenarios:
             # The tabs start the top row; no name of the app before them.
             - expect_screen:
                 matches: '^ 1 Timeline  +2 Chat'
+            # Long enough for the thread of the selected post to be read
+            # ahead.
             - expect_screen:
                 images: { count: 3 }
-                stable_for: 300ms
+                stable_for: 600ms
             - send: q
       - assert:
           exit_code: 0
@@ -133,9 +135,19 @@ scenarios:
           mock: { name: api, path: /img/alice.png, count: 1 }
       # The unshown authors have no avatar URL here, and nothing else was
       # fetched but the notifications, loaded in the background at the
-      # start: the pinned feeds wait for the first +.
+      # start, and the thread of the selected post, read ahead: the pinned
+      # feeds wait for the first +. The four HEAD requests open the
+      # connections at the start.
       - assert:
-          mock: { name: api, count: 5 }
+          mock: { name: api, count: 10 }
+      - assert:
+          mock: { name: api, method: HEAD, path: /xrpc/_health, count: 4 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getPostThread
+            count: 1
+            query: { name: uri, equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
@@ -1853,6 +1865,66 @@ scenarios:
               - { path: "$.accessJwt", equals: "acc-2" }
               - { path: "$.refreshJwt", equals: "ref-2" }
               - { path: "$.service", equals: "${api.url}" }
+
+  # The access token saved when bsky last ran has usually expired by the next
+  # start. Its JWT says when; one past that is refreshed before the first
+  # load, which is then sent once, not refused first and sent again.
+  - name: an access token past the expiry it carries is refreshed before the first load
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json: { feed: [] }
+          - method: POST
+            path: /xrpc/com.atproto.server.refreshSession
+            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-2", refreshJwt: "ref-2" }
+    steps:
+      # The access token is a JWT that expired in November 2023.
+      - fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJhdCtqd3QifQ.eyJleHAiOjE3MDAwMDAwMDB9.sig", "refreshJwt": "ref"}
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.server.refreshSession
+            count: 1
+            header: { name: Authorization, equals: "Bearer ref" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getTimeline
+            count: 1
+            header: { name: Authorization, equals: "Bearer acc-2" }
+      - assert:
+          file:
+            path: cfg/accounts/did_plc_me.json
+            json:
+              - { path: "$.accessJwt", equals: "acc-2" }
+              - { path: "$.refreshJwt", equals: "ref-2" }
+      # Meanwhile a connection is opened for each load the start sends at
+      # once, with a request that asks nothing of the account.
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/_health
+            method: HEAD
+            count: 4
+            header: { name: Authorization, equals: "" }
 
   # The loads at the start run at once and all find the token expired. A
   # refresh token works only once, so one of them refreshes and the others
