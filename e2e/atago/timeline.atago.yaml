@@ -133,9 +133,12 @@ scenarios:
           mock: { name: api, path: /img/alice.png, count: 1 }
       # The unshown authors have no avatar URL here, and nothing else was
       # fetched but the notifications, loaded in the background at the
-      # start: the pinned feeds wait for the first +.
+      # start: the pinned feeds wait for the first +. The four HEAD requests
+      # open the connections at the start.
       - assert:
-          mock: { name: api, count: 5 }
+          mock: { name: api, count: 9 }
+      - assert:
+          mock: { name: api, method: HEAD, path: /xrpc/_health, count: 4 }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 
