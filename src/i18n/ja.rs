@@ -748,6 +748,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "動画のダウンロードが止まりました",
     ),
     (
+        "the video is larger than {} MB",
+        "動画が {} MB を超えています",
+    ),
+    (
         "the video is larger than what is left of today's upload allowance",
         "動画が本日のアップロード残量を超えています",
     ),

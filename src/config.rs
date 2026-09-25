@@ -291,8 +291,9 @@ impl SettingsStore {
     }
 }
 
-/// An authenticated session against one PDS.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// An authenticated session against one PDS. Its `Debug` leaves the tokens
+/// out.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
     /// Base URL of the PDS the session belongs to, without a trailing slash.
@@ -305,6 +306,16 @@ pub struct Session {
     pub access_jwt: String,
     /// Long-lived token used to mint a new access token.
     pub refresh_jwt: String,
+}
+
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("service", &self.service)
+            .field("did", &self.did)
+            .field("handle", &self.handle)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Resolve the config directory from the environment.
@@ -771,6 +782,24 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Printed with {:?}, a session showed both tokens.
+    #[test]
+    fn a_session_printed_for_debugging_hides_its_tokens() {
+        let s = Session {
+            service: "https://bsky.social".into(),
+            did: "did:plc:a".into(),
+            handle: "alice.test".into(),
+            access_jwt: "access-secret".into(),
+            refresh_jwt: "refresh-secret".into(),
+        };
+        let shown = format!("{s:?}");
+        assert!(!shown.contains("secret"), "{shown}");
+        assert!(
+            shown.contains("did:plc:a") && shown.contains("alice.test"),
+            "{shown}"
+        );
+    }
 
     // A column of a kind a newer version added is left out; the rest of the
     // file, the other columns included, is still read.

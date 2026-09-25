@@ -808,6 +808,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "der Video-Download wurde abgebrochen",
     ),
     (
+        "the video is larger than {} MB",
+        "das Video ist größer als {} MB",
+    ),
+    (
         "the video is larger than what is left of today's upload allowance",
         "das Video ist größer als das, was vom heutigen Upload-Kontingent übrig ist",
     ),

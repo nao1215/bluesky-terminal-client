@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - `bsky report --comment` sent a comment over the 2000-character limit and failed with the network error code; it is refused first with the count.
 - `bsky thread` printed the address of a reply that was not found, and the commands printed a server's error message, as they came: an escape sequence in them reached the terminal. Both are printed as text.
+- An internal error in a request left the screen waiting for it for good, and one in a write stopped every later like, post and follow. The request now fails with the error shown.
+- `d` on a video of many segments kept it all in memory however large; a video over 200 MB is refused.
+- A link card with a missing title or an odd field lost the card and its link.
+- The PDS address an account's DID document names was used as written: a trailing slash broke chat, and an http address took the token behind an https login. Such an address is not used.
+- A video that grew while it was read for posting got past the 100 MB check.
 
 ## [0.10.1] - 2026-09-24
 

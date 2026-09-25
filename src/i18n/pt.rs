@@ -784,6 +784,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("the tabs, in the order shown", "as abas, na ordem exibida"),
     ("the video download stopped", "o download do vídeo parou"),
     (
+        "the video is larger than {} MB",
+        "o vídeo tem mais de {} MB",
+    ),
+    (
         "the video is larger than what is left of today's upload allowance",
         "o vídeo é maior do que o que resta da cota de envio de hoje",
     ),

@@ -332,32 +332,44 @@ pub struct Prepared {
     pub dims: Option<(u32, u32)>,
 }
 
+/// The bytes of `file`, or its length when that is over `limit`. The read
+/// itself stops past the limit, so a file that grows while it is read is
+/// refused too.
+fn read_at_most(file: &Path, limit: u64) -> std::io::Result<std::result::Result<Vec<u8>, u64>> {
+    use std::io::Read;
+    let f = std::fs::File::open(file)?;
+    let len = f.metadata()?.len();
+    if len > limit {
+        return Ok(Err(len));
+    }
+    let mut bytes = Vec::new();
+    f.take(limit + 1).read_to_end(&mut bytes)?;
+    let read = bytes.len() as u64;
+    Ok(if read > limit {
+        Err(read.max(len))
+    } else {
+        Ok(bytes)
+    })
+}
+
 /// Read a video (or an animated GIF) and check it against Bluesky's limits.
 /// The error names the file and what is wrong.
 pub fn prepare(file: &Path) -> Result<Prepared> {
     let name = file.display();
-    let len = std::fs::metadata(file)
-        .map_err(|e| {
-            Error::io(crate::i18n::tf(
-                "cannot read {}: {}",
-                &[&name.to_string(), &e.to_string()],
-            ))
-        })?
-        .len();
-    if len > MAX_VIDEO_BYTES {
-        return Err(Error::io(crate::i18n::tf(
+    let read = read_at_most(file, MAX_VIDEO_BYTES).map_err(|e| {
+        Error::io(crate::i18n::tf(
+            "cannot read {}: {}",
+            &[&name.to_string(), &e.to_string()],
+        ))
+    })?;
+    let bytes = read.map_err(|len| {
+        Error::io(crate::i18n::tf(
             "{} is {} MB; videos must be at most {} MB",
             &[
                 &name.to_string(),
                 &(len / (1024 * 1024)).to_string(),
                 &(MAX_VIDEO_BYTES / (1024 * 1024)).to_string(),
             ],
-        )));
-    }
-    let bytes = std::fs::read(file).map_err(|e| {
-        Error::io(crate::i18n::tf(
-            "cannot read {}: {}",
-            &[&name.to_string(), &e.to_string()],
         ))
     })?;
     if bytes.starts_with(b"GIF8") {
@@ -403,6 +415,28 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use std::io::Cursor;
+
+    // The size was checked before the file was read, and the read took
+    // whatever was there by then: a file still being written got past it.
+    #[test]
+    fn a_file_is_read_up_to_the_limit_and_refused_past_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("v.mp4");
+        std::fs::write(&f, [7u8; 10]).unwrap();
+        assert_eq!(read_at_most(&f, 10).unwrap(), Ok(vec![7u8; 10]));
+        assert_eq!(read_at_most(&f, 9).unwrap(), Err(10));
+        assert!(read_at_most(&dir.path().join("none.mp4"), 9).is_err());
+    }
+
+    #[test]
+    fn a_video_over_the_size_limit_is_refused_with_its_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("big.mp4");
+        let file = std::fs::File::create(&f).unwrap();
+        file.set_len(MAX_VIDEO_BYTES + 3 * 1024 * 1024).unwrap();
+        let e = prepare(&f).unwrap_err();
+        assert!(e.message().contains("103 MB"), "{}", e.message());
+    }
 
     fn bx(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
         let mut v = ((body.len() + 8) as u32).to_be_bytes().to_vec();

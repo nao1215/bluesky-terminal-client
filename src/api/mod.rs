@@ -424,9 +424,11 @@ impl UploadLimits {
     }
 }
 
-/// The PDS endpoint in an account's DID document.
-fn pds_endpoint(did_doc: &Value) -> Option<String> {
-    did_doc
+/// The PDS endpoint in an account's DID document, as a service URL, when
+/// it is one: the account's token is sent there, so an address that is not
+/// a service, or plain http behind an https login, is not used.
+fn pds_endpoint(did_doc: &Value, service: &str) -> Option<String> {
+    let endpoint = did_doc
         .get("service")?
         .as_array()?
         .iter()
@@ -436,8 +438,9 @@ fn pds_endpoint(did_doc: &Value) -> Option<String> {
                 .is_some_and(|id| id.ends_with("#atproto_pds"))
         })?
         .get("serviceEndpoint")?
-        .as_str()
-        .map(str::to_string)
+        .as_str()?;
+    let url = normalize_service(endpoint).ok()?;
+    (url.starts_with("https://") || service.starts_with("http://")).then_some(url)
 }
 
 /// The `did:web` naming a service at `url` (a port is written `%3A`).
@@ -516,7 +519,7 @@ impl Client {
         };
         let pds = session
             .get("didDoc")
-            .and_then(pds_endpoint)
+            .and_then(|doc| pds_endpoint(doc, &self.service))
             .unwrap_or_else(|| self.service.clone());
         *self.pds.lock().unwrap_or_else(PoisonError::into_inner) = Some(pds.clone());
         pds
@@ -1598,7 +1601,7 @@ mod tests {
             {"id": "#other", "serviceEndpoint": "https://x.test"},
             {"id": "#atproto_pds", "type": "AtprotoPersonalDataServer", "serviceEndpoint": "https://morel.us-east.host.bsky.network"}
         ]});
-        let endpoint = pds_endpoint(&doc).unwrap();
+        let endpoint = pds_endpoint(&doc, "https://bsky.social").unwrap();
         assert_eq!(
             did_web(&endpoint),
             "did:web:morel.us-east.host.bsky.network"
@@ -1607,7 +1610,31 @@ mod tests {
             did_web("http://127.0.0.1:8080/"),
             "did:web:127.0.0.1%3A8080"
         );
-        assert_eq!(pds_endpoint(&json!({})), None);
+        assert_eq!(pds_endpoint(&json!({}), "https://bsky.social"), None);
+    }
+
+    // The endpoint was used as the server wrote it: a trailing slash made
+    // `//xrpc` addresses, and the account's token went to whatever it named,
+    // plain http behind an https login too.
+    #[rstest]
+    #[case("https://pds.test/", "https://bsky.social", Some("https://pds.test"))]
+    #[case("HTTPS://pds.test", "https://bsky.social", Some("https://pds.test"))]
+    #[case(
+        "http://127.0.0.1:2583",
+        "http://127.0.0.1:2583",
+        Some("http://127.0.0.1:2583")
+    )]
+    #[case("http://pds.test", "https://bsky.social", None)]
+    #[case("ftp://pds.test", "https://bsky.social", None)]
+    #[case("https://pds.test/xrpc", "https://bsky.social", None)]
+    #[case("", "https://bsky.social", None)]
+    fn the_pds_endpoint_is_used_only_when_it_is_a_service_url(
+        #[case] endpoint: &str,
+        #[case] service: &str,
+        #[case] want: Option<&str>,
+    ) {
+        let doc = json!({"service": [{"id": "#atproto_pds", "serviceEndpoint": endpoint}]});
+        assert_eq!(pds_endpoint(&doc, service).as_deref(), want);
     }
 
     #[test]

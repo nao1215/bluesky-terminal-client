@@ -81,7 +81,7 @@ pub fn run(
             ratatui::restore();
             default_hook(info);
         }
-        // Another thread's is caught, or ends that thread, whose work then
+        // Another thread's is caught where its work is run, and that work
         // fails with an error the screen shows; written over the screen,
         // it would only break it.
     }));

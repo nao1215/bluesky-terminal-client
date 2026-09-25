@@ -816,6 +816,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video download stopped",
         "le téléchargement de la vidéo s’est arrêté",
     ),
+    ("the video is larger than {} MB", "la vidéo dépasse {} Mo"),
     (
         "the video is larger than what is left of today's upload allowance",
         "la vidéo dépasse ce qui reste du quota d’envoi du jour",
