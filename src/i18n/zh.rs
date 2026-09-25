@@ -274,10 +274,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter 下一步/提交  tab 切换字段  esc 退出",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter 打开  space 选择此文件夹  h 上级  . 隐藏文件  ~ 主目录  esc 取消",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter 打开/选择  space 标记  h 上级  . 隐藏文件  ~ 主目录  esc 取消",
     ),
@@ -851,4 +847,30 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "视频的替代文本有 {} 字节；上限为 {}",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter 打开  space 选择此文件夹  n 新建文件夹  h 上级  . 隐藏文件  ~ 主目录  esc 取消",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "新建文件夹（选择文件夹时）",
+    ),
+    ("make it", "创建"),
+    ("new folder", "新建文件夹"),
+    ("New folder:", "新文件夹:"),
+    ("type a name for the new folder", "请输入新文件夹的名称"),
+    (
+        "a folder name cannot contain / or \\",
+        "文件夹名称不能包含 / 或 \\",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "文件夹名称不能是 . 或 ..",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "文件夹名称不能包含控制字符",
+    ),
+    ("{} is a file, not a folder", "{} 是文件，不是文件夹"),
+    ("cannot make {}: {}", "无法创建 {}：{}"),
 ];

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- `n` in the folder chooser of the settings (the download folder, the picture cache) makes a new folder in the one shown and goes into it, where `Space` chooses it. A name with `/` or `\`, or `.` or `..`, is refused with the reason.
+
 ### Changed
 
 - Pictures from Bluesky, sent as WebP, are decoded two to three times faster, and a full-size photo opened with `Space` in about a third of the time: they are decoded with libwebp, at the size bsky keeps them.

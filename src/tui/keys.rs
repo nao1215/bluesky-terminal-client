@@ -120,6 +120,7 @@ pub const HELP: &[Section] = &[
             ("h backspace", n!("the folder above")),
             (".", n!("show or hide hidden files")),
             ("~", n!("your home folder")),
+            ("n", n!("a new folder, when choosing a folder")),
             ("esc", n!("close without choosing")),
         ],
     },
@@ -298,12 +299,16 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ];
         }
         Some(Overlay::Settings {
-            edit: Some(SettingEdit::Folder(_)),
+            edit: Some(SettingEdit::Folder(b)),
             ..
         }) => {
+            if b.naming.is_some() {
+                return vec![("enter", n!("make it")), ("esc", n!("cancel"))];
+            }
             return vec![
                 ("enter", n!("open")),
                 ("space", n!("choose this folder")),
+                ("n", n!("new folder")),
                 ("h", n!("up")),
                 ("esc", n!("cancel")),
             ];

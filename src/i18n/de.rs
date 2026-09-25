@@ -319,10 +319,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter weiter/absenden  tab Feld wechseln  esc beenden",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter öffnen  space diesen Ordner wählen  h hoch  . versteckte  ~ Home  esc abbrechen",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter öffnen/wählen  space markieren  h hoch  . versteckte  ~ Home  esc abbrechen",
     ),
@@ -1031,4 +1027,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "der Alternativtext des Videos hat {} Bytes; das Limit ist {}",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter öffnen  space diesen Ordner wählen  n neuer Ordner  h hoch  . versteckte  ~ Home  esc abbrechen",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "neuer Ordner, beim Wählen eines Ordners",
+    ),
+    ("make it", "anlegen"),
+    ("new folder", "neuer Ordner"),
+    ("New folder:", "Neuer Ordner:"),
+    (
+        "type a name for the new folder",
+        "gib einen Namen für den neuen Ordner ein",
+    ),
+    (
+        "a folder name cannot contain / or \\",
+        "ein Ordnername darf kein / oder \\ enthalten",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "ein Ordnername darf nicht . oder .. sein",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "ein Ordnername darf keine Steuerzeichen enthalten",
+    ),
+    (
+        "{} is a file, not a folder",
+        "{} ist eine Datei, kein Ordner",
+    ),
+    ("cannot make {}: {}", "{} kann nicht angelegt werden: {}"),
 ];

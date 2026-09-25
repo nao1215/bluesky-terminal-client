@@ -310,10 +310,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter próximo/enviar  tab trocar campo  esc sair",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter abrir  space escolher esta pasta  h subir  . ocultos  ~ início  esc cancelar",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter abrir/escolher  space marcar  h subir  . ocultos  ~ início  esc cancelar",
     ),
@@ -1001,4 +997,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "o texto alternativo do vídeo tem {} bytes; o limite é {}",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter abrir  space escolher esta pasta  n nova pasta  h subir  . ocultos  ~ início  esc cancelar",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "nova pasta, ao escolher uma pasta",
+    ),
+    ("make it", "criar"),
+    ("new folder", "nova pasta"),
+    ("New folder:", "Nova pasta:"),
+    (
+        "type a name for the new folder",
+        "digite um nome para a nova pasta",
+    ),
+    (
+        "a folder name cannot contain / or \\",
+        "o nome de uma pasta não pode conter / nem \\",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "o nome de uma pasta não pode ser . nem ..",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "o nome de uma pasta não pode conter caracteres de controle",
+    ),
+    (
+        "{} is a file, not a folder",
+        "{} é um arquivo, não uma pasta",
+    ),
+    ("cannot make {}: {}", "não foi possível criar {}: {}"),
 ];

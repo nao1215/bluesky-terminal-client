@@ -310,10 +310,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter далее/войти  tab другое поле  esc выход",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter открыть  space выбрать эту папку  h вверх  . скрытые  ~ домой  esc отмена",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter открыть/выбрать  space отметить  h вверх  . скрытые  ~ домой  esc отмена",
     ),
@@ -956,4 +952,30 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "в альтернативном тексте видео {} байт; лимит — {}",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter открыть  space выбрать эту папку  n новая папка  h вверх  . скрытые  ~ домой  esc отмена",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "новая папка, при выборе папки",
+    ),
+    ("make it", "создать"),
+    ("new folder", "новая папка"),
+    ("New folder:", "Новая папка:"),
+    ("type a name for the new folder", "введите имя новой папки"),
+    (
+        "a folder name cannot contain / or \\",
+        "имя папки не может содержать / или \\",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "имя папки не может быть . или ..",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "имя папки не может содержать управляющие символы",
+    ),
+    ("{} is a file, not a folder", "{} — это файл, а не папка"),
+    ("cannot make {}: {}", "не удалось создать {}: {}"),
 ];

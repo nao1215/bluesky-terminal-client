@@ -301,10 +301,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter 다음/제출  tab 입력란 전환  esc 종료",
     ),
     (
-        "enter open  space choose this folder  h up  . hidden  ~ home  esc cancel",
-        "enter 열기  space 이 폴더 선택  h 위로  . 숨김 파일  ~ 홈  esc 취소",
-    ),
-    (
         "enter open/choose  space mark  h up  . hidden  ~ home  esc cancel",
         "enter 열기/선택  space 표시  h 위로  . 숨김 파일  ~ 홈  esc 취소",
     ),
@@ -950,4 +946,36 @@ pub const TABLE: &[(&str, &str)] = &[
         "the video's alt text is {} bytes; the limit is {}",
         "동영상 대체 텍스트가 {}바이트입니다. 한도는 {}바이트입니다",
     ),
+    (
+        "enter open  space choose this folder  n new folder  h up  . hidden  ~ home  esc cancel",
+        "enter 열기  space 이 폴더 선택  n 새 폴더  h 위로  . 숨김 파일  ~ 홈  esc 취소",
+    ),
+    (
+        "a new folder, when choosing a folder",
+        "새 폴더 만들기 (폴더를 고를 때)",
+    ),
+    ("make it", "만들기"),
+    ("new folder", "새 폴더"),
+    ("New folder:", "새 폴더:"),
+    (
+        "type a name for the new folder",
+        "새 폴더 이름을 입력하세요",
+    ),
+    (
+        "a folder name cannot contain / or \\",
+        "폴더 이름에는 / 나 \\ 를 쓸 수 없습니다",
+    ),
+    (
+        "a folder name cannot be . or ..",
+        "폴더 이름은 . 이나 .. 일 수 없습니다",
+    ),
+    (
+        "a folder name cannot contain control characters",
+        "폴더 이름에는 제어 문자를 쓸 수 없습니다",
+    ),
+    (
+        "{} is a file, not a folder",
+        "{}은(는) 폴더가 아니라 파일입니다",
+    ),
+    ("cannot make {}: {}", "{}을(를) 만들 수 없습니다: {}"),
 ];

@@ -1056,6 +1056,14 @@ impl App {
                 edit: Some(SettingEdit::Text(input)),
                 ..
             }) => input.insert_str(text),
+            Some(Overlay::Settings {
+                edit: Some(SettingEdit::Folder(b)),
+                ..
+            }) if b.naming.is_some() => {
+                if let Some(input) = &mut b.naming {
+                    input.insert_str(text);
+                }
+            }
             Some(Overlay::AddColumn {
                 query: Some(input), ..
             }) => input.insert_str(text),
