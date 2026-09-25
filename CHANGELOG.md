@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - A thread read ahead for the post the selection rests on has its pictures and avatars downloaded meanwhile too, so `v` opens it with them shown.
 - A video starts two round trips sooner with `Space` when the selection has rested on its post for a moment: its playlists are read meanwhile, and the connection to the video server opened.
+- Threads and videos are read ahead only while a list is shown, not for the replies of a thread already open. A thread that could not be read ahead says why as soon as `v` opens it; `R` reads it again.
 - Where IPv6 is listed first for a server but does not work, a new connection waited 20 seconds before it tried IPv4; it waits at most about 7. A server that does not answer at all is reported after 10 seconds instead of 30.
 
 ## [0.11.1] - 2026-09-25
