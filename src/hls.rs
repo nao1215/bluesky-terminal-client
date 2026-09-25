@@ -103,7 +103,7 @@ fn has_scheme(url: &str) -> bool {
     };
     let scheme = &url[..end];
     let mut chars = scheme.chars();
-    chars.next().is_some_and(char::is_alphabetic)
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
@@ -384,6 +384,9 @@ mod tests {
         "https://v.test/watch/x/360p/video0.ts?d=6"
     )]
     #[case("https://v.test/a/b.m3u8", "/c/d.ts", "https://v.test/c/d.ts")]
+    // A scheme is ASCII letters (RFC 3986 section 3.1): a segment named
+    // with another letter before a colon is a path.
+    #[case("https://v.test/a/b.m3u8", "é:1.ts", "https://v.test/a/é:1.ts")]
     #[case(
         "https://v.test/a/b.m3u8",
         "https://cdn.test/e.ts",

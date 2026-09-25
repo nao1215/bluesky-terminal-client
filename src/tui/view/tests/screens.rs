@@ -636,3 +636,29 @@ fn a_server_message_in_an_error_is_drawn_as_text() {
         );
     }
 }
+
+// With no room at all, the picture's box was one cell wider than the area
+// and the centering subtracted past zero.
+#[test]
+fn a_picture_fits_an_area_with_no_room() {
+    for area in [
+        Rect::new(3, 4, 0, 5),
+        Rect::new(3, 4, 5, 0),
+        Rect::new(3, 4, 0, 0),
+    ] {
+        let r = fit(area, (640, 480), (10, 20));
+        assert!(
+            r.width <= area.width && r.height <= area.height,
+            "{r:?} in {area:?}"
+        );
+        assert_eq!(
+            (r.x, r.y),
+            (3 + area.width / 2, 4 + area.height / 2),
+            "{r:?}"
+        );
+    }
+    assert_eq!(
+        fit(Rect::new(0, 0, 40, 10), (640, 480), (10, 20)).height,
+        10
+    );
+}

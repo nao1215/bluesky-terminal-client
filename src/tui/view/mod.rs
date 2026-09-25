@@ -231,8 +231,10 @@ fn fit(area: Rect, (w, h): (u32, u32), (cw, ch): (u16, u16)) -> Rect {
     let (cw, ch) = (f64::from(cw.max(1)), f64::from(ch.max(1)));
     let (aw, ah) = (f64::from(area.width) * cw, f64::from(area.height) * ch);
     let scale = (aw / f64::from(w.max(1))).min(ah / f64::from(h.max(1)));
-    let width = ((f64::from(w) * scale / cw).floor() as u16).clamp(1, area.width.max(1));
-    let height = ((f64::from(h) * scale / ch).floor() as u16).clamp(1, area.height.max(1));
+    // At least a cell when there is one, never more than the area.
+    let width = ((f64::from(w) * scale / cw).floor() as u16).clamp(area.width.min(1), area.width);
+    let height =
+        ((f64::from(h) * scale / ch).floor() as u16).clamp(area.height.min(1), area.height);
     Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,

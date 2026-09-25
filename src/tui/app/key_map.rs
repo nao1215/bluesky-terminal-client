@@ -123,13 +123,15 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
                 KeyCode::Char('r') => *replay += 1,
                 KeyCode::Char('d') => {
-                    let item = media[*index].clone();
+                    let Some(item) = media.get(*index).cloned() else {
+                        return Vec::new();
+                    };
                     self.info(n!("downloading…"));
                     let dir = self.download_dir();
                     return vec![Job::Download { media: item, dir }];
                 }
                 KeyCode::Right | KeyCode::Char('l' | 'j') => {
-                    *index = (*index + 1).min(media.len() - 1)
+                    *index = (*index + 1).min(media.len().saturating_sub(1))
                 }
                 KeyCode::Left | KeyCode::Char('h' | 'k') => *index = index.saturating_sub(1),
                 _ => {}
