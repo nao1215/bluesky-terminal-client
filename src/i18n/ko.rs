@@ -745,6 +745,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "동영상 다운로드가 중단되었습니다",
     ),
     (
+        "the video is larger than {} MB",
+        "동영상이 {} MB를 넘습니다",
+    ),
+    (
         "the video is larger than what is left of today's upload allowance",
         "동영상이 오늘 남은 업로드 허용량보다 큽니다",
     ),

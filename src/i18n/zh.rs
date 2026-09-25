@@ -678,6 +678,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("the tabs, in the order shown", "各标签页（按显示顺序）"),
     ("the video download stopped", "视频下载已中断"),
+    ("the video is larger than {} MB", "视频超过 {} MB"),
     (
         "the video is larger than what is left of today's upload allowance",
         "视频大小超过了今天剩余的上传额度",

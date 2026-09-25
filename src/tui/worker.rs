@@ -357,6 +357,139 @@ impl Job {
                 | Job::OpenLink { .. }
         )
     }
+
+    /// The answer of this job when it failed with `e` before it could say
+    /// anything else, so the screen stops waiting for it.
+    fn failed(self, e: Error) -> Event {
+        match self {
+            Job::Login { .. } => Event::LoggedIn(Err(e)),
+            Job::Timeline => Event::Timeline(Err(e)),
+            Job::PinnedFeeds => Event::PinnedFeeds(Err(e)),
+            Job::SearchPosts(query) => Event::SearchPosts {
+                query,
+                result: Err(e),
+            },
+            Job::SearchActors(query) => Event::SearchActors {
+                query,
+                result: Err(e),
+            },
+            Job::OpenProfile(_) => Event::Profile(Err(e)),
+            Job::Notifications => Event::Notifications {
+                seen_at: api::now(),
+                result: Err(e),
+            },
+            Job::UpdateSeen(_) => Event::Seen(Err(e)),
+            Job::Thread(uri) => Event::Thread {
+                uri,
+                result: Err(e),
+            },
+            Job::More { feed, cursor } => Event::More {
+                feed,
+                cursor,
+                result: Err(e),
+            },
+            Job::Convos { cursor } => Event::Convos {
+                cursor,
+                result: Err(e),
+            },
+            Job::Messages { convo_id, cursor } => Event::Messages {
+                convo_id,
+                cursor,
+                result: Err(e),
+            },
+            Job::SendMessage { convo_id, text } => Event::MessageSent {
+                convo_id,
+                text,
+                result: Err(e),
+            },
+            Job::ConvoFor { did } => Event::ConvoFor {
+                did,
+                result: Err(e),
+            },
+            Job::ReadConvo { convo_id } => Event::ConvoRead {
+                convo_id,
+                result: Err(e),
+            },
+            Job::Column {
+                id,
+                generation,
+                cursor,
+                ..
+            } => Event::Column {
+                id,
+                generation,
+                cursor,
+                result: Err(e),
+            },
+            Job::Like { subject } => Event::Liked {
+                post_uri: subject.uri,
+                result: Err(e),
+            },
+            Job::Unlike { post_uri, .. } => Event::Unliked {
+                post_uri,
+                result: Err(e),
+            },
+            Job::Repost { subject } => Event::Reposted {
+                post_uri: subject.uri,
+                result: Err(e),
+            },
+            Job::Unrepost { post_uri, .. } => Event::Unreposted {
+                post_uri,
+                result: Err(e),
+            },
+            Job::Follow { did } => Event::Followed {
+                did,
+                result: Err(e),
+            },
+            Job::Unfollow { did, .. } => Event::Unfollowed {
+                did,
+                result: Err(e),
+            },
+            Job::Mute { did, on } => Event::Muted {
+                did,
+                on,
+                result: Err(e),
+            },
+            Job::Block { did } => Event::Blocked {
+                did,
+                result: Err(e),
+            },
+            Job::Unblock { did, .. } => Event::Unblocked {
+                did,
+                result: Err(e),
+            },
+            Job::Post { reply, .. } => Event::Posted {
+                reply_to: reply.map(|r| r.parent.uri),
+                result: Err(e),
+            },
+            Job::DeletePost { uri } => Event::PostDeleted {
+                uri,
+                result: Err(e),
+            },
+            Job::LoadProfileEditor => Event::ProfileEditor(Err(e)),
+            Job::Download { .. } => Event::Downloaded(Err(e)),
+            Job::OpenLink { url, .. } => Event::Opened {
+                url,
+                result: Err(e),
+            },
+            Job::SaveProfile { .. } => Event::ProfileSaved(Err(e)),
+        }
+    }
+}
+
+/// Run `job` with `run`, answering it with its own failure if `run`
+/// panics: a thread that died would leave the job unanswered and take the
+/// jobs queued behind it along.
+fn guarded(job: Job, run: impl FnOnce(Job) -> Event) -> Event {
+    let kept = job.clone();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(job))).unwrap_or_else(|panic| {
+        let why = panic
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        kept.failed(Error::api(format!("internal error: {why}")))
+    })
 }
 
 /// Threads that run reads. The start asks for the timeline and the
@@ -391,14 +524,20 @@ impl Worker {
             editor_base: None,
         };
         let events = ev_tx.clone();
-        thread::spawn(move || {
-            for (seq, job, acting) in write_rx {
-                state.acting = acting;
-                if events.send((seq, state.run(job))).is_err() {
-                    break;
+        thread::Builder::new()
+            .name("bsky-write".into())
+            .spawn(move || {
+                for (seq, job, acting) in write_rx {
+                    state.acting = acting;
+                    if events
+                        .send((seq, guarded(job, |job| state.run(job))))
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-            }
-        });
+            })
+            .expect("the write thread starts");
         let (reads, read_rx) = channel::<(u64, Job, Option<Client>)>();
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
@@ -409,17 +548,23 @@ impl Worker {
             };
             let jobs = Arc::clone(&read_rx);
             let events = ev_tx.clone();
-            thread::spawn(move || {
-                loop {
-                    // Held only while waiting for a job, not while running it.
-                    let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                    let Ok((seq, job, acting)) = job else { break };
-                    state.acting = acting;
-                    if events.send((seq, state.run(job))).is_err() {
-                        break;
+            thread::Builder::new()
+                .name("bsky-read".into())
+                .spawn(move || {
+                    loop {
+                        // Held only while waiting for a job, not while running it.
+                        let job = jobs.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                        let Ok((seq, job, acting)) = job else { break };
+                        state.acting = acting;
+                        if events
+                            .send((seq, guarded(job, |job| state.run(job))))
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
-                }
-            });
+                })
+                .expect("a read thread starts");
         }
         Self {
             client,
@@ -453,8 +598,9 @@ impl Worker {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        // The worker only stops when the UI drops it, so a send cannot fail
-        // while the UI is still running.
+        // The worker only stops when the UI drops it, and a job that panics
+        // is answered like one that failed, so a send cannot fail while the
+        // UI is still running.
         let lane = if job.reads() {
             &self.reads
         } else {
@@ -994,10 +1140,11 @@ fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
                 }
                 None => (playlist.clone(), master),
             };
-            let mut all = Vec::new();
-            for seg in crate::hls::segments(&media_text, &media_url) {
-                all.extend(fetch_bytes(&agent, &seg)?);
-            }
+            let all = join_segments(
+                crate::hls::segments(&media_text, &media_url),
+                MAX_DOWNLOAD_BYTES,
+                |seg| fetch_bytes(&agent, seg),
+            )?;
             if all.is_empty() {
                 return Err(Error::api(crate::i18n::t(
                     "the video's playlist lists nothing to download",
@@ -1017,6 +1164,27 @@ fn download(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
         ))
     })?;
     save_new(dir, &name, &bytes)
+}
+
+/// The segments of a video fetched with `fetch` and joined, refused once
+/// they come to more than `limit` bytes: each is limited on its own, and a
+/// playlist may list any number of them.
+fn join_segments(
+    segments: impl IntoIterator<Item = String>,
+    limit: u64,
+    mut fetch: impl FnMut(&str) -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    let mut all = Vec::new();
+    for seg in segments {
+        all.extend(fetch(&seg)?);
+        if all.len() as u64 > limit {
+            return Err(Error::api(crate::i18n::tf(
+                "the video is larger than {} MB",
+                &[&(limit / (1024 * 1024)).to_string()],
+            )));
+        }
+    }
+    Ok(all)
 }
 
 /// `name` with the extension of the picture `bytes` hold. The server's
@@ -1102,6 +1270,66 @@ fn read_avatar(path: &std::path::Path) -> Result<(Vec<u8>, String)> {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    // A panic in a job ended its thread: the job never answered, so the
+    // screen waited for it for good, and a panic on the write thread left
+    // every later like, post and follow unsent.
+    #[test]
+    fn a_job_that_panics_is_answered_with_its_own_failure() {
+        let subject = StrongRef {
+            uri: "at://did:plc:a/app.bsky.feed.post/1".into(),
+            cid: "c".into(),
+        };
+        let event = guarded(Job::Like { subject }, |_| panic!("boom"));
+        match event {
+            Event::Liked {
+                post_uri,
+                result: Err(e),
+            } => {
+                assert_eq!(post_uri, "at://did:plc:a/app.bsky.feed.post/1");
+                assert!(e.message().contains("boom"), "{}", e.message());
+            }
+            other => panic!("{other:?}"),
+        }
+        let event = guarded(Job::Timeline, |_| panic!("{}", String::from("owned")));
+        assert!(
+            matches!(&event, Event::Timeline(Err(e)) if e.message().contains("owned")),
+            "{event:?}"
+        );
+    }
+
+    #[test]
+    fn a_job_that_does_not_panic_is_answered_as_it_ran() {
+        let event = guarded(Job::Timeline, |_| Event::Timeline(Ok(Page::from(vec![]))));
+        assert!(matches!(event, Event::Timeline(Ok(_))), "{event:?}");
+    }
+
+    #[test]
+    fn a_write_thread_keeps_running_after_a_job_panics() {
+        let (tx, rx) = channel::<Job>();
+        let (done_tx, done_rx) = channel::<Event>();
+        let handle = thread::spawn(move || {
+            for job in rx {
+                let event = guarded(job, |job| match job {
+                    Job::Follow { .. } => panic!("boom"),
+                    _ => Event::Seen(Ok(())),
+                });
+                done_tx.send(event).unwrap();
+            }
+        });
+        tx.send(Job::Follow {
+            did: "did:plc:b".into(),
+        })
+        .unwrap();
+        tx.send(Job::UpdateSeen("now".into())).unwrap();
+        drop(tx);
+        assert!(matches!(
+            done_rx.recv().unwrap(),
+            Event::Followed { result: Err(_), .. }
+        ));
+        assert!(matches!(done_rx.recv().unwrap(), Event::Seen(Ok(()))));
+        handle.join().unwrap();
+    }
 
     /// A stand-in server that answers createSession for did:plc:b and
     /// anything else with `{}`, and keeps the path and the token of each
@@ -1376,6 +1604,34 @@ mod tests {
         save_new(dir.path(), &name, b"x").unwrap();
         let again = save_new(dir.path(), &name, b"x").unwrap();
         assert!(again.to_string_lossy().ends_with(" (1).jpg"));
+    }
+
+    // The size limit held for each segment but not for the video: a playlist
+    // of many segments was kept in memory whole, however large.
+    #[test]
+    fn a_video_download_stops_once_its_segments_pass_the_limit() {
+        let segments = ["a", "b", "c", "d"].map(String::from);
+        let mut fetched = Vec::new();
+        let got = join_segments(segments.clone(), 15, |url| {
+            fetched.push(url.to_string());
+            Ok(vec![0; 10])
+        });
+        let e = got.unwrap_err();
+        assert!(e.message().contains("MB"), "{}", e.message());
+        assert_eq!(fetched, ["a", "b"], "fetched after the limit was passed");
+
+        let all = join_segments(segments.clone(), 40, |_| Ok(vec![1; 10])).unwrap();
+        assert_eq!(all.len(), 40);
+
+        let e = join_segments(segments, 40, |url| {
+            if url == "c" {
+                Err(Error::api("gone"))
+            } else {
+                Ok(vec![1; 10])
+            }
+        })
+        .unwrap_err();
+        assert_eq!(e.message(), "gone");
     }
 
     // A write that fails part way (a full disk) left a cut file under the
