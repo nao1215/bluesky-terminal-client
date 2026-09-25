@@ -82,7 +82,10 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
 
+      # bash on every runner: Windows would run PowerShell, where ${TARGET}
+      # is not the environment variable.
       - name: Build
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: cargo build --release --locked --target "${TARGET}"
