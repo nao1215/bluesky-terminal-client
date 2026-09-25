@@ -209,6 +209,77 @@ fn text(agent: &ureq::Agent, url: &str) -> Result<String, String> {
         .map_err(|_| crate::i18n::n!("the video's playlist is not text").into())
 }
 
+/// One agent for every video played, so the next one reuses the
+/// connections this one opened instead of paying for new handshakes.
+fn agent() -> &'static ureq::Agent {
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    AGENT.get_or_init(crate::api::agent)
+}
+
+/// Playlists read before the video is played: the URL played, the media
+/// playlist chosen from it, that playlist's text, and when they were read.
+type ReadPlaylists = Vec<(String, String, String, Instant)>;
+
+fn read_ahead_playlists() -> &'static Mutex<ReadPlaylists> {
+    static AHEAD: std::sync::OnceLock<Mutex<ReadPlaylists>> = std::sync::OnceLock::new();
+    AHEAD.get_or_init(Mutex::default)
+}
+
+/// Videos whose playlists are kept read ahead.
+const PLAYLISTS_KEPT: usize = 8;
+/// How long playlists read ahead are used for. The media playlist's address
+/// carries the session the video server opened for it, so they are used
+/// once, soon; a video played again reads them again.
+const PLAYLISTS_FOR: Duration = Duration::from_secs(300);
+
+/// The media playlist to play `playlist` from, and its text: the one read
+/// ahead, else read now. Reading them is two round trips before the first
+/// segment can be asked for.
+fn playlists(agent: &ureq::Agent, playlist: &str) -> Result<(String, String), String> {
+    if let Ok(mut kept) = read_ahead_playlists().lock()
+        && let Some(i) = kept.iter().position(|(p, _, _, _)| p == playlist)
+    {
+        let (_, url, media, at) = kept.remove(i);
+        if at.elapsed() < PLAYLISTS_FOR {
+            return Ok((url, media));
+        }
+    }
+    let master = text(agent, playlist)?;
+    Ok(match hls::pick_variant(&master, playlist) {
+        Some(url) => {
+            let media = text(agent, &url)?;
+            (url, media)
+        }
+        None => (playlist.to_string(), master),
+    })
+}
+
+/// Read the playlists of `playlist` on a thread of its own, for the video
+/// to start without them if it is played: `Space` on a post the selection
+/// rests on then waits only for the first segment. It also opens the
+/// connection to the video server.
+pub fn read_ahead(playlist: &str) {
+    let playlist = playlist.to_string();
+    if read_ahead_playlists().lock().is_ok_and(|kept| {
+        kept.iter()
+            .any(|(p, _, _, at)| *p == playlist && at.elapsed() < PLAYLISTS_FOR)
+    }) {
+        return;
+    }
+    crate::tui::spawn("bsky-playlists", move || {
+        let Ok((url, media)) = playlists(agent(), &playlist) else {
+            return;
+        };
+        if let Ok(mut kept) = read_ahead_playlists().lock() {
+            kept.retain(|(p, _, _, _)| *p != playlist);
+            if kept.len() == PLAYLISTS_KEPT {
+                kept.remove(0);
+            }
+            kept.push((playlist, url, media, Instant::now()));
+        }
+    });
+}
+
 /// Play to the end, or until `stop`.
 fn play(
     picker: &Picker,
@@ -217,18 +288,8 @@ fn play(
     size: &Mutex<(u16, u16)>,
     tx: &Sender<Msg>,
 ) -> Result<(), String> {
-    // One agent for every video played, so the next one reuses the
-    // connections this one opened instead of paying for new handshakes.
-    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    let agent = AGENT.get_or_init(crate::api::agent);
-    let master = text(agent, playlist)?;
-    let (media_url, media) = match hls::pick_variant(&master, playlist) {
-        Some(url) => {
-            let media = text(agent, &url)?;
-            (url, media)
-        }
-        None => (playlist.to_string(), master),
-    };
+    let agent = agent();
+    let (media_url, media) = playlists(agent, playlist)?;
     let segments = hls::segments(&media, &media_url);
     if segments.is_empty() {
         return Err(crate::i18n::n!("the video's playlist lists nothing to play").into());
@@ -599,6 +660,60 @@ mod tests {
     }
 
     /// Serve `routes` (path to body) over HTTP; any other path is a 404.
+    // Space on a video waited for its two playlists before the first
+    // segment could be asked for. Read ahead, they are not asked for again.
+    #[test]
+    fn playlists_read_ahead_are_not_read_again() {
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let counted = std::sync::Arc::clone(&hits);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req.split_whitespace().nth(1).unwrap_or("/").to_string();
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = if path.ends_with("playlist.m3u8") {
+                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360\n360p/video.m3u8\n"
+                } else {
+                    "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nvideo0.ts\n#EXT-X-ENDLIST\n"
+                };
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        let playlist = format!("{base}/watch/ahead-🎬/playlist.m3u8");
+        read_ahead(&playlist);
+        let start = Instant::now();
+        while !read_ahead_playlists()
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(p, _, _, _)| *p == playlist)
+        {
+            assert!(start.elapsed() < Duration::from_secs(5), "never read");
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Asked again while they are kept, they are not read twice.
+        read_ahead(&playlist);
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+        let (url, media) = playlists(agent(), &playlist).unwrap();
+        assert_eq!(url, format!("{base}/watch/ahead-🎬/360p/video.m3u8"));
+        assert_eq!(hls::segments(&media, &url).len(), 1);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+        // Played again, the video's playlists are read again: the session
+        // in the media playlist's address is used once.
+        playlists(agent(), &playlist).unwrap();
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 4);
+    }
+
     fn serve_routes(routes: Vec<(&'static str, Vec<u8>)>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();

@@ -314,6 +314,12 @@ fn event_loop(
         for url in app.take_pictures_ahead() {
             images.warm(&url);
         }
+        // Played only where pictures are shown.
+        for playlist in app.take_videos_ahead() {
+            if images.shows() {
+                player::read_ahead(&playlist);
+            }
+        }
         if images.poll() {
             dirty = true;
         }

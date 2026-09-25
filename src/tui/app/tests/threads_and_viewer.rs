@@ -554,3 +554,28 @@ fn the_pictures_of_a_thread_read_ahead_are_downloaded_ahead() {
         "each is asked for once"
     );
 }
+
+// Space on a video waited for its playlists; the selection resting on a
+// post with a video has them read, once while it rests there.
+#[test]
+fn the_video_of_the_post_the_selection_rests_on_is_readied() {
+    let mut app = logged_in();
+    app.handle_event(Event::Timeline(Ok(vec![with_pictures(
+        "at://a/p/1",
+        json!({"$type": "app.bsky.embed.video#view", "cid": "c",
+               "playlist": "https://video.bsky.app/watch/did%3Aplc%3Aa/bafv/playlist.m3u8",
+               "thumbnail": "https://video.cdn.test/t.jpg", "alt": "山の動画 🏔️"}),
+    )]
+    .into())));
+    assert!(app.take_videos_ahead().is_empty());
+    let t0 = Instant::now();
+    app.poll_read_ahead(t0);
+    assert!(app.take_videos_ahead().is_empty(), "not before it rests");
+    app.poll_read_ahead(t0 + read_ahead::REST);
+    assert_eq!(
+        app.take_videos_ahead(),
+        ["https://video.bsky.app/watch/did%3Aplc%3Aa/bafv/playlist.m3u8"]
+    );
+    app.poll_read_ahead(t0 + read_ahead::REST * 3);
+    assert!(app.take_videos_ahead().is_empty());
+}

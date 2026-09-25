@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Pictures from Bluesky, sent as WebP, are decoded two to three times faster, and a full-size photo opened with `Space` in about a third of the time: they are decoded with libwebp, at the size bsky keeps them.
 - A thread read ahead for the post the selection rests on has its pictures and avatars downloaded meanwhile too, so `v` opens it with them shown.
+- A video starts two round trips sooner with `Space` when the selection has rested on its post for a moment: its playlists are read meanwhile, and the connection to the video server opened.
 
 ## [0.11.1] - 2026-09-25
 

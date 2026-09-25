@@ -234,6 +234,65 @@ scenarios:
       - assert:
           mock: { name: api, path: /watch/v1/v/video.m3u8, query: { name: session_id, equals: "t" } }
 
+  # Space on a video waited for its two playlists before the first segment
+  # could be asked for. The selection resting on the post has them read
+  # meanwhile, so here the video starts long before their four seconds.
+  - name: the video of the post the selection rests on starts without waiting for its playlists
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v3
+                    cid: cid-v3
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Watch this 🎬", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v3/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v3/thumbnail.png"
+                      alt: "A test pattern"
+                      aspectRatio: { width: 16, height: 9 }
+          - { method: GET, path: /watch/v3/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /watch/v3/playlist.m3u8, delay: 2s, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v3/v/video.m3u8, delay: 2s, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v3/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 30s
+          session:
+            # The selection rests on the post while its playlists are read.
+            - expect_screen:
+                contains: ["Watch this 🎬", "▶ video"]
+                stable_for: 6s
+            - send: " "
+            # The one second of video plays through without the playlists'
+            # four seconds before it.
+            - expect_screen:
+                contains: ["1/1", "■ ended"]
+                timeout: 3s
+            - send: { key: esc }
+            - expect_screen:
+                contains: "Watch this"
+                not_contains: "1/1"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /watch/v3/playlist.m3u8, count: 1 }
+      - assert:
+          mock: { name: api, path: /watch/v3/v/video.m3u8, count: 1 }
+
   - name: a video plays when its playlist names files the scheme-relative and dot-segment way
     # Bluesky serves plain relative URLs today, but a playlist may name a
     # file any way RFC 3986 allows: here the variant is scheme-relative
