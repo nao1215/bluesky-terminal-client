@@ -247,9 +247,13 @@ fn aspect(r: Option<AspectRatio>) -> Option<(u32, u32)> {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ExternalView {
+    #[serde(deserialize_with = "any_string")]
     pub uri: String,
+    #[serde(deserialize_with = "any_string")]
     pub title: String,
+    #[serde(deserialize_with = "any_string")]
     pub description: String,
+    #[serde(deserialize_with = "any_opt_string")]
     pub thumb: Option<String>,
 }
 
@@ -826,14 +830,24 @@ pub struct Posts {
     pub posts: Vec<Post>,
 }
 
-/// `com.atproto.server.createSession` / `refreshSession` output.
-#[derive(Debug, Clone, Deserialize)]
+/// `com.atproto.server.createSession` / `refreshSession` output. Its
+/// `Debug` leaves the tokens out.
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionTokens {
     pub did: String,
     pub handle: String,
     pub access_jwt: String,
     pub refresh_jwt: String,
+}
+
+impl std::fmt::Debug for SessionTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionTokens")
+            .field("did", &self.did)
+            .field("handle", &self.handle)
+            .finish_non_exhaustive()
+    }
 }
 
 /// `com.atproto.repo.createRecord` output.
@@ -922,6 +936,40 @@ mod link_tests {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // A link card with a `null` title or a thumb that is not a string lost
+    // the whole card, and with it the link.
+    #[test]
+    fn a_link_card_with_an_odd_field_keeps_its_link() {
+        let p = post(json!({
+            "uri": "at://did:plc:a/app.bsky.feed.post/1", "cid": "c",
+            "author": {"did": "did:plc:a", "handle": "a.test"},
+            "record": {"text": "", "createdAt": "2026-09-22T00:00:00Z"},
+            "indexedAt": "2026-09-22T00:00:00Z",
+            "embed": {"$type": "app.bsky.embed.external#view",
+                      "external": {"uri": "https://a.test/card", "title": null, "description": 3, "thumb": 5}}
+        }));
+        match p.embed {
+            Some(Embed::External { external }) => {
+                assert_eq!(external.uri, "https://a.test/card");
+                assert_eq!(external.title, "");
+                assert_eq!(external.thumb, None);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn session_tokens_printed_for_debugging_hide_the_tokens() {
+        let t: SessionTokens = serde_json::from_value(json!({
+            "did": "did:plc:a", "handle": "alice.test",
+            "accessJwt": "access-secret", "refreshJwt": "refresh-secret"
+        }))
+        .unwrap();
+        let shown = format!("{t:?}");
+        assert!(!shown.contains("secret"), "{shown}");
+        assert!(shown.contains("alice.test"), "{shown}");
+    }
 
     fn post(value: Value) -> Post {
         serde_json::from_value(value).unwrap()
