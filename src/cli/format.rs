@@ -120,7 +120,7 @@ fn replies(node: &ThreadNode, depth: usize, out: &mut String) {
             }
         }
         ThreadNode::NotFound { uri } => {
-            out.push_str(&format!("\n{pad}[post not found] {uri}\n"));
+            out.push_str(&format!("\n{pad}[post not found] {}\n", one_line(uri)));
         }
         _ => out.push_str(&format!("\n{pad}[post you cannot see]\n")),
     }
@@ -383,6 +383,14 @@ mod tests {
             profile(&prof),
             account_line(&prof),
             notification(&n, Some(evil)),
+            // A reply the server says is gone is named by the URI it gave.
+            thread(&ThreadNode::Post {
+                post: Box::new(a_post("root", serde_json::Value::Null)),
+                parent: None,
+                replies: vec![ThreadNode::NotFound {
+                    uri: format!("at://x/{evil}"),
+                }],
+            }),
         ] {
             assert!(!out.chars().any(|c| c.is_control() && c != '\n'), "{out:?}");
         }

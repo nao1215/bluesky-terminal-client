@@ -364,6 +364,18 @@ pub fn default_download_dir() -> Option<PathBuf> {
 /// Environment variable naming the video service to upload videos to.
 pub const VIDEO_SERVICE_ENV: &str = "BSKY_VIDEO_SERVICE";
 
+/// The language `settings` name, else the one the environment asks for,
+/// else English.
+pub fn language(settings: &Settings, env: &Environment) -> crate::i18n::Lang {
+    use crate::i18n::Lang;
+    settings
+        .language
+        .as_deref()
+        .and_then(Lang::from_code)
+        .or_else(|| env.locale.as_deref().and_then(Lang::from_code))
+        .unwrap_or(Lang::En)
+}
+
 /// The video service: `BSKY_VIDEO_SERVICE`, else the settings, else
 /// Bluesky's.
 pub fn video_service(env: &Environment, settings: &Settings) -> (String, Source) {

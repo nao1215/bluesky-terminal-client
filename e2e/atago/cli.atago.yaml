@@ -126,9 +126,14 @@ scenarios:
             json: { uri: "at://did:plc:me/app.bsky.feed.post/new1", cid: "cid-new1" }
     steps:
       - *session
+      # The post's language is guessed from its letters: kanji alone is
+      # Japanese for someone whose system speaks Japanese.
       - run:
           command: 'bsky post "日本語👍🏽 #タグ https://example.com @bob.test"'
-          env: *env
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+            LC_ALL: ja_JP.UTF-8
       - assert:
           exit_code: 0
           stdout:
@@ -146,6 +151,7 @@ scenarios:
                 - { path: "$.record.facets[0].features[0].tag", equals: "タグ" }
                 - { path: "$.record.facets[1].features[0].uri", equals: "https://example.com" }
                 - { path: "$.record.facets[2].features[0].did", equals: "did:plc:bob" }
+                - { path: "$.record.langs[0]", equals: "ja" }
       # From stdin, with --json: the server's answer.
       - run:
           command: bsky post - --json
@@ -163,7 +169,9 @@ scenarios:
             path: /xrpc/com.atproto.repo.createRecord
             count: 2
             body:
-              json: { path: "$.record.text", equals: "from a pipe 🇯🇵" }
+              json:
+                - { path: "$.record.text", equals: "from a pipe 🇯🇵" }
+                - { path: "$.record.langs[0]", equals: "en" }
 
   - name: a post too long, or with pictures and a video, is refused before anything is sent
     mock_servers:

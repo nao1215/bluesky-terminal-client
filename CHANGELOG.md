@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- A post says which language it is in (`langs`), so Bluesky's language filters and translation work on it. The language is guessed from its letters: kana is Japanese, hangul Korean, and where languages share letters (kanji, the Latin alphabet) the language bsky is shown in decides.
+
+### Fixed
+
+- `bsky report --comment` sent a comment over the 2000-character limit and failed with the network error code; it is refused first with the count.
+- `bsky thread` printed the address of a reply that was not found, and the commands printed a server's error message, as they came: an escape sequence in them reached the terminal. Both are printed as text.
+
 ## [0.10.1] - 2026-09-24
 
 ### Fixed

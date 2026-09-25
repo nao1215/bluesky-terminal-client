@@ -610,3 +610,29 @@ fn every_view_on_a_cramped_screen_stays_inside_it() {
         }
     }
 }
+
+// A server's message in an error reaches the screen as text: an escape
+// sequence in it is left out, whether the error is on the status row or in
+// the box a failed list shows.
+#[test]
+fn a_server_message_in_an_error_is_drawn_as_text() {
+    let evil = "bad\u{1b}]52;c;cHduZWQ=\u{7}\u{1b}[2J\u{9b}31m";
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.handle_event(Event::Timeline(Ok(posts(3).into())));
+    app.handle_event(Event::Liked {
+        post_uri: "at://did:plc:a/app.bsky.feed.post/0".into(),
+        result: Err(crate::error::Error::api(evil)),
+    });
+    let status = render(&mut app, 100, 20);
+    assert!(status.contains("bad]52;c;cHduZWQ=[2J"), "{status}");
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.handle_event(Event::Timeline(Err(crate::error::Error::api(evil))));
+    let list = render(&mut app, 100, 20);
+    assert!(list.contains("bad]52;c;cHduZWQ=[2J"), "{list}");
+    for screen in [status, list] {
+        assert!(
+            !screen.chars().any(|c| c.is_control() && c != '\n'),
+            "{screen:?}"
+        );
+    }
+}

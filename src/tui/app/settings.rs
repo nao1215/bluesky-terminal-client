@@ -15,7 +15,7 @@ impl App {
         self.color_depth = depth;
         self.settings_writable = warning.is_none();
         // First, so that what is said from here on is in it.
-        crate::i18n::set(language_of(&settings, &self.env));
+        crate::i18n::set(crate::config::language(&settings, &self.env));
         let mut warning = warning;
         let index = match settings.theme.as_deref() {
             Some(name) => theme::index_of(name).unwrap_or_else(|| {
@@ -56,7 +56,7 @@ impl App {
 
     /// The language the client is shown in now.
     pub fn language(&self) -> Lang {
-        language_of(&self.settings, &self.env)
+        crate::config::language(&self.settings, &self.env)
     }
 
     /// A key on the list of languages: the one chosen is used at once and
@@ -489,15 +489,4 @@ impl App {
             ));
         }
     }
-}
-
-/// The language `settings` name, else the one the environment asks for,
-/// else English.
-fn language_of(settings: &Settings, env: &Environment) -> Lang {
-    settings
-        .language
-        .as_deref()
-        .and_then(Lang::from_code)
-        .or_else(|| env.locale.as_deref().and_then(Lang::from_code))
-        .unwrap_or(Lang::En)
 }

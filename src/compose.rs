@@ -42,6 +42,8 @@ pub fn video_alt_problem(alt: &str) -> Option<String> {
 }
 
 /// Send a post, uploading its pictures (up to four) or its one video first.
+/// `writer` is the language the user reads bsky in, which settles the
+/// post's language where its letters do not (see [`crate::langs::guess`]).
 /// Everything is prepared before anything is uploaded, so a file that cannot
 /// be read stops the post before anything reaches the server. Nothing is
 /// sent twice: a failure is returned, not tried again.
@@ -52,6 +54,7 @@ pub fn send_post(
     quote: Option<&StrongRef>,
     media: &[Attachment],
     video_service: &str,
+    writer: crate::i18n::Lang,
 ) -> Result<CreatedRecord> {
     let videos = media
         .iter()
@@ -108,7 +111,7 @@ pub fn send_post(
             ));
         }
     };
-    client.create_post(text, reply, quote, &embed)
+    client.create_post(text, reply, quote, &embed, writer)
 }
 
 #[cfg(test)]
