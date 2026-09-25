@@ -23,22 +23,14 @@ pub const MAX_VIDEO_ALT_BYTES: usize = 10000;
 
 /// Why `alt` cannot describe a video, if it cannot.
 pub fn video_alt_problem(alt: &str) -> Option<String> {
-    let alt = alt.trim();
-    let n = crate::api::grapheme_len(alt);
-    if n > MAX_VIDEO_ALT_GRAPHEMES {
-        return Some(crate::i18n::tf(
-            "the video's alt text is {} characters long; it can have {}",
-            &[&n.to_string(), &MAX_VIDEO_ALT_GRAPHEMES.to_string()],
-        ));
-    }
-    // Emoji reach the byte limit well under the character one, and then
-    // the count of characters would be under the limit it is compared to.
-    (alt.len() > MAX_VIDEO_ALT_BYTES).then(|| {
-        crate::i18n::tf(
-            "the video's alt text is {} bytes; the limit is {}",
-            &[&alt.len().to_string(), &MAX_VIDEO_ALT_BYTES.to_string()],
-        )
-    })
+    crate::api::length_problem(
+        alt.trim(),
+        (MAX_VIDEO_ALT_GRAPHEMES, MAX_VIDEO_ALT_BYTES),
+        (
+            crate::i18n::n!("the video's alt text is {} characters long; it can have {}"),
+            crate::i18n::n!("the video's alt text is {} bytes; the limit is {}"),
+        ),
+    )
 }
 
 /// Send a post, uploading its pictures (up to four) or its one video first.

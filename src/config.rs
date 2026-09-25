@@ -86,7 +86,7 @@ fn unknown_columns(data: &[u8]) -> std::collections::BTreeMap<String, Vec<serde_
             };
             let unknown: Vec<serde_json::Value> = list
                 .into_iter()
-                .filter(|c| serde_json::from_value::<ColumnSource>(c.clone()).is_err())
+                .filter(|c| ColumnSource::deserialize(c).is_err())
                 .collect();
             (!unknown.is_empty()).then_some((did, unknown))
         })
@@ -571,8 +571,8 @@ pub struct AccountStore {
 impl AccountStore {
     /// The accounts of the config directory `dir`; nothing is touched
     /// until a read or write.
-    pub fn open(dir: impl Into<PathBuf>) -> Result<Self> {
-        Ok(Self { dir: dir.into() })
+    pub fn open(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
     }
 
     fn accounts_dir(&self) -> PathBuf {
@@ -588,10 +588,9 @@ impl AccountStore {
         }
     }
 
-    /// Log every account out: each account file goes, one that cannot be
-    /// read too (that is the way out of it). The accounts that could be read
-    /// are returned, to say who was logged out.
-    pub fn remove_all(&self) -> Result<Vec<Session>> {
+    /// The session file of every account; none when there is no accounts
+    /// folder yet.
+    fn account_files(&self) -> Result<Vec<SessionStore>> {
         let dir = self.accounts_dir();
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
@@ -603,16 +602,24 @@ impl AccountStore {
                 )));
             }
         };
+        Ok(entries
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.ends_with(".json").then(|| SessionStore {
+                    dir: dir.clone(),
+                    file: name,
+                })
+            })
+            .collect())
+    }
+
+    /// Log every account out: each account file goes, one that cannot be
+    /// read too (that is the way out of it). The accounts that could be read
+    /// are returned, to say who was logged out.
+    pub fn remove_all(&self) -> Result<Vec<Session>> {
         let mut gone = Vec::new();
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let Some(stem) = name.strip_suffix(".json") else {
-                continue;
-            };
-            let store = SessionStore {
-                dir: dir.clone(),
-                file: format!("{stem}.json"),
-            };
+        for store in self.account_files()? {
             if let Ok(Some(s)) = store.load() {
                 gone.push(s);
             }
@@ -625,27 +632,8 @@ impl AccountStore {
 
     /// Every account, by handle.
     pub fn list(&self) -> Result<Vec<Session>> {
-        let dir = self.accounts_dir();
-        let entries = match fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => {
-                return Err(Error::io(crate::i18n::tf(
-                    "cannot read {}: {}",
-                    &[&(dir.display()).to_string(), &e.to_string()],
-                )));
-            }
-        };
         let mut all = Vec::new();
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let Some(stem) = name.strip_suffix(".json") else {
-                continue;
-            };
-            let store = SessionStore {
-                dir: dir.clone(),
-                file: format!("{stem}.json"),
-            };
+        for store in self.account_files()? {
             if let Some(s) = store.load()? {
                 all.push(s);
             }
@@ -979,7 +967,7 @@ mod tests {
             )
         );
         assert_eq!(
-            cache_dir_from(&both.0, &both.1, platform.clone()),
+            cache_dir_from(&both.0, &both.1, platform),
             (Some(PathBuf::from("var/cache")), Source::Env)
         );
 
@@ -1063,7 +1051,7 @@ mod tests {
         let env = Environment::from_vars(|k| match k {
             "BSKY_GRAPHICS" => Some("kitty".into()),
             "BSKY_DOWNLOAD_DIR" => Some("  ".into()),
-            "BSKY_BROWSER" => Some("".into()),
+            "BSKY_BROWSER" => Some(String::new()),
             "BSKY_CACHE_DIR" => Some("off".into()),
             _ => None,
         });
@@ -1128,7 +1116,7 @@ mod tests {
     #[test]
     fn new_tokens_are_kept_only_for_an_account_still_logged_in() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         store.save(&account("did:plc:a", "a.test")).unwrap();
         store.save(&account("did:plc:b", "b.test")).unwrap();
         let fresh = |did: &str, handle: &str| Session {
@@ -1156,7 +1144,7 @@ mod tests {
     #[test]
     fn logging_every_account_out_takes_a_broken_file_too() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         store.save(&account("did:plc:a", "a.test")).unwrap();
         fs::write(
             dir.path().join("accounts").join("did_plc_b.json"),
@@ -1176,7 +1164,7 @@ mod tests {
     #[test]
     fn accounts_are_listed_by_handle_and_found_by_handle_or_did() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         assert_eq!(store.current().unwrap(), None);
         store
             .save(&account("did:plc:work", "Work.example"))
@@ -1214,7 +1202,7 @@ mod tests {
     #[test]
     fn logging_one_account_out_keeps_the_other_and_moves_on_to_it() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         let a = account("did:plc:a", "a.test");
         let b = account("did:plc:b", "b.test");
         store.save(&a).unwrap();
@@ -1230,7 +1218,7 @@ mod tests {
     #[test]
     fn a_refresh_rewrites_only_its_own_account() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         store.save(&account("did:plc:a", "a.test")).unwrap();
         store.save(&account("did:plc:b", "b.test")).unwrap();
         let mut refreshed = account("did:plc:a", "a.test");
@@ -1248,7 +1236,7 @@ mod tests {
     fn account_files_are_owner_only() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path()).unwrap();
+        let store = AccountStore::open(dir.path());
         store.save(&account("did:plc:a", "a.test")).unwrap();
         let path = store.store_for("did:plc:a").path();
         let mode = fs::metadata(path).unwrap().permissions().mode();

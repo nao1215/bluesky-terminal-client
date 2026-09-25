@@ -137,21 +137,39 @@ pub const MAX_POST_BYTES: usize = 3000;
 pub const MAX_MESSAGE_GRAPHEMES: usize = 1000;
 pub const MAX_MESSAGE_BYTES: usize = 10000;
 
-/// Why `text` is too long for a direct message, if it is.
-pub fn message_length_problem(text: &str) -> Option<String> {
-    let len = grapheme_len(text);
-    if len > MAX_MESSAGE_GRAPHEMES {
+/// Why `text` is over a lexicon's limits, `graphemes` and `bytes`, or
+/// `None` when it fits. Both are checked: emoji reach the byte limit well
+/// under the grapheme one. The templates take the count and the limit.
+pub fn length_problem(
+    text: &str,
+    (graphemes, bytes): (usize, usize),
+    (graphemes_template, bytes_template): (&'static str, &'static str),
+) -> Option<String> {
+    let n = grapheme_len(text);
+    if n > graphemes {
         return Some(crate::i18n::tf(
-            "the message is {} characters; the limit is {}",
-            &[&len.to_string(), &MAX_MESSAGE_GRAPHEMES.to_string()],
+            graphemes_template,
+            &[&n.to_string(), &graphemes.to_string()],
         ));
     }
-    (text.len() > MAX_MESSAGE_BYTES).then(|| {
+    (text.len() > bytes).then(|| {
         crate::i18n::tf(
-            "the message is {} bytes; the limit is {}",
-            &[&(text.len()).to_string(), &MAX_MESSAGE_BYTES.to_string()],
+            bytes_template,
+            &[&text.len().to_string(), &bytes.to_string()],
         )
     })
+}
+
+/// Why `text` is too long for a direct message, if it is.
+pub fn message_length_problem(text: &str) -> Option<String> {
+    length_problem(
+        text,
+        (MAX_MESSAGE_GRAPHEMES, MAX_MESSAGE_BYTES),
+        (
+            crate::i18n::n!("the message is {} characters; the limit is {}"),
+            crate::i18n::n!("the message is {} bytes; the limit is {}"),
+        ),
+    )
 }
 
 /// Most graphemes and bytes `app.bsky.actor.profile` allows in the display
@@ -165,48 +183,39 @@ pub const MAX_DESCRIPTION_BYTES: usize = 2560;
 /// if one is. Measured as saved, without the spaces around it: the PDS
 /// refuses the whole record for either field, so the editor checks first.
 pub fn profile_length_problem(display_name: &str, description: &str) -> Option<String> {
-    let name = display_name.trim();
-    let about = description.trim();
-    let (n, d) = (grapheme_len(name), grapheme_len(about));
-    let (count, bytes, limit, which) = if n > MAX_DISPLAY_NAME_GRAPHEMES {
-        (n, false, MAX_DISPLAY_NAME_GRAPHEMES, 0)
-    } else if name.len() > MAX_DISPLAY_NAME_BYTES {
-        (name.len(), true, MAX_DISPLAY_NAME_BYTES, 0)
-    } else if d > MAX_DESCRIPTION_GRAPHEMES {
-        (d, false, MAX_DESCRIPTION_GRAPHEMES, 1)
-    } else if about.len() > MAX_DESCRIPTION_BYTES {
-        (about.len(), true, MAX_DESCRIPTION_BYTES, 1)
-    } else {
-        return None;
-    };
-    let template = match (which, bytes) {
-        (0, false) => crate::i18n::n!("the display name is {} characters; the limit is {}"),
-        (0, true) => crate::i18n::n!("the display name is {} bytes; the limit is {}"),
-        (_, false) => crate::i18n::n!("the description is {} characters; the limit is {}"),
-        (_, true) => crate::i18n::n!("the description is {} bytes; the limit is {}"),
-    };
-    Some(crate::i18n::tf(
-        template,
-        &[&count.to_string(), &limit.to_string()],
-    ))
+    length_problem(
+        display_name.trim(),
+        (MAX_DISPLAY_NAME_GRAPHEMES, MAX_DISPLAY_NAME_BYTES),
+        (
+            crate::i18n::n!("the display name is {} characters; the limit is {}"),
+            crate::i18n::n!("the display name is {} bytes; the limit is {}"),
+        ),
+    )
+    .or_else(|| {
+        length_problem(
+            description.trim(),
+            (MAX_DESCRIPTION_GRAPHEMES, MAX_DESCRIPTION_BYTES),
+            (
+                crate::i18n::n!("the description is {} characters; the limit is {}"),
+                crate::i18n::n!("the description is {} bytes; the limit is {}"),
+            ),
+        )
+    })
 }
 
 /// Why `text` is too long to post, by either limit of the post lexicon, or
 /// `None` when it fits.
 pub fn post_length_problem(text: &str) -> Option<String> {
-    let len = grapheme_len(text);
-    if len > MAX_POST_GRAPHEMES {
-        return Some(crate::i18n::tf(
-            "the post is {} characters; the limit is {}",
-            &[&len.to_string(), &MAX_POST_GRAPHEMES.to_string()],
-        ));
-    }
-    (text.len() > MAX_POST_BYTES).then(|| {
-        crate::i18n::tf(
-            "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)",
-            &[&(text.len()).to_string(), &MAX_POST_BYTES.to_string()],
-        )
-    })
+    length_problem(
+        text,
+        (MAX_POST_GRAPHEMES, MAX_POST_BYTES),
+        (
+            crate::i18n::n!("the post is {} characters; the limit is {}"),
+            crate::i18n::n!(
+                "the post is {} bytes; the limit is {} (emoji take up to 25 bytes each)"
+            ),
+        ),
+    )
 }
 
 /// The latest of some RFC 3339 timestamps, as it was written. Ones that do
@@ -415,7 +424,7 @@ impl UploadLimits {
         }?;
         let err = Error::api(crate::i18n::tf(
             "Bluesky does not take videos from this account now: {}",
-            &[&why.to_string()],
+            &[&why],
         ));
         Some(match hint {
             Some(h) => err.with_hint(h),
@@ -525,18 +534,20 @@ impl Client {
         pds
     }
 
+    /// A token for `aud` to act as the account for the one method `lxm`,
+    /// good for half an hour.
+    fn service_auth(&self, aud: &str, lxm: &str) -> Result<ServiceAuth> {
+        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
+        self.get(
+            "com.atproto.server.getServiceAuth",
+            &[("aud", aud), ("lxm", lxm), ("exp", exp.as_str())],
+        )
+    }
+
     /// Whether the video service will take a video of `len` bytes now.
     fn check_upload_limits(&self, video_service: &str, len: usize) -> Result<()> {
-        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
         let lxm = "app.bsky.video.getUploadLimits";
-        let auth: ServiceAuth = self.get(
-            "com.atproto.server.getServiceAuth",
-            &[
-                ("aud", did_web(video_service).as_str()),
-                ("lxm", lxm),
-                ("exp", exp.as_str()),
-            ],
-        )?;
+        let auth = self.service_auth(&did_web(video_service), lxm)?;
         let mut resp = self
             .agent
             .get(xrpc_url(video_service, lxm))
@@ -574,16 +585,7 @@ impl Client {
         // email, the daily allowance) comes with its reason, before the
         // file is sent.
         self.check_upload_limits(video_service, bytes.len())?;
-        let aud = self.pds_did();
-        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
-        let auth: ServiceAuth = self.get(
-            "com.atproto.server.getServiceAuth",
-            &[
-                ("aud", aud.as_str()),
-                ("lxm", "com.atproto.repo.uploadBlob"),
-                ("exp", exp.as_str()),
-            ],
-        )?;
+        let auth = self.service_auth(&self.pds_did(), "com.atproto.repo.uploadBlob")?;
         let nsid = "app.bsky.video.uploadVideo";
         let mut resp = self
             .agent
@@ -626,7 +628,7 @@ impl Client {
             if job.state == "JOB_STATE_FAILED" {
                 return Err(Error::api(crate::i18n::tf(
                     "the video service could not process {}: {}",
-                    &[shown, &(job.why()).to_string()],
+                    &[shown, &(job.why())],
                 )));
             }
             if std::time::Instant::now() >= deadline {
@@ -1349,32 +1351,6 @@ fn images_embed(images: &[PostImage]) -> Value {
     json!({"$type": "app.bsky.embed.images", "images": images})
 }
 
-/// Guess an image MIME type from its first bytes.
-#[cfg(test)]
-pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
-    match bytes {
-        [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
-        [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),
-        [
-            b'R',
-            b'I',
-            b'F',
-            b'F',
-            _,
-            _,
-            _,
-            _,
-            b'W',
-            b'E',
-            b'B',
-            b'P',
-            ..,
-        ] => Some("image/webp"),
-        [b'G', b'I', b'F', b'8', ..] => Some("image/gif"),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod stub_tests;
 
@@ -1680,14 +1656,5 @@ mod tests {
             v["images"][1]["aspectRatio"],
             json!({"width": 4, "height": 3})
         );
-    }
-
-    #[rstest]
-    #[case(b"\x89PNG\r\n".as_slice(), Some("image/png"))]
-    #[case(b"\xff\xd8\xff\xe0".as_slice(), Some("image/jpeg"))]
-    #[case(b"RIFF\0\0\0\0WEBPVP8 ".as_slice(), Some("image/webp"))]
-    #[case(b"hello".as_slice(), None)]
-    fn image_mime_is_sniffed(#[case] bytes: &[u8], #[case] want: Option<&str>) {
-        assert_eq!(sniff_image_mime(bytes), want);
     }
 }

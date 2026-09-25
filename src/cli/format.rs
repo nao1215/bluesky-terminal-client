@@ -177,7 +177,7 @@ pub fn list(v: &serde_json::Value) -> String {
     if !purpose.is_empty() {
         head.push_str(&format!(" · {}", one_line(purpose)));
     }
-    if let Some(n) = v.get("listItemCount").and_then(|n| n.as_u64()) {
+    if let Some(n) = v.get("listItemCount").and_then(serde_json::Value::as_u64) {
         head.push_str(&format!(
             " · {n} {}",
             if n == 1 { "member" } else { "members" }
