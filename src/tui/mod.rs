@@ -15,6 +15,7 @@ pub mod text;
 pub mod theme;
 pub mod thread;
 pub mod view;
+pub mod webp;
 pub mod worker;
 
 use std::io;

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- Pictures from Bluesky, sent as WebP, are decoded two to three times faster, and a full-size photo opened with `Space` in about a third of the time: they are decoded with libwebp, at the size bsky keeps them.
+
 ## [0.11.1] - 2026-09-25
 
 ### Changed
