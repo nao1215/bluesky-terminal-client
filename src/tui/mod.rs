@@ -311,6 +311,9 @@ fn event_loop(
             }
             dirty = true;
         }
+        for url in app.take_pictures_ahead() {
+            images.warm(&url);
+        }
         if images.poll() {
             dirty = true;
         }

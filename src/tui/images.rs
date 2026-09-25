@@ -63,6 +63,17 @@ const SHRUNK_SIDE: u32 = 1600;
 /// last frames are dropped, least recently drawn first.
 const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 
+/// The small version of a Bluesky avatar: a list draws avatars 4 cells
+/// wide, and the full-size one is many times the bytes. Other URLs are kept.
+pub fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
+    if url.contains("/img/avatar/") {
+        url.replacen("/img/avatar/", "/img/avatar_thumbnail/", 1)
+            .into()
+    } else {
+        url.into()
+    }
+}
+
 /// The key of a picture on the user's disk. Only [`Images::draw_file`] reads
 /// the file; a URL from the server that looks like this is never opened.
 fn file_key(path: &Path) -> String {

@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use super::{App, ThreadView, thread_rows};
 use crate::api::types::ThreadNode;
+use crate::tui::images::small_avatar;
 use crate::tui::worker::Job;
 
 /// How long the selection rests on a post before its thread is read: longer
@@ -16,6 +17,9 @@ pub(super) const REST: Duration = Duration::from_millis(400);
 pub(super) const FRESH: Duration = Duration::from_secs(15);
 /// Threads kept read ahead.
 const KEPT: usize = 8;
+/// Posts of a thread read ahead whose pictures are downloaded ahead too:
+/// as many as a list downloads ahead of the screen.
+const WARM: usize = 20;
 
 /// A thread read ahead.
 #[derive(Debug, Clone)]
@@ -37,6 +41,9 @@ pub(super) struct ReadAhead {
     pub(super) threads: Vec<ReadThread>,
     /// A thread read before this job may not show a write sent since.
     wrote_at: u64,
+    /// Pictures of the threads read ahead, to download before they are
+    /// shown.
+    pictures: Vec<String>,
 }
 
 impl ReadAhead {
@@ -85,6 +92,19 @@ impl App {
         if seq < self.read_ahead.wrote_at || seq < self.account_since {
             return;
         }
+        let (rows, _) = thread_rows::flatten(node.clone());
+        for post in rows.iter().filter_map(|r| r.post()).take(WARM) {
+            if let Some(url) = &post.author.avatar {
+                self.read_ahead
+                    .pictures
+                    .push(small_avatar(url).into_owned());
+            }
+            if let Some(embed) = &post.embed {
+                for i in embed.images().into_iter().take(4) {
+                    self.read_ahead.pictures.push(i.url.to_string());
+                }
+            }
+        }
         let kept = &mut self.read_ahead.threads;
         kept.retain(|t| t.uri != uri);
         if kept.len() == KEPT {
@@ -96,6 +116,13 @@ impl App {
             at: Instant::now(),
             node,
         });
+    }
+
+    /// The pictures of the threads read ahead since this was last asked,
+    /// for the event loop to download: the thread opens with its pictures
+    /// ready, not only its text.
+    pub fn take_pictures_ahead(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.read_ahead.pictures)
     }
 
     /// Fill `view` from the thread read ahead for its post, if there is one:

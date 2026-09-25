@@ -1,6 +1,7 @@
 //! Drawing. Every function here reads the [`App`] and writes to a frame;
 //! the only state it changes is each list's scroll offset.
 
+use crate::tui::images::small_avatar;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect, Size};
 use ratatui::style::Style;
@@ -65,16 +66,6 @@ const PREFETCH: usize = 4;
 /// Posts (or rows) further on whose pictures are only downloaded ahead.
 const WARM: usize = 20;
 
-/// The small version of a Bluesky avatar: a list draws avatars 4 cells
-/// wide, and the full-size one is many times the bytes. Other URLs are kept.
-fn small_avatar(url: &str) -> std::borrow::Cow<'_, str> {
-    if url.contains("/img/avatar/") {
-        url.replacen("/img/avatar/", "/img/avatar_thumbnail/", 1)
-            .into()
-    } else {
-        url.into()
-    }
-}
 /// The key hints are one row: the keys that act on a post are behind `.`,
 /// so the row stays short enough to read at a glance instead of becoming a
 /// wall of text that hides the posts. A language whose words are longer

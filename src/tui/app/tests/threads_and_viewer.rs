@@ -508,3 +508,49 @@ fn a_thread_that_failed_to_read_ahead_says_nothing() {
     let jobs = app.handle_key(key('v'));
     assert!(matches!(&jobs[..], [Job::Thread(_)]), "{jobs:?}");
 }
+
+// The thread read ahead opened at once, and then waited for its pictures:
+// they are downloaded ahead too, the small avatars as a list draws them.
+#[test]
+fn the_pictures_of_a_thread_read_ahead_are_downloaded_ahead() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    let node = serde_json::from_value(json!({
+        "$type": "app.bsky.feed.defs#threadViewPost",
+        "post": {"uri": "at://a/p/1", "cid": "c", "record": {"text": "山 🏔️"},
+                 "author": {"did": "did:plc:a", "handle": "a.test",
+                            "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:a/bafa@jpeg"},
+                 "embed": {"$type": "app.bsky.embed.images#view",
+                           "images": [{"thumb": "https://cdn.test/t1", "fullsize": "https://cdn.test/f1", "alt": ""},
+                                      {"thumb": "https://cdn.test/t2", "fullsize": "https://cdn.test/f2", "alt": ""}]}},
+        "replies": [{
+            "$type": "app.bsky.feed.defs#threadViewPost",
+            "post": {"uri": "at://r/1", "cid": "c", "record": {"text": "👨‍👩‍👧"},
+                     "author": {"did": "did:plc:r", "handle": "r.test",
+                                "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:r/bafr@jpeg"}},
+            "replies": []
+        }]
+    }))
+    .unwrap();
+    assert!(app.take_pictures_ahead().is_empty());
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(node),
+        },
+    );
+    assert_eq!(
+        app.take_pictures_ahead(),
+        [
+            "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:a/bafa@jpeg",
+            "https://cdn.test/t1",
+            "https://cdn.test/t2",
+            "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:r/bafr@jpeg",
+        ]
+    );
+    assert!(
+        app.take_pictures_ahead().is_empty(),
+        "each is asked for once"
+    );
+}
