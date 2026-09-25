@@ -96,15 +96,30 @@ fn base64url(s: &str) -> Option<Vec<u8>> {
 /// How long an upload may take.
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How long opening a connection may take, all of a host's addresses and
+/// the TLS handshake together. A TLS handshake has taken over 2 s on a slow
+/// link, so this leaves room for several.
+const CONNECT_WITHIN: Duration = Duration::from_secs(10);
+
 /// Connections kept open to one server between requests.
 const IDLE_PER_HOST: usize = 8;
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
 pub fn agent() -> ureq::Agent {
+    agent_config().into()
+}
+
+/// The configuration of [`agent`].
+fn agent_config() -> ureq::config::Config {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(Duration::from_secs(30)))
+        // A server that does not answer at all took the whole 30 s. ureq
+        // tries a host's addresses in turn and gives the first two thirds
+        // of the time; where IPv6 comes first and goes nowhere, every new
+        // connection waited 20 s before it tried IPv4.
+        .timeout_connect(Some(CONNECT_WITHIN))
         // A connection is kept for two minutes rather than ureq's 15 s: a
         // new one costs a TCP and a TLS handshake, which on a slow link took
         // longer than the pictures it carried, and a post is often read for
@@ -119,7 +134,6 @@ pub fn agent() -> ureq::Agent {
         .max_idle_connections(4 * IDLE_PER_HOST)
         .user_agent(USER_AGENT)
         .build()
-        .into()
 }
 
 /// Validate and normalize a service URL: an http(s) scheme and a host, in
@@ -1490,6 +1504,60 @@ mod tests {
         #[case] want: Option<i64>,
     ) {
         assert_eq!(jwt_expiry(token), want);
+    }
+
+    /// How long a request takes to a host whose first address goes nowhere
+    /// and whose second answers, as where IPv6 comes first and is broken:
+    /// `cargo test --release second_address -- --ignored --nocapture`.
+    /// 10.255.255.1 must not answer (it is routed nowhere on most networks).
+    #[cfg(not(coverage))]
+    #[test]
+    #[ignore = "measurement"]
+    fn second_address() {
+        use std::net::{SocketAddr, TcpListener};
+        use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
+        use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
+
+        #[derive(Debug)]
+        struct Dead(u16);
+        impl Resolver for Dead {
+            fn resolve(
+                &self,
+                _: &ureq::http::Uri,
+                _: &ureq::config::Config,
+                _: NextTimeout,
+            ) -> std::result::Result<ResolvedSocketAddrs, ureq::Error> {
+                let mut addrs = self.empty();
+                addrs.push(SocketAddr::from(([10, 255, 255, 1], self.0)));
+                addrs.push(SocketAddr::from(([127, 0, 0, 1], self.0)));
+                Ok(addrs)
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            for s in listener.incoming() {
+                let Ok(mut s) = s else { continue };
+                let _ = s.read(&mut [0; 4096]);
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+            }
+        });
+        let agent = ureq::Agent::with_parts(agent_config(), DefaultConnector::new(), Dead(port));
+        let t = std::time::Instant::now();
+        let r = agent.get(format!("http://dead.test:{port}/")).call();
+        println!(
+            "answered {:?} after {:?}",
+            r.map(|r| r.status()),
+            t.elapsed()
+        );
+    }
+
+    #[test]
+    fn opening_a_connection_is_bounded_apart_from_the_request() {
+        let t = agent_config().timeouts();
+        assert_eq!(t.connect, Some(CONNECT_WITHIN));
+        assert!(t.global.is_some_and(|g| g > CONNECT_WITHIN));
     }
 
     #[rstest]
