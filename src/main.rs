@@ -175,7 +175,7 @@ fn main() -> ExitCode {
             }
             let err = Error::new(Kind::Usage, first_paragraph(&e.to_string()))
                 .with_hint("run `bsky --help` for usage");
-            eprintln!("{err}");
+            eprintln!("{}", shown(&err));
             // The flags were not read, so --json is looked for by hand.
             if std::env::args_os().skip(1).any(|a| a == "--json") {
                 print_json_error(&err);
@@ -187,7 +187,7 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            let _ = writeln!(std::io::stderr(), "{err}");
+            let _ = writeln!(std::io::stderr(), "{}", shown(&err));
             let status = err.kind().exit_code();
             if json {
                 print_json_error(&err);
@@ -195,6 +195,13 @@ fn main() -> ExitCode {
             ExitCode::from(status)
         }
     }
+}
+
+/// An error as it is printed on stderr: as text only, since its message can
+/// hold what a server wrote, and a control character would reach the
+/// terminal as a command (set the clipboard or the title, clear the screen).
+fn shown(err: &Error) -> String {
+    crate::tui::text::drawable(&err.to_string()).into_owned()
 }
 
 /// An error as --json prints it on stdout.
@@ -251,6 +258,27 @@ mod tests {
         assert_eq!(
             usage_error(&["bsky", "chat", "a", "b", "c"]),
             "unexpected argument 'c' found"
+        );
+    }
+
+    // An error can carry what a server wrote (its message for a failed
+    // call): it reaches the terminal as text, whatever escape sequence the
+    // server put in it, with the hint still on its own line.
+    #[test]
+    fn a_server_message_in_an_error_is_printed_as_text() {
+        let err = Error::new(
+            Kind::Api,
+            "app.bsky.feed.getTimeline failed: bad\u{1b}]52;c;cHduZWQ=\u{7}\u{1b}[2J",
+        )
+        .with_hint("try again");
+        let shown = shown(&err);
+        assert!(
+            !shown.chars().any(|c| c.is_control() && c != '\n'),
+            "{shown:?}"
+        );
+        assert_eq!(
+            shown,
+            "error: app.bsky.feed.getTimeline failed: bad]52;c;cHduZWQ=[2J\nhint: try again"
         );
     }
 }
