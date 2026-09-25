@@ -15,6 +15,8 @@ impl App {
         }
         if job.reads() {
             self.reads_out.insert(self.sent);
+        } else {
+            self.read_ahead.wrote(self.sent);
         }
         self.sent
     }
@@ -30,7 +32,10 @@ impl App {
     /// the likes, reposts, and follows confirmed since it was asked for are
     /// put back on what it brought.
     pub(super) fn answer(&mut self, seq: Option<u64>, event: Event) -> Vec<Job> {
-        self.pending = self.pending.saturating_sub(1);
+        // A thread read ahead is not waited for.
+        if !matches!(event, Event::ReadAhead { .. }) {
+            self.pending = self.pending.saturating_sub(1);
+        }
         let read = seq.filter(|s| self.reads_out.remove(s));
         // The account the job was sent as: its write is answered, and the
         // same key may be pressed again, whichever account is in use now.
@@ -751,6 +756,13 @@ impl App {
                 }
                 self.fail(&e);
             }
+            Event::ReadAhead {
+                uri,
+                result: Ok(node),
+            } => self.read_ahead(uri, node),
+            // Nobody asked for it yet: `v` reads it again and says why it
+            // failed.
+            Event::ReadAhead { result: Err(_), .. } => {}
             Event::Thread { uri, result } => {
                 // Only a thread still waiting for it takes the answer; it
                 // need not be on top (one can be opened over a reload). Every

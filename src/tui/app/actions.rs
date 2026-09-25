@@ -60,11 +60,17 @@ impl App {
         let Some(post) = post else {
             return Vec::new();
         };
-        self.threads.push(ThreadView {
+        let mut view = ThreadView {
             uri: post.uri.clone(),
             ..ThreadView::default()
-        });
-        vec![Job::Thread(post.uri)]
+        };
+        let read = self.fill_from_read_ahead(&mut view);
+        self.threads.push(view);
+        if read {
+            vec![Job::Thread(post.uri)]
+        } else {
+            Vec::new()
+        }
     }
 
     pub(super) fn refresh(&mut self) -> Vec<Job> {

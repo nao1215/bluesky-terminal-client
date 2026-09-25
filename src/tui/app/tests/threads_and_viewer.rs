@@ -371,3 +371,140 @@ fn a_reply_shows_in_the_thread_it_was_sent_in() {
 }
 
 // H1b: a like still on its way, A -> B -> A, l sends a second Like.
+
+/// Rest the selection on the post shown for [`read_ahead::REST`], as the
+/// event loop's ticks would, and take the jobs, numbered.
+fn rest(app: &mut App) -> Vec<(u64, Job)> {
+    let t0 = Instant::now();
+    assert!(app.poll_read_ahead(t0).is_empty(), "not before it rests");
+    app.poll_read_ahead(t0 + read_ahead::REST)
+        .into_iter()
+        .map(|j| (app.stamp(&j), j))
+        .collect()
+}
+
+// v waited a round trip for the thread every time. The thread of the post
+// the selection rests on is read before v asks for it, and v shows it at
+// once without asking again.
+#[test]
+fn the_thread_of_the_post_the_selection_rests_on_is_shown_at_once() {
+    let mut app = logged_in();
+    let pending = app.pending;
+    let jobs = rest(&mut app);
+    assert!(
+        matches!(&jobs[..], [(_, Job::ReadAhead(u))] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+    assert_eq!(app.pending, pending, "the screen does not wait for it");
+    // Once while it rests there.
+    assert!(
+        app.poll_read_ahead(Instant::now() + read_ahead::FRESH)
+            .is_empty()
+    );
+    let seq = jobs[0].0;
+    app.handle_answer(
+        seq,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        },
+    );
+    assert_eq!(app.pending, pending);
+    let jobs = app.handle_key(key('v'));
+    assert!(jobs.is_empty(), "{jobs:?}");
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(th.list.items.len(), 3);
+    assert_eq!(th.list.selected, 1, "the opened post is selected");
+}
+
+// Moving on before the selection rests reads nothing: a held j reads no
+// thread of the posts it passes.
+#[test]
+fn a_post_passed_by_is_not_read_ahead() {
+    let mut app = logged_in();
+    let t0 = Instant::now();
+    assert!(app.poll_read_ahead(t0).is_empty());
+    app.handle_key(key('j'));
+    assert!(app.poll_read_ahead(t0 + read_ahead::REST / 2).is_empty());
+    app.handle_key(key('k'));
+    assert!(app.poll_read_ahead(t0 + read_ahead::REST).is_empty());
+    assert!(
+        app.poll_read_ahead(t0 + read_ahead::REST + read_ahead::REST / 2)
+            .is_empty()
+    );
+    assert!(!app.poll_read_ahead(t0 + read_ahead::REST * 2).is_empty());
+}
+
+// A like sent after the thread was asked for is not in what it brought:
+// shown as it came, the post would look unliked. v reads it again.
+#[test]
+fn a_thread_read_before_a_like_is_not_shown() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    press(&mut app, key('l'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        },
+    );
+    let jobs = app.handle_key(key('v'));
+    assert!(
+        matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+    assert!(app.threads.last().unwrap().list.items.is_empty());
+}
+
+// A thread read ahead a while ago is shown at once and read again, and the
+// new answer replaces it.
+#[test]
+fn an_old_thread_read_ahead_is_shown_while_it_is_read_again() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        },
+    );
+    for t in &mut app.read_ahead.threads {
+        t.at -= read_ahead::FRESH;
+    }
+    let jobs = app.handle_key(key('v'));
+    assert!(
+        matches!(&jobs[..], [Job::Thread(u)] if u == "at://a/p/1"),
+        "{jobs:?}"
+    );
+    let th = app.threads.last().unwrap();
+    assert!(!th.list.loaded);
+    assert_eq!(th.list.items.len(), 3);
+    app.handle_event(Event::Thread {
+        uri: "at://a/p/1".into(),
+        result: Ok(thread_json("at://a/p/1", &["at://r1", "at://r2"])),
+    });
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(th.list.items.len(), 4);
+}
+
+// A thread that failed to read ahead says nothing: nobody asked for it.
+#[test]
+fn a_thread_that_failed_to_read_ahead_says_nothing() {
+    let mut app = logged_in();
+    let jobs = rest(&mut app);
+    let status = app.status.clone();
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Err(crate::error::Error::api("HTTP 502")),
+        },
+    );
+    assert_eq!(app.status, status);
+    let jobs = app.handle_key(key('v'));
+    assert!(matches!(&jobs[..], [Job::Thread(_)]), "{jobs:?}");
+}

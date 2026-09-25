@@ -316,6 +316,11 @@ fn event_loop(
         if app.expire_status(std::time::Instant::now()) {
             dirty = true;
         }
+        // The thread of the post the selection rests on is read ahead; the
+        // screen does not change for it.
+        for job in app.poll_read_ahead(std::time::Instant::now()) {
+            worker.send(app.stamp(&job), job);
+        }
         // The Chat tab reads the server again now and then while it is shown.
         for job in app.poll_chat(std::time::Instant::now()) {
             worker.send(app.stamp(&job), job);

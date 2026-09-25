@@ -101,9 +101,11 @@ scenarios:
             # The tabs start the top row; no name of the app before them.
             - expect_screen:
                 matches: '^ 1 Timeline  +2 Chat'
+            # Long enough for the thread of the selected post to be read
+            # ahead.
             - expect_screen:
                 images: { count: 3 }
-                stable_for: 300ms
+                stable_for: 600ms
             - send: q
       - assert:
           exit_code: 0
@@ -133,12 +135,19 @@ scenarios:
           mock: { name: api, path: /img/alice.png, count: 1 }
       # The unshown authors have no avatar URL here, and nothing else was
       # fetched but the notifications, loaded in the background at the
-      # start: the pinned feeds wait for the first +. The four HEAD requests
-      # open the connections at the start.
+      # start, and the thread of the selected post, read ahead: the pinned
+      # feeds wait for the first +. The four HEAD requests open the
+      # connections at the start.
       - assert:
-          mock: { name: api, count: 9 }
+          mock: { name: api, count: 10 }
       - assert:
           mock: { name: api, method: HEAD, path: /xrpc/_health, count: 4 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/app.bsky.feed.getPostThread
+            count: 1
+            query: { name: uri, equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.notification.listNotifications, count: 1 }
 

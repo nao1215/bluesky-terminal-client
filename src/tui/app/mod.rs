@@ -29,6 +29,7 @@ mod answers;
 mod deck;
 mod key_map;
 mod messages;
+mod read_ahead;
 mod selection;
 mod settings;
 #[cfg(test)]
@@ -748,6 +749,8 @@ pub struct App {
     /// The number of the last profile asked for: an answer to an earlier
     /// one is of a profile left since.
     profile_asked: u64,
+    /// Threads read before `v` asks for them.
+    read_ahead: read_ahead::ReadAhead,
 }
 
 /// A question that takes a `y`, and what it is about.
@@ -938,6 +941,7 @@ impl App {
             session_since: 0,
             answering: None,
             profile_asked: 0,
+            read_ahead: read_ahead::ReadAhead::default(),
         };
         let jobs = if app.session.is_some() {
             app.startup_jobs()
