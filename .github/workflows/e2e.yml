@@ -56,9 +56,9 @@ jobs:
       # A released atago, checked against its checksums and its build
       # provenance before it runs.
       - name: Install atago
-        uses: nao1215/setup-atago@7cae89595fcbba334db0fe16fc9a24ed5b0a3fea # v0.1.2
+        uses: nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb # v0.1.3
         with:
-          version: v0.24.0
+          version: v0.25.0
           verify-attestation: "true"
 
       - name: Run atago E2E tests
