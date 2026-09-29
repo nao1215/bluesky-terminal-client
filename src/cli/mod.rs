@@ -240,10 +240,14 @@ impl Ctx<'_> {
 
 /// Run `cmd`, writing to stdout.
 pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
-    // A reader that stopped reading (`| head`) is not an error: what it
-    // wanted it has, so the command ends there, as the tools it is piped
-    // into expect.
-    match run_to(cmd, ctx) {
+    ended_by_reader(run_to(cmd, ctx))
+}
+
+/// A command's result, where a reader that stopped reading (`| head`) is
+/// not an error: what it wanted it has, so the command ends there, as the
+/// tools it is piped into expect.
+pub fn ended_by_reader(result: Result<()>) -> Result<()> {
+    match result {
         Err(e) if e.message() == PIPE_CLOSED => Ok(()),
         r => r,
     }
@@ -323,7 +327,7 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
 }
 
 /// Print `v` as one line of JSON.
-fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
+pub fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
     writeln!(out, "{v}").map_err(write_err)
 }
 
@@ -334,7 +338,7 @@ fn write_err(e: io::Error) -> Error {
     Error::io(format!("cannot write the output: {e}"))
 }
 
-fn text(out: &mut dyn Write, s: &str) -> Result<()> {
+pub fn text(out: &mut dyn Write, s: &str) -> Result<()> {
     out.write_all(s.as_bytes()).map_err(write_err)
 }
 
@@ -812,7 +816,10 @@ fn wrote(ctx: &Ctx, out: &mut dyn Write, v: Value, said: &str) -> Result<()> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one per option of `bsky post`, as clap parsed them"
+)]
 fn post(
     ctx: &Ctx,
     out: &mut dyn Write,
@@ -1260,10 +1267,20 @@ fn login(
     )
 }
 
-fn prompt(label: &str) -> Result<String> {
+/// Show a prompt on stderr, where the typed answer does not mix with the
+/// output. One that cannot be shown there is no reason not to read the
+/// answer: it may be piped in.
+fn show_prompt(label: &str) {
     let mut err = io::stderr();
-    let _ = write!(err, "{label}");
-    let _ = err.flush();
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "stderr is the only place for a prompt, and the answer is read whether it showed or not"
+    )]
+    let _: io::Result<()> = write!(err, "{label}").and_then(|()| err.flush());
+}
+
+fn prompt(label: &str) -> Result<String> {
+    show_prompt(label);
     let mut line = String::new();
     io::stdin()
         .lock()
@@ -1283,9 +1300,7 @@ fn read_password() -> Result<String> {
                 .with_hint("pass it with --password-stdin"),
         );
     }
-    let mut err = io::stderr();
-    let _ = write!(err, "Password: ");
-    let _ = err.flush();
+    show_prompt("Password: ");
     enable_raw_mode()
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot read the password: {e}")))?;
     let mut pw = String::new();
@@ -1307,8 +1322,17 @@ fn read_password() -> Result<String> {
             Err(e) => break Err(Error::io(format!("cannot read the password: {e}"))),
         }
     };
-    let _ = disable_raw_mode();
-    let _ = writeln!(err);
+    // The terminal is put back whatever was typed; one left in raw mode
+    // is the error to report, even after a password read well.
+    let restored = disable_raw_mode();
+    show_prompt("\n");
+    restored.map_err(|e| {
+        Error::new(
+            Kind::Terminal,
+            format!("cannot put the terminal back after the password: {e}"),
+        )
+        .with_hint("run `reset` to put the terminal back")
+    })?;
     result.map(|()| pw)
 }
 
