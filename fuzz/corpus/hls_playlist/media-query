@@ -1,0 +1,8 @@
+https://v.test/w/360p/video.m3u8
+#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXTINF:6.000,
+video0.ts?dur=6
+#EXTINF:5.300,
+video1.ts?dur=5.3
+#EXT-X-ENDLIST
