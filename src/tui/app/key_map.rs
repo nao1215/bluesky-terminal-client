@@ -38,7 +38,9 @@ impl App {
     }
 
     pub(super) fn login_key(&mut self, key: KeyEvent) -> Vec<Job> {
-        let form = self.login.as_mut().unwrap();
+        let Some(form) = self.login.as_mut() else {
+            return Vec::new();
+        };
         if form.pending {
             return Vec::new();
         }
@@ -87,7 +89,10 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // Read before the overlay is borrowed: a post with a video needs it.
         let video_service = self.video_service();
-        match self.overlay.as_mut().unwrap() {
+        let Some(overlay) = self.overlay.as_mut() else {
+            return Vec::new();
+        };
+        match overlay {
             // Taken above, before this borrow.
             Overlay::Actions { .. } => {}
             Overlay::Settings { selected, .. } => {

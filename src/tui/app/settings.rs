@@ -115,6 +115,13 @@ impl App {
         }
     }
 
+    /// Pictures could not be started (the system had no thread left for
+    /// their loaders): bsky runs without them, and says why.
+    pub fn pictures_failed(&mut self, why: &str) {
+        self.pictures = false;
+        self.error(crate::i18n::tf("cannot show pictures: {}", &[why]));
+    }
+
     /// The answer to pictures turned back on: whether the terminal draws
     /// them after all.
     pub fn pictures_back(&mut self, shown: bool) {

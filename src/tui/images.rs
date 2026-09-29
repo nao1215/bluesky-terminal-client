@@ -14,7 +14,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -118,26 +118,33 @@ impl<T> Queue<T> {
         })
     }
 
+    /// The jobs, locked. A thread that panicked while holding the lock
+    /// left them whole (each change is one push, pop or flag), so they are
+    /// used as they are rather than taking the UI down with it.
+    fn lock(&self) -> MutexGuard<'_, Jobs<T>> {
+        self.jobs.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Let every worker waiting on the queue return.
     fn close(&self) {
-        self.jobs.lock().expect("queue").closed = true;
+        self.lock().closed = true;
         self.ready.notify_all();
     }
 
     fn push(&self, job: T) {
-        self.jobs.lock().expect("queue").urgent.push(job);
+        self.lock().urgent.push(job);
         self.ready.notify_one();
     }
 
     fn push_background(&self, job: T) {
-        self.jobs.lock().expect("queue").background.push(job);
+        self.lock().background.push(job);
         self.ready.notify_one();
     }
 
     /// Move a job waiting in the background to the front. One not found has
     /// been taken already, and is not queued again: that would load it twice.
     fn promote(&self, is: impl Fn(&T) -> bool) {
-        let mut jobs = self.jobs.lock().expect("queue");
+        let mut jobs = self.lock();
         if let Some(i) = jobs.background.iter().rposition(is) {
             let job = jobs.background.remove(i);
             jobs.urgent.push(job);
@@ -146,7 +153,7 @@ impl<T> Queue<T> {
 
     /// The next job; `None` once the queue is closed.
     fn pop(&self) -> Option<T> {
-        let mut jobs = self.jobs.lock().expect("queue");
+        let mut jobs = self.lock();
         loop {
             if jobs.closed {
                 return None;
@@ -154,7 +161,10 @@ impl<T> Queue<T> {
             if let Some(job) = jobs.urgent.pop().or_else(|| jobs.background.pop()) {
                 return Some(job);
             }
-            jobs = self.ready.wait(jobs).expect("queue");
+            jobs = self
+                .ready
+                .wait(jobs)
+                .unwrap_or_else(PoisonError::into_inner);
         }
     }
 }
@@ -168,6 +178,14 @@ enum Slot {
     /// The download or decode failed at this time; it is tried again after
     /// [`RETRY_AFTER`], so a network blip does not leave a mark for good.
     Failed(Instant),
+}
+
+/// A picture asked for: ready, or not yet (or not at all), with the mark
+/// its box shows meanwhile. Asking is what starts its download and encode,
+/// so the answer is often not wanted.
+enum Pic<T> {
+    Ready(T),
+    Mark(&'static str),
 }
 
 /// A picture encoded for one box size.
@@ -219,17 +237,23 @@ pub struct Images {
 
 impl Images {
     /// Start the loader and encoder threads. Downloads are kept in `cache`
-    /// when there is one.
-    pub fn new(picker: Picker, cache: Option<DiskCache>) -> Self {
+    /// when there is one. Fails when the system cannot start a thread; the
+    /// ones started by then stop.
+    pub fn new(picker: Picker, cache: Option<DiskCache>) -> std::io::Result<Self> {
+        let mut images = Self::idle(picker.clone());
         let cache = cache.map(Arc::new);
         if let Some(c) = &cache {
-            let c = Arc::clone(c);
-            crate::tui::spawn("bsky-cache-trim", move || c.trim());
+            let kept = Arc::clone(c);
+            if crate::tui::spawn("bsky-cache-trim", move || kept.trim()).is_err() {
+                // Trimmed here then: the cache must not outgrow its budget
+                // because no thread was left for it.
+                c.trim();
+            }
         }
-        let fetch = Queue::new();
         let (img_tx, img_rx) = channel::<Loaded>();
+        images.fetch_rx = img_rx;
         for _ in 0..LOADERS {
-            let fetch = Arc::clone(&fetch);
+            let fetch = Arc::clone(&images.fetch);
             let img_tx: Sender<Loaded> = img_tx.clone();
             let cache = cache.clone();
             crate::tui::spawn("bsky-picture-load", move || {
@@ -239,7 +263,13 @@ impl Images {
                         return;
                     };
                     if let Source::Connect(url) = &source {
-                        let _ = agent.head(url).call();
+                        // Only the connection is wanted: a failure here is
+                        // met again, and shown, by the picture that uses it.
+                        #[expect(
+                            clippy::let_underscore_must_use,
+                            reason = "a warm-up; the downloads that follow report their own errors"
+                        )]
+                        let _: Result<_, ureq::Error> = agent.head(url).call();
                         continue;
                     }
                     let result = load(&agent, cache.as_deref(), &source);
@@ -247,12 +277,12 @@ impl Images {
                         return;
                     }
                 }
-            });
+            })?;
         }
-        let encode = Queue::new();
         let (done_tx, done_rx) = channel::<(Key, Option<Protocol>)>();
+        images.encode_rx = done_rx;
         for _ in 0..encoders() {
-            let encode = Arc::clone(&encode);
+            let encode = Arc::clone(&images.encode);
             let done_tx = done_tx.clone();
             let picker = picker.clone();
             crate::tui::spawn("bsky-picture-encode", move || {
@@ -284,10 +314,17 @@ impl Images {
                         return;
                     }
                 }
-            });
+            })?;
         }
+        Ok(images)
+    }
+
+    /// Images with no thread to load or encode them yet: what [`Images::new`]
+    /// starts from, and, never given any, what [`Images::none`] is. Dropped
+    /// before the threads start, it closes the queues, and the ones started
+    /// return.
+    fn idle(picker: Picker) -> Self {
         let f = picker.font_size();
-        let player_picker = picker.clone();
         Self {
             protocol_type: picker.protocol_type(),
             cell: (f.width, f.height),
@@ -296,13 +333,13 @@ impl Images {
             frame: 0,
             frame_size: Size::default(),
             placeholder: Style::new(),
-            fetch,
-            fetch_rx: img_rx,
-            encode,
-            encode_rx: done_rx,
+            fetch: Queue::new(),
+            fetch_rx: channel().1,
+            encode: Queue::new(),
+            encode_rx: channel().1,
             local: HashMap::new(),
-            tmux: player_picker.tmux_detected(),
-            picker: player_picker,
+            tmux: picker.tmux_detected(),
+            picker,
             video: None,
             viewer_open: false,
             shows: true,
@@ -310,8 +347,9 @@ impl Images {
     }
 
     /// For a terminal that cannot show pictures: every picture is left out.
+    /// Nothing is ever loaded, so no thread is started for it.
     pub fn none() -> Self {
-        let mut images = Self::new(Picker::halfblocks(), None);
+        let mut images = Self::idle(Picker::halfblocks());
         images.shows = false;
         images
     }
@@ -476,18 +514,18 @@ impl Images {
         }
         let area = area.intersection(frame.area());
         let size = (area.width, area.height);
-        match &self.video {
-            Some(v) if v.is(playlist, generation) => v.resize(size),
-            _ => {
-                self.video = Some(Player::start(
-                    self.picker.clone(),
-                    playlist,
-                    size,
-                    generation,
-                ))
+        let v = match &mut self.video {
+            Some(v) if v.is(playlist, generation) => {
+                v.resize(size);
+                v
             }
-        }
-        let v = self.video.as_ref().expect("started above");
+            video => video.insert(Player::start(
+                self.picker.clone(),
+                playlist,
+                size,
+                generation,
+            )),
+        };
         if let Some(p) = v.frame() {
             frame.render_widget(Image::new(p), area);
         }
@@ -522,21 +560,23 @@ impl Images {
         }
         let urls: Vec<&str> = urls.iter().copied().filter(|u| !u.is_empty()).collect();
         let mut mark = "…";
+        // Every one is asked for, the ones after the first ready too, so
+        // each is ready when it is the best there is.
+        let mut ready = None;
         for (i, url) in urls.iter().enumerate() {
             match self.request(url, area.width, area.height) {
-                Ok(_) => {
-                    // Everything after this one is still asked for, so it is
-                    // ready when it is the best there is.
-                    for rest in &urls[i + 1..] {
-                        let _ = self.request(rest, area.width, area.height);
-                    }
-                    let p = self.request(url, area.width, area.height).expect("ready");
-                    frame.render_widget(Image::new(p), area);
-                    return;
+                Pic::Ready(_) => {
+                    ready = ready.or(Some(*url));
                 }
-                Err(m) if i == 0 => mark = m,
-                Err(_) => {}
+                Pic::Mark(m) if i == 0 => mark = m,
+                Pic::Mark(_) => {}
             }
+        }
+        if let Some(url) = ready
+            && let Pic::Ready(p) = self.request(url, area.width, area.height)
+        {
+            frame.render_widget(Image::new(p), area);
+            return;
         }
         let style = self.placeholder;
         frame.render_widget(Paragraph::new(mark).style(style), area);
@@ -561,8 +601,8 @@ impl Images {
         }
         let style = self.placeholder;
         match self.request(url, area.width, area.height) {
-            Ok(p) => frame.render_widget(Image::new(p), area),
-            Err(mark) => frame.render_widget(Paragraph::new(mark).style(style), area),
+            Pic::Ready(p) => frame.render_widget(Image::new(p), area),
+            Pic::Mark(mark) => frame.render_widget(Paragraph::new(mark).style(style), area),
         }
     }
 
@@ -570,7 +610,7 @@ impl Images {
     /// so it is there when it scrolls into view.
     pub fn prefetch(&mut self, url: &str, width: u16, height: u16) {
         if width > 0 && height > 0 && !url.is_empty() {
-            let _ = self.request(url, width, height);
+            self.request(url, width, height);
         }
     }
 
@@ -587,15 +627,15 @@ impl Images {
     /// only the (fast) encode is left.
     pub fn warm(&mut self, url: &str) {
         if !url.is_empty() {
-            let _ = self.decoded(url, false);
+            self.decoded(url, false);
         }
     }
 
     /// The decoded picture, starting its download when needed; or the mark
     /// to show until it is there.
-    fn decoded(&mut self, url: &str, urgent: bool) -> Result<Arc<DynamicImage>, &'static str> {
+    fn decoded(&mut self, url: &str, urgent: bool) -> Pic<Arc<DynamicImage>> {
         if !self.shows {
-            return Err("");
+            return Pic::Mark("");
         }
         let frame_no = self.frame;
         let source = match self.local.get(url) {
@@ -627,15 +667,18 @@ impl Images {
             _ => {}
         }
         match slot {
-            Slot::Ready(img) => Ok(Arc::clone(img)),
-            Slot::Loading { .. } => Err("…"),
-            Slot::Failed(_) => Err("×"),
+            Slot::Ready(img) => Pic::Ready(Arc::clone(img)),
+            Slot::Loading { .. } => Pic::Mark("…"),
+            Slot::Failed(_) => Pic::Mark("×"),
         }
     }
 
     /// The encoded picture, or the mark to show until it is ready.
-    fn request(&mut self, url: &str, width: u16, height: u16) -> Result<&Protocol, &'static str> {
-        let img = self.decoded(url, true)?;
+    fn request(&mut self, url: &str, width: u16, height: u16) -> Pic<&Protocol> {
+        let img = match self.decoded(url, true) {
+            Pic::Ready(img) => img,
+            Pic::Mark(mark) => return Pic::Mark(mark),
+        };
         let key = (url.to_string(), width, height);
         let encode = &self.encode;
         let encoded = self.protocols.entry(key.clone()).or_insert_with(|| {
@@ -643,9 +686,9 @@ impl Images {
             Encoded::Pending
         });
         match encoded {
-            Encoded::Ready(p) => Ok(p),
-            Encoded::Pending => Err("…"),
-            Encoded::Failed => Err("×"),
+            Encoded::Ready(p) => Pic::Ready(p),
+            Encoded::Pending => Pic::Mark("…"),
+            Encoded::Failed => Pic::Mark("×"),
         }
     }
 }
@@ -773,7 +816,11 @@ impl DiskCache {
 
     /// Forget what is stored for `url`.
     fn remove(&self, url: &str) {
-        let _ = fs::remove_file(self.path(url));
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "the cache is best effort: a file left is read again, fails to decode again, and is downloaded over"
+        )]
+        let _: std::io::Result<()> = fs::remove_file(self.path(url));
     }
 
     fn path(&self, url: &str) -> PathBuf {
@@ -809,7 +856,11 @@ impl DiskCache {
         let data = fs::read(&path).ok()?;
         let body = data.strip_prefix(url.as_bytes())?.strip_prefix(b"\n")?;
         if let Ok(f) = fs::File::options().append(true).open(&path) {
-            let _ = f.set_modified(SystemTime::now());
+            #[expect(
+                clippy::let_underscore_must_use,
+                reason = "the time only orders what a trim removes first; the picture is shown either way"
+            )]
+            let _: std::io::Result<()> = f.set_modified(SystemTime::now());
         }
         Some(body.to_vec())
     }
@@ -837,7 +888,11 @@ impl DiskCache {
                 f.write_all(body)
             });
         if written.is_err() || fs::rename(&tmp, &path).is_err() {
-            let _ = fs::remove_file(&tmp);
+            #[expect(
+                clippy::let_underscore_must_use,
+                reason = "the cache is best effort; a temporary file left behind is removed by the next trim"
+            )]
+            let _: std::io::Result<()> = fs::remove_file(&tmp);
             return;
         }
         let len = (url.len() + 1 + body.len()) as u64;
@@ -871,7 +926,11 @@ impl DiskCache {
                     .elapsed()
                     .is_ok_and(|age| age > Duration::from_secs(3600));
             if stale_tmp {
-                let _ = fs::remove_file(&path);
+                #[expect(
+                    clippy::let_underscore_must_use,
+                    reason = "the cache is best effort; the next trim tries again"
+                )]
+                let _: std::io::Result<()> = fs::remove_file(&path);
                 continue;
             }
             files.push((modified, meta.len(), path));
@@ -970,10 +1029,13 @@ mod tests {
         ] {
             let mut samples = Vec::new();
             for _ in 0..5 {
-                #[allow(deprecated)]
+                #[allow(
+                    deprecated,
+                    reason = "a picker of a known cell size, which a test has no terminal to ask for"
+                )]
                 let mut picker = Picker::from_fontsize((10, 20).into());
                 picker.set_protocol_type(proto);
-                let mut images = Images::new(picker, None);
+                let mut images = Images::new(picker, None).unwrap();
                 let mut term = Terminal::new(TestBackend::new(160, 50)).unwrap();
                 let start = Instant::now();
                 loop {
@@ -1029,10 +1091,13 @@ mod tests {
 
     #[test]
     fn closing_the_viewer_sends_kittys_pictures_again() {
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ProtocolType::Kitty);
-        let mut images = Images::new(picker, None);
+        let mut images = Images::new(picker, None).unwrap();
         images
             .protocols
             .insert(("https://x/a.png".into(), 4, 2), Encoded::Failed);
@@ -1047,10 +1112,13 @@ mod tests {
 
     #[test]
     fn other_protocols_keep_their_pictures_when_the_viewer_closes() {
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ProtocolType::Sixel);
-        let mut images = Images::new(picker, None);
+        let mut images = Images::new(picker, None).unwrap();
         images
             .protocols
             .insert(("https://x/a.png".into(), 4, 2), Encoded::Failed);
@@ -1063,8 +1131,43 @@ mod tests {
     fn dropping_images_ends_their_threads() {
         // Many in a row would run out of threads if each left ten behind.
         for _ in 0..300 {
-            drop(Images::new(Picker::halfblocks(), None));
+            drop(Images::new(Picker::halfblocks(), None).unwrap());
         }
+    }
+
+    // A thread that panicked holding the queue's lock poisoned it, and the
+    // next push from the UI thread panicked too, leaving the terminal in
+    // raw mode. The jobs are whole, so the queue goes on.
+    #[test]
+    fn a_queue_a_panicking_thread_held_still_hands_out_its_jobs() {
+        let q: Arc<Queue<u32>> = Queue::new();
+        let held = Arc::clone(&q);
+        let panicked = thread::spawn(move || {
+            let _jobs = held.jobs.lock().unwrap();
+            panic!("a worker panics holding the lock");
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert!(q.jobs.is_poisoned());
+        q.push(1);
+        q.push_background(2);
+        q.promote(|j| *j == 2);
+        assert_eq!(q.pop(), Some(2));
+        assert_eq!(q.pop(), Some(1));
+        q.close();
+        assert_eq!(q.pop(), None);
+    }
+
+    #[test]
+    fn images_for_a_terminal_without_pictures_start_no_thread_and_load_nothing() {
+        let mut images = Images::none();
+        assert!(!images.shows());
+        images.warm("https://x/a.png");
+        images.prefetch("https://x/a.png", 4, 2);
+        assert!(images.slots.is_empty());
+        assert!(images.fetch.lock().urgent.is_empty());
+        assert!(images.fetch.lock().background.is_empty());
+        assert!(!images.poll());
     }
 
     #[test]
@@ -1163,7 +1266,7 @@ mod tests {
                 p
             })
             .collect();
-        let mut images = Images::new(Picker::halfblocks(), None);
+        let mut images = Images::new(Picker::halfblocks(), None).unwrap();
         let mut term = Terminal::new(TestBackend::new(40, 10)).unwrap();
         // Ten new pictures a frame, each frame waiting for its pictures, as
         // a reader scrolling down a long list.
@@ -1314,7 +1417,7 @@ mod latency {
         };
         let urls: Vec<&str> = list.lines().filter(|l| !l.is_empty()).collect();
         for warm in [false, true, false, true] {
-            let mut images = Images::new(Picker::halfblocks(), None);
+            let mut images = Images::new(Picker::halfblocks(), None).unwrap();
             if warm {
                 images.connect("https://cdn.bsky.app/");
             }
@@ -1382,7 +1485,10 @@ mod latency {
         let Ok(list) = std::env::var("BSKY_PICTURES") else {
             return;
         };
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
         let agent = crate::api::agent();

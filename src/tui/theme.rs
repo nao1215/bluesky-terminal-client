@@ -347,10 +347,34 @@ pub fn index_of(name: &str) -> Option<usize> {
         .position(|t| t.name.eq_ignore_ascii_case(name))
 }
 
-/// Index of `monochrome`, which `NO_COLOR` forces.
+/// Index of `monochrome`, which `NO_COLOR` forces. Found when bsky is
+/// built: a list without it does not compile.
 pub fn monochrome() -> usize {
-    index_of("monochrome").expect("monochrome is built in")
+    MONOCHROME
 }
+
+const MONOCHROME: usize = {
+    const fn same(a: &str, b: &str) -> bool {
+        let (a, b) = (a.as_bytes(), b.as_bytes());
+        if a.len() != b.len() {
+            return false;
+        }
+        let mut i = 0;
+        while i < a.len() {
+            if a[i] != b[i] {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+    let mut i = 0;
+    while i < THEMES.len() && !same(THEMES[i].name, "monochrome") {
+        i += 1;
+    }
+    assert!(i < THEMES.len(), "monochrome is built in");
+    i
+};
 
 /// How many colors the terminal can show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,13 +492,16 @@ fn to_256(c: Color) -> Color {
     // The 6x6x6 cube (16..=231) and the gray ramp (232..=255), whichever is
     // closer, as xterm lays them out.
     const LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+    // The first of two as near, as `min_by_key` picks.
     let nearest = |v: u8| {
-        LEVELS
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, l)| (i32::from(**l) - i32::from(v)).abs())
-            .map(|(i, _)| i as u8)
-            .unwrap()
+        let distance = |l: u8| (i32::from(l) - i32::from(v)).abs();
+        let mut best = 0;
+        for (i, l) in LEVELS.iter().enumerate() {
+            if distance(*l) < distance(LEVELS[best]) {
+                best = i;
+            }
+        }
+        best as u8
     };
     let (ri, gi, bi) = (nearest(r), nearest(g), nearest(b));
     let cube = (

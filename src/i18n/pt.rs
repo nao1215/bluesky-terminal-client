@@ -200,6 +200,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("cannot read {}: {}", "não foi possível ler {}: {}"),
     ("cannot remove {}: {}", "não foi possível remover {}: {}"),
     (
+        "cannot show pictures: {}",
+        "não foi possível mostrar as imagens: {}",
+    ),
+    (
         "cannot start the video decoder: {}",
         "não foi possível iniciar o decodificador de vídeo: {}",
     ),

@@ -301,7 +301,10 @@ mod tests {
     /// What ratatui-image sends for `img` in `area`: the iTerm2 sequence
     /// holds the PNG of exactly the pixels it would draw, and its size.
     fn sent(img: DynamicImage, area: Size) -> (String, Size) {
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ProtocolType::Iterm2);
         match picker

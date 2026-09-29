@@ -518,12 +518,15 @@ pub struct Worker {
     writes: Sender<(u64, Job, Option<Client>)>,
     reads: Sender<(u64, Job, Option<Client>)>,
     rx: Receiver<(u64, Event)>,
+    /// Jobs no thread was left to take, answered with their own failure.
+    unsent: std::cell::RefCell<std::collections::VecDeque<(u64, Event)>>,
 }
 
 impl Worker {
     /// Start the worker. `session` is the account to act as, if any; its
-    /// refreshed tokens are saved to its file in `accounts`.
-    pub fn spawn(session: Option<Session>, accounts: AccountStore) -> Self {
+    /// refreshed tokens are saved to its file in `accounts`. Fails when the
+    /// system cannot start its threads.
+    pub fn spawn(session: Option<Session>, accounts: AccountStore) -> std::io::Result<Self> {
         let client = session.map(|s| {
             let store = accounts.store_for(&s.did);
             Client::new(s, Some(store))
@@ -551,7 +554,7 @@ impl Worker {
                     break;
                 }
             }
-        });
+        })?;
         let (reads, read_rx) = channel::<(u64, Job, Option<Client>)>();
         let read_rx = Arc::new(Mutex::new(read_rx));
         for _ in 0..READERS {
@@ -575,15 +578,16 @@ impl Worker {
                         break;
                     }
                 }
-            });
+            })?;
         }
-        Self {
+        Ok(Self {
             client,
             accounts,
             writes,
             reads,
             rx: ev_rx,
-        }
+            unsent: Default::default(),
+        })
     }
 
     /// Act as `session` from the next job on. Done here, before any job for
@@ -609,19 +613,26 @@ impl Worker {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        // The worker only stops when the UI drops it, and a job that panics
-        // is answered like one that failed, so a send cannot fail while the
-        // UI is still running.
         let lane = if job.reads() {
             &self.reads
         } else {
             &self.writes
         };
-        let _ = lane.send((seq, job, acting));
+        // The threads only stop when the UI drops the worker, and a job that
+        // panics is answered like one that failed. Were they gone all the
+        // same, the job is answered with its failure rather than never, which
+        // left the screen waiting for it for good.
+        if let Err(std::sync::mpsc::SendError((seq, job, _))) = lane.send((seq, job, acting)) {
+            let failed = job.failed(Error::api("the worker has stopped; restart bsky"));
+            self.unsent.borrow_mut().push_back((seq, failed));
+        }
     }
 
     /// A finished job and the `seq` it was sent with, if any.
     pub fn try_recv(&self) -> Option<(u64, Event)> {
+        if let Some(unsent) = self.unsent.borrow_mut().pop_front() {
+            return Some(unsent);
+        }
         self.rx.try_recv().ok()
     }
 }
@@ -1260,11 +1271,20 @@ fn save_new_with(
             // full disk left a cut file that looked like the download, and
             // took its name from the next try.
             drop(file);
-            let _ = std::fs::remove_file(&path);
-            return Err(Error::io(crate::i18n::tf(
-                "cannot write {}: {}",
-                &[&(path.display()).to_string(), &e.to_string()],
-            )));
+            let shown = path.display().to_string();
+            let mut why = crate::i18n::tf("cannot write {}: {}", &[&shown, &e.to_string()]);
+            // Left behind, it looks like the download: the user is told.
+            match std::fs::remove_file(&path) {
+                Err(left) if left.kind() != std::io::ErrorKind::NotFound => {
+                    why.push_str("; ");
+                    why.push_str(&crate::i18n::tf(
+                        "cannot remove {}: {}",
+                        &[&shown, &left.to_string()],
+                    ));
+                }
+                _ => {}
+            }
+            return Err(Error::io(why));
         }
         return Ok(path);
     }
@@ -1311,6 +1331,35 @@ mod tests {
             matches!(&event, Event::Timeline(Err(e)) if e.message().contains("owned")),
             "{event:?}"
         );
+    }
+
+    // The threads never stop while the UI runs; were they gone all the
+    // same, a job sent to them was dropped, and the screen waited for its
+    // answer for good.
+    #[test]
+    fn a_job_no_thread_is_left_to_take_is_answered_with_its_failure() {
+        let (writes, _) = channel();
+        let (reads, _) = channel();
+        let (_answers, rx) = channel();
+        let dir = tempfile::tempdir().unwrap();
+        let worker = Worker {
+            client: Arc::new(Mutex::new(None)),
+            accounts: AccountStore::open(dir.path()),
+            writes,
+            reads,
+            rx,
+            unsent: Default::default(),
+        };
+        worker.send(7, Job::Timeline);
+        worker.send(8, Job::UpdateSeen("now".into()));
+        match worker.try_recv() {
+            Some((7, Event::Timeline(Err(e)))) => {
+                assert!(e.message().contains("stopped"), "{}", e.message());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(worker.try_recv(), Some((8, Event::Seen(Err(_))))));
+        assert!(worker.try_recv().is_none());
     }
 
     #[test]
@@ -1424,7 +1473,7 @@ mod tests {
             refresh_jwt: "A-refresh".into(),
         };
         accounts.save(&a).unwrap();
-        let worker = Worker::spawn(Some(a), accounts);
+        let worker = Worker::spawn(Some(a), accounts).unwrap();
         worker.send(
             1,
             Job::Login {
@@ -1668,6 +1717,35 @@ mod tests {
         assert_eq!(
             save_new(dir.path(), "a.jpg", b"whole").unwrap(),
             dir.path().join("a.jpg")
+        );
+    }
+
+    // The cut file could also fail to go (a folder the user cannot remove
+    // from); that was dropped silently, and the file looked like the
+    // download. The error says it is there.
+    #[cfg(unix)]
+    #[test]
+    fn a_cut_download_that_cannot_be_removed_is_named_in_the_error() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let set_mode = |mode| {
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        let err = save_new_with(dir.path(), "a.jpg", |f| {
+            f.write_all(b"half of it")?;
+            set_mode(0o500);
+            Err(std::io::Error::other("no space left on device"))
+        })
+        .unwrap_err();
+        set_mode(0o700);
+        let cut = dir.path().join("a.jpg");
+        assert!(cut.exists(), "the folder let it be removed; run as a user");
+        assert!(err.message().contains("no space left"), "{err}");
+        assert!(
+            err.message()
+                .contains(&format!("cannot remove {}", cut.display())),
+            "{err}"
         );
     }
 

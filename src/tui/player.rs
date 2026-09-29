@@ -66,17 +66,26 @@ impl Player {
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let shared = Arc::new(Mutex::new(size));
-        {
-            let (url, stop, shared) =
-                (playlist.to_string(), Arc::clone(&stop), Arc::clone(&shared));
-            crate::tui::spawn("bsky-player", move || {
-                let state = match play(&picker, &url, &stop, &shared, &tx) {
-                    Ok(()) => State::Ended,
-                    Err(why) => State::Warning(why),
-                };
-                let _ = tx.send(Msg::State(state));
-            });
-        }
+        let (url, thread_stop, thread_size) =
+            (playlist.to_string(), Arc::clone(&stop), Arc::clone(&shared));
+        let started = crate::tui::spawn("bsky-player", move || {
+            let state = match play(&picker, &url, &thread_stop, &thread_size, &tx) {
+                Ok(()) => State::Ended,
+                Err(why) => State::Warning(why),
+            };
+            #[expect(
+                clippy::let_underscore_must_use,
+                reason = "the player dropped, the viewer closed: nobody is left to tell how it ended"
+            )]
+            let _: Result<(), _> = tx.send(Msg::State(state));
+        });
+        let state = match started {
+            Ok(_) => State::Loading,
+            Err(e) => State::Warning(crate::i18n::tf(
+                "cannot load the video: {}",
+                &[&e.to_string()],
+            )),
+        };
         Self {
             playlist: playlist.to_string(),
             generation,
@@ -84,7 +93,7 @@ impl Player {
             stop,
             size: shared,
             frame: None,
-            state: State::Loading,
+            state,
         }
     }
 
@@ -204,6 +213,10 @@ fn stream(
     }
 }
 
+#[expect(
+    clippy::map_err_ignore,
+    reason = "the message is translated whole where it is shown, and the offset of the bad byte means nothing to the reader"
+)]
 fn text(agent: &ureq::Agent, url: &str) -> Result<String, String> {
     String::from_utf8(fetch(agent, url)?)
         .map_err(|_| crate::i18n::n!("the video's playlist is not text").into())
@@ -318,16 +331,24 @@ pub fn read_ahead(playlist: &str) {
         }
         a.playlists.push((playlist.to_string(), Reading::Now));
     }
-    let playlist = playlist.to_string();
-    crate::tui::spawn("bsky-playlists", move || {
-        let read = read_playlists(agent(), &playlist).ok();
+    let finish = move |playlist: &str, read: Option<(String, String)>| {
         if let Ok(mut a) = lock.lock()
             && let Some((_, r)) = a.playlists.iter_mut().find(|(p, _)| *p == playlist)
         {
             *r = Reading::Done(read, Instant::now());
         }
         done.notify_all();
+    };
+    let owned = playlist.to_string();
+    let started = crate::tui::spawn("bsky-playlists", move || {
+        let read = read_playlists(agent(), &owned).ok();
+        finish(&owned, read);
     });
+    if started.is_err() {
+        // Nothing is reading them: a video played reads them itself rather
+        // than waiting for a reading that never ends.
+        finish(playlist, None);
+    }
 }
 
 /// Play to the end, or until `stop`.
@@ -364,18 +385,27 @@ fn play(
                     Ok(true) => {}
                     Ok(false) => return,
                     Err(why) => {
-                        let _ = seg_tx.send(Err(why));
+                        #[expect(
+                            clippy::let_underscore_must_use,
+                            reason = "the player stopped taking pieces: the video was closed, and the error is not wanted"
+                        )]
+                        let _: Result<(), _> = seg_tx.send(Err(why));
                         return;
                     }
                 }
             }
-        });
+        })
+        .map_err(|e| crate::i18n::tf("cannot load the video: {}", &[&e.to_string()]))?;
     }
     let mut ended = 0;
     while ended < segments.len() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
         }
+        #[expect(
+            clippy::map_err_ignore,
+            reason = "RecvError says only that the download thread is gone, which the message says"
+        )]
         let piece = seg_rx
             .recv()
             .map_err(|_| crate::i18n::n!("the video download stopped").to_string())??;
@@ -521,6 +551,10 @@ impl<'a> Pacer<'a> {
         if due > now {
             thread::sleep(due - now);
         }
+        #[expect(
+            clippy::map_err_ignore,
+            reason = "a poisoned lock says only that the UI thread panicked, which the message says; it is translated whole where it is shown"
+        )]
         let (cols, rows) = *self
             .size
             .lock()
@@ -966,7 +1000,10 @@ mod tests {
     /// `cargo test --release video_picture -- --ignored --nocapture`.
     #[test]
     fn kitty_pictures_of_a_video_take_two_images_in_turn_and_redraw_every_cell() {
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ProtocolType::Kitty);
         let area = Size::new(40, 12);
@@ -1024,7 +1061,10 @@ mod tests {
             ProtocolType::Sixel,
             ProtocolType::Iterm2,
         ] {
-            #[allow(deprecated)]
+            #[allow(
+                deprecated,
+                reason = "a picker of a known cell size, which a test has no terminal to ask for"
+            )]
             let mut picker = Picker::from_fontsize((10, 20).into());
             picker.set_protocol_type(proto);
             for (cols, rows) in [(160u16, 45u16), (80, 24)] {
@@ -1075,7 +1115,10 @@ mod latency {
         let Ok(list) = std::env::var("BSKY_VIDEOS") else {
             return;
         };
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "a picker of a known cell size, which a test has no terminal to ask for"
+        )]
         let mut picker = Picker::from_fontsize((10, 20).into());
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
         for playlist in list.lines().filter(|l| !l.is_empty()) {

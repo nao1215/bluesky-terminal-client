@@ -355,25 +355,24 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
 /// `width` as they need; a hint is never split across rows.
 fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>> {
     let width = usize::from(width.max(1));
-    let mut lines: Vec<Vec<Span<'static>>> = vec![vec![Span::raw(" ")]];
+    let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
+    let mut row: Vec<Span<'static>> = vec![Span::raw(" ")];
     let mut used = 1;
     for (key, what) in hints {
         let w = crate::tui::text::cells(key) + 1 + crate::tui::text::cells(what);
-        let row = lines.last_mut().expect("one row");
         let first = row.len() == 1;
-        let gap = if first { 0 } else { 2 };
-        if !first && used + gap + w > width {
-            lines.push(vec![Span::raw(" ")]);
+        if !first && used + 2 + w > width {
+            lines.push(std::mem::replace(&mut row, vec![Span::raw(" ")]));
             used = 1;
         } else if !first {
             row.push(Span::raw("  "));
             used += 2;
         }
-        let row = lines.last_mut().expect("one row");
         row.push(Span::styled(*key, t.accent().bold()));
         row.push(Span::styled(format!(" {what}"), t.dim()));
         used += w;
     }
+    lines.push(row);
     lines
         .into_iter()
         .map(|spans| truncate_line(Line::from(spans), width))

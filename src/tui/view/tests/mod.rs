@@ -15,7 +15,7 @@ mod screens;
 mod themes_and_lists;
 
 fn render(app: &mut App, w: u16, h: u16) -> String {
-    let mut images = Images::new(Picker::halfblocks(), None);
+    let mut images = Images::new(Picker::halfblocks(), None).unwrap();
     let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
     term.draw(|f| draw(f, app, &mut images)).unwrap();
     let buf = term.backend().buffer().clone();
@@ -80,7 +80,7 @@ fn render_text_only(app: &mut App, w: u16, h: u16) -> String {
 /// Each row's cells, skipping the cells a wide character covers, so the
 /// text reads as a terminal shows it.
 fn cells(app: &mut App, w: u16, h: u16) -> Vec<Vec<String>> {
-    let mut images = Images::new(Picker::halfblocks(), None);
+    let mut images = Images::new(Picker::halfblocks(), None).unwrap();
     let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
     term.draw(|f| draw(f, app, &mut images)).unwrap();
     let buf = term.backend().buffer().clone();
@@ -152,7 +152,7 @@ fn column_app(n: usize) -> App {
 }
 
 fn render_buffer(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
-    let mut images = Images::new(Picker::halfblocks(), None);
+    let mut images = Images::new(Picker::halfblocks(), None).unwrap();
     let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
     term.draw(|f| draw(f, app, &mut images)).unwrap();
     term.backend().buffer().clone()

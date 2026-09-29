@@ -193,6 +193,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("cannot read {}: {}", "{} を読み込めません: {}"),
     ("cannot remove {}: {}", "{} を削除できません: {}"),
+    ("cannot show pictures: {}", "画像を表示できません: {}"),
     (
         "cannot start the video decoder: {}",
         "動画デコーダを起動できません: {}",

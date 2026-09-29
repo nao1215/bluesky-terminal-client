@@ -45,7 +45,13 @@ impl Input {
 }
 
 /// Whether a UTF-16 code unit is half of a surrogate pair.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows console reader uses it; tests on every system do"
+    )
+)]
 fn is_surrogate(unit: u16) -> bool {
     (0xD800..=0xDFFF).contains(&unit)
 }
@@ -56,12 +62,24 @@ fn is_surrogate(unit: u16) -> bool {
 /// and the order high-down, low-down, high-up, low-up both give the
 /// character once.
 #[derive(Debug, Default)]
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows console reader uses it; tests on every system do"
+    )
+)]
 struct Surrogates {
     high: Option<u16>,
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows console reader uses it; tests on every system do"
+    )
+)]
 impl Surrogates {
     /// The character a record completes, if any. A low surrogate without a
     /// high one before it is dropped, as is a high one another high one

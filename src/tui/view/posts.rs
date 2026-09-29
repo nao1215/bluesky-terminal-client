@@ -644,7 +644,10 @@ pub(super) fn draw_accounts(
 }
 
 /// A list whose entries are an avatar beside two lines of text.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each list passes its own texts and how to read its entries; a struct for them would be built once per call"
+)]
 pub(super) fn draw_two_line_rows<T>(
     frame: &mut Frame,
     area: Rect,

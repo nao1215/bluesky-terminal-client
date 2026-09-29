@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- When the terminal could not be put back on exit, bsky stopped at the first step that failed, which could leave raw mode or the alternate screen on, and said nothing. It now takes every step and reports what failed, with a hint to run `reset`; after a clean quit that is exit 2.
+- Choosing another account in the account list (`A`) when the choice cannot be saved for the next start says so, instead of starting as the previous account next time without a word.
+- A download that fails part way and whose partial file cannot be removed names that file in the error, so it is not taken for the download.
+- When the system cannot start another thread, bsky no longer panics: it exits 2 at the start with the reason, runs without pictures and says why, or shows why a video cannot play.
+
 ## [0.13.0] - 2026-09-29
 
 ### Added
