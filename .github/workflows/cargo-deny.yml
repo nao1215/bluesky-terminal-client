@@ -47,5 +47,5 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
 
-            - name: cargo deny check ${{ matrix.checks }}
+      - name: cargo deny check ${{ matrix.checks }}
         run: cargo deny --locked --all-features check --hide-inclusion-graph ${{ matrix.checks }}
