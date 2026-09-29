@@ -260,7 +260,13 @@ impl SettingsStore {
             ))
         })?;
         let path = self.path();
-        let mut value = serde_json::to_value(settings).expect("settings serialize");
+        let cannot_write = |e: &dyn std::fmt::Display| {
+            Error::io(crate::i18n::tf(
+                "cannot write {}: {}",
+                &[&(path.display()).to_string(), &e.to_string()],
+            ))
+        };
+        let mut value = serde_json::to_value(settings).map_err(|e| cannot_write(&e))?;
         // The columns a newer version wrote go back after the ones this
         // version keeps, for that version to show again.
         if !settings.unknown_columns.is_empty()
@@ -280,14 +286,9 @@ impl SettingsStore {
                 }
             }
         }
-        let mut json = serde_json::to_vec_pretty(&value).expect("settings serialize");
+        let mut json = serde_json::to_vec_pretty(&value).map_err(|e| cannot_write(&e))?;
         json.push(b'\n');
-        write_private(&path, &json).map_err(|e| {
-            Error::io(crate::i18n::tf(
-                "cannot write {}: {}",
-                &[&(path.display()).to_string(), &e.to_string()],
-            ))
-        })
+        write_private(&path, &json).map_err(|e| cannot_write(&e))
     }
 }
 
@@ -451,7 +452,11 @@ pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
             .open(&probe)
         {
             Ok(_) => {
-                let _ = fs::remove_file(&probe);
+                #[expect(
+                    clippy::let_underscore_must_use,
+                    reason = "the folder took a new file, which is what is asked; refusing it for a probe left behind would refuse a folder that works"
+                )]
+                let _: std::io::Result<()> = fs::remove_file(&probe);
                 return Ok(());
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -521,13 +526,14 @@ impl SessionStore {
             ))
         })?;
         let path = self.path();
-        let json = serde_json::to_vec_pretty(session).expect("session serializes");
-        write_private(&path, &json).map_err(|e| {
+        let cannot_write = |e: &dyn std::fmt::Display| {
             Error::io(crate::i18n::tf(
                 "cannot write {}: {}",
                 &[&(path.display()).to_string(), &e.to_string()],
             ))
-        })
+        };
+        let json = serde_json::to_vec_pretty(session).map_err(|e| cannot_write(&e))?;
+        write_private(&path, &json).map_err(|e| cannot_write(&e))
     }
 
     /// Remove the saved session. Returns whether a session existed.
@@ -702,14 +708,15 @@ impl AccountStore {
             ))
         })?;
         let path = self.dir.join(ACCOUNTS_FILE);
-        let mut json = serde_json::to_vec_pretty(&c).expect("accounts serialize");
-        json.push(b'\n');
-        write_private(&path, &json).map_err(|e| {
+        let cannot_write = |e: &dyn std::fmt::Display| {
             Error::io(crate::i18n::tf(
                 "cannot write {}: {}",
                 &[&(path.display()).to_string(), &e.to_string()],
             ))
-        })
+        };
+        let mut json = serde_json::to_vec_pretty(&c).map_err(|e| cannot_write(&e))?;
+        json.push(b'\n');
+        write_private(&path, &json).map_err(|e| cannot_write(&e))
     }
 }
 
@@ -742,9 +749,14 @@ fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
         drop(file);
         fs::rename(&tmp, path)
     };
-    write().inspect_err(|_| {
-        // The temporary file holds the tokens; it must not be left behind.
-        let _ = fs::remove_file(&tmp);
+    // The temporary file holds the tokens; it must not be left behind, and
+    // when it cannot be removed the error says where it is.
+    write().map_err(|e| match fs::remove_file(&tmp) {
+        Err(left) if left.kind() != std::io::ErrorKind::NotFound => std::io::Error::new(
+            e.kind(),
+            format!("{e}; {} is left behind: {left}", tmp.display()),
+        ),
+        _ => e,
     })
 }
 
