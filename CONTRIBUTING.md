@@ -37,6 +37,14 @@ Write a scenario for every behavior you add or change, including how it fails. W
 
 `bench/himorime.yaml` measures start-up, the commands, and the client from start to its first post, against a stand-in server. Every pull request is compared with its base by `.github/workflows/bench.yml`; see [bench/README.md](bench/README.md).
 
+## Fuzzing
+
+`fuzz/` holds cargo-fuzz targets for the parsers that read untrusted input: `hls_demux` (the MPEG-TS demuxer), `hls_playlist` (playlists and URL resolution), and `facets_detect` (links, mentions, and tags in a post). Each checks properties, not only that nothing panics: the demuxer gives the same frames however the stream is split, a chosen variant is one the playlist lists, and facet ranges fall on character boundaries without overlapping.
+
+bsky has no library target, so a target includes the file it tests with `#[path = "../../src/..."] mod ...;`. Only a file that uses nothing else from the crate can be included that way; keep `src/hls.rs` and `src/api/facets.rs` free of `use crate::`.
+
+Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`). `just fuzz hls_demux -max_total_time=60` runs one target; new inputs go to the ignored `fuzz/work/`, and `fuzz/corpus/<target>/` holds the committed seeds. Pull requests that touch those files or `fuzz/` build the targets and run each over its seeds; `.github/workflows/fuzz.yml` explores every night. When it finds a crash, add the input to `fuzz/corpus/<target>/` and to a unit test before fixing it.
+
 ## Screenshots
 
 The pictures in the README are recorded with `doc/record-demo.sh` (kitty, xdotool and ffmpeg on X11). The chat, accounts and columns pictures use `doc/demo-server.py`, a stand-in server with made-up accounts, so no real account's messages are shown.

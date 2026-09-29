@@ -14,6 +14,7 @@ on:
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
       - ".github/workflows/rust.yml"
+      - "fuzz/**"
   pull_request:
     paths:
       - "src/**"
@@ -24,6 +25,7 @@ on:
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
       - ".github/workflows/rust.yml"
+      - "fuzz/**"
 
 concurrency:
   group: rust-${{ github.ref }}
@@ -175,3 +177,54 @@ jobs:
             exit 1
           fi
           echo "release toolchain ${pin}, rust-version ${msrv}"
+
+  # The fuzz targets include src/hls.rs and src/api/facets.rs by path, so a
+  # change there can break a build that only fuzz.yml runs, at night. When they
+  # or fuzz/ change, build the targets and run each over its committed seeds
+  # (no exploration; that stays in fuzz.yml). Other changes skip the nightly
+  # toolchain and cargo-fuzz.
+  fuzz-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check whether the fuzzed code changed
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "${EVENT}" = workflow_dispatch ] || [ -z "${BASE}" ] || ! git cat-file -e "${BASE}^{commit}"; then
+            run=true
+          elif git diff --quiet "${BASE}" HEAD -- src/hls.rs src/api/facets.rs src/api/tlds.txt fuzz/; then
+            run=false
+          else
+            run=true
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust nightly
+        if: steps.changed.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-fuzz
+        if: steps.changed.outputs.run == 'true'
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: cargo-fuzz@0.13.2
+
+      # The target is explicit: cargo-fuzz from install-action is a musl binary
+      # and would build for musl, which AddressSanitizer does not support.
+      - name: Build the fuzz targets and run their seeds
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          cargo fuzz build --target x86_64-unknown-linux-gnu
+          for target in $(cargo fuzz list); do
+            cargo fuzz run --target x86_64-unknown-linux-gnu "${target}" -- -runs=0
+          done

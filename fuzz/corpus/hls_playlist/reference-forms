@@ -1,0 +1,11 @@
+https://v.test/a/b/c.m3u8?x=1#f
+/c/d.ts
+é:1.ts
+//cdn.test/x/seg0.ts
+../c/seg0.ts
+./seg0.ts
+../../../d.ts
+?y=2
+..
+/../c.ts
+HTTPS://cdn.test/s.ts

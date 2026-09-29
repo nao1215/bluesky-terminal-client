@@ -44,6 +44,12 @@ bench *ARGS:
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}
 
+# Fuzz one target, e.g. `just fuzz hls_demux -max_total_time=60` (needs nightly and cargo-fuzz).
+# New inputs go to fuzz/work/, so the committed seeds in fuzz/corpus/ stay as they are.
+fuzz TARGET *ARGS:
+    mkdir -p fuzz/work/{{TARGET}}
+    cargo +nightly fuzz run {{TARGET}} fuzz/work/{{TARGET}} fuzz/corpus/{{TARGET}} -- {{ARGS}}
+
 # Run every CI check locally
 ci: test lint fmt-check doc e2e
 

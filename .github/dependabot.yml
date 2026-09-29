@@ -6,6 +6,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+  # The fuzz crate is its own workspace with its own Cargo.lock.
+  - package-ecosystem: cargo
+    directory: "/fuzz"
+    schedule:
+      interval: weekly
+      day: monday
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

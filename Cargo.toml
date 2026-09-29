@@ -23,6 +23,7 @@ exclude = [
     "doc/",
     "e2e/*.sh",
     "e2e/atago/*.yaml",
+    "fuzz/",
     "justfile",
     "scripts/",
 ]
