@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- Releases carry a cosign signature of `checksums.txt`, SLSA provenance, and the license texts of the crates bsky is built from. README shows how to check them.
+
 ### Fixed
 
 - The Linux binaries run on Ubuntu 22.04, Debian 12 and other systems with glibc 2.35 or newer. 0.12.0 was built on Ubuntu 24.04 and stopped at start with ``version `GLIBC_2.39' not found`` anywhere older.

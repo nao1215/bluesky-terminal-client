@@ -6,9 +6,7 @@ If you discover any security-related issues or vulnerabilities, please contact u
 
 ## Verifying a Release
 
-```sh
-gh attestation verify <downloaded archive> --repo nao1215/bluesky-terminal-client
-```
+The checksums, their cosign signature, the SLSA provenance and the GitHub attestation of a release are checked as described in [Verifying a release](README.md#verifying-a-release).
 
 ## Supported Versions
 

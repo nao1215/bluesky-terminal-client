@@ -19,7 +19,22 @@ cargo install --locked bluesky-terminal-client
 cargo binstall bluesky-terminal-client
 ```
 
-Binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/bluesky-terminal-client/releases).
+Binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/bluesky-terminal-client/releases), with the license texts of the crates they contain in `bsky-<version>-THIRD_PARTY_LICENSES.html`.
+
+### Verifying a release
+
+Each release from 0.13.0 on carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files (`<tag>` is the release, for example `v0.13.0`):
+
+```sh
+sha256sum --ignore-missing --check checksums.txt
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/nao1215/bluesky-terminal-client/.github/workflows/release.yml@refs/tags/<tag>" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+slsa-verifier verify-artifact <archive> --provenance-path bsky-<tag>.intoto.jsonl \
+  --source-uri github.com/nao1215/bluesky-terminal-client --source-tag <tag>
+gh attestation verify <archive> --repo nao1215/bluesky-terminal-client
+```
 
 ## Use
 

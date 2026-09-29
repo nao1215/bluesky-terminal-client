@@ -16,6 +16,8 @@ exclude = [
     ".github/",
     ".gitignore",
     ".octocov.yml",
+    "about.hbs",
+    "about.toml",
     "bench/",
     "deny.toml",
     "doc/",
