@@ -66,7 +66,9 @@ jobs:
         env:
           SECONDS_PER_TARGET: ${{ inputs.seconds || '300' }}
           TARGET: ${{ matrix.target }}
-        run: cargo fuzz run "${TARGET}" -- -max_total_time="${SECONDS_PER_TARGET}"
+        # cargo-fuzz from install-action is a musl binary and would default to
+        # building for musl, which AddressSanitizer does not support.
+        run: cargo fuzz run --target x86_64-unknown-linux-gnu "${TARGET}" -- -max_total_time="${SECONDS_PER_TARGET}"
 
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -219,10 +219,12 @@ jobs:
         with:
           tool: cargo-fuzz@0.13.2
 
+      # The target is explicit: cargo-fuzz from install-action is a musl binary
+      # and would build for musl, which AddressSanitizer does not support.
       - name: Build the fuzz targets and run their seeds
         if: steps.changed.outputs.run == 'true'
         run: |
-          cargo fuzz build
+          cargo fuzz build --target x86_64-unknown-linux-gnu
           for target in $(cargo fuzz list); do
-            cargo fuzz run "${target}" -- -runs=0
+            cargo fuzz run --target x86_64-unknown-linux-gnu "${target}" -- -runs=0
           done
