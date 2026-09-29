@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-29
+
 ### Added
 
 - Releases carry a cosign signature of `checksums.txt`, SLSA provenance, and the license texts of the crates bsky is built from. README shows how to check them.
