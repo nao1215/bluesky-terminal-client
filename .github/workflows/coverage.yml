@@ -62,7 +62,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov@0.9.1
 
       # The same atago as e2e.yml.
       - name: Install atago
