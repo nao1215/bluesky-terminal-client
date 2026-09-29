@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Linux binaries run on Ubuntu 22.04, Debian 12 and other systems with glibc 2.35 or newer. 0.12.0 was built on Ubuntu 24.04 and stopped at start with ``version `GLIBC_2.39' not found`` anywhere older.
+
 ## [0.12.0] - 2026-09-25
 
 ### Added

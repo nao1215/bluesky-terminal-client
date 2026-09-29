@@ -28,7 +28,7 @@ env:
   # on the day of the tag. check-version.sh keeps it at or above rust-version.
   # No job restores a build cache: caches are written by other workflows, and
   # a poisoned one would end up in the binaries.
-  RUST_TOOLCHAIN: "1.98.0"
+  RUST_TOOLCHAIN: "1.98.1"
 
 jobs:
   # The build matrix, read from one file so the targets are listed once.
@@ -101,6 +101,27 @@ jobs:
           archive="bsky-${GITHUB_REF_NAME}-${TARGET}.${ARCHIVE_EXT}"
           ./scripts/release/pack-archive.sh "${bin}" "${archive}"
           echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+
+      # A glibc binary runs only where the C library is at least as new as the
+      # newest GLIBC_x.y symbol version it links. v0.12.0 was built on Ubuntu
+      # 24.04 and needed GLIBC_2.39, so it did not start on Debian 12 or Ubuntu
+      # 22.04. The Linux targets build on Ubuntu 22.04, and this fails the
+      # release if a binary needs a glibc newer than that system's.
+      - name: Check the glibc the binary requires
+        if: endsWith(matrix.target, '-linux-gnu')
+        env:
+          TARGET: ${{ matrix.target }}
+          MAX_GLIBC: "2.35"
+        run: |
+          set -o pipefail
+          need="$(objdump -T "target/${TARGET}/release/bsky" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/^GLIBC_//' | sort -uV | tail -n 1)"
+          test -n "${need}"
+          highest="$(printf '%s\n%s\n' "${need}" "${MAX_GLIBC}" | sort -V | tail -n 1)"
+          if [ "${highest}" != "${MAX_GLIBC}" ]; then
+            echo "::error title=glibc too new::${TARGET} requires GLIBC_${need}, the release allows up to ${MAX_GLIBC}"
+            exit 1
+          fi
+          echo "${TARGET} requires GLIBC_${need} (allowed up to ${MAX_GLIBC})"
 
       # Layout, mode, and owner on every target, and `bsky --version` on the
       # ones this runner can execute.
