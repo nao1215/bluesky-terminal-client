@@ -34,7 +34,7 @@ audit:
 
 # Check dependency licenses and advisories (requires cargo-deny)
 deny:
-    cargo deny check
+    cargo deny --locked --all-features check
 
 # Measure performance with himorime (needs himorime and python3)
 bench *ARGS:

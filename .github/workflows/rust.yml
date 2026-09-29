@@ -145,23 +145,6 @@ jobs:
       - name: Check with the declared minimum toolchain
         run: cargo check --locked --all-targets
 
-  security-audit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Run security audit
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   # The release scripts run only on a tag, so they are tested here on every
   # platform that packs an archive, and the compiler the release pins is
   # checked against rust-version, before a release depends on them.

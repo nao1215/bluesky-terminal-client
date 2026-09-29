@@ -26,14 +26,8 @@ concurrency:
   group: coverage-${{ github.ref }}
   cancel-in-progress: true
 
-# octocov reads and writes its report in the Actions-artifact datastore and
-# comments on pull requests; the default token is read-only, so those scopes
-# are granted here. The central repository (nao1215/octocovs-central-repo)
-# collects the report from the artifact and draws the README badge.
 permissions:
   contents: read
-  actions: write
-  pull-requests: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,6 +37,14 @@ jobs:
     name: Coverage (unit + e2e)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # octocov reads and writes its report in the Actions-artifact datastore and
+    # comments on pull requests, so this job alone gets those scopes. The
+    # central repository (nao1215/octocovs-central-repo) collects the report
+    # from the artifact and draws the README badge.
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,7 +68,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb # v0.1.3
         with:
-          version: v0.25.0
+          version: v0.25.2
           verify-attestation: "true"
 
       - name: Measure unit + E2E coverage
