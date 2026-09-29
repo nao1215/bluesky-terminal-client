@@ -237,7 +237,10 @@ impl Demuxer {
                 at += 1;
                 continue;
             }
-            let packet: [u8; 188] = self.pending[at..at + 188].try_into().expect("188 bytes");
+            // At least 188 bytes are left, as the loop asks.
+            let Some(&packet) = self.pending[at..].first_chunk::<188>() else {
+                break;
+            };
             self.packet(&packet);
             at += 188;
         }

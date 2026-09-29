@@ -186,14 +186,21 @@ pub fn strip_metadata(file: &mut [u8]) {
     fn walk(buf: &mut [u8]) {
         let mut at = 0;
         while at + 8 <= buf.len() {
-            let size = u32::from_be_bytes(buf[at..at + 4].try_into().expect("four bytes")) as usize;
+            // `at + 8 <= buf.len()`: the header is there.
+            let Some((&size, rest)) = buf[at..].split_first_chunk::<4>() else {
+                return;
+            };
+            let Some(&kind) = rest.first_chunk::<4>() else {
+                return;
+            };
+            let size = u32::from_be_bytes(size) as usize;
             let (size, header) = match size {
                 0 => (buf.len() - at, 8),
                 1 => {
-                    let Some(large) = buf.get(at + 8..at + 16) else {
+                    let Some(&large) = buf.get(at + 8..).and_then(<[u8]>::first_chunk::<8>) else {
                         return;
                     };
-                    let large = u64::from_be_bytes(large.try_into().expect("eight bytes"));
+                    let large = u64::from_be_bytes(large);
                     (usize::try_from(large).unwrap_or(usize::MAX), 16)
                 }
                 n => (n, 8),
@@ -203,7 +210,6 @@ pub fn strip_metadata(file: &mut [u8]) {
             if size < header || size > buf.len() - at {
                 return;
             }
-            let kind: [u8; 4] = buf[at + 4..at + 8].try_into().expect("four bytes");
             let body = at + header..at + size;
             if PRIVATE_BOXES.contains(&&kind) || kind == *b"\xA9xyz" {
                 buf[at + 4..at + 8].copy_from_slice(b"free");
