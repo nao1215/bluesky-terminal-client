@@ -505,7 +505,7 @@ fn random_keys_and_late_answers_keep_the_client_sound() {
             let seq = app.stamp(&job);
             pending.extend(answer(&mut rng, job, &mut next_id).map(|ev| (seq, ev)));
         }
-        let mut images = Images::new(Picker::halfblocks(), None);
+        let mut images = Images::new(Picker::halfblocks(), None).unwrap();
         // Some runs get their answers at once, others keep them waiting
         // over many keys, which is where a key meets a list still loading.
         let answer_rate = [5, 15, 35, 60][rng.below(4)];

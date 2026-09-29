@@ -1,5 +1,16 @@
 use super::*;
 
+// Found by a search that could fail; every tab has its place by a match.
+#[test]
+fn each_tab_is_found_at_its_place_among_the_tabs() {
+    for (i, tab) in Tab::ALL.into_iter().enumerate() {
+        assert_eq!(tab.index(), i, "{tab:?}");
+    }
+    assert_eq!(Tab::Columns.index(), Tab::Timeline.index());
+    assert_eq!(Tab::Profile.next(1), Tab::Timeline);
+    assert_eq!(Tab::Columns.next(-1), Tab::Profile);
+}
+
 #[test]
 fn unfollow_removes_the_author_from_the_timeline() {
     let mut app = logged_in();

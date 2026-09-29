@@ -116,7 +116,7 @@ fn frame_time() {
     for _ in 0..5 {
         let (mut app, _) = App::new(Some(session()), "x");
         app.handle_event(Event::Timeline(Ok(heavy_posts(200).into())));
-        let mut images = Images::new(Picker::halfblocks(), None);
+        let mut images = Images::new(Picker::halfblocks(), None).unwrap();
         let mut term = Terminal::new(TestBackend::new(120, 50)).unwrap();
         let mut times = Vec::new();
         for _ in 0..500 {

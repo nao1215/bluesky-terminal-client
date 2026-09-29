@@ -735,12 +735,19 @@ impl Client {
         let url = xrpc_url(&self.service, "_health");
         for _ in 0..n {
             let (agent, url) = (self.agent.clone(), url.clone());
-            std::thread::Builder::new()
+            let started = std::thread::Builder::new()
                 .name("bsky-preconnect".into())
                 .spawn(move || {
-                    let _ = agent.head(&url).call();
-                })
-                .ok();
+                    #[expect(
+                        clippy::let_underscore_must_use,
+                        reason = "a warm-up: only the connection is wanted, and the requests that use it report their own errors"
+                    )]
+                    let _: std::result::Result<_, ureq::Error> = agent.head(&url).call();
+                });
+            if started.is_err() {
+                // No thread for it: the requests open their own connections.
+                break;
+            }
         }
     }
 
@@ -843,7 +850,8 @@ impl Client {
     }
 
     fn post<B: Serialize, T: DeserializeOwned>(&self, nsid: &str, body: &B) -> Result<T> {
-        let body = serde_json::to_string(body).expect("request body serializes");
+        let body = serde_json::to_string(body)
+            .map_err(|e| Error::api(format!("{nsid}: cannot encode the request: {e}")))?;
         self.call(nsid, &[], Payload::Json(body))
     }
 
@@ -1192,7 +1200,9 @@ impl Client {
             record["langs"] = json!([lang]);
         }
         if let Some(reply) = reply {
-            record["reply"] = serde_json::to_value(reply).expect("reply serializes");
+            record["reply"] = serde_json::to_value(reply).map_err(|e| {
+                Error::api(format!("app.bsky.feed.post: cannot encode the reply: {e}"))
+            })?;
         }
         let media_embed = match media {
             PostMedia::None => None,
@@ -1201,21 +1211,18 @@ impl Client {
         };
         // A quote with a picture is one embed carrying both, which is what
         // the lexicon calls recordWithMedia.
-        record["embed"] = match (quote, media_embed) {
-            (None, None) => Value::Null,
-            (None, Some(media)) => media,
-            (Some(quote), None) => quote_embed(quote),
-            (Some(quote), Some(media)) => json!({
+        let embed = match (quote, media_embed) {
+            (None, None) => None,
+            (None, Some(media)) => Some(media),
+            (Some(quote), None) => Some(quote_embed(quote)),
+            (Some(quote), Some(media)) => Some(json!({
                 "$type": "app.bsky.embed.recordWithMedia",
                 "record": quote_embed(quote),
                 "media": media,
-            }),
+            })),
         };
-        if record["embed"].is_null() {
-            record
-                .as_object_mut()
-                .expect("a record object")
-                .remove("embed");
+        if let Some(embed) = embed {
+            record["embed"] = embed;
         }
         self.create_record("app.bsky.feed.post", record)
     }
@@ -1322,13 +1329,14 @@ impl Client {
     /// profile after the editor read it, the PDS refuses the write instead of
     /// the edit silently discarding that change.
     pub fn update_profile(&self, base: Option<&Record>, edit: &ProfileEdit) -> Result<()> {
-        let (mut value, swap) = match base {
-            Some(r) => (r.value.clone(), r.cid.clone()),
-            None => (json!({"$type": "app.bsky.actor.profile"}), None),
+        let swap = base.and_then(|r| r.cid.clone());
+        let mut value = match base.map(|r| &r.value) {
+            Some(Value::Object(fields)) => fields.clone(),
+            _ => serde_json::Map::from_iter([(
+                "$type".to_string(),
+                Value::String("app.bsky.actor.profile".into()),
+            )]),
         };
-        if !value.is_object() {
-            value = json!({"$type": "app.bsky.actor.profile"});
-        }
         if let Some(why) = profile_length_problem(
             edit.display_name.as_deref().unwrap_or(""),
             edit.description.as_deref().unwrap_or(""),
@@ -1342,7 +1350,7 @@ impl Client {
             set_or_remove(&mut value, "description", description);
         }
         if let Some((bytes, mime)) = &edit.avatar {
-            value["avatar"] = self.upload_blob(bytes, mime)?;
+            value.insert("avatar".to_string(), self.upload_blob(bytes, mime)?);
         }
         let did = self.did.clone();
         let mut body = json!({
@@ -1373,8 +1381,7 @@ pub struct ProfileEdit {
     pub avatar: Option<(Vec<u8>, String)>,
 }
 
-fn set_or_remove(obj: &mut Value, key: &str, text: &str) {
-    let map = obj.as_object_mut().expect("profile record is an object");
+fn set_or_remove(map: &mut serde_json::Map<String, Value>, key: &str, text: &str) {
     let text = text.trim();
     if text.is_empty() {
         map.remove(key);
@@ -1710,12 +1717,15 @@ mod tests {
 
     #[test]
     fn profile_fields_are_set_or_removed() {
-        let mut v =
-            json!({"$type": "app.bsky.actor.profile", "displayName": "old", "banner": {"x": 1}});
+        let Value::Object(mut v) =
+            json!({"$type": "app.bsky.actor.profile", "displayName": "old", "banner": {"x": 1}})
+        else {
+            unreachable!()
+        };
         set_or_remove(&mut v, "displayName", "  ");
         set_or_remove(&mut v, "description", " hello ");
         assert_eq!(
-            v,
+            Value::Object(v),
             json!({"$type": "app.bsky.actor.profile", "description": "hello", "banner": {"x": 1}})
         );
     }

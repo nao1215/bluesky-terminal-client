@@ -272,7 +272,10 @@ impl TextInput {
                 lines.push(String::new());
                 col = 0;
             }
-            lines.last_mut().unwrap().push_str(shown);
+            // `lines` starts with one line and only grows.
+            if let Some(line) = lines.last_mut() {
+                line.push_str(shown);
+            }
             col += w;
         }
         if self.cursor == self.chars.len() {

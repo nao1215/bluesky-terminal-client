@@ -1095,6 +1095,41 @@ scenarios:
             contains: "bsky=0"
             not_contains: "Broken pipe"
 
+  # Output that cannot be written (a full disk) is an error, exit 3, as it
+  # is for every command; --help and logout said nothing and exited 0. A
+  # reader that stops early is still no error (above).
+  - name: help and logout that cannot write their output exit 3
+    only:
+      os: linux  # /dev/full is Linux's
+    steps:
+      - fixture:
+          file: cfg/accounts/did_plc_me.json
+          content: |
+            {"service": "https://bsky.social", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - run:
+          command: bsky --help > /dev/full
+          shell: true
+          env: *env
+      - assert:
+          exit_code: 3
+          stderr:
+            contains: "error: cannot write the output"
+      - run:
+          command: bsky logout > /dev/full
+          shell: true
+          env: *env
+      - assert:
+          exit_code: 3
+          stderr:
+            contains: "error: cannot write the output"
+      - run:
+          command: bsky accounts
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "not logged in\n"
+
   # A mute list mutes its members too, and the server says "muted" of them;
   # unmute undoes only your own mute, so it says what to do instead, and
   # mute adds your own.

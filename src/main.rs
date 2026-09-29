@@ -1,4 +1,11 @@
 //! bsky: a Bluesky client for the terminal.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::let_underscore_must_use,
+        reason = "the stand-in servers of the tests answer best effort; a test fails on what it asserts"
+    )
+)]
 
 mod api;
 mod browser;
@@ -88,7 +95,13 @@ fn run(cli: Cli) -> Result<()> {
     let service = api::normalize_service(&cli.service)?;
     let dir = config::config_dir()?;
     match cli.command {
-        Some(Command::Logout { all }) => logout(&dir, cli.account.as_deref(), all, cli.json),
+        Some(Command::Logout { all }) => cli::ended_by_reader(logout(
+            &dir,
+            cli.account.as_deref(),
+            all,
+            cli.json,
+            &mut std::io::stdout().lock(),
+        )),
         Some(Command::Other(cmd)) => {
             let accounts = AccountStore::open(&dir);
             // Logging in and listing the accounts act as no account, so an
@@ -137,7 +150,15 @@ fn chosen_account(accounts: &AccountStore, who: Option<&str>) -> Result<Option<S
 }
 
 /// `bsky logout`: the account in use, the one `-a` names, or all of them.
-fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Result<()> {
+/// What it did is written to `out`; one that cannot be written is an error
+/// (exit 3), as it is for every command.
+fn logout(
+    dir: &std::path::Path,
+    who: Option<&str>,
+    all: bool,
+    json: bool,
+    out: &mut dyn Write,
+) -> Result<()> {
     let accounts = AccountStore::open(dir);
     let chosen: Vec<Session> = if all {
         accounts.remove_all()?
@@ -153,12 +174,12 @@ fn logout(dir: &std::path::Path, who: Option<&str>, all: bool, json: bool) -> Re
             .iter()
             .map(|s| serde_json::json!({"did": s.did, "handle": s.handle}))
             .collect();
-        say(&serde_json::json!({ "loggedOut": gone }).to_string());
+        cli::json_line(out, &serde_json::json!({ "loggedOut": gone }))?;
     } else if chosen.is_empty() {
-        say("not logged in");
+        cli::text(out, "not logged in\n")?;
     } else {
         for s in &chosen {
-            say(&format!("logged out @{}", s.handle));
+            cli::text(out, &format!("logged out @{}\n", s.handle))?;
         }
     }
     Ok(())
@@ -170,12 +191,20 @@ fn main() -> ExitCode {
         Err(e) => {
             use clap::error::ErrorKind;
             if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
-                let _ = e.print();
-                return ExitCode::SUCCESS;
+                // Help cut short by its reader (`| head`) is fine; help that
+                // could not be written (a full disk) is not.
+                return match e.print() {
+                    Err(err) if err.kind() != std::io::ErrorKind::BrokenPipe => {
+                        let err = Error::io(format!("cannot write the output: {err}"));
+                        report(&err);
+                        ExitCode::from(err.kind().exit_code())
+                    }
+                    _ => ExitCode::SUCCESS,
+                };
             }
             let err = Error::new(Kind::Usage, first_paragraph(&e.to_string()))
                 .with_hint("run `bsky --help` for usage");
-            eprintln!("{}", shown(&err));
+            report(&err);
             // The flags were not read, so --json is looked for by hand.
             if std::env::args_os().skip(1).any(|a| a == "--json") {
                 print_json_error(&err);
@@ -187,7 +216,7 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            let _ = writeln!(std::io::stderr(), "{}", shown(&err));
+            report(&err);
             let status = err.kind().exit_code();
             if json {
                 print_json_error(&err);
@@ -195,6 +224,15 @@ fn main() -> ExitCode {
             ExitCode::from(status)
         }
     }
+}
+
+/// Print `err` on stderr.
+fn report(err: &Error) {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "stderr is where errors go; when it cannot be written, the exit status is all that is left, and it is returned"
+    )]
+    let _: std::io::Result<()> = writeln!(std::io::stderr(), "{}", shown(err));
 }
 
 /// An error as it is printed on stderr: as text only, since its message can
@@ -211,13 +249,11 @@ fn print_json_error(err: &Error) {
         "hint": err.hint(),
         "status": err.kind().exit_code(),
     });
-    say(&v.to_string());
-}
-
-/// A line on stdout. A reader that has gone (`| head`) is no reason to
-/// fail, and must not panic as `println!` does.
-fn say(line: &str) {
-    let _ = writeln!(std::io::stdout(), "{line}");
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "the error is on stderr already and the exit status says it; a reader gone from stdout (`| head`) must not make it panic as `println!` would"
+    )]
+    let _: std::io::Result<()> = writeln!(std::io::stdout(), "{v}");
 }
 
 /// clap's message without its `error: ` prefix and trailing usage block:
@@ -236,6 +272,45 @@ fn first_paragraph(msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A stdout that refuses every write with `kind`.
+    struct Refusing(std::io::ErrorKind);
+
+    impl Write for Refusing {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(self.0, "refused"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // `bsky logout > /dev/full` said nothing and exited 0, where every
+    // other command exits 3; a reader that stopped reading is still fine.
+    #[test]
+    fn a_logout_that_cannot_write_what_it_did_fails_like_every_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = AccountStore::open(dir.path());
+        accounts
+            .save(&Session {
+                service: "https://bsky.social".into(),
+                did: "did:plc:a".into(),
+                handle: "a.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            })
+            .unwrap();
+        let full = &mut Refusing(std::io::ErrorKind::StorageFull);
+        let err = logout(dir.path(), None, false, false, full).unwrap_err();
+        assert_eq!(err.kind(), Kind::Io);
+        assert_eq!(err.message(), "cannot write the output: refused");
+        assert!(accounts.list().unwrap().is_empty(), "the logout is done");
+        let gone = &mut Refusing(std::io::ErrorKind::BrokenPipe);
+        assert_eq!(
+            cli::ended_by_reader(logout(dir.path(), None, false, true, gone)),
+            Ok(())
+        );
+    }
 
     fn usage_error(args: &[&str]) -> String {
         let e = Cli::try_parse_from(args).unwrap_err();

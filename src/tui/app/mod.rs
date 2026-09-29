@@ -76,9 +76,15 @@ impl Tab {
         }
     }
 
+    /// Where the tab is in [`Tab::ALL`].
     fn index(self) -> usize {
-        let tab = self.shown_as();
-        Self::ALL.iter().position(|t| *t == tab).unwrap()
+        match self {
+            Tab::Timeline | Tab::Columns => 0,
+            Tab::Chat => 1,
+            Tab::Search => 2,
+            Tab::Notifications => 3,
+            Tab::Profile => 4,
+        }
     }
 
     /// The tab `delta` places away, wrapping around.

@@ -301,7 +301,9 @@ fn is_handle(s: &str) -> bool {
                 && !l.ends_with('-')
         })
         // The TLD cannot start with a digit (that is an IP address or a typo).
-        && !labels.last().unwrap().starts_with(|c: char| c.is_ascii_digit())
+        && !labels
+            .last()
+            .is_some_and(|tld| tld.starts_with(|c: char| c.is_ascii_digit()))
 }
 
 /// Characters that end a tag without showing: Bluesky's app stops a tag
