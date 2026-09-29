@@ -69,6 +69,22 @@ tempfile = "3"
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
 
+# An error is returned, shown, or kept with the reason it can be ignored: a
+# panic on the UI thread leaves the terminal in raw mode, and a swallowed
+# error hides what the user needs to know. clippy.toml lets tests unwrap.
+# let_underscore_untyped stays off: it flags every `let _ =`, and the ones
+# that matter (a Result, a lock, a future) have lints of their own.
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+let_underscore_must_use = "warn"
+unused_result_ok = "warn"
+map_err_ignore = "warn"
+allow_attributes_without_reason = "warn"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
