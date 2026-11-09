@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-09
+
+### Security
+
+- The TLS stack that bsky uses to reach Bluesky is updated: rustls 0.23.46 (RUSTSEC-2026-0346, RUSTSEC-2026-0347, RUSTSEC-2026-0348, RUSTSEC-2026-0349), rustls-webpki 0.103.16 (RUSTSEC-2026-0382), and webpki-roots 1.0.11 (RUSTSEC-2026-0381). The 0.13.0 binaries carry the older versions.
+
+### Changed
+
+- ureq is updated from 3.4.2 to 3.5.1.
+
 ### Fixed
 
 - When the terminal could not be put back on exit, bsky stopped at the first step that failed, which could leave raw mode or the alternate screen on, and said nothing. It now takes every step and reports what failed, with a hint to run `reset`; after a clean quit that is exit 2. The password prompt of `bsky login` does the same.
