@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Choosing another account in the account list (`A`) when the choice cannot be saved for the next start says so, instead of starting as the previous account next time without a word.
 - A download that fails part way and whose partial file cannot be removed names that file in the error, so it is not taken for the download.
 - When the system cannot start another thread, bsky no longer panics: it exits 2 at the start with the reason, runs without pictures and says why, or shows why a video cannot play.
+- `cargo install bluesky-terminal-client` without `--locked` no longer picks unicode-width 0.2.3, which together with ratatui counted a half-width katakana with a sound mark (U+FF9E/U+FF9F) as 3 cells and broke the layout. unicode-width is capped below 0.2.3 until ratatui stops adding its own width for those characters.
 
 ## [0.13.0] - 2026-09-29
 
