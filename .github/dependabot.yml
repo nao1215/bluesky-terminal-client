@@ -1,19 +1,39 @@
 version: 2
+# Each entry opens at most one version-update PR a month: the group takes every
+# dependency of that ecosystem and directory. Security updates are not grouped
+# (applies-to: version-updates), so they still arrive as soon as an advisory
+# is published.
 updates:
   - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 10
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        # unicode-width 0.2.3 changes the width of some characters and breaks
+        # the layout, so it stays out of the group and is reviewed on its own.
+        exclude-patterns:
+          - "unicode-width"
   # The fuzz crate is its own workspace with its own Cargo.lock.
   - package-ecosystem: cargo
     directory: "/fuzz"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    groups:
+      cargo-fuzz:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
