@@ -55,7 +55,8 @@ ratatui-image = { version = "11.1", default-features = false, features = ["cross
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
-unicode-width = "0.2"
+# ratatui-core 0.1.2 adds 1 to the width of U+FF9E/U+FF9F, and 0.2.3 counts them too, so a half-width kana takes 3 cells; drop the cap once ratatui stops adding its own width.
+unicode-width = ">=0.2, <0.2.3"
 ureq = "3"
 
 # Reads the console input before crossterm does; see src/tui/events.rs.
