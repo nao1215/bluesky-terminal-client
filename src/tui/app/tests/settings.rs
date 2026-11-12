@@ -86,6 +86,7 @@ fn the_settings_screen_names_every_setting() {
             "Download folder",
             "Picture cache",
             "Video service",
+            "Link cards",
             "Browser",
             "Language",
             "Account"
@@ -97,7 +98,7 @@ fn the_settings_screen_names_every_setting() {
     app.handle_key(key('k'));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 7, .. })
+        Some(Overlay::Settings { selected: 8, .. })
     ));
     app.handle_key(key('j'));
     assert!(matches!(
@@ -379,6 +380,7 @@ fn the_video_service_and_the_browser_are_typed_and_go_with_their_jobs() {
     assert_eq!(app.settings_rows()[4].value, "https://video.example");
 
     app.handle_key(key('j'));
+    app.handle_key(key('j'));
     app.handle_key(code(KeyCode::Enter));
     type_str(&mut app, "my browser 🦊");
     app.handle_key(code(KeyCode::Enter));
@@ -419,16 +421,79 @@ fn the_video_service_and_the_browser_are_typed_and_go_with_their_jobs() {
     app.handle_key(ctrl('u'));
     app.handle_key(code(KeyCode::Esc));
     assert!(app.take_settings_save().is_none());
-    assert_eq!(app.settings_rows()[5].value, "my browser 🦊");
+    assert_eq!(app.settings_rows()[6].value, "my browser 🦊");
     app.handle_key(code(KeyCode::Enter));
     app.handle_key(ctrl('u'));
     app.handle_key(code(KeyCode::Enter));
     let saved = app.take_settings_save().expect("settings to save");
     assert_eq!(saved.browser, None);
     assert_eq!(
-        app.settings_rows()[5].value,
+        app.settings_rows()[6].value,
         crate::browser::system_opener()
     );
+}
+
+// Link cards are on until enter turns them off; only off is written down,
+// the post job carries the choice, and BSKY_LINK_CARDS fixes it for the run.
+#[test]
+fn link_cards_are_turned_off_and_on_and_go_with_the_post() {
+    let mut app = logged_in();
+    settings_on(&mut app, "Link cards");
+    let row = &app.settings_rows()[5];
+    assert_eq!((row.value.as_str(), row.editable), ("on", true));
+    app.handle_key(code(KeyCode::Enter));
+    let saved = app.take_settings_save().expect("settings to save");
+    assert_eq!(saved.link_cards.as_deref(), Some("off"));
+    assert_eq!(app.settings_rows()[5].value, "off");
+    app.handle_key(code(KeyCode::Esc));
+
+    app.handle_key(key('1'));
+    app.handle_key(key('n'));
+    type_str(&mut app, "see https://example.com");
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(
+        matches!(
+            &jobs[..],
+            [Job::Post {
+                link_card: false,
+                ..
+            }]
+        ),
+        "{jobs:?}"
+    );
+    app.handle_event(Event::Posted {
+        reply_to: None,
+        result: Ok(()),
+    });
+
+    settings_on(&mut app, "Link cards");
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        app.take_settings_save()
+            .expect("settings to save")
+            .link_cards,
+        None
+    );
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('n'));
+    type_str(&mut app, "again https://example.com");
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(
+        matches!(
+            &jobs[..],
+            [Job::Post {
+                link_card: true,
+                ..
+            }]
+        ),
+        "{jobs:?}"
+    );
+
+    app.env.link_cards = Some("off".into());
+    let row = &app.settings_rows()[5];
+    assert_eq!(row.value, "off");
+    assert_eq!(row.note, "set by BSKY_LINK_CARDS for this run");
+    assert!(!row.editable);
 }
 
 #[test]
@@ -436,7 +501,7 @@ fn a_setting_a_variable_fixes_cannot_be_changed_or_reset() {
     let mut app = logged_in();
     app.env.browser = Some("firefox".into());
     app.settings.browser = Some("chromium".into());
-    let row = &app.settings_rows()[5];
+    let row = &app.settings_rows()[6];
     assert_eq!(row.value, "firefox");
     assert!(!row.editable && !row.resettable);
     settings_on(&mut app, "Browser");
@@ -499,7 +564,7 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     app.apply_settings(Settings::default(), ColorDepth::TrueColor, None);
     assert_eq!(i18n::current(), Lang::Ru);
     settings_on(&mut app, "Language");
-    assert_eq!(app.settings_rows()[6].value, "Русский");
+    assert_eq!(app.settings_rows()[7].value, "Русский");
     app.handle_key(code(KeyCode::Enter));
     let ru = Lang::ALL.iter().position(|l| *l == Lang::Ru).unwrap();
     assert!(matches!(app.overlay, Some(Overlay::Languages { selected }) if selected == ru));
@@ -507,7 +572,7 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     app.handle_key(code(KeyCode::Esc));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 6, .. })
+        Some(Overlay::Settings { selected: 7, .. })
     ));
     assert_eq!(i18n::current(), Lang::Ru);
     // Japanese, two above Russian in the list.
@@ -519,11 +584,11 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     assert_eq!(i18n::current(), Lang::Ja);
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 6, .. })
+        Some(Overlay::Settings { selected: 7, .. })
     ));
     let saved = app.take_settings_save().expect("the language kept");
     assert_eq!(saved.language.as_deref(), Some("ja"));
-    assert_eq!(app.settings_rows()[6].value, "日本語");
+    assert_eq!(app.settings_rows()[7].value, "日本語");
     // Started again with it, the file wins over the environment.
     let mut again = logged_in();
     again.env.locale = Some("ru_RU.UTF-8".into());
@@ -532,7 +597,7 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     // x: the environment's again.
     again.handle_key(key('5'));
     again.handle_key(key('s'));
-    for _ in 0..6 {
+    for _ in 0..7 {
         again.handle_key(key('j'));
     }
     again.handle_key(key('x'));

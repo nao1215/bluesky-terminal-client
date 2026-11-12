@@ -147,7 +147,7 @@ fn a_short_screen_keeps_the_selected_setting_in_sight() {
     app.handle_key(crossterm::event::KeyEvent::from(
         crossterm::event::KeyCode::Char('s'),
     ));
-    for _ in 0..5 {
+    for _ in 0..6 {
         app.handle_key(crossterm::event::KeyEvent::from(
             crossterm::event::KeyCode::Char('j'),
         ));

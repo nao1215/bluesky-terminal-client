@@ -1208,6 +1208,7 @@ impl Client {
             PostMedia::None => None,
             PostMedia::Images(images) => Some(images_embed(images)),
             PostMedia::Video(v) => Some(video_embed(v)),
+            PostMedia::External(card) => Some(external_embed(card)),
         };
         // A quote with a picture is one embed carrying both, which is what
         // the lexicon calls recordWithMedia.
@@ -1429,6 +1430,32 @@ pub enum PostMedia {
     None,
     Images(Vec<PostImage>),
     Video(PostVideo),
+    /// A card for a link in the text.
+    External(PostExternal),
+}
+
+/// A link card: the page's address, title and description, and its picture
+/// once uploaded.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PostExternal {
+    pub uri: String,
+    pub title: String,
+    pub description: String,
+    pub thumb: Option<Value>,
+}
+
+/// The `app.bsky.embed.external` embed, its picture left out when it has
+/// none.
+fn external_embed(card: &PostExternal) -> Value {
+    let mut external = json!({
+        "uri": card.uri,
+        "title": card.title,
+        "description": card.description,
+    });
+    if let Some(thumb) = &card.thumb {
+        external["thumb"] = thumb.clone();
+    }
+    json!({"$type": "app.bsky.embed.external", "external": external})
 }
 
 /// An uploaded video to attach to a post.
@@ -1845,6 +1872,27 @@ mod tests {
             v.get("alt").is_none() && v.get("aspectRatio").is_none(),
             "{v}"
         );
+    }
+
+    #[test]
+    fn external_embed_carries_the_card_and_its_picture_when_it_has_one() {
+        let mut card = PostExternal {
+            uri: "https://example.com/a".into(),
+            title: "A".into(),
+            description: String::new(),
+            thumb: Some(json!({"$type": "blob", "ref": {"$link": "t1"}})),
+        };
+        let v = external_embed(&card);
+        assert_eq!(v["$type"], "app.bsky.embed.external");
+        assert_eq!(v["external"]["uri"], "https://example.com/a");
+        assert_eq!(v["external"]["title"], "A");
+        assert_eq!(
+            v["external"]["description"], "",
+            "required, even when empty"
+        );
+        assert_eq!(v["external"]["thumb"]["ref"]["$link"], "t1");
+        card.thumb = None;
+        assert!(external_embed(&card)["external"].get("thumb").is_none());
     }
 
     #[test]

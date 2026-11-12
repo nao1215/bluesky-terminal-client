@@ -124,6 +124,8 @@ pub enum Job {
         media: Vec<Attachment>,
         /// Where a video is uploaded to.
         video_service: String,
+        /// Whether a card is made for the first link.
+        link_card: bool,
     },
     /// Delete one of the account's own posts, by its URI.
     DeletePost {
@@ -790,6 +792,7 @@ impl State {
                 quote,
                 media,
                 video_service,
+                link_card,
             } => Event::Posted {
                 reply_to: reply.as_ref().map(|r| r.parent.uri.clone()),
                 result: self.post(
@@ -797,7 +800,13 @@ impl State {
                     reply.as_ref(),
                     quote.as_ref(),
                     &media,
-                    &video_service,
+                    crate::compose::PostOptions {
+                        video_service,
+                        // The post says it is written in the language chosen
+                        // for the screens.
+                        writer: crate::i18n::current(),
+                        link_card,
+                    },
                 ),
             },
             Job::DeletePost { uri } => Event::PostDeleted {
@@ -991,13 +1000,10 @@ impl State {
         reply: Option<&ReplyRef>,
         quote: Option<&StrongRef>,
         media: &[Attachment],
-        video_service: &str,
+        options: crate::compose::PostOptions,
     ) -> Result<()> {
         let client = self.client()?;
-        // The post says it is written in the language chosen for the screens.
-        let writer = crate::i18n::current();
-        crate::compose::send_post(&client, text, reply, quote, media, video_service, writer)
-            .map(|_| ())
+        crate::compose::send_post(&client, text, reply, quote, media, &options).map(|_| ())
     }
 
     fn save_profile(

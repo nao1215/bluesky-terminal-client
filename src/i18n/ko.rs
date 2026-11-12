@@ -44,6 +44,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Help", "도움말"),
     ("Keys", "키"),
     ("Language", "언어"),
+    ("Link cards", "링크 카드"),
     ("Lists", "목록"),
     ("Log in to Bluesky", "Bluesky에 로그인"),
     (
@@ -318,8 +319,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter로 계정 전환·추가·로그아웃 (A와 같음)",
     ),
     (
+        "enter turns them off: a post's first link gets no card",
+        "enter로 끔 (게시물의 첫 링크에 카드를 붙이지 않음)",
+    ),
+    (
         "enter turns them off: posts say what they carry",
         "enter로 끄기: 게시물에 첨부 내용을 글로 표시",
+    ),
+    (
+        "enter turns them on: a post's first link gets a card from its page",
+        "enter로 켬 (게시물의 첫 링크에 페이지 카드를 붙임)",
     ),
     ("enter types another address", "enter로 다른 주소 입력"),
     (
@@ -373,6 +382,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("liked", "좋아요함"),
     ("liked your post", "님이 내 게시물을 좋아합니다"),
     ("liked your repost", "님이 내 재게시를 좋아합니다"),
+    ("link cards: {}", "링크 카드: {}"),
     (
         "list what the keys do to the post",
         "게시물에 대한 키 동작 목록",
@@ -471,6 +481,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("not logged in", "로그인하지 않았습니다"),
     ("now @{}", "현재 @{}"),
     ("off", "끔"),
+    ("on", "켬"),
     ("open", "열기"),
     ("open / choose", "열기 / 선택"),
     ("open in browser", "브라우저에서 열기"),

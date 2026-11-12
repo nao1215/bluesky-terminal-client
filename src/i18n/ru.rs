@@ -50,6 +50,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Help", "Справка"),
     ("Keys", "Клавиши"),
     ("Language", "Язык"),
+    ("Link cards", "Карточки ссылок"),
     ("Lists", "Списки"),
     ("Log in to Bluesky", "Вход в Bluesky"),
     (
@@ -327,8 +328,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter — сменить, добавить или выйти из аккаунта, как A",
     ),
     (
+        "enter turns them off: a post's first link gets no card",
+        "enter выключает: у первой ссылки поста не будет карточки",
+    ),
+    (
         "enter turns them off: posts say what they carry",
         "enter — выключить: посты пишут, что в них есть",
+    ),
+    (
+        "enter turns them on: a post's first link gets a card from its page",
+        "enter включает: первая ссылка поста получает карточку своей страницы",
     ),
     ("enter types another address", "enter — ввести другой адрес"),
     (
@@ -382,6 +391,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("liked", "лайк поставлен"),
     ("liked your post", "оценили ваш пост"),
     ("liked your repost", "оценили ваш репост"),
+    ("link cards: {}", "карточки ссылок: {}"),
     (
         "list what the keys do to the post",
         "что клавиши делают с постом",
@@ -480,6 +490,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("not logged in", "вход не выполнен"),
     ("now @{}", "сейчас @{}"),
     ("off", "выкл."),
+    ("on", "вкл."),
     ("open", "открыть"),
     ("open / choose", "открыть / выбрать"),
     ("open in browser", "открыть в браузере"),

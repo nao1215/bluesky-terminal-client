@@ -44,6 +44,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Help", "帮助"),
     ("Keys", "按键"),
     ("Language", "语言"),
+    ("Link cards", "链接卡片"),
     ("Lists", "列表"),
     ("Log in to Bluesky", "登录 Bluesky"),
     (
@@ -288,8 +289,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter 切换、添加或退出账户（同 A）",
     ),
     (
+        "enter turns them off: a post's first link gets no card",
+        "enter 关闭 (帖子的第一个链接不附卡片)",
+    ),
+    (
         "enter turns them off: posts say what they carry",
         "enter 关闭（帖子中显示附件类型）",
+    ),
+    (
+        "enter turns them on: a post's first link gets a card from its page",
+        "enter 开启 (为帖子的第一个链接附上其页面的卡片)",
     ),
     ("enter types another address", "enter 输入其他地址"),
     (
@@ -340,6 +349,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("liked", "已喜欢"),
     ("liked your post", "喜欢了你的帖子"),
     ("liked your repost", "喜欢了你的转发"),
+    ("link cards: {}", "链接卡片：{}"),
     (
         "list what the keys do to the post",
         "列出可对帖子执行的操作",
@@ -432,6 +442,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("not logged in", "未登录"),
     ("now @{}", "当前为 @{}"),
     ("off", "关闭"),
+    ("on", "开启"),
     ("open", "打开"),
     ("open / choose", "打开 / 选择"),
     ("open in browser", "在浏览器中打开"),

@@ -39,7 +39,7 @@ Write a scenario for every behavior you add or change, including how it fails. W
 
 ## Fuzzing
 
-`fuzz/` holds cargo-fuzz targets for the parsers that read untrusted input: `hls_demux` (the MPEG-TS demuxer), `hls_playlist` (playlists and URL resolution), and `facets_detect` (links, mentions, and tags in a post). Each checks properties, not only that nothing panics: the demuxer gives the same frames however the stream is split, a chosen variant is one the playlist lists, and facet ranges fall on character boundaries without overlapping.
+`fuzz/` holds cargo-fuzz targets for the parsers that read untrusted input: `hls_demux` (the MPEG-TS demuxer), `hls_playlist` (playlists and URL resolution), `facets_detect` (links, mentions, and tags in a post), and `og_parse` (a page's link card). Each checks properties, not only that nothing panics: the demuxer gives the same frames however the stream is split, a chosen variant is one the playlist lists, facet ranges fall on character boundaries without overlapping, and a card's picture is a web address.
 
 bsky has no library target, so a target includes the file it tests with `#[path = "../../src/..."] mod ...;`. Only a file that uses nothing else from the crate can be included that way; keep `src/hls.rs` and `src/api/facets.rs` free of `use crate::`.
 

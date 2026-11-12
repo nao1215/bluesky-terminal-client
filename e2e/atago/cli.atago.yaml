@@ -128,8 +128,9 @@ scenarios:
       - *session
       # The post's language is guessed from its letters: kanji alone is
       # Japanese for someone whose system speaks Japanese.
+      # --no-card: the suite does not reach example.com for its page.
       - run:
-          command: 'bsky post "日本語👍🏽 #タグ https://example.com @bob.test"'
+          command: 'bsky post --no-card "日本語👍🏽 #タグ https://example.com @bob.test"'
           env:
             BSKY_CONFIG_DIR: ${workdir}/cfg
             TZ: UTC
@@ -172,6 +173,308 @@ scenarios:
               json:
                 - { path: "$.record.text", equals: "from a pipe 🇯🇵" }
                 - { path: "$.record.langs[0]", equals: "en" }
+
+  - name: post makes a card from the page of its first link, for a reply too, but not beside pictures or a quote
+    mock_servers:
+      - name: api
+        routes:
+          - &card_page
+            method: GET
+            path: /page
+            header: { Content-Type: "text/html; charset=utf-8" }
+            body: |
+              <!doctype html><html><head>
+              <title>not the card's title</title>
+              <meta property="og:title" content="A note &amp; its card">
+              <meta property="og:description" content="What the page is about">
+              <meta property="og:image" content="/img/photo.png">
+              </head><body><meta property="og:title" content="not this"></body></html>
+          - &card_photo
+            method: GET
+            path: /img/photo.png
+            body_file: testdata/photo.png
+            header: { Content-Type: image/png }
+          - &card_upload
+            method: POST
+            path: /xrpc/com.atproto.repo.uploadBlob
+            json: { blob: { $type: blob, ref: { $link: bafythumb }, mimeType: image/png, size: 300 } }
+          - &card_create
+            method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.post/new1", cid: "cid-new1" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "hello", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      # The title and the address, as a script announcing a page posts them.
+      - run:
+          command: 'bsky post "A note ${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.uploadBlob
+            count: 1
+            header: { name: Content-Type, equals: "image/png" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.external" }
+                - { path: "$.record.embed.external.uri", equals: "${api.url}/page" }
+                - { path: "$.record.embed.external.title", equals: "A note & its card" }
+                - { path: "$.record.embed.external.description", equals: "What the page is about" }
+                - { path: "$.record.embed.external.thumb.ref['$link']", equals: "bafythumb" }
+                - { path: "$.record.facets[0].features[0].uri", equals: "${api.url}/page" }
+      # A reply gets a card as well.
+      - run:
+          command: 'bsky post --reply at://did:plc:alice/app.bsky.feed.post/p1 "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 2
+            body:
+              json:
+                - { path: "$.record.reply.parent.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.embed.external.uri", equals: "${api.url}/page" }
+      # Beside pictures, or quoting a post, the page is not read.
+      - run:
+          command: 'bsky post --image photo.png "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 3
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.images" }
+      - run:
+          command: 'bsky post --quote at://did:plc:alice/app.bsky.feed.post/p1 "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 4
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.record" }
+      - assert:
+          mock: { name: api, path: /page, count: 2 }
+
+  - name: a card links where the post does, and reads a relative picture against the page a redirect ended on
+    mock_servers:
+      - name: site
+        routes:
+          - method: GET
+            path: /dir/page
+            header: { Content-Type: "text/html" }
+            body: '<head><meta property="og:title" content="Moved"><meta property="og:image" content="photo.png"></head>'
+          - method: GET
+            path: /dir/photo.png
+            body_file: testdata/photo.png
+            header: { Content-Type: image/png }
+      - name: api
+        routes:
+          - method: GET
+            path: /old
+            status: 301
+            header: { Location: "${site.url}/dir/page" }
+          - *card_upload
+          - *card_create
+    steps:
+      - *session
+      - run:
+          command: 'bsky post "${api.url}/old"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: site, path: /dir/photo.png, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed.external.uri", equals: "${api.url}/old" }
+                - { path: "$.record.embed.external.title", equals: "Moved" }
+                - { path: "$.record.embed.external.thumb.ref['$link']", equals: "bafythumb" }
+
+  - name: post --no-card, Link cards off in the settings, and BSKY_LINK_CARDS=off do not read the page
+    mock_servers:
+      - name: api
+        routes:
+          - *card_page
+          - *card_create
+    steps:
+      - *session
+      - run:
+          command: 'bsky post --no-card "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1, body: { not_contains: '"embed"' } }
+      - run:
+          command: 'bsky post "${api.url}/page"'
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+            BSKY_LINK_CARDS: "off"
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 2, body: { not_contains: '"embed"' } }
+      - fixture:
+          file: cfg/settings.json
+          content: '{"link_cards": "off"}'
+      - run:
+          command: 'bsky post "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 3, body: { not_contains: '"embed"' } }
+      - assert:
+          mock: { name: api, path: /page, count: 0 }
+
+  - name: a page that gives no card still lets the post go out, and a picture that cannot be had leaves the card without one
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /sjis
+            header: { Content-Type: "text/html; charset=Shift_JIS" }
+            body: "<head><meta property=og:title content=x></head>"
+          - method: GET
+            path: /meta-sjis
+            header: { Content-Type: "text/html" }
+            body: '<head><meta charset="Shift_JIS"><meta property=og:title content=x></head>'
+          - method: GET
+            path: /download
+            header: { Content-Type: application/zip }
+            body: "<head><meta property=og:title content=x></head>"
+          - method: GET
+            path: /empty
+            header: { Content-Type: "text/html" }
+            body: "<html><head></head><body>nothing to show</body></html>"
+          - method: GET
+            path: /title-only
+            header: { Content-Type: "text/html" }
+            body: "<head><title>Only a title</title></head>"
+          - method: GET
+            path: /nopic
+            header: { Content-Type: "text/html" }
+            body: '<head><meta property="og:title" content="No picture"><meta property="og:image" content="/gone.png"></head>'
+          - *card_create
+    steps:
+      - *session
+      - run: { command: 'bsky post "${api.url}/sjis"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1, body: { not_contains: '"embed"' } }
+      - run: { command: 'bsky post "${api.url}/meta-sjis"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 2, body: { not_contains: '"embed"' } }
+      - run: { command: 'bsky post "${api.url}/download"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 3, body: { not_contains: '"embed"' } }
+      - run: { command: 'bsky post "${api.url}/empty"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 4, body: { not_contains: '"embed"' } }
+      - run: { command: 'bsky post "${api.url}/missing"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 5, body: { not_contains: '"embed"' } }
+      # Nothing listens on port 1.
+      - run: { command: 'bsky post "http://127.0.0.1:1/x"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 6, body: { not_contains: '"embed"' } }
+      - run: { command: 'bsky post "${api.url}/title-only"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 7
+            body:
+              json:
+                - { path: "$.record.embed.external.title", equals: "Only a title" }
+                - { path: "$.record.embed.external.description", equals: "" }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 7, body: { not_contains: '"thumb"' } }
+      - run: { command: 'bsky post "${api.url}/nopic"', env: *env }
+      - assert: { exit_code: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 8
+            body:
+              json:
+                - { path: "$.record.embed.external.title", equals: "No picture" }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 8, body: { not_contains: '"thumb"' } }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+
+  - name: a card whose picture the server will not take is sent without it
+    mock_servers:
+      - name: api
+        routes:
+          - *card_page
+          - *card_photo
+          - method: POST
+            path: /xrpc/com.atproto.repo.uploadBlob
+            status: 500
+            json: { error: InternalServerError, message: "boom" }
+          - *card_create
+    steps:
+      - *session
+      - run:
+          command: 'bsky post "${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed.external.title", equals: "A note & its card" }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 1, body: { not_contains: '"thumb"' } }
 
   - name: a post too long, or with pictures and a video, is refused before anything is sent
     mock_servers:

@@ -33,26 +33,40 @@ pub fn video_alt_problem(alt: &str) -> Option<String> {
     )
 }
 
-/// Send a post, uploading its pictures (up to four) or its one video first.
-/// `writer` is the language the user reads bsky in, which settles the
-/// post's language where its letters do not (see [`crate::langs::guess`]).
-/// Everything is prepared before anything is uploaded, so a file that cannot
-/// be read stops the post before anything reaches the server. Nothing is
-/// sent twice: a failure is returned, not tried again.
+/// How a post is sent, as the settings and the command line decide.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PostOptions {
+    /// The service videos are uploaded to.
+    pub video_service: String,
+    /// The language the user reads bsky in, which settles the post's
+    /// language where its letters do not (see [`crate::langs::guess`]).
+    pub writer: crate::i18n::Lang,
+    /// Whether a post without pictures, video or a quote carries a card for
+    /// its first link (see [`crate::card`]).
+    pub link_card: bool,
+}
+
+/// Send a post, uploading its pictures (up to four) or its one video first,
+/// or else the card of its first link. Everything is prepared before
+/// anything is uploaded, so a file that cannot be read stops the post before
+/// anything reaches the server. Nothing is sent twice: a failure is
+/// returned, not tried again.
 pub fn send_post(
     client: &Client,
     text: &str,
     reply: Option<&ReplyRef>,
     quote: Option<&StrongRef>,
     media: &[Attachment],
-    video_service: &str,
-    writer: crate::i18n::Lang,
+    options: &PostOptions,
 ) -> Result<CreatedRecord> {
     let videos = media
         .iter()
         .filter(|a| media::inspect(&a.path).kind == media::Kind::Video)
         .count();
     let embed = match (media.len(), videos) {
+        (0, _) if options.link_card && quote.is_none() => {
+            crate::card::fetch(client, text).map_or(PostMedia::None, PostMedia::External)
+        }
         (0, _) => PostMedia::None,
         (1, 1) => {
             let a = &media[0];
@@ -64,7 +78,7 @@ pub fn send_post(
             // the file is, not what it was called on this computer.
             let name = format!("video.{}", video::extension(v.mime));
             let blob = client.upload_video(
-                video_service,
+                &options.video_service,
                 &v.bytes,
                 v.mime,
                 &name,
@@ -103,7 +117,7 @@ pub fn send_post(
             ));
         }
     };
-    client.create_post(text, reply, quote, &embed, writer)
+    client.create_post(text, reply, quote, &embed, options.writer)
 }
 
 #[cfg(test)]

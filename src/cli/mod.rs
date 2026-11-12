@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 
 use crate::api::types::{FeedItem, Notification, Post, Profile};
 use crate::api::{self, Client};
-use crate::compose::{Attachment, send_post};
+use crate::compose::{Attachment, PostOptions, send_post};
 use crate::config::{AccountStore, Environment, Session, SettingsStore};
 use crate::error::{Error, Kind, Result};
 
@@ -88,6 +88,10 @@ pub enum Command {
         /// The post this one quotes.
         #[arg(long, value_name = "POST")]
         quote: Option<String>,
+        /// Send no card for the first link (one is made from its page when
+        /// the post has no picture, video or quote).
+        #[arg(long)]
+        no_card: bool,
     },
     /// The accounts that liked a post, newest first.
     Likes {
@@ -293,7 +297,8 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
             video,
             reply,
             quote,
-        } => post(ctx, o, &text, images, alts, video, reply, quote),
+            no_card,
+        } => post(ctx, o, &text, images, alts, video, reply, quote, no_card),
         Command::Likes { post, limit } => likes(ctx, o, &post, limit),
         Command::Reposts { post, limit } => reposts(ctx, o, &post, limit),
         Command::Lists { actor, limit } => lists(ctx, o, actor.as_deref(), limit),
@@ -829,6 +834,7 @@ fn post(
     video: Option<PathBuf>,
     reply: Option<String>,
     quote: Option<String>,
+    no_card: bool,
 ) -> Result<()> {
     let body = if text_arg == "-" {
         let mut s = String::new();
@@ -883,18 +889,20 @@ fn post(
     };
     let settings = SettingsStore::new(ctx.dir).load().0;
     let env = Environment::read();
-    let video_service = crate::config::video_service(&env, &settings).0;
-    // The commands write English, but the post is in the language the
-    // client would be shown in.
-    let writer = crate::config::language(&settings, &env);
+    let options = PostOptions {
+        video_service: crate::config::video_service(&env, &settings).0,
+        // The commands write English, but the post is in the language the
+        // client would be shown in.
+        writer: crate::config::language(&settings, &env),
+        link_card: !no_card && crate::config::link_cards(&env, &settings).0,
+    };
     let created = send_post(
         &client,
         &body,
         reply.as_ref(),
         quote.as_ref(),
         &media,
-        &video_service,
-        writer,
+        &options,
     )?;
     let said = created.uri.clone();
     wrote(

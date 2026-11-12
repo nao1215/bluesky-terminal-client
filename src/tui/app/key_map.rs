@@ -89,6 +89,7 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // Read before the overlay is borrowed: a post with a video needs it.
         let video_service = self.video_service();
+        let link_card = self.link_cards();
         let Some(overlay) = self.overlay.as_mut() else {
             return Vec::new();
         };
@@ -257,6 +258,7 @@ impl App {
                                 quote,
                                 media,
                                 video_service,
+                                link_card,
                             }];
                         }
                     }

@@ -84,6 +84,9 @@ scenarios:
             BSKY_CONFIG_DIR: ${workdir}/cfg
             BSKY_CACHE_DIR: ${workdir}/cache
             TZ: UTC
+            # The composer posts link to example.com; the suite does not
+            # reach it for a card (cli.atago.yaml checks the cards).
+            BSKY_LINK_CARDS: "off"
           timeout: 20s
           session:
             - expect_screen:
@@ -1060,6 +1063,65 @@ scenarios:
                 - { path: "$.record.facets[2].index.byteStart", equals: 25 }
                 - { path: "$.record.facets[2].index.byteEnd", equals: 46 }
                 - { path: "$.record.facets[2].features[0].uri", equals: "https://example.com/a" }
+
+  # The composer makes the same card as `bsky post`: the page of the first
+  # link, here on the mock, gives the title and the picture.
+  - name: a new post from the composer carries a card for its first link
+    mock_servers:
+      - name: api
+        routes:
+          - *timeline
+          - *img_alice
+          - *img_bob
+          - *img_photo
+          - *create_record
+          - method: GET
+            path: /page
+            header: { Content-Type: "text/html; charset=utf-8" }
+            body: '<head><meta property="og:title" content="From the composer"><meta property="og:image" content="/img/card.png"></head>'
+          - method: GET
+            path: /img/card.png
+            body_file: testdata/photo.png
+            header: { Content-Type: image/png }
+          - method: POST
+            path: /xrpc/com.atproto.repo.uploadBlob
+            json: { blob: { $type: blob, ref: { $link: bafycard }, mimeType: image/png, size: 300 } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Photo from the mountains"
+            - send: n
+            - expect_screen:
+                contains: "New post"
+            - send: "read ${api.url}/page"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "New post"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed.external.uri", equals: "${api.url}/page" }
+                - { path: "$.record.embed.external.title", equals: "From the composer" }
+                - { path: "$.record.embed.external.thumb.ref['$link']", equals: "bafycard" }
 
   # Text without spaces puts a mention right after an address, in a
   # parenthesis the address did not open. The handle used to be spelled into

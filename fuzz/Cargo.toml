@@ -41,3 +41,10 @@ path = "fuzz_targets/facets_detect.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "og_parse"
+path = "fuzz_targets/og_parse.rs"
+test = false
+doc = false
+bench = false
