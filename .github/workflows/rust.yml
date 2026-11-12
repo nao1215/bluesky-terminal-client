@@ -178,7 +178,7 @@ jobs:
           fi
           echo "release toolchain ${pin}, rust-version ${msrv}"
 
-  # The fuzz targets include src/hls.rs and src/api/facets.rs by path, so a
+  # The fuzz targets include src/hls.rs, src/api/facets.rs and src/og.rs by path, so a
   # change there can break a build that only fuzz.yml runs, at night. When they
   # or fuzz/ change, build the targets and run each over its committed seeds
   # (no exploration; that stays in fuzz.yml). Other changes skip the nightly
@@ -200,7 +200,7 @@ jobs:
         run: |
           if [ "${EVENT}" = workflow_dispatch ] || [ -z "${BASE}" ] || ! git cat-file -e "${BASE}^{commit}"; then
             run=true
-          elif git diff --quiet "${BASE}" HEAD -- src/hls.rs src/api/facets.rs src/api/tlds.txt fuzz/; then
+          elif git diff --quiet "${BASE}" HEAD -- src/hls.rs src/api/facets.rs src/api/tlds.txt src/og.rs fuzz/; then
             run=false
           else
             run=true

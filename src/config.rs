@@ -47,6 +47,10 @@ pub struct Settings {
     /// The program that opens links; `BSKY_BROWSER` wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// `"off"` sends posts without a card for their first link;
+    /// `BSKY_LINK_CARDS` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_cards: Option<String>,
     /// The language the client is shown in (`en`, `ja`...); without one,
     /// the language the environment asks for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -174,6 +178,8 @@ pub struct Environment {
     pub video_service: Option<String>,
     /// `BSKY_BROWSER`
     pub browser: Option<String>,
+    /// `BSKY_LINK_CARDS`
+    pub link_cards: Option<String>,
     /// The locale the environment asks for: `LC_ALL`, `LC_MESSAGES` or
     /// `LANG`, the first one set, as every program reads them.
     pub locale: Option<String>,
@@ -193,6 +199,7 @@ impl Environment {
             cache_dir: get(CACHE_DIR_ENV),
             video_service: get(VIDEO_SERVICE_ENV),
             browser: get(crate::browser::BROWSER_ENV),
+            link_cards: get(LINK_CARDS_ENV),
             locale: ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(get),
         }
     }
@@ -397,6 +404,18 @@ pub fn video_service(env: &Environment, settings: &Settings) -> (String, Source)
             crate::api::DEFAULT_VIDEO_SERVICE.to_string(),
             Source::Default,
         ),
+    }
+}
+
+/// Environment variable that turns link cards off (`off`) or on.
+pub const LINK_CARDS_ENV: &str = "BSKY_LINK_CARDS";
+
+/// Whether a post without pictures, video or a quote carries a card for its
+/// first link: not when `BSKY_LINK_CARDS`, else the settings, say `off`.
+pub fn link_cards(env: &Environment, settings: &Settings) -> (bool, Source) {
+    match pick(&env.link_cards, &settings.link_cards) {
+        Some((v, from)) => (!v.eq_ignore_ascii_case("off"), from),
+        None => (true, Source::Default),
     }
 }
 
@@ -920,6 +939,7 @@ mod tests {
             cache_dir: Some(format!("{var}/cache")),
             video_service: Some(format!("https://{var}.example/")),
             browser: Some(format!("{var}-browser")),
+            link_cards: Some("off".into()),
             graphics: None,
             locale: None,
         }
@@ -1056,6 +1076,32 @@ mod tests {
         fs::write(&file, "x").unwrap();
         let err = check_writable(&file.join("sub")).unwrap_err();
         assert!(err.starts_with("cannot write to "), "{err}");
+    }
+
+    // Cards are on unless something says off; the variable wins over the
+    // file, and any other word than off leaves them on.
+    #[test]
+    fn link_cards_are_on_unless_turned_off() {
+        let on = |link_cards: Option<&str>| Settings {
+            link_cards: link_cards.map(Into::into),
+            ..Settings::default()
+        };
+        let var = |v: &str| Environment {
+            link_cards: Some(v.into()),
+            ..Environment::default()
+        };
+        let none = Environment::default();
+        assert_eq!(link_cards(&none, &on(None)), (true, Source::Default));
+        assert_eq!(link_cards(&none, &on(Some("off"))), (false, Source::File));
+        assert_eq!(link_cards(&var("OFF"), &on(None)), (false, Source::Env));
+        assert_eq!(
+            link_cards(&var("on"), &on(Some("off"))),
+            (true, Source::Env)
+        );
+        assert_eq!(
+            link_cards(&var(" "), &on(Some("off"))),
+            (false, Source::File)
+        );
     }
 
     #[test]

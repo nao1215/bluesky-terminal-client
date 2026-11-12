@@ -148,6 +148,11 @@ impl App {
         crate::config::cache_dir(&self.env, &self.settings).0
     }
 
+    /// Whether posts carry a card for their first link.
+    pub(super) fn link_cards(&self) -> bool {
+        crate::config::link_cards(&self.env, &self.settings).0
+    }
+
     /// The video service uploads go to.
     pub(super) fn video_service(&self) -> String {
         crate::config::video_service(&self.env, &self.settings).0
@@ -236,6 +241,22 @@ impl App {
         let (cache, cache_from) = config::cache_dir(&self.env, &self.settings);
         let (video, video_from) = config::video_service(&self.env, &self.settings);
         let (browser, browser_from) = config::browser(&self.env, &self.settings);
+        let (cards, cards_from) = config::link_cards(&self.env, &self.settings);
+        let link_cards = SettingRow {
+            name: n!("Link cards"),
+            value: crate::i18n::t(if cards { n!("on") } else { n!("off") }).into(),
+            note: match cards_from {
+                Source::Env => fixed(config::LINK_CARDS_ENV),
+                Source::File | Source::Default if cards => {
+                    n!("enter turns them off: a post's first link gets no card").into()
+                }
+                Source::File | Source::Default => {
+                    n!("enter turns them on: a post's first link gets a card from its page").into()
+                }
+            },
+            editable: cards_from != Source::Env,
+            resettable: false,
+        };
         vec![
             theme,
             pictures,
@@ -260,6 +281,7 @@ impl App {
                 video_from,
                 n!("enter types another address"),
             ),
+            link_cards,
             row(
                 n!("Browser"),
                 crate::browser::BROWSER_ENV,
@@ -384,6 +406,14 @@ impl App {
                     self.pictures = false;
                 }
                 self.save_settings(tf("pictures: {}", &[crate::i18n::t(value)]));
+                return;
+            }
+            "Link cards" => {
+                let on = !self.link_cards();
+                // On is the default, so only off is written down.
+                self.settings.link_cards = (!on).then(|| "off".to_string());
+                let value = if on { n!("on") } else { n!("off") };
+                self.save_settings(tf("link cards: {}", &[crate::i18n::t(value)]));
                 return;
             }
             "Download folder" => SettingEdit::Folder(Box::new(Browser::folder(

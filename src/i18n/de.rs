@@ -50,6 +50,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Help", "Hilfe"),
     ("Keys", "Tasten"),
     ("Language", "Sprache"),
+    ("Link cards", "Linkkarten"),
     ("Lists", "Listen"),
     ("Log in to Bluesky", "Bei Bluesky anmelden"),
     (
@@ -336,8 +337,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter wechselt, fügt hinzu oder meldet ab, wie A",
     ),
     (
+        "enter turns them off: a post's first link gets no card",
+        "Enter schaltet sie aus: der erste Link eines Beitrags bekommt keine Karte",
+    ),
+    (
         "enter turns them off: posts say what they carry",
         "enter schaltet sie aus: Beiträge nennen ihren Inhalt",
+    ),
+    (
+        "enter turns them on: a post's first link gets a card from its page",
+        "Enter schaltet sie ein: der erste Link eines Beitrags bekommt die Karte seiner Seite",
     ),
     (
         "enter types another address",
@@ -400,6 +409,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("liked", "geliked"),
     ("liked your post", "gefällt dein Beitrag"),
     ("liked your repost", "gefällt dein Repost"),
+    ("link cards: {}", "Linkkarten: {}"),
     (
         "list what the keys do to the post",
         "Aktionen für den Beitrag anzeigen",
@@ -513,6 +523,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("not logged in", "nicht angemeldet"),
     ("now @{}", "jetzt @{}"),
     ("off", "aus"),
+    ("on", "an"),
     ("open", "öffnen"),
     ("open / choose", "öffnen / wählen"),
     ("open in browser", "im Browser öffnen"),

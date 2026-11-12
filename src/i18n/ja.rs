@@ -44,6 +44,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Help", "ヘルプ"),
     ("Keys", "キー"),
     ("Language", "言語"),
+    ("Link cards", "リンクカード"),
     ("Lists", "一覧"),
     ("Log in to Bluesky", "Bluesky にログイン"),
     (
@@ -309,8 +310,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter でアカウントの切替・追加・ログアウト (A と同じ)",
     ),
     (
+        "enter turns them off: a post's first link gets no card",
+        "enter でオフ (投稿の最初のリンクにカードを付けない)",
+    ),
+    (
         "enter turns them off: posts say what they carry",
         "enter でオフ (投稿には添付の種類を表示)",
+    ),
+    (
+        "enter turns them on: a post's first link gets a card from its page",
+        "enter でオン (投稿の最初のリンクにページのカードを付ける)",
     ),
     ("enter types another address", "enter で別のアドレスを入力"),
     (
@@ -367,6 +376,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("liked", "いいねしました"),
     ("liked your post", "があなたの投稿をいいねしました"),
     ("liked your repost", "があなたのリポストをいいねしました"),
+    ("link cards: {}", "リンクカード: {}"),
     (
         "list what the keys do to the post",
         "投稿に使えるキーの一覧",
@@ -468,6 +478,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("not logged in", "ログインしていません"),
     ("now @{}", "現在は @{}"),
     ("off", "オフ"),
+    ("on", "オン"),
     ("open", "開く"),
     ("open / choose", "開く / 選択"),
     ("open in browser", "ブラウザで開く"),

@@ -9,6 +9,7 @@
 
 mod api;
 mod browser;
+mod card;
 mod cli;
 mod clock;
 mod compose;
@@ -18,6 +19,7 @@ mod hls;
 mod i18n;
 mod langs;
 mod media;
+mod og;
 mod terminal;
 mod timeline;
 mod tui;

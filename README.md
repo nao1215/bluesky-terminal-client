@@ -51,7 +51,7 @@ Run `bsky` and log in. An [app password](https://bsky.app/settings/app-passwords
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text, and `Space` opens a post in the browser. Photos and videos are posted without their location data.
+Other terminals get text, and `Space` opens a post in the browser. Photos and videos are posted without their location data. A post without pictures, video or a quote gets a card for its first link, made from the page's title, description and picture as Bluesky's app does; bsky reads the page from your computer, and leaves out a picture the page puts on your own network. `bsky post --no-card`, Link cards in the settings, or `BSKY_LINK_CARDS=off` leave the card out.
 
 bsky speaks English, 日本語, 简体中文, 한국어, Русский, Español, Français, Deutsch and Português: the language of your system, or the one chosen in the settings (`s` on your profile).
 
@@ -121,6 +121,7 @@ bsky search rust --json | jq -r .uri
 | `BSKY_BROWSER` | Program that opens links |
 | `BSKY_SERVICE` | PDS to log in to (also `--service`) |
 | `BSKY_VIDEO_SERVICE` | Video upload service |
+| `BSKY_LINK_CARDS` | `off` for posts without a link card |
 | `LANG` | Language, unless one is chosen in the settings |
 | `NO_COLOR` | No color |
 

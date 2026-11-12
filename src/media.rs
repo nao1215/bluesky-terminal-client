@@ -132,11 +132,54 @@ pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
     let format = reader
         .format()
         .ok_or_else(|| not_image(&crate::i18n::t("unknown format")))?;
-    let mut decoder = reader.into_decoder().map_err(|e| not_image(&e))?;
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let mut img = DynamicImage::from_decoder(decoder).map_err(|e| not_image(&e))?;
-    img.apply_orientation(orientation);
+    let img = upright(reader, None).map_err(|e| not_image(&e))?;
     Ok((img, format))
+}
+
+/// Decode a picture and turn it the way its EXIF orientation says,
+/// refusing one that would unpack into more than `max_bytes`.
+fn upright<R: std::io::BufRead + std::io::Seek>(
+    reader: ImageReader<R>,
+    max_bytes: Option<u64>,
+) -> image::ImageResult<DynamicImage> {
+    let mut decoder = reader.into_decoder()?;
+    // The reader's own memory limit is only checked by `decode`, not on
+    // this way through the decoder, so the size is checked here.
+    if max_bytes.is_some_and(|max| decoder.total_bytes() > max) {
+        return Err(image::ImageError::Limits(
+            image::error::LimitError::from_kind(image::error::LimitErrorKind::InsufficientMemory),
+        ));
+    }
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut img = DynamicImage::from_decoder(decoder)?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
+/// Longest side of a picture from the web that bsky decodes, and the most
+/// memory decoding it may take: a small file can unpack into a huge image.
+const MAX_FETCHED_SIDE: u32 = 8192;
+const MAX_FETCHED_ALLOC: u64 = 256 * 1024 * 1024;
+
+/// A picture fetched from the web (a link card's), upright and encoded in
+/// at most [`MAX_POST_IMAGE_BYTES`] with its longest side at most
+/// `max_side`; `None` when it is not a picture bsky reads or cannot fit.
+pub fn prepare_bytes(bytes: &[u8], max_side: u32) -> Option<Prepared> {
+    prepare_bytes_within(bytes, max_side, MAX_FETCHED_ALLOC)
+}
+
+fn prepare_bytes_within(bytes: &[u8], max_side: u32, max_alloc: u64) -> Option<Prepared> {
+    let mut reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    let format = reader.format()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_FETCHED_SIDE);
+    limits.max_image_height = Some(MAX_FETCHED_SIDE);
+    limits.max_alloc = Some(max_alloc);
+    reader.limits(limits);
+    let img = upright(reader, Some(max_alloc)).ok()?;
+    encode_within(img, format, max_side, MAX_POST_IMAGE_BYTES)
 }
 
 /// Read `path` and encode it for a post.
@@ -265,6 +308,37 @@ mod tests {
     }
     use image::{Rgb, Rgba, RgbaImage};
     use rstest::rstest;
+
+    // A link card's picture comes as bytes from the web: it is shrunk to the
+    // side asked for and under the post limit, and what is not a picture,
+    // or unpacks larger than bsky decodes, gives no picture.
+    #[test]
+    fn a_fetched_picture_is_shrunk_or_refused() {
+        let mut png = Vec::new();
+        noise(1600, 900)
+            .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+            .unwrap();
+        let p = prepare_bytes(&png, 1000).unwrap();
+        assert_eq!((p.width, p.height), (1000, 563));
+        assert!(p.bytes.len() <= MAX_POST_IMAGE_BYTES);
+
+        assert_eq!(prepare_bytes(b"<html>not a picture</html>", 1000), None);
+        assert_eq!(prepare_bytes(&png[..png.len() / 2], 1000), None);
+
+        let mut huge = Vec::new();
+        DynamicImage::new_luma8(MAX_FETCHED_SIDE + 1, 1)
+            .write_to(&mut Cursor::new(&mut huge), ImageFormat::Png)
+            .unwrap();
+        assert_eq!(prepare_bytes(&huge, 1000), None);
+
+        // 1000×1000 RGBA unpacks into 4 MB: refused under a 1 MB budget.
+        let mut big = Vec::new();
+        DynamicImage::new_rgba8(1000, 1000)
+            .write_to(&mut Cursor::new(&mut big), ImageFormat::Png)
+            .unwrap();
+        assert_eq!(prepare_bytes_within(&big, 1000, 1_000_000), None);
+        assert!(prepare_bytes_within(&big, 1000, 4_000_000).is_some());
+    }
 
     /// A picture that compresses badly, so the size limit has work to do.
     fn noise(w: u32, h: u32) -> DynamicImage {
