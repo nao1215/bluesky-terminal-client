@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-13
+
 ### Added
 
 - A post without pictures, video or a quote carries a card for its first link, as Bluesky's app makes one: bsky reads the page's Open Graph title, description and picture (or its `<title>` and description) and uploads the picture. A bare domain such as `example.com` counts as a link. Both `bsky post` and the composer do it. A page that cannot be read in 5 seconds, is not HTML in UTF-8, or says nothing leaves the post without a card rather than stopping it. The page is read from your computer; a picture it names on a private, loopback or link-local address is left out unless the page is there too. `bsky post --no-card`, Link cards on the settings screen (`s`), or `BSKY_LINK_CARDS=off` turn it off.
