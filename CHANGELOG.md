@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-18
+
 ### Changed
 
 - Times are read and written with jiff in place of chrono, which is no longer maintained (RUSTSEC-2026-0543). Post times show and `createdAt` is written as before.
