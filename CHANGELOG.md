@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- Times are read and written with jiff in place of chrono, which is no longer maintained (RUSTSEC-2026-0543). Post times show and `createdAt` is written as before.
 - CI scans the repository with Trivy on every pull request (dependency vulnerabilities, committed secrets and misconfigurations), and also daily. Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
 
 ## [0.14.0] - 2026-11-13

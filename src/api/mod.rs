@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use chrono::{SecondsFormat, Utc};
+use jiff::Timestamp;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -294,14 +294,14 @@ pub fn post_length_problem(text: &str) -> Option<String> {
 /// not parse are skipped.
 pub fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
     times
-        .filter_map(|t| chrono::DateTime::parse_from_rfc3339(t).ok().map(|d| (d, t)))
+        .filter_map(|t| t.parse::<Timestamp>().ok().map(|d| (d, t)))
         .max_by_key(|(d, _)| *d)
         .map(|(_, t)| t.to_string())
 }
 
 /// The current time as the AT Protocol writes it.
 pub fn now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    format!("{:.3}", Timestamp::now())
 }
 
 fn xrpc_url(service: &str, nsid: &str) -> String {
@@ -614,7 +614,7 @@ impl Client {
     /// A token for `aud` to act as the account for the one method `lxm`,
     /// good for half an hour.
     fn service_auth(&self, aud: &str, lxm: &str) -> Result<ServiceAuth> {
-        let exp = (Utc::now().timestamp() + 30 * 60).to_string();
+        let exp = (Timestamp::now().as_second() + 30 * 60).to_string();
         self.get(
             "com.atproto.server.getServiceAuth",
             &[("aud", aud), ("lxm", lxm), ("exp", exp.as_str())],
@@ -859,7 +859,8 @@ impl Client {
     /// clock, when that clock can be trusted.
     fn looks_expired(&self, token: &str) -> bool {
         !self.clock_off.load(Ordering::Relaxed)
-            && jwt_expiry(token).is_some_and(|exp| exp <= Utc::now().timestamp() + EXPIRY_MARGIN)
+            && jwt_expiry(token)
+                .is_some_and(|exp| exp <= Timestamp::now().as_second() + EXPIRY_MARGIN)
     }
 
     /// A new access token in place of `expired`. The tokens stay locked
@@ -1503,6 +1504,42 @@ mod stub_tests;
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    // The AT Protocol's datetime: UTC, `Z`, and milliseconds, as the
+    // official app writes `createdAt`.
+    #[test]
+    fn now_is_utc_with_milliseconds() {
+        let t = now();
+        assert_eq!(t.len(), "2026-09-20T10:00:00.000Z".len(), "{t}");
+        let b = t.as_bytes();
+        for (i, c) in [
+            (4, b'-'),
+            (7, b'-'),
+            (10, b'T'),
+            (13, b':'),
+            (16, b':'),
+            (19, b'.'),
+            (23, b'Z'),
+        ] {
+            assert_eq!(b[i], c, "{t}");
+        }
+        assert!(t.parse::<Timestamp>().is_ok(), "{t}");
+    }
+
+    #[test]
+    fn newest_compares_instants_not_text_and_skips_what_does_not_parse() {
+        let times = [
+            "2026-09-20T10:00:00.000Z",
+            "2026-09-20T18:30:00+09:00",
+            "not a time",
+            "2026-09-20T09:59:59.999-00:30",
+        ];
+        assert_eq!(
+            newest(times.into_iter()).as_deref(),
+            Some("2026-09-20T09:59:59.999-00:30")
+        );
+        assert_eq!(newest(["junk"].into_iter()), None);
+    }
 
     #[rstest]
     #[case("@alice.bsky.social", "alice.bsky.social")]

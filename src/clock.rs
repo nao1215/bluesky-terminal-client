@@ -1,17 +1,18 @@
 //! Times as bsky shows them, in the client and on the command line.
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 
 /// A timestamp as local time, `2026-09-20 10:00`; one that does not parse
 /// is shown as it is, less any control character: it is whatever the
 /// record's author wrote, and an escape sequence in it must not reach the
 /// terminal.
 pub fn local_time(ts: &str) -> String {
-    match DateTime::parse_from_rfc3339(ts) {
+    match ts.parse::<Timestamp>() {
         // Written out by hand: `format` parses its pattern on every call,
         // which is most of what showing a post's time costs.
         Ok(t) => {
-            let t = t.with_timezone(&Local);
+            let t = t.to_zoned_datetime(TimeZone::system());
             format!(
                 "{:04}-{:02}-{:02} {:02}:{:02}",
                 t.year(),
@@ -30,16 +31,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_time_reads_as_chrono_formats_it() {
+    fn a_time_reads_as_strftime_formats_it() {
         for ts in [
             "2026-09-22T01:02:03.000Z",
             "0999-01-02T23:59:59+09:00",
             "2024-02-29T12:00:00-11:30",
         ] {
-            let want = DateTime::parse_from_rfc3339(ts)
+            let want = ts
+                .parse::<Timestamp>()
                 .unwrap()
-                .with_timezone(&Local)
-                .format("%Y-%m-%d %H:%M")
+                .to_zoned_datetime(TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M")
                 .to_string();
             assert_eq!(local_time(ts), want);
         }
