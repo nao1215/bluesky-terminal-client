@@ -7,6 +7,7 @@
 //! card without one. Posts are sent on the thread every write shares, so
 //! each request has a short time limit.
 
+use std::borrow::Cow;
 use std::io::Read;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -76,7 +77,7 @@ pub fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
 /// any redirect, which its relative picture address is read against.
 fn page(agent: &ureq::Agent, uri: &str) -> Option<(String, String)> {
     let mut resp = agent
-        .get(uri)
+        .get(request_uri(uri).as_ref())
         .config()
         .timeout_global(Some(TIMEOUT))
         .build()
@@ -128,6 +129,27 @@ fn utf8_start(bytes: &[u8]) -> Option<String> {
         }
         Err(_) => None,
     }
+}
+
+/// `uri` as it goes on the request line. A link may hold text in any
+/// script (a Japanese page name), and the HTTP client sends it as raw UTF-8,
+/// which servers answer with 400; each byte outside printable ASCII, and
+/// the few printable ones an address may not hold, is percent-encoded. An
+/// escape already there stays as it is.
+fn request_uri(uri: &str) -> Cow<'_, str> {
+    let escaped = |b: u8| !b.is_ascii_graphic() || b"\"<>\\^`{|}".contains(&b);
+    if !uri.bytes().any(escaped) {
+        return Cow::Borrowed(uri);
+    }
+    let mut out = String::with_capacity(uri.len() * 3);
+    for b in uri.bytes() {
+        if escaped(b) {
+            out.push_str(&format!("%{b:02X}"));
+        } else {
+            out.push(char::from(b));
+        }
+    }
+    Cow::Owned(out)
 }
 
 /// Whether text in `charset` reads as UTF-8: ASCII is a part of it.
@@ -184,7 +206,7 @@ fn is_local_ip(ip: IpAddr) -> bool {
 /// the user's own network when the page is not there.
 fn picture(agent: &ureq::Agent, src: &str, page_local: bool) -> Option<Prepared> {
     let mut resp = agent
-        .get(src)
+        .get(request_uri(src).as_ref())
         .config()
         .timeout_global(Some(TIMEOUT))
         .build()
@@ -278,6 +300,92 @@ mod tests {
         ] {
             assert!(!is_local(url), "{url}");
         }
+    }
+
+    // A link as people write it may hold text in any script; the request
+    // line holds only ASCII, and a server answers raw UTF-8 there with 400.
+    #[rstest::rstest]
+    #[case("https://debimate.jp/notes/x/", "https://debimate.jp/notes/x/")]
+    #[case(
+        "https://debimate.jp/post/ja/2026-11-17-golangアプリ層/",
+        "https://debimate.jp/post/ja/2026-11-17-golang%E3%82%A2%E3%83%97%E3%83%AA%E5%B1%A4/"
+    )]
+    #[case(
+        "https://a.test/%E3%82%A2?q=日本#見出し",
+        "https://a.test/%E3%82%A2?q=%E6%97%A5%E6%9C%AC#%E8%A6%8B%E5%87%BA%E3%81%97"
+    )]
+    #[case(
+        "https://a.test/👨‍👩‍👧‍👦",
+        "https://a.test/%F0%9F%91%A8%E2%80%8D%F0%9F%91%A9%E2%80%8D%F0%9F%91%A7%E2%80%8D%F0%9F%91%A6"
+    )]
+    #[case(
+        "https://a.test/a|b{c}^d`e\\f\"g<h>",
+        "https://a.test/a%7Cb%7Bc%7D%5Ed%60e%5Cf%22g%3Ch%3E"
+    )]
+    #[case("https://a.test/(a)?b=c&d=e", "https://a.test/(a)?b=c&d=e")]
+    fn a_link_is_requested_with_its_text_percent_encoded(#[case] link: &str, #[case] want: &str) {
+        assert_eq!(request_uri(link), want);
+        assert!(want.parse::<ureq::http::Uri>().is_ok(), "{want}");
+    }
+
+    /// A server on loopback that answers like a strict one: 400 to a request
+    /// line holding anything but ASCII, else `body` as `kind`. It answers
+    /// one request and gives back its request line.
+    fn strict_server(
+        kind: &'static str,
+        body: Vec<u8>,
+    ) -> (String, std::thread::JoinHandle<Vec<u8>>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let served = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = Vec::new();
+            reader.read_until(b'\n', &mut line).unwrap();
+            let mut header = Vec::new();
+            while reader.read_until(b'\n', &mut header).unwrap() > 2 {
+                header.clear();
+            }
+            if line.is_ascii() {
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(head.as_bytes()).unwrap();
+                stream.write_all(&body).unwrap();
+            } else {
+                stream
+                    .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .unwrap();
+            }
+            line
+        });
+        (base, served)
+    }
+
+    #[test]
+    fn a_page_and_a_picture_named_in_japanese_are_asked_for_percent_encoded() {
+        let agent = crate::api::agent();
+        let html = r#"<head><meta property="og:title" content="アプリ層"></head>"#;
+        let (base, served) = strict_server("text/html; charset=utf-8", html.into());
+        let got = page(&agent, &format!("{base}/ja/アプリ層👍🏽/"));
+        let line = String::from_utf8_lossy(&served.join().unwrap()).into_owned();
+        assert!(
+            line.starts_with(
+                "GET /ja/%E3%82%A2%E3%83%97%E3%83%AA%E5%B1%A4%F0%9F%91%8D%F0%9F%8F%BD/ "
+            ),
+            "{line}"
+        );
+        let (got, _) = got.expect("the page is read");
+        assert_eq!(crate::og::parse(&got, &base).title, "アプリ層");
+
+        let photo = include_bytes!("../e2e/atago/testdata/photo.png").to_vec();
+        let (base, served) = strict_server("image/png", photo);
+        let got = picture(&agent, &format!("{base}/写真.png"), true);
+        let line = String::from_utf8_lossy(&served.join().unwrap()).into_owned();
+        assert!(line.starts_with("GET /%E5%86%99%E7%9C%9F.png "), "{line}");
+        assert!(got.is_some());
     }
 
     #[test]

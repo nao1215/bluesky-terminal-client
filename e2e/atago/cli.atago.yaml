@@ -323,6 +323,42 @@ scenarios:
                 - { path: "$.record.embed.external.title", equals: "Moved" }
                 - { path: "$.record.embed.external.thumb.ref['$link']", equals: "bafythumb" }
 
+  - name: a card is made for a link whose address is written in Japanese, its page asked for percent-encoded
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: "/post/ja/2026-11-17-golangアプリ層👍🏽/"
+            header: { Content-Type: "text/html; charset=utf-8" }
+            body: '<head><meta property="og:title" content="アプリ層のログ"><meta property="og:image" content="写真.png"></head>'
+          - method: GET
+            path: "/post/ja/2026-11-17-golangアプリ層👍🏽/写真.png"
+            body_file: testdata/photo.png
+            header: { Content-Type: image/png }
+          - *card_upload
+          - *card_create
+    steps:
+      - *session
+      - run:
+          command: 'bsky post "【Golang】アプリ層のログ ${api.url}/post/ja/2026-11-17-golangアプリ層👍🏽/"'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: "/post/ja/2026-11-17-golangアプリ層👍🏽/写真.png", count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.external" }
+                - { path: "$.record.embed.external.uri", equals: "${api.url}/post/ja/2026-11-17-golangアプリ層👍🏽/" }
+                - { path: "$.record.embed.external.title", equals: "アプリ層のログ" }
+                - { path: "$.record.embed.external.thumb.ref['$link']", equals: "bafythumb" }
+                - { path: "$.record.facets[0].features[0].uri", equals: "${api.url}/post/ja/2026-11-17-golangアプリ層👍🏽/" }
+
   - name: post --no-card, Link cards off in the settings, and BSKY_LINK_CARDS=off do not read the page
     mock_servers:
       - name: api

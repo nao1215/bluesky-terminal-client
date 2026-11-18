@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Times are read and written with jiff in place of chrono, which is no longer maintained (RUSTSEC-2026-0543). Post times show and `createdAt` is written as before.
 - CI scans the repository with Trivy on every pull request (dependency vulnerabilities, committed secrets and misconfigurations), and also daily. Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
 
+### Fixed
+
+- A post whose first link has non-ASCII text in its address, such as a page named in Japanese, now gets its link card. bsky sent the address as raw UTF-8 when it read the page and its picture, the server answered 400, and the post went out without a card. The address is now percent-encoded for those requests; the link in the post stays as written.
+
 ## [0.14.0] - 2026-11-13
 
 ### Added
