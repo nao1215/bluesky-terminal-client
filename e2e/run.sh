@@ -10,7 +10,10 @@
 # with atago mock servers, so it needs no network and no account.
 #
 # Environment contract used by the specs:
-#   PATH   bsky resolves here (target/e2e from this checkout)
+#   PATH          bsky resolves here (target/e2e from this checkout)
+#   LANG, LC_ALL  C.UTF-8, so bsky speaks English whatever locale the caller
+#                 runs in; a spec that checks another language sets LC_ALL in
+#                 its own env
 #
 # Usage: e2e/run.sh [atago args...]        (e.g. e2e/run.sh --filter search)
 set -euo pipefail
@@ -30,6 +33,12 @@ echo "e2e: building bsky (cargo build --profile e2e --locked)..."
 cargo build --profile e2e --locked
 
 export PATH="$REPO_ROOT/target/e2e:$PATH"
+# bsky picks its language from LC_ALL, LC_MESSAGES or LANG, and the specs
+# expect the English text, so pin the locale here: CI and a checkout running
+# under ja_JP.UTF-8 (or any other locale) then see the same screens.
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+unset LC_MESSAGES
 
 echo "e2e: $(bsky --version)"
 echo "e2e: $(atago --version)"
