@@ -35,7 +35,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: never
   # The score recorded in doc/testing.md. Raise it with the document.
-  MUTATION_MIN_SCORE: "0"
+  MUTATION_MIN_SCORE: "87.83"
   # A mutant that allocates without end would take the runner down with it,
   # leaving no log; the limit turns it into a failed test instead. Two
   # mutants run at once on a 16 GB runner, so each gets 4 GiB. The limit is
