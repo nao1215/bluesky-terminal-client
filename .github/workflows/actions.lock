@@ -8,8 +8,8 @@ workflows:
     '.github/workflows/bench.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
-        - 'nao1215/setup-himorime@14aeeb3fe55ad42cf29ee0802d578820faac3897'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
+        - 'nao1215/setup-himorime@05b4d293796e34a46c59f1363e15841a18e83e92'
         - 'swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0'
     '.github/workflows/cargo-deny.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
@@ -19,34 +19,37 @@ workflows:
         - 'github/codeql-action@33d7b85da1a04171e211befe2c739303b9a4c066'
     '.github/workflows/coverage.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
         - 'k1low/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278'
-        - 'nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb'
+        - 'nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa'
         - 'swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0'
         - 'taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2'
     '.github/workflows/e2e.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
-        - 'nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
+        - 'nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa'
         - 'swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0'
     '.github/workflows/fuzz.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
         - 'taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2'
+    '.github/workflows/gitleaks.yml':
+        - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+        - 'gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e'
     '.github/workflows/release.yml':
         - 'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8'
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333'
         - 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
         - 'rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9'
         - 'sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532'
         - 'slsa-framework/slsa-verifier@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6'
         - 'taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2'
     '.github/workflows/rust.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
-        - 'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
         - 'swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0'
         - 'taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2'
     '.github/workflows/scorecard.yml':
@@ -122,9 +125,9 @@ dependencies:
         uses:
             - 'actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae'
             - 'aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514'
-    'dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8':
-        ref: 'v1'
-        commit: 'sha1-683b588c487a69d01f6c6ddf40f036ff682cc2c8'
+    'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc':
+        ref: 'master'
+        commit: 'sha1-df2a88e9fe4098bad09cb42c3dec7187f15861fc'
         owner_id: 1940490
         repo_id: 260749683
     'github/codeql-action@33d7b85da1a04171e211befe2c739303b9a4c066':
@@ -132,6 +135,11 @@ dependencies:
         commit: 'sha1-33d7b85da1a04171e211befe2c739303b9a4c066'
         owner_id: 9919
         repo_id: 259445878
+    'gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e':
+        ref: 'v3.0.0'
+        commit: 'sha1-e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e'
+        owner_id: 90395851
+        repo_id: 242854909
     'k1low/gh-setup@5fb38d34ea857e5a942b6fe10f1723e55055f6c0':
         ref: 'v1.11.9'
         commit: 'sha1-5fb38d34ea857e5a942b6fe10f1723e55055f6c0'
@@ -145,14 +153,14 @@ dependencies:
         uses:
             - 'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3'
             - 'k1low/gh-setup@5fb38d34ea857e5a942b6fe10f1723e55055f6c0'
-    'nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb':
-        ref: 'v0.1.3'
-        commit: 'sha1-5c563dcd9d85e114f8abe8bbdcd058e51de09efb'
+    'nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa':
+        ref: 'v0.1.6'
+        commit: 'sha1-e573acee4be10bbfc6089f3319cb406918d566fa'
         owner_id: 22737008
         repo_id: 1286059375
-    'nao1215/setup-himorime@14aeeb3fe55ad42cf29ee0802d578820faac3897':
-        ref: 'v0.1.2'
-        commit: 'sha1-14aeeb3fe55ad42cf29ee0802d578820faac3897'
+    'nao1215/setup-himorime@05b4d293796e34a46c59f1363e15841a18e83e92':
+        ref: 'v0.2.1'
+        commit: 'sha1-05b4d293796e34a46c59f1363e15841a18e83e92'
         owner_id: 22737008
         repo_id: 1373972618
     'ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e':

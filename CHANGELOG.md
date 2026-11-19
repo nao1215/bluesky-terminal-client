@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- The release binaries are built with Rust 1.100.0 (was 1.98.1), and the dependencies are updated within their versions, among them ureq 3.5.2, rustls-webpki 0.103.17 and openh264 0.9.10. The minimum Rust version stays 1.90.
+- CI scans every pull request and every push to main for committed secrets with gitleaks.
+
 ## [0.14.1] - 2026-11-18
 
 ### Changed

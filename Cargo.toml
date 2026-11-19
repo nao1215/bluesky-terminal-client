@@ -91,3 +91,11 @@ allow_attributes_without_reason = "warn"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# What e2e/run.sh builds: the release optimizations without the link-time
+# optimization and the single codegen unit, which make the same code a little
+# faster and took most of the E2E job (3 minutes of the 4 on Windows).
+[profile.e2e]
+inherits = "release"
+lto = false
+codegen-units = 16
