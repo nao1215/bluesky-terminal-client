@@ -856,3 +856,118 @@ mod differential_dump {
         std::fs::write(out_path, out).unwrap();
     }
 }
+
+// Properties of facet detection over generated posts. A facet's byte range
+// is what Bluesky's app makes clickable, so a range off by one byte links the
+// wrong text or is refused; these check the ranges against the text itself
+// rather than against cases written down. `PROPTEST_CASES` raises the count;
+// the nightly workflow runs 20,000 cases.
+#[cfg(test)]
+mod properties {
+    use super::*;
+    use proptest::prelude::*;
+
+    const PIECES: &[&str] = &[
+        "a",
+        "word",
+        "1",
+        " ",
+        "\n",
+        "\u{3000}",
+        ".",
+        ",",
+        "!",
+        "-",
+        "_",
+        "/",
+        "(",
+        ")",
+        "（",
+        "）",
+        "「",
+        "」",
+        "。",
+        "、",
+        "#",
+        "＃",
+        "@",
+        "https://",
+        "http://",
+        "example.com",
+        "bsky.app",
+        "alice.test",
+        "@alice.bsky.social",
+        "#rust",
+        "#日本語",
+        "日本語",
+        "👨\u{200d}👩\u{200d}👧\u{200d}👦",
+        "🇯🇵",
+        "1\u{fe0f}\u{20e3}",
+        "❤\u{fe0f}",
+        "👍🏽",
+        "e\u{301}",
+        "\u{fe0f}",
+        "\u{200d}",
+    ];
+
+    fn post() -> impl Strategy<Value = String> {
+        prop::collection::vec(prop::sample::select(PIECES), 0..20).prop_map(|p| p.concat())
+    }
+
+    fn shifted(spans: Vec<Span>, by: usize) -> Vec<Span> {
+        spans
+            .into_iter()
+            .map(|s| Span {
+                start: s.start + by,
+                end: s.end + by,
+                ..s
+            })
+            .collect()
+    }
+
+    proptest! {
+        // Every range is inside the text, on character boundaries, not
+        // empty, and apart from every other range.
+        #[test]
+        fn ranges_are_separate_slices_of_the_text(text in post()) {
+            let spans = detect(&text);
+            for (i, s) in spans.iter().enumerate() {
+                prop_assert!(s.start < s.end && s.end <= text.len(), "{s:?}");
+                prop_assert!(text.is_char_boundary(s.start) && text.is_char_boundary(s.end), "{s:?}");
+                for t in &spans[i + 1..] {
+                    prop_assert!(s.end <= t.start || t.end <= s.start, "{s:?} overlaps {t:?}");
+                }
+            }
+        }
+
+        // The bytes a range covers are what it points at: the URL (or the
+        // bare domain `https://` is put in front of), `@` and the handle, `#`
+        // or `＃` and the tag.
+        #[test]
+        fn a_range_covers_what_it_points_at(text in post()) {
+            for s in detect(&text) {
+                let covered = &text[s.start..s.end];
+                match &s.target {
+                    Target::Link(url) => prop_assert!(
+                        covered == url || format!("https://{covered}") == *url,
+                        "{covered:?} links to {url:?}"
+                    ),
+                    Target::Mention(handle) => prop_assert_eq!(covered, format!("@{handle}")),
+                    Target::Tag(tag) => prop_assert!(
+                        covered == format!("#{tag}") || covered == format!("＃{tag}"),
+                        "{covered:?} is tagged {tag:?}"
+                    ),
+                }
+            }
+        }
+
+        // Metamorphic: text joined by a space is read as each part is on its
+        // own, the second part's ranges moved by the bytes before it.
+        #[test]
+        fn joined_text_is_read_part_by_part(a in post(), b in post()) {
+            let mut want = detect(&a);
+            want.extend(shifted(detect(&b), a.len() + 1));
+            prop_assert_eq!(detect(&format!("{a} {b}")), want);
+        }
+    }
+}

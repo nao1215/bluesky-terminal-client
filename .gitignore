@@ -2,3 +2,6 @@ target
 .atago/
 lcov.info
 *.profraw
+# A failing case is kept as a unit test beside its property instead.
+proptest-regressions/
+mutants.out*/
