@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - The release binaries are built with Rust 1.100.0 (was 1.98.1), and the dependencies are updated within their versions, among them ureq 3.5.2, rustls-webpki 0.103.17 and openh264 0.9.10. The minimum Rust version stays 1.90.
 - CI scans every pull request and every push to main for committed secrets with gitleaks.
 
+### Fixed
+
+- A line of a post that ended with a space, ASCII or full-width, exactly at the edge of the column was followed by a blank line that is not in the post. The space is now dropped without a line, and a line of only spaces shows as one blank line.
+
 ## [0.14.1] - 2026-11-18
 
 ### Changed
