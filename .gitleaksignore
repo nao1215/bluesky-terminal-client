@@ -1,0 +1,3 @@
+# A made-up access token that expired in 2023, which the E2E mock hands out to
+# test the refresh before a request. It signs nothing and opens no account.
+17ab99c3439be17874ab81cd34be7d707659626b:e2e/atago/timeline.atago.yaml:generic-api-key:1887

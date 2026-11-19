@@ -4,6 +4,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -23,6 +27,11 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # setup-himorime comments the comparison on a pull request from this
+    # repository.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,14 +39,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: stable
       - name: Cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: nao1215/setup-himorime@14aeeb3fe55ad42cf29ee0802d578820faac3897 # v0.1.2
         with:
-          version: v0.5.2
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: nao1215/setup-himorime@05b4d293796e34a46c59f1363e15841a18e83e92 # v0.2.1
+        with:
+          version: v0.6.1
       - name: Compare the base with the head
         if: github.event_name == 'pull_request'
         run: himorime ci --output "$RUNNER_TEMP/himorime.json" --format json bench

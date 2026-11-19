@@ -9,6 +9,9 @@ on:
     - cron: '23 3 * * *'
 env:
   GOMAXPROCS: '4'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
