@@ -64,6 +64,7 @@ ureq = "3"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
 
 [dev-dependencies]
+proptest = { version = "1.12", default-features = false, features = ["std"] }
 rstest = "0.28"
 tempfile = "3"
 

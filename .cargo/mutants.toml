@@ -1,0 +1,26 @@
+# cargo-mutants configuration (https://mutants.rs).
+#
+# Mutation testing changes one operator, constant or return value at a time and
+# checks that some test fails. It is pointed at the code that computes and
+# decides on its own: laying text out in cells, finding the facets of a post,
+# reading HLS playlists and MPEG-TS, reading a page's link card, fitting
+# pictures in cells, the columns and the text field. The rest mostly wires
+# those to the terminal, the network and the worker thread, which the state
+# tests of App and the E2E suite cover.
+examine_globs = [
+  "src/tui/text.rs",
+  "src/api/facets.rs",
+  "src/hls.rs",
+  "src/og.rs",
+  "src/langs.rs",
+  "src/tui/scale.rs",
+  "src/tui/columns.rs",
+  "src/tui/input.rs",
+]
+
+# bsky is a binary crate: its unit tests are in the bin target. They run in
+# about ten seconds.
+additional_cargo_test_args = ["--bins"]
+
+# A mutant that turns a loop condition around can spin forever.
+timeout_multiplier = 3.0

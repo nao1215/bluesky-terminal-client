@@ -555,3 +555,172 @@ mod tests {
     #[test]
     fn bad_timestamps_are_shown_verbatim() {}
 }
+
+// Properties of the layout helpers over generated text. proptest draws the
+// text from pieces that are hard to lay out (ZWJ families, flags, keycaps,
+// VS16, combining marks, CJK, half-width sound marks, Arabic ligatures, tabs
+// and control characters) and checks what every answer has to satisfy, so a
+// cluster split or a line one cell too wide is found without the case being
+// written down. `PROPTEST_CASES` raises the count; the nightly workflow runs
+// 20,000 cases.
+#[cfg(test)]
+mod properties {
+    use super::*;
+    use proptest::prelude::*;
+
+    const PIECES: &[&str] = &[
+        "a",
+        "Z",
+        "word",
+        "longerwordthanmostlines",
+        "1",
+        ".",
+        ",",
+        "-",
+        "#tag",
+        "@alice.test",
+        "https://example.com/a",
+        " ",
+        "  ",
+        "\t",
+        "\n",
+        "\r\n",
+        "\u{7}",
+        "日本語",
+        "中",
+        "한국어",
+        "。",
+        "、",
+        "\u{3000}",
+        "👨\u{200d}👩\u{200d}👧\u{200d}👦",
+        "🇯🇵",
+        "🏳\u{fe0f}\u{200d}🌈",
+        "1\u{fe0f}\u{20e3}",
+        "❤\u{fe0f}",
+        "👍🏽",
+        "e\u{301}",
+        "ｶﾞ",
+        "ﾊﾟ",
+        "مرحبا",
+        "لا",
+        "\u{200b}",
+    ];
+
+    fn text_from(pieces: &'static [&'static str], max: usize) -> impl Strategy<Value = String> {
+        prop::collection::vec(prop::sample::select(pieces), 0..max).prop_map(|p| p.concat())
+    }
+
+    fn text() -> impl Strategy<Value = String> {
+        text_from(PIECES, 24)
+    }
+
+    /// Text that stays on one line: no line break and no control character.
+    fn line() -> impl Strategy<Value = String> {
+        text().prop_map(|t| t.chars().filter(|c| !c.is_control()).collect())
+    }
+
+    fn visible(s: &str) -> String {
+        s.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    proptest! {
+        // The shortcut for ASCII runs splits text as the segmentation
+        // tables do.
+        #[test]
+        fn graphemes_are_unicode_segmentation(s in text()) {
+            let ours: Vec<(usize, &str)> = graphemes(&s).collect();
+            let theirs: Vec<(usize, &str)> = s.grapheme_indices(true).collect();
+            prop_assert_eq!(ours, theirs);
+        }
+
+        // A wrapped line is never wider than the width, except a line that
+        // holds one cluster wider than the whole width (a wide character in
+        // a column of one), which cannot be split, and clusters that take no
+        // cell.
+        #[test]
+        fn a_wrapped_line_fits_the_width(s in text(), width in 1usize..30) {
+            for l in wrap(&s, width) {
+                let drawn = graphemes(&l).filter(|(_, g)| cluster_width(g) > 0).count();
+                prop_assert!(
+                    cells(&l) <= width || drawn == 1,
+                    "{l:?} is {} cells, wider than {width}", cells(&l)
+                );
+                prop_assert!(!l.contains('\n'));
+            }
+        }
+
+        // Wrapping only moves text to the next line: every character other
+        // than a space is still there, in the same order.
+        #[test]
+        fn wrapping_loses_no_character(s in text(), width in 1usize..30) {
+            let lines = wrap(&s, width);
+            prop_assert_eq!(visible(&lines.concat()), visible(&drawable(&s)));
+        }
+
+        // Metamorphic: a line already within the width wraps to itself.
+        #[test]
+        fn a_line_that_fits_is_left_alone(s in line(), spare in 0usize..10) {
+            // A visible first character, so the line is not blank.
+            let s = format!("x{}", s.trim_end());
+            let width = cells(&s) + spare;
+            prop_assert_eq!(wrap(&s, width), vec![s]);
+        }
+
+        // Metamorphic: two paragraphs are wrapped as each is on its own. The
+        // first starts with a visible character: blank lines at the end of
+        // the text are dropped, so a blank first paragraph would be too.
+        #[test]
+        fn paragraphs_wrap_one_by_one(a in line(), b in line(), width in 1usize..30) {
+            let a = format!("x{a}");
+            let mut both = wrap(&a, width);
+            both.extend(wrap(&b, width));
+            prop_assert_eq!(wrap(&format!("{a}\n{b}"), width), both);
+        }
+
+        // Truncated text fits, is the text itself when it already fits, and
+        // otherwise is a prefix of whole clusters followed by `…`.
+        #[test]
+        fn truncation_keeps_a_cluster_prefix(s in text(), width in 0usize..30) {
+            let shown = drawable(&s).into_owned();
+            let out = truncate(&s, width);
+            prop_assert!(cells(&out) <= width, "{out:?} is wider than {width}");
+            if cells(&shown) <= width {
+                prop_assert_eq!(out, shown);
+            } else if width > 0 {
+                let kept = out.strip_suffix('…').unwrap_or_else(|| panic!("{out:?} has no …"));
+                prop_assert!(shown.starts_with(kept));
+                prop_assert!(graphemes(&shown).any(|(i, _)| i == kept.len()));
+            } else {
+                prop_assert_eq!(out, "");
+            }
+        }
+
+        // Metamorphic: one more column never keeps less of the text.
+        #[test]
+        fn a_wider_truncation_keeps_at_least_as_much(s in text(), width in 1usize..30) {
+            let kept = |w: usize| {
+                let out = truncate(&s, w);
+                out.strip_suffix('…').map(str::to_string).unwrap_or(out)
+            };
+            prop_assert!(kept(width + 1).starts_with(&kept(width)));
+        }
+
+        // The start-side cut keeps a suffix of whole clusters after `…`.
+        #[test]
+        fn truncation_from_the_start_keeps_a_cluster_suffix(s in text(), width in 0usize..30) {
+            let shown = drawable(&s).into_owned();
+            let out = truncate_start(&s, width);
+            prop_assert!(cells(&out) <= width, "{out:?} is wider than {width}");
+            if cells(&shown) <= width {
+                prop_assert_eq!(out, shown);
+            } else if width > 0 {
+                let kept = out.strip_prefix('…').unwrap_or_else(|| panic!("{out:?} has no …"));
+                prop_assert!(shown.ends_with(kept));
+                let at = shown.len() - kept.len();
+                prop_assert!(at == shown.len() || graphemes(&shown).any(|(i, _)| i == at));
+            } else {
+                prop_assert_eq!(out, "");
+            }
+        }
+    }
+}

@@ -1,0 +1,57 @@
+name: Nightly properties
+
+# The property and metamorphic tests run on every pull request with proptest's
+# default of 256 cases each, and the state-transition test with 12 seeds, as
+# part of `cargo test`. This workflow runs the same tests each night with many
+# more cases, in release mode so a case costs little.
+#
+# proptest draws a fresh seed every run and prints the minimal failing input
+# when a property breaks; the state-transition test prints the seed and step.
+# Turn that input into a plain unit test beside the property, then fix it on a
+# fix/* branch. Never lower the case count to make this green.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: Cases per property
+        default: "20000"
+      seeds:
+        description: Seeds of the state-transition test
+        default: "2000"
+  schedule:
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  properties:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Properties and metamorphic relations
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '20000' }}
+        run: cargo test --locked --release --bins properties
+
+      - name: Random keys and late answers
+        env:
+          BSKY_FUZZ_SEEDS: ${{ inputs.seeds || '2000' }}
+        run: cargo test --locked --release --bins random_keys_and_late_answers_keep_the_client_sound
