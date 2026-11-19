@@ -152,6 +152,21 @@ From their READMEs and source, September 2026.
 | Key bindings | Fixed | Set in TOML | Not applicable |
 | MCP server | No | No | Yes |
 
+## Testing
+
+| Technique | Bug class caught here |
+|---|---|
+| [Unit tests](doc/testing.md#unit-tests) | Wrong answers for the cases someone wrote down |
+| [State-transition tests](doc/testing.md#state-transition-tests) | Panics, selections outside their list and doubled writes after random keys and late answers |
+| [End-to-end tests](doc/testing.md#end-to-end-tests) | Wrong screens, pictures, requests and files from the real binary on Linux, macOS and Windows |
+| [Property-based tests](doc/testing.md#property-based-tests) | Split emoji, lines wider than the column and facet ranges off by a byte, for text nobody listed |
+| [Metamorphic tests](doc/testing.md#metamorphic-tests) | Layout and facets that change when unrelated text is put beside them |
+| [Mutation tests](doc/testing.md#mutation-tests) | Lines the tests run but whose answer no test checks |
+| [Fuzzing](doc/testing.md#fuzzing) | Panics and wrong answers on malformed video streams, playlists, posts and web pages |
+| [Benchmarks](doc/testing.md#benchmarks) | Slower start-up and commands slipping in unnoticed |
+
+[Where each technique runs and how to run it](doc/testing.md).
+
 ## Contributing
 
 ```sh
