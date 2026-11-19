@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Fixed
 
 - A line of a post that ended with a space, ASCII or full-width, exactly at the edge of the column was followed by a blank line that is not in the post. The space is now dropped without a line, and a line of only spaces shows as one blank line.
+- Opening a thread with `v`, closing it and opening it again before it had been read left `loading…` at the bottom right for good, and the client checking for answers more often than it needs to. The thread is now waited for once.
 
 ## [0.14.1] - 2026-11-18
 
