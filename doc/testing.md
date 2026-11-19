@@ -50,7 +50,7 @@ To run it locally (a full run takes hours; keep its temporary copies off a small
 
 ```sh
 cargo install cargo-mutants --locked
-TMPDIR=$HOME/.cache/mutants RUST_TEST_THREADS=4 cargo mutants -j 4
+TMPDIR=$HOME/.cache/mutants RUST_TEST_THREADS=4 MALLOC_ARENA_MAX=2 cargo mutants -j 4
 python3 scripts/mutation_score.py mutants.out
 ```
 

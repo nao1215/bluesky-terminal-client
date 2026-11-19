@@ -37,10 +37,14 @@ env:
   # The score recorded in doc/testing.md. Raise it with the document.
   MUTATION_MIN_SCORE: "0"
   # A mutant that allocates without end would take the runner down with it,
-  # leaving no log; the limit turns it into a failed test instead. It caps
-  # address space, not memory used: every thread of the unit tests reserves
-  # its stack, and 8 GiB already failed the unmutated tests on 32 threads.
-  MUTANT_MEMORY_KIB: "16777216"
+  # leaving no log; the limit turns it into a failed test instead. Two
+  # mutants run at once on a 16 GB runner, so each gets 4 GiB. The limit is
+  # on address space, not memory used, and glibc reserves 64 MiB of it for
+  # every thread's malloc arena: the view tests start picture threads for
+  # every render, and passed under 2 GiB only with two arenas. A cap of
+  # 16 GiB let one mutant of the first full run take its runner down.
+  MUTANT_MEMORY_KIB: "4194304"
+  MALLOC_ARENA_MAX: "2"
   RUST_TEST_THREADS: "4"
 
 jobs:
