@@ -180,10 +180,14 @@ impl App {
         let Some(i) = kept.iter().position(|t| {
             t.uri == view.uri && t.seq >= self.account_since && t.seq >= self.read_ahead.wrote_at
         }) else {
-            // Being read ahead now: that answer is waited for.
+            // Being read ahead now: that answer is waited for, and counted
+            // once however often v opens the thread before it comes, since
+            // it is one answer.
             if self.read_ahead.reading.contains(&view.uri) {
-                self.read_ahead.adopted.push(view.uri.clone());
-                self.pending += 1;
+                if !self.read_ahead.adopted.contains(&view.uri) {
+                    self.read_ahead.adopted.push(view.uri.clone());
+                    self.pending += 1;
+                }
                 return false;
             }
             return true;

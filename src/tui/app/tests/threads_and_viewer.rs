@@ -644,6 +644,28 @@ fn v_while_the_thread_is_read_ahead_waits_for_that_answer() {
     assert_eq!(app.pending, pending);
 }
 
+// v, Esc and v again before the thread read ahead came back counted the
+// one answer twice, and the client went on waiting for the second one.
+#[test]
+fn v_twice_while_the_thread_is_read_ahead_waits_for_one_answer() {
+    let mut app = logged_in();
+    let pending = app.pending;
+    let jobs = rest(&mut app);
+    assert!(app.handle_key(key('v')).is_empty());
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.threads.is_empty(), "Esc closes the thread");
+    assert!(app.handle_key(key('v')).is_empty());
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            uri: "at://a/p/1".into(),
+            result: Ok(thread_json("at://a/p/1", &["at://r1"])),
+        },
+    );
+    assert!(app.threads.last().unwrap().list.loaded);
+    assert_eq!(app.pending, pending, "nothing is waited for any more");
+}
+
 #[test]
 fn a_read_ahead_that_fails_after_v_says_why() {
     let mut app = logged_in();
