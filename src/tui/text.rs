@@ -165,19 +165,30 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
     for para in text.lines() {
         let mut line = String::new();
         let mut col = 0;
+        // Whether the line was ended by a space that did not fit, with
+        // nothing put on the next one since.
+        let mut ended_by_space = false;
         for word in split_keep_spaces(para) {
             let w = cells(word);
             if col + w <= width {
                 line.push_str(word);
                 col += w;
+                ended_by_space &= word.trim().is_empty();
                 continue;
             }
             if word.trim().is_empty() {
-                // A space at the wrap point is dropped instead of starting the next line.
-                out.push(std::mem::take(&mut line));
+                // A space at the wrap point is dropped instead of starting
+                // the next line; a line of spaces wider than the column is
+                // one blank line.
+                if !ended_by_space {
+                    out.push(std::mem::take(&mut line).trim_end().to_string());
+                }
+                line.clear();
                 col = 0;
+                ended_by_space = true;
                 continue;
             }
+            ended_by_space = false;
             if w <= width && col > 0 {
                 out.push(std::mem::take(&mut line));
                 line.push_str(word);
@@ -194,7 +205,11 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
                 col += gw;
             }
         }
-        out.push(line.trim_end().to_string());
+        // The space that ended the last line ended the paragraph too, so
+        // there is no line after it.
+        if !ended_by_space {
+            out.push(line.trim_end().to_string());
+        }
     }
     while out.last().is_some_and(std::string::String::is_empty) {
         out.pop();
@@ -440,6 +455,25 @@ mod tests {
     #[case("one\n\ntwo\n\n", 10, &["one", "", "two"])]
     #[case("hi 日本語", 5, &["hi 日", "本語"])]
     fn wraps_by_display_width(#[case] text: &str, #[case] width: usize, #[case] want: &[&str]) {
+        assert_eq!(wrap(text, width), want);
+    }
+
+    // A space that falls at the wrap point is dropped; it does not leave a
+    // blank line under a paragraph that goes on, nor two for a line of
+    // spaces wider than the column.
+    #[rstest]
+    #[case("hello world \nnext", 11, &["hello world", "next"])]
+    #[case("hello world  \nnext", 11, &["hello world", "next"])]
+    #[case("#tag#taga#tag\u{3000}\n日本語", 7, &["#tag#ta", "ga#tag", "日本語"])]
+    #[case("日本語\u{3000}\n次", 6, &["日本語", "次"])]
+    #[case("one\n    \ntwo", 3, &["one", "", "two"])]
+    #[case("one\n\t\ntwo", 3, &["one", "", "two"])]
+    #[case("ab   cd", 2, &["ab", "cd"])]
+    fn a_space_at_the_wrap_point_adds_no_blank_line(
+        #[case] text: &str,
+        #[case] width: usize,
+        #[case] want: &[&str],
+    ) {
         assert_eq!(wrap(text, width), want);
     }
 
