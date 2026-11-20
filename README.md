@@ -56,7 +56,9 @@ Run `bsky` and log in. An [app password](https://bsky.app/settings/app-passwords
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text, and `Space` opens a post in the browser. Photos and videos are posted without their location data. A post without pictures, video or a quote gets a card for its first link, made from the page's title, description and picture as Bluesky's app does; bsky reads the page from your computer, and leaves out a picture the page puts on your own network. `bsky post --no-card`, Link cards in the settings, or `BSKY_LINK_CARDS=off` leave the card out.
+Other terminals get text, and `Space` opens a post in the browser. Photos and videos are posted without their location data.
+
+A post without pictures, video or a quote gets a card for its first link, built from the page's title, description and picture as Bluesky's app does. bsky fetches the page from your computer and skips a picture hosted on your own network. The Link cards setting, `bsky post --no-card` and `BSKY_LINK_CARDS=off` turn cards off.
 
 bsky speaks English, 日本語, 简体中文, 한국어, Русский, Español, Français, Deutsch and Português: the language of your system, or the one chosen in the settings (`s` on your profile).
 
@@ -91,7 +93,7 @@ Chat, accounts and columns show made-up data served by [doc/demo-server.py](doc/
 
 | Key | Action |
 |---|---|
-| `1`–`5` | Timeline, Chat, Search, Notifications, Profile |
+| `1` to `5` | Timeline, Chat, Search, Notifications, Profile |
 | `+` `x` | Add a column (a pinned feed, notifications, a search), remove one |
 | `j` `k` | Move |
 | `n` `r` `Q` | Post, reply, quote |
