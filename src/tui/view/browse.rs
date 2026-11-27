@@ -32,14 +32,20 @@ fn account_lines(
             t.accent(),
         ));
     }
-    let desc = u
+    let first = u
         .description
         .as_deref()
         .map(first_text_line)
         .unwrap_or_default();
+    // Its custom emoji are pictures, as in the profile's header; only the
+    // pictures of what is left after the cut are drawn.
+    let mut picture = |e: &str| pictures.then(|| user_emoji(u, e, ctx)).flatten();
+    let mut found = Vec::new();
+    let desc = truncate(&with_emoji_cells(&first, &mut picture, &mut found), width);
+    urls.extend(found.into_iter().take(desc.matches(EMOJI_CELLS).count()));
     vec![
         truncate_line(Line::from(head), width),
-        Line::styled(truncate(&desc, width), t.dim()),
+        Line::styled(desc, t.dim()),
     ]
 }
 

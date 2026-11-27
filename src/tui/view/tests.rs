@@ -1331,3 +1331,28 @@ fn plus_lists_what_a_column_can_show() {
     assert!(screen.contains("Search notes for:"), "{screen}");
     assert!(screen.contains("esc back"), "{screen}");
 }
+
+// An account found by a search shows the custom emoji of its description
+// as pictures, as its profile does; without pictures their names stay.
+#[test]
+fn an_account_found_draws_the_emoji_of_its_description() {
+    let mut app = with_notes(vec![]);
+    app.tab = crate::tui::app::Tab::Search;
+    app.search.mode = crate::tui::app::SearchMode::Accounts;
+    app.search.users.loaded = true;
+    app.search.users.items = vec![
+        serde_json::from_value(json!({
+            "id": "u-mika", "username": "mika", "host": "x.test", "name": "Mika",
+            "description": "Aquariums :iruka: and the sea",
+            "emojis": {"iruka": format!("{NOWHERE}/iruka.png")}
+        }))
+        .unwrap(),
+    ];
+    let text = render_text(&mut app, 80, 12);
+    assert!(text.contains("Aquariums :iruka: and the sea"), "{text}");
+    app.pictures = true;
+    let screen = render(&mut app, 80, 12);
+    assert!(screen.contains("Aquariums"), "{screen}");
+    assert!(screen.contains("and the sea"), "{screen}");
+    assert!(!screen.contains(":iruka:"), "{screen}");
+}
