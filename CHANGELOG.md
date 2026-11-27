@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-28
+
 ### Added
 
 - The client turns on bracketed paste, as bsky does: pasted text goes into the field with focus as one piece (the composer, the profile editor, a report's comment, the search box, a chat message, a settings row, a column's search, the reaction filter), where before it came as keys and a pasted `q` or `n` acted as one. Nothing is taken while a note, a message or the profile is on its way.

@@ -21,12 +21,27 @@ It is written for Misskey itself; forks such as Sharkey may work, but they are n
 ## Install
 
 ```sh
-git clone https://github.com/nao1215/misskey-terminal-client
-cd misskey-terminal-client
-cargo install --locked --path .
+brew install nao1215/tap/msky
+cargo install --locked misskey-terminal-client
+cargo binstall misskey-terminal-client
 ```
 
-It needs Rust 1.90 or later.
+Binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/misskey-terminal-client/releases), with the license texts of the crates they contain in `msky-<version>-THIRD_PARTY_LICENSES.html`. Building it needs Rust 1.90 or later.
+
+### Verifying a release
+
+Each release carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files (`<tag>` is the release, for example `v0.1.0`):
+
+```sh
+sha256sum --ignore-missing --check checksums.txt
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/nao1215/misskey-terminal-client/.github/workflows/release.yml@refs/tags/<tag>" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+slsa-verifier verify-artifact <archive> --provenance-path msky-<tag>.intoto.jsonl \
+  --source-uri github.com/nao1215/misskey-terminal-client --source-tag <tag>
+gh attestation verify <archive> --repo nao1215/misskey-terminal-client
+```
 
 ## Use
 
