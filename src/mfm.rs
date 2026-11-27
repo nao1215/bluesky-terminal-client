@@ -612,11 +612,23 @@ fn atom_end(b: &[u8], j: usize) -> Option<usize> {
         .map(|l| l.end)
 }
 
-/// The first `what` from `from` outside what [`atom_end`] reads whole.
+/// [`atom_end`], or the end of a function at `j`: inside bold or a tag, a
+/// function is read whole, so the `[` that opens it is not a label's.
+fn inline_end(b: &[u8], j: usize) -> Option<usize> {
+    if b[j..].starts_with(b"$[")
+        && let Some((_, content)) = function(b, j)
+        && let Some(close) = closing_bracket(b, content)
+    {
+        return Some(close + 1);
+    }
+    atom_end(b, j)
+}
+
+/// The first `what` from `from` outside what [`inline_end`] reads whole.
 fn closing(b: &[u8], from: usize, what: &[u8]) -> Option<usize> {
     let mut j = from;
     while j < b.len() {
-        if let Some(end) = atom_end(b, j) {
+        if let Some(end) = inline_end(b, j) {
             j = end;
         } else if b[j..].starts_with(what) {
             return Some(j);
@@ -633,7 +645,7 @@ fn closing_tag(b: &[u8], from: usize, open: &[u8], close: &[u8]) -> Option<usize
     let mut depth = 0usize;
     let mut j = from;
     while j < b.len() {
-        if let Some(end) = atom_end(b, j) {
+        if let Some(end) = inline_end(b, j) {
             j = end;
         } else if b[j..].starts_with(open) {
             depth += 1;
@@ -820,6 +832,8 @@ mod tests {
     )]
     #[case("見て https://a.test/([x](https://b.test)) 👨\u{200d}👩\u{200d}👧")]
     #[case("$[f $$[shttp://lnm]nom]-")]
+    #[case("x**$[x **http://t] ")]
+    #[case("<small>$[x2 </small>https://a.test] 🇯🇵</small>")]
     #[case("`[iht`$[flip $` <pl<plain>```\nhttps://in.")]
     #[case("$[x2 `]` 漢字] https://a.test")]
     #[case("$[x2 $[price https://a.test] 🇯🇵]")]
@@ -870,6 +884,7 @@ mod tests {
     #[case("見て <https://a.test/x(y> 👍🏽", "見て https://a.test/x(y 👍🏽")]
     #[case("$[x2 $[ab:c] 後]", "$[ab:c 後]")]
     #[case("$[x2 `]` 後]", "`]` 後")]
+    #[case("x**$[x **太字] 後", "x****太字 後")]
     #[case("$[x2 ```\n**太字**\n```]", "```\n太字\n```")]
     #[case("<https://a.test/x >", "<https://a.test/x >")]
     #[case("`<https://a.test>`", "`<https://a.test>`")]

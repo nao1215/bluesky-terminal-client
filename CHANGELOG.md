@@ -78,3 +78,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `msky post --no-card` no longer makes `http://` before a link into an address of its own with a preview: the `?` it adds is put after an empty `<plain></plain>` there.
 - `msky post --no-card` no longer leaves a preview under a link after a `<https://` that never closes: the `>` it adds closed it, and the `<` is now written `<plain><</plain>`, which reads the same.
 - A code block opens only at the start of a line in the client, as Misskey reads it: right after `$[x2 ` or another opening it is text, where its content was kept as written.
+- A function inside `**bold**` or a tag is read whole in the client, as Misskey reads it, so a `**` or `</tag>` inside the function no longer closes the bold or the tag.
