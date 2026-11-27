@@ -1,0 +1,176 @@
+name: Release smoke
+
+# release.yml runs only on a pushed tag, so a change that breaks a release
+# build, the archive layout or the binary on one platform would first show up
+# while a release is half published. This workflow builds every target in
+# release-targets.json the way release.yml does (the same compiler pin, the
+# release profile, pack-archive.sh and the glibc ceiling), uploads the archives,
+# then downloads each one on a fresh runner and runs it there. Nothing is
+# signed, attested or published.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/release/**"
+      - ".github/release-targets.json"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-smoke.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/release/**"
+      - ".github/release-targets.json"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-smoke.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The build matrix, the compiler release.yml pins, and the version the
+  # binaries must report, each read from the file that owns it.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+      toolchain: ${{ steps.read.outputs.toolchain }}
+      tag: ${{ steps.read.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: read
+        run: |
+          toolchain="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release.yml)"
+          version="$(grep -oP '^version\s*=\s*"\K[^"]+' Cargo.toml | head -n 1)"
+          test -n "${toolchain}"
+          test -n "${version}"
+          {
+            echo "matrix=$(jq -c . .github/release-targets.json)"
+            echo "toolchain=${toolchain}"
+            echo "tag=v${version}"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ needs.plan.outputs.toolchain }}
+          targets: ${{ matrix.target }}
+
+      # release.yml builds without a cache so nothing another workflow wrote
+      # can reach a published binary. These archives are never published, so
+      # the cache only saves time.
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-smoke-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "${TARGET}"
+
+      - name: Pack
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE_EXT: ${{ matrix.archive }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          bin="target/${TARGET}/release/bsky"
+          [ -f "${bin}.exe" ] && bin="${bin}.exe"
+          archive="bsky-${TAG}-${TARGET}.${ARCHIVE_EXT}"
+          ./scripts/release/pack-archive.sh "${bin}" "${archive}"
+          ./scripts/release/check-archive.sh "${archive}" "${TAG}"
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+
+      # The same ceiling as release.yml: the Linux binaries must start on
+      # Ubuntu 22.04 and Debian 12.
+      - name: Check the glibc the binary requires
+        if: endsWith(matrix.target, '-linux-gnu')
+        env:
+          TARGET: ${{ matrix.target }}
+          MAX_GLIBC: "2.35"
+        run: |
+          set -o pipefail
+          need="$(objdump -T "target/${TARGET}/release/bsky" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/^GLIBC_//' | sort -uV | tail -n 1)"
+          test -n "${need}"
+          highest="$(printf '%s\n%s\n' "${need}" "${MAX_GLIBC}" | sort -V | tail -n 1)"
+          if [ "${highest}" != "${MAX_GLIBC}" ]; then
+            echo "::error title=glibc too new::${TARGET} requires GLIBC_${need}, the release allows up to ${MAX_GLIBC}"
+            exit 1
+          fi
+          echo "${TARGET} requires GLIBC_${need} (allowed up to ${MAX_GLIBC})"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 3
+
+  # Each archive downloaded onto a runner that did not build it and has no Rust
+  # toolchain set up, unpacked the way a user would, and run. x86_64-apple-darwin
+  # is skipped: macos-latest is arm64 and release.yml does not run it either.
+  run:
+    needs: [plan, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: matrix.exec
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.exec
+        with:
+          name: smoke-${{ matrix.target }}
+          path: smoke
+
+      - name: Unpack and run the binary
+        if: matrix.exec
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE_EXT: ${{ matrix.archive }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          archive="smoke/bsky-${TAG}-${TARGET}.${ARCHIVE_EXT}"
+          ./scripts/release/check-archive.sh "${archive}" "${TAG}" --exec

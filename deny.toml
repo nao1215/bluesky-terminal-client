@@ -1,6 +1,7 @@
 # cargo-deny configuration (https://embarkstudios.github.io/cargo-deny/).
-# .github/workflows/cargo-deny.yml runs `cargo deny --locked --all-features check`
-# on pull requests, on main and every day; `just deny` runs the same locally.
+# .github/workflows/cargo-deny.yml checks advisories, bans and sources on pull
+# requests, on main and every day, and .github/workflows/licenses.yml checks
+# licenses when the dependencies change; `just deny` runs all four locally.
 
 [graph]
 # The platforms release.yml ships (.github/release-targets.json), so a
