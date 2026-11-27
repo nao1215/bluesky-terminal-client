@@ -36,8 +36,8 @@ def user(username, name, avatar=None, host=None):
 
 ME = user("river", "River", "carol.jpg")
 ALICE = user("alice", "Alice Chen", "alice.jpg")
-BOB = user("bob", "ボブ 田中", "bob.jpg")
-MIKA = user("mika", "みか :iruka:", "carol.jpg", host="mi.example")
+BOB = user("bob", "Bob Tanaka", "bob.jpg")
+MIKA = user("mika", "Mika :iruka:", "carol.jpg", host="mi.example")
 KEN = user("ken", "Ken", None)
 MIKA["emojis"] = {"iruka": img("emoji-iruka.png")}
 
@@ -68,34 +68,34 @@ def note(nid, u, text, when, reactions=None, renotes=0, replies=0, files=None, c
 
 
 def timeline():
-    show = note("n1", MIKA, "イルカショー、ジャンプが高すぎる :iruka: :iruka:\n水しぶきがここまで来た 💦",
+    show = note("n1", MIKA, "The dolphin show! They jump so high :iruka: :iruka:\nThe splash reached our seats 💦",
                 "2026-11-27T09:41:00.000Z", {":iruka@.:": 31, "❤️": 18, "👏🏽": 6}, 9, 2,
                 [video("v1", "dolphin.mp4", "dolphin.jpg", 640, 480, "a dolphin jumps at an aquarium show")])
-    aquarium = note("n2", ALICE, "水族館に来た 🐟 ターポンの群れ、近くで見ると大きい\nThe tarpon are huge up close.",
+    aquarium = note("n2", ALICE, "Aquarium day 🐟 The tarpon are huge up close.\nAnd a sea lion pup was born this summer!",
                     "2026-11-27T09:20:00.000Z", {"🐟": 14, ":todo@.:": 9, "✨": 5}, 4, 1,
                     [photo("f1", "fish.jpg", 800, 600, "big silver fish in a blue tank"),
                      photo("f2", "sealions.jpg", 800, 600, "sea lions on a rock"),
                      photo("f3", "pup.jpg", 800, 1066, "a poster: a sea lion pup was born"),
                      photo("f4", "turtles.jpg", 800, 600, "turtles in a pool")])
-    spoiler = note("n3", KEN, "犯人は最初に出てきた執事でした 👨‍👩‍👧", "2026-11-27T09:05:00.000Z",
-                   {"😱": 9}, 0, 4, cw="映画のネタバレ 🎬")
-    sample = note("n4o", BOB, "食品サンプルなのにお腹が空く :salmon: :ebi:", "2026-11-27T08:30:00.000Z",
+    spoiler = note("n3", KEN, "The butler did it. The very first one we met 👨‍👩‍👧", "2026-11-27T09:05:00.000Z",
+                   {"😱": 9}, 0, 4, cw="Movie spoiler 🎬")
+    sample = note("n4o", BOB, "Plastic food samples, and still they make me hungry :salmon: :ebi:", "2026-11-27T08:30:00.000Z",
                   {":ebi@.:": 12, "🤤": 7}, 3, 0,
                   [photo("f5", "salmon.jpg", 800, 600, "a salmon bowl, a food sample"),
                    photo("f6", "shrimp.jpg", 800, 600, "sweet shrimp sashimi, a food sample")])
     renote = {"id": "n4", "createdAt": "2026-11-27T08:50:00.000Z", "userId": ALICE["id"], "user": ALICE,
               "text": None, "cw": None, "files": [], "reactions": {}, "renoteId": "n4o", "renote": sample}
-    grapes = note("n5", ME, "庭のぶどうが色づいてきた :budou: 今年は甘いかな", "2026-11-27T08:02:00.000Z",
+    grapes = note("n5", ME, "The grapes in the garden are turning purple :budou: Sweet this year?", "2026-11-27T08:02:00.000Z",
                   {":budou@.:": 11, "👀": 3}, 0, 3,
                   [photo("f7", "grapes.jpg", 800, 612, "grapes on a vine against the sky"),
                    photo("f8", "grapes2.jpg", 800, 1066, "picked grapes on a stone table")])
-    quote = note("n6", BOB, "いいな、来年分けて 🇯🇵 🍇", "2026-11-27T07:40:00.000Z", {"👍": 2},
+    quote = note("n6", BOB, "Save me some next year 🇯🇵 🍇", "2026-11-27T07:40:00.000Z", {"👍": 2},
                  renoteId="n5", renote=grapes)
-    building = note("n7", MIKA, "帰りに寄った海辺の水族館。建物がレトロでいい", "2026-11-27T07:10:00.000Z",
+    building = note("n7", MIKA, "An old aquarium by the sea on the way home. Love the retro building", "2026-11-27T07:10:00.000Z",
                     {"🏛️": 4, ":iruka@.:": 2}, 1, 0, [photo("f9", "aquarium.jpg", 800, 600, "an old aquarium building by the sea")])
     plain = [note(f"p{i}", [ALICE, BOB, KEN][i % 3],
-                  ["おはようございます ☀️", "Coffee first ☕", "雨が降ってきた ☔ 傘ない",
-                   "Shipping a release today 🚀", "猫が膝から降りない 🐈‍⬛"][i % 5],
+                  ["Good morning ☀️", "Coffee first ☕", "It started raining ☔ no umbrella",
+                   "Shipping a release today 🚀", "The cat will not leave my lap 🐈‍⬛"][i % 5],
                   f"2026-11-27T0{5 - i // 3}:{50 - i * 4:02d}:00.000Z", {"👍": i + 1}, 0, 0)
              for i in range(9)]
     return [show, aquarium, spoiler, renote, grapes, quote, building] + plain
@@ -103,8 +103,8 @@ def timeline():
 
 def local():
     return [note(f"l{i}", [ALICE, BOB, ME][i % 3], t, f"2026-11-27T09:{50 - i * 3:02d}:00.000Z", {"👍": i})
-            for i, t in enumerate(["ローカルのみなさんこんにちは 👋", "カスタム絵文字 :todo: も絵で出る",
-                                   "Local timeline, made-up notes only", "家族旅行の写真はまた今度 👨‍👩‍👧"])]
+            for i, t in enumerate(["Hello, local timeline 👋", "Custom emoji :todo: show as pictures",
+                                   "Local timeline, made-up notes only", "Family trip photos coming soon 👨‍👩‍👧"])]
 
 
 def notifications():
@@ -112,7 +112,7 @@ def notifications():
         {"id": "x1", "createdAt": "2026-11-27T09:45:00.000Z", "type": "reaction", "reaction": ":budou@.:",
          "user": ALICE, "note": timeline()[4]},
         {"id": "x2", "createdAt": "2026-11-27T09:30:00.000Z", "type": "reply", "user": BOB,
-         "note": note("r1", BOB, "ジャムにしても良さそう", "2026-11-27T09:30:00.000Z")},
+         "note": note("r1", BOB, "They would make good jam", "2026-11-27T09:30:00.000Z")},
         {"id": "x3", "createdAt": "2026-11-27T09:00:00.000Z", "type": "follow", "user": MIKA},
         {"id": "x4", "createdAt": "2026-11-27T08:40:00.000Z", "type": "renote", "user": KEN,
          "note": {"id": "rn9", "renoteId": "n5", "renote": timeline()[4], "user": KEN}},
@@ -122,10 +122,10 @@ def notifications():
 def profile(u):
     """users/show: the account with its counts and what it says."""
     about = {
-        "mika": "水族館と海の生き物が好き :iruka: 週末はだいたい日本海側にいます",
-        "alice": "Photos, coffee and fish. 写真とコーヒー",
-        "bob": "食べたものを載せます 🍔",
-        "river": "読書と庭いじり :budou:",
+        "mika": "Aquariums and sea life :iruka: Weekends by the Sea of Japan",
+        "alice": "Photos, coffee and fish.",
+        "bob": "I post what I eat 🍔",
+        "river": "Books and gardening :budou:",
     }
     p = dict(u)
     p.update({"description": about.get(u["username"], ""), "followersCount": 1280 if u is MIKA else 210,
@@ -154,12 +154,12 @@ def find(nid):
 
 def children(nid):
     if nid == "n5":
-        return [note("c1", BOB, "ジャムにしても良さそう", "2026-11-27T09:30:00.000Z", replies=1),
+        return [note("c1", BOB, "They would make good jam", "2026-11-27T09:30:00.000Z", replies=1),
                 note("c2", ALICE, "Grape season 🍇 so jealous", "2026-11-27T09:35:00.000Z")]
     if nid == "c1":
-        return [note("c1a", ME, "いいね、半分はジャムにする 🙏", "2026-11-27T09:38:00.000Z")]
+        return [note("c1a", ME, "Good idea, half of them go to jam 🙏", "2026-11-27T09:38:00.000Z")]
     if nid == "n1":
-        return [note("c3", ALICE, "動画いいね :iruka:", "2026-11-27T09:44:00.000Z")]
+        return [note("c3", ALICE, "Great video :iruka:", "2026-11-27T09:44:00.000Z")]
     return []
 
 

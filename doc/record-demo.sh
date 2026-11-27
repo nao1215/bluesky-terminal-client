@@ -172,10 +172,10 @@ demo_fake() {
   sleep 1
   send "\033"
   sleep 1.2
-  # Down to Mika's note and her profile, and back.
+  # Down to Mika's note and the profile, and back.
   keys j 2 0.8
   send "\r"
-  ready "水族館と海"
+  ready "Aquariums and sea life"
   sleep 1.5
   keys j 2 0.8
   sleep 1
