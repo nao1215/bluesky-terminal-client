@@ -13,6 +13,12 @@
 #                                 notifications added as columns beside
 #                                 home, and scrolled, against the same
 #                                 stand-in server.
+#   doc/record-demo.sh screens    doc/img/viewer.gif and doc/img/*.png: the
+#                                 README's screens (pictures and a video full
+#                                 screen, themes, actions, a thread, search,
+#                                 the profile editor, the composer, chat,
+#                                 accounts, settings), against the same
+#                                 stand-in server; nothing typed is sent.
 #   doc/record-demo.sh demo       doc/img/demo-account.gif: msky as the
 #                                 account you logged in with `msky login`,
 #                                 on your own PC: the home timeline with its
@@ -67,7 +73,10 @@ serve() {
   PORT=$(cat "$WORK/port")
   CFG="$WORK/cfg"
   mkdir -p "$CFG/accounts"
-  printf '{"service": "http://127.0.0.1:%s", "userId": "u-river", "username": "river", "token": "demo"}\n' "$PORT" > "$CFG/accounts/127.0.0.1_$PORT.json"
+  PERMS='["read:account","read:notifications","read:following","read:reactions","write:notes","write:drive","write:following","write:reactions","write:notifications","read:mutes","write:mutes","read:blocks","write:blocks","read:chat","write:chat","write:account","write:report-abuse"]'
+  printf '{"service": "http://127.0.0.1:%s", "userId": "u-river", "username": "river", "token": "demo", "permissions": %s}\n' "$PORT" "$PERMS" > "$CFG/accounts/127.0.0.1_$PORT.json"
+  # A second made-up account, for the account list.
+  printf '{"service": "http://localhost:%s", "userId": "u-alice", "username": "alice", "token": "demo-work", "permissions": %s}\n' "$PORT" "$PERMS" > "$CFG/accounts/localhost_$PORT.json"
   printf '{"current": "127.0.0.1:%s"}\n' "$PORT" > "$CFG/accounts.json"
   DEMO_ENV="MSKY_CONFIG_DIR=$CFG MSKY_CACHE_DIR=off MSKY_SERVERS_URL=off MSKY_DOWNLOAD_DIR=$WORK/dl TZ=Asia/Tokyo LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE="
 }
@@ -81,7 +90,7 @@ start() {
     -o font_family="DejaVu Sans Mono" -o font_size=11 \
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
     -o cursor_blink_interval=0 -o window_padding_width=0 \
-    --listen-on "$SOCK" --class mskydemo --title msky \
+    --listen-on "$SOCK" --class mskydemo --title msky --directory "${START_DIR:-$(pwd)}" \
     env PATH="$BIN:$PATH" COLORTERM=truecolor ${DEMO_ENV:-} msky &
   KPID=$!
   W=""
@@ -154,18 +163,21 @@ demo_fake() {
   start 1120 700
   ready "♡"
   record
-  sleep 1.5
-  # The game video, played in the client, and back.
-  send " "
-  sleep 3.5
-  send "\033"
-  sleep 1.5
-  # The aquarium's four photos, full screen, and back.
-  send "j"
-  sleep 1
+  # The timeline first: the photos of the top note, the video under it.
+  sleep 3
+  # The aquarium's photos, full screen: the first and the next, and back.
   send " "
   ready "d download"
   sleep 2
+  send "\033[C"
+  sleep 2
+  send "\033"
+  sleep 1.5
+  # Down to the game video, seen in the timeline, played, and back.
+  send "j"
+  sleep 2
+  send " "
+  sleep 4
   send "\033"
   sleep 1.5
   # Down to the content warning, opened.
@@ -229,6 +241,151 @@ demo_columns() {
   quit
 }
 
+typed() { # TEXT, a key at a time
+  printf '%s' "$1" | fold -w1 | while IFS= read -r c || [ -n "$c" ]; do send "$c"; sleep 0.08; done
+}
+
+shot() { # OUTPUT.png
+  ffmpeg -nostdin -loglevel error -y -f x11grab -draw_mouse 0 -window_id "$W" -i "${DISPLAY:-:0}" -frames:v 1 "$1"
+  ls -la "$1"
+}
+
+use_theme() { printf '{"theme": "%s", "language": "en"}\n' "$1" > "$CFG/settings.json"; }
+
+# The README's screens, against the stand-in server: nothing is sent
+# anywhere but to it, and nothing typed is sent at all.
+screens() {
+  serve
+  # Pictures and a video full screen: the next picture, then the video.
+  use_theme dracula
+  start 1120 700
+  ready "♡"
+  record
+  sleep 1
+  send " "
+  ready "d download"
+  sleep 2.5
+  send "\033[C"
+  sleep 2.5
+  send "\033[C"
+  sleep 2.5
+  send "\033"
+  sleep 1
+  send "j"
+  sleep 1
+  send " "
+  sleep 5
+  send "\033"
+  sleep 1
+  stop "$OUT/viewer.gif" 720 8
+  quit
+  # The themes.
+  for theme in dracula nord gruvbox catppuccin-latte tokyo-night solarized-light; do
+    use_theme "$theme"
+    start 960 600
+    ready "♡"
+    sleep 4
+    shot "$OUT/theme-$theme.png"
+    quit
+  done
+  use_theme dracula
+  # . on a note.
+  start 1120 700
+  ready "♡"
+  send "j"
+  sleep 1
+  send "."
+  ready "Actions"
+  sleep 1.5
+  shot "$OUT/actions.png"
+  quit
+  # A thread.
+  start 1120 700
+  ready "♡"
+  keys j 4 0.6
+  send "v"
+  ready "Thread"
+  sleep 2
+  shot "$OUT/thread.png"
+  quit
+  # Accounts found for "aquarium".
+  start 1120 700
+  ready "♡"
+  send "/"
+  sleep 0.6
+  typed aquarium
+  send "\r"
+  sleep 1.5
+  send "t"
+  ready "following"
+  sleep 1.5
+  shot "$OUT/search.png"
+  quit
+  # The profile editor, opened and closed: nothing is saved.
+  start 1120 700
+  ready "♡"
+  send "6"
+  ready "Edit profile"
+  send "e"
+  ready "New avatar"
+  sleep 1
+  shot "$OUT/editor.png"
+  send "\033"
+  sleep 0.5
+  quit
+  # The composer's picture browser, over the demo's photos; not sent.
+  mkdir -p "$WORK/pictures"
+  cp doc/demo/fish.jpg doc/demo/grapes.jpg doc/demo/salmon.jpg doc/demo/aquarium.jpg "$WORK/pictures/"
+  START_DIR="$WORK/pictures" start 1120 700
+  ready "♡"
+  send "n"
+  sleep 0.5
+  typed "Photos from the terminal"
+  send "\017"
+  sleep 1.5
+  send "j"
+  sleep 2
+  shot "$OUT/compose.png"
+  send "\033"
+  sleep 0.5
+  send "\033"
+  sleep 0.5
+  quit
+  # A conversation, a reply typed but not sent.
+  start 1120 700
+  ready "♡"
+  send "7"
+  ready "@mika@mi.example"
+  send "\r"
+  ready "dolphin show"
+  send "i"
+  sleep 0.3
+  typed "See you at the gate"
+  sleep 1
+  shot "$OUT/chat.png"
+  send "\033"
+  sleep 0.5
+  quit
+  # The account list.
+  start 1120 700
+  ready "♡"
+  send "A"
+  ready "Accounts"
+  sleep 1.5
+  shot "$OUT/accounts.png"
+  send "\033"
+  quit
+  # The settings.
+  start 1120 700
+  ready "♡"
+  send "s"
+  ready "Settings"
+  sleep 1
+  shot "$OUT/settings.png"
+  send "\033"
+  quit
+}
+
 # Your own account, on your own PC only.
 demo() {
   # msky's own config folder and picture cache; the server list is not
@@ -267,5 +424,6 @@ case "${1:-demo}" in
   demo) demo ;;
   demo-fake) demo_fake ;;
   columns) demo_columns ;;
+  screens) screens ;;
   *) echo "usage: $0 [demo|demo-fake]" >&2; exit 2 ;;
 esac

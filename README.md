@@ -42,11 +42,32 @@ Other terminals get text, and `space` opens a note in the browser. Custom emoji 
 
 msky speaks English and 日本語: the language of your system, or the one chosen in the settings (`s`).
 
+## Screens
+
+| `space`: pictures and videos | `n` `ctrl+o`: attach pictures or a video |
+|:--:|:--:|
+| ![a note's pictures and a video, full screen](doc/img/viewer.gif) | ![the picture browser of the composer](doc/img/compose.png) |
+| `v`: thread | `/`: search |
+| ![a thread](doc/img/thread.png) | ![accounts found for a search](doc/img/search.png) |
+| `.`: actions | `e`: edit your profile |
+| ![the list of what the keys do to a note](doc/img/actions.png) | ![the profile editor](doc/img/editor.png) |
+| `7`: chat | `A`: accounts |
+| ![a conversation](doc/img/chat.png) | ![the account list](doc/img/accounts.png) |
+| `s`: settings | |
+| ![the settings screen](doc/img/settings.png) | |
+
 `+` on the Home tab: your antennas, lists, channels, notifications or a search in columns beside it
 
-![an antenna and the notifications added beside the home timeline, then scrolled](doc/img/columns.gif)
+![an antenna added beside the home timeline, then scrolled](doc/img/columns.gif)
 
-The demos show made-up notes served by [doc/demo-server.py](doc/demo-server.py), with the author's photos in [doc/demo](doc/demo).
+`T`: 42 themes
+
+| | | |
+|:--:|:--:|:--:|
+| ![dracula](doc/img/theme-dracula.png) | ![nord](doc/img/theme-nord.png) | ![gruvbox](doc/img/theme-gruvbox.png) |
+| ![catppuccin-latte](doc/img/theme-catppuccin-latte.png) | ![tokyo-night](doc/img/theme-tokyo-night.png) | ![solarized-light](doc/img/theme-solarized-light.png) |
+
+The screens show made-up notes served by [doc/demo-server.py](doc/demo-server.py), with the author's photos in [doc/demo](doc/demo).
 
 ## Keys
 

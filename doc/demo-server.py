@@ -69,7 +69,7 @@ def note(nid, u, text, when, reactions=None, renotes=0, replies=0, files=None, c
 
 def timeline():
     show = note("n1", KEN, "My dungeon crawler is playable 🎮 The Brass Warden goes down in four turns\nShield Rush! 🛡️",
-                "2026-11-27T09:41:00.000Z", {"🔥": 31, "❤️": 18, "👏🏽": 6}, 9, 2,
+                "2026-11-27T09:12:00.000Z", {"🔥": 31, "❤️": 18, "👏🏽": 6}, 9, 2,
                 [video("v1", "dungeon.mp4", "dungeon.jpg", 720, 406, "a party fights an armored guardian in a dungeon, then talks in town")])
     aquarium = note("n2", ALICE, "Aquarium day 🐟 The tarpon are huge up close.\nAnd a sea lion pup was born this summer!",
                     "2026-11-27T09:20:00.000Z", {"🐟": 14, ":todo@.:": 9, "✨": 5}, 4, 1,
@@ -98,7 +98,7 @@ def timeline():
                    "Shipping a release today 🚀", "The cat will not leave my lap 🐈‍⬛"][i % 5],
                   f"2026-11-27T0{5 - i // 3}:{50 - i * 4:02d}:00.000Z", {"👍": i + 1}, 0, 0)
              for i in range(9)]
-    return [show, aquarium, spoiler, renote, grapes, quote, building] + plain
+    return [aquarium, show, spoiler, renote, grapes, quote, building] + plain
 
 
 def local():
@@ -155,6 +155,27 @@ def feed(path):
     if path == "/api/notes/user-list-timeline":
         return [t["n3"], t["n4"], t["n6"]] + timeline()[7:]
     return [t["n5"], note("ch2", BOB, "Planting garlic for next year 🧄", "2026-11-27T05:40:00.000Z", {"🌱": 5})]
+
+
+def chat(mid, frm, to, text, when, read=True):
+    return {"id": mid, "createdAt": when, "fromUserId": frm["id"], "fromUser": frm,
+            "toUserId": to["id"], "toUser": to, "text": text, "isRead": read}
+
+
+def chat_with(uid):
+    """The messages with one account, the newest first."""
+    if uid == MIKA["id"]:
+        return [chat("m4", MIKA, ME, "Great, the dolphin show starts at 11 :iruka:", "2026-11-27T09:50:00.000Z", False),
+                chat("m3", ME, MIKA, "Saturday works. Meet at the gate at 10?", "2026-11-27T09:46:00.000Z"),
+                chat("m2", MIKA, ME, "The aquarium on Saturday? They have a new sea lion pup 🦭", "2026-11-27T09:40:00.000Z"),
+                chat("m1", ME, MIKA, "Your aquarium photos were lovely", "2026-11-27T09:31:00.000Z")]
+    if uid == BOB["id"]:
+        return [chat("b1", BOB, ME, "Saved you a bag of grapes 🍇", "2026-11-27T08:10:00.000Z")]
+    return []
+
+
+def chat_history():
+    return [chat_with(MIKA["id"])[0], chat_with(BOB["id"])[0]]
 
 
 def find(nid):
@@ -221,7 +242,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, children(body.get("noteId")))
         if path == "/api/notes/conversation":
             return self.send(200, [])
-        if path == "/api/i":
+        if path == "/api/i" and body.get("i") != "demo-work":
             return self.send(200, profile(ME))
         if path == "/api/users/show":
             u = USERS.get(body.get("username") or "") or next(
@@ -244,7 +265,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, [] if until else feed(path))
         if path == "/api/notifications/mark-all-as-read":
             return self.send(204, b"")
-        if path in ("/api/chat/history", "/api/notes/reactions", "/api/notes/renotes"):
+        if path == "/api/notes/search":
+            q = (body.get("query") or "").lower()
+            return self.send(200, [] if until else [n for n in timeline() + local()
+                                                   if q in (n.get("text") or "").lower()])
+        if path == "/api/users/search":
+            q = (body.get("query") or "").lower()
+            return self.send(200, [] if body.get("offset") else
+                             [profile(u) for u in USERS.values()
+                              if q in u["username"] or q in (u["name"] or "").lower() or q in profile(u)["description"].lower()])
+        if path == "/api/chat/history":
+            return self.send(200, chat_history())
+        if path == "/api/chat/messages/user-timeline":
+            return self.send(200, [] if until else chat_with(body.get("userId")))
+        if path == "/api/i" and body.get("i") == "demo-work":
+            return self.send(200, profile(ALICE))
+        if path in ("/api/notes/reactions", "/api/notes/renotes"):
             return self.send(200, [])
         if path == "/api/meta":
             return self.send(200, {"name": "Demo", "maxNoteTextLength": 3000})
