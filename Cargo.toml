@@ -32,7 +32,7 @@ serde_json = "1"
 ureq = "3"
 
 [dev-dependencies]
-rstest = "0.28"
+rstest = "0.29"
 tempfile = "3"
 
 # An error is returned, shown, or kept with the reason it can be ignored: a
