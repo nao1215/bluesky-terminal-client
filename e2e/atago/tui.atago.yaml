@@ -119,7 +119,9 @@ scenarios:
             # The avatar and the picture, the sensitive one drawn as any
             # other, the picture at its own 4:3 shape.
             - expect_screen:
-                images: { count: 2 }
+                images: &both
+                  count: 2
+                  contains: [ { width: 40, height: 40 }, { width: 320, height: 240 } ]
                 stable_for: 500ms
             - send: j
             - send: w
@@ -140,8 +142,14 @@ scenarios:
             - expect_screen:
                 contains: "saved"
             - send: { key: esc }
+            # The timeline is drawn again with both pictures before the
+            # next tab, which the screen at the end keeps: an instrumented
+            # build (Coverage) or a slow runner draws the second one later,
+            # and counted after the tabs changed it was one.
             - expect_screen:
                 not_contains: "山の写真"
+                images: *both
+                stable_for: 500ms
             - send: "2"
             - expect_screen:
                 contains: "ローカルのノート"
@@ -490,8 +498,12 @@ scenarios:
             - expect_screen:
                 contains: ["動画と写真 🎬📷", "▶ 1 video"]
                 not_contains: "▣ 1 picture"
+            # The poster and the picture, waited for by their sizes before
+            # the pixels are compared after the run.
             - expect_screen:
-                images: { count: 2 }
+                images:
+                  count: 2
+                  contains: [ { width: 320, height: 240 } ]
                 stable_for: 500ms
             - send: q
       - assert:
