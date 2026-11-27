@@ -25,6 +25,7 @@ mod browse;
 mod chat;
 mod compose;
 mod edit_profile;
+mod report;
 mod settings;
 #[cfg(test)]
 mod tests;
@@ -161,6 +162,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             settings::draw_settings(frame, area, &rows, *selected, edit.as_ref(), &t);
         }
         Some(Overlay::Themes { selected, .. }) => settings::draw_themes(frame, area, *selected, &t),
+        Some(Overlay::Report(r)) => report::draw_report(frame, area, r, &t),
         Some(Overlay::AddTab {
             selected,
             feeds,

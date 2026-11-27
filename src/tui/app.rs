@@ -21,6 +21,7 @@ mod browse;
 mod chat;
 mod edit_profile;
 mod feeds;
+mod report;
 mod settings;
 mod write;
 
@@ -31,6 +32,7 @@ pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
 pub use edit_profile::EditProfile;
 pub use feeds::{Feed, FeedKind, FeedTab, TabChoice};
+pub use report::Report;
 pub use settings::{Environment, SettingRow};
 pub use write::Compose;
 
@@ -450,6 +452,8 @@ pub enum Overlay {
     },
     /// The profile editor, opened with `e` on your own profile.
     EditProfile(Box<EditProfile>),
+    /// A report being made, opened with `!`.
+    Report(Box<Report>),
 }
 
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
@@ -915,6 +919,7 @@ impl App {
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
             e @ (Event::FeedNotes { .. } | Event::FeedChoices(_)) => self.feed_answer(seq, e),
+            Event::Reported(result) => self.reported(result),
             e @ (Event::ProfileEditor(_) | Event::ProfileSaved(_)) => {
                 return self.edit_profile_answer(e);
             }
@@ -1059,6 +1064,7 @@ impl App {
             }
             Overlay::EditProfile(_) => return self.edit_profile_key(key),
             Overlay::AddTab { .. } => return self.add_tab_key(key),
+            Overlay::Report(_) => return self.report_key(key),
             Overlay::Languages { selected } => {
                 let selected = *selected;
                 self.languages_key(key, selected);
@@ -1277,6 +1283,7 @@ impl App {
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('s') => self.open_settings(),
             KeyCode::Char('+') => return self.open_add_tab(),
+            KeyCode::Char('!') => self.open_report(),
             KeyCode::Char('x') if !in_thread => self.ask_close_tab(),
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {

@@ -3,8 +3,13 @@
 pub const TABLE: &[(&str, &str)] = &[
     ("Accounts", "アカウント"),
     ("Add a tab", "タブを追加"),
+    (
+        "Breaks the server's rules or the law",
+        "サーバーの規約や法律に反する",
+    ),
     ("Browser", "ブラウザ"),
     ("Chat", "チャット"),
+    ("Comment (optional)", "コメント (省略可)"),
     ("Composer", "投稿欄"),
     ("Description", "自己紹介"),
     ("Download folder", "保存先フォルダ"),
@@ -19,6 +24,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Lists", "一覧"),
     ("Local", "ローカル"),
     ("Log in", "ログイン"),
+    ("Misleading", "誤解を招く"),
     ("Name", "名前"),
     (
         "New avatar (a path, or ctrl+o to choose; optional)",
@@ -30,10 +36,18 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("Notes", "ノート"),
     ("Notifications", "通知"),
+    ("Other", "その他"),
     ("Profile", "プロフィール"),
+    ("Report", "通報"),
+    ("Rude or harassing", "失礼、嫌がらせ"),
     ("Search", "検索"),
     ("Settings", "設定"),
+    (
+        "Sexual content not marked as sensitive",
+        "センシティブ指定のない性的な内容",
+    ),
     ("Social", "ソーシャル"),
+    ("Spam", "スパム"),
     ("Tabs", "タブ"),
     ("Theme", "テーマ"),
     ("Thread", "スレッド"),
@@ -217,6 +231,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "次の欄: 注釈、ファイルの代替テキスト",
     ),
     ("next tab", "次のタブ"),
+    (
+        "not reported: change it, or esc to leave",
+        "通報していません: 直すか、esc でやめる",
+    ),
     ("note", "ノート"),
     ("notes", "ノート"),
     ("notes / accounts", "ノート / アカウント"),
@@ -260,6 +278,10 @@ pub const TABLE: &[(&str, &str)] = &[
         "press y to close the {} tab, any other key to keep it",
         "y で {} タブを閉じます。他のキーでそのまま",
     ),
+    (
+        "press y to report {} to the moderators of {}, any other key to go back",
+        "y で {} を {} のモデレーターに通報します。他のキーで戻る",
+    ),
     ("preview", "プレビュー"),
     ("previous / next", "前 / 次"),
     ("previous / next file", "前 / 次のファイル"),
@@ -286,6 +308,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "reading the antennas, lists and channels…",
         "アンテナ・リスト・チャンネルを読んでいます…",
     ),
+    ("reason", "理由"),
     ("refresh", "更新"),
     ("refresh the current view", "表示中の画面を更新"),
     ("reload", "再読込"),
@@ -300,6 +323,16 @@ pub const TABLE: &[(&str, &str)] = &[
         "reply, react, renote the note it is about",
         "対象のノートに返信・リアクション・リノート",
     ),
+    ("report it", "通報"),
+    (
+        "report the account, or the note selected, to the moderators: y confirms",
+        "アカウントか選んだノートをモデレーターに通報 (y で確定)",
+    ),
+    (
+        "report the note and its author to the moderators: y confirms",
+        "ノートと投稿者をモデレーターに通報 (y で確定)",
+    ),
+    ("reported {}", "{} を通報しました"),
     ("save", "保存"),
     ("save it in the download folder", "保存先フォルダに保存"),
     ("save its files", "ファイルを保存"),
@@ -317,6 +350,8 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("send", "送信"),
     ("send the note", "ノートを送信"),
+    ("send: y confirms", "送信 (y で確定)"),
+    ("sending…", "送信中…"),
     (
         "set by {} for this run",
         "{} で今回の実行だけ指定されています",
@@ -342,6 +377,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("tabs: {}", "タブ: {}"),
     ("take back your reaction", "リアクションを取り消す"),
     ("take back your renote", "リノートを取り消す"),
+    ("that is your own account", "自分のアカウントです"),
     (
         "the accounts, the one in use marked",
         "アカウント一覧 (使用中に印)",
@@ -353,6 +389,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("the folder above", "一つ上のフォルダ"),
     ("the last tab stays", "最後のタブは閉じられません"),
+    ("the reasons", "理由の一覧"),
     (
         "the search box has focus when you arrive",
         "タブに来ると検索欄に入力できる",
@@ -396,9 +433,14 @@ pub const TABLE: &[(&str, &str)] = &[
         "公開範囲: パブリック、ホーム、フォロワー",
     ),
     ("write", "書く"),
+    ("write a comment", "コメントを書く"),
     (
         "write a message; enter sends it",
         "メッセージを書く (enter で送信)",
+    ),
+    (
+        "y sends the report; any other key goes back",
+        "y で通報を送信、他のキーで戻る",
     ),
     ("your home folder", "ホームフォルダ"),
     (

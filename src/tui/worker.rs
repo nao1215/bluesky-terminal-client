@@ -86,6 +86,8 @@ pub enum Job {
     FeedNotes { feed: Feed, until: Option<String> },
     /// The account's antennas, lists and channels, for `+` to offer.
     FeedChoices,
+    /// Report account `user_id` to the moderators with `comment`.
+    Report { user_id: String, comment: String },
     /// The account's own profile, for the editor to start from.
     LoadProfileEditor,
     /// Save the profile's changes.
@@ -228,6 +230,7 @@ pub enum Event {
         result: Result<Vec<Note>>,
     },
     FeedChoices(Result<Vec<Feed>>),
+    Reported(Result<()>),
     ProfileEditor(Result<Box<User>>),
     ProfileSaved(Result<Box<User>>),
     ChatHistory(Result<Vec<ChatMessage>>),
@@ -319,6 +322,7 @@ impl Job {
                 result: Err(e),
             },
             Job::FeedChoices => Event::FeedChoices(Err(e)),
+            Job::Report { .. } => Event::Reported(Err(e)),
             Job::LoadProfileEditor => Event::ProfileEditor(Err(e)),
             Job::SaveProfile(_) => Event::ProfileSaved(Err(e)),
             Job::ChatHistory => Event::ChatHistory(Err(e)),
@@ -430,6 +434,7 @@ pub fn run(job: Job, client: &Client) -> Event {
             }
         }
         Job::FeedChoices => Event::FeedChoices(feed_choices(client)),
+        Job::Report { user_id, comment } => Event::Reported(client.report(&user_id, &comment)),
         Job::LoadProfileEditor => Event::ProfileEditor(client.me().map(Box::new)),
         Job::SaveProfile(change) => {
             Event::ProfileSaved(save_profile(client, &change).map(Box::new))

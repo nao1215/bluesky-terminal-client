@@ -63,6 +63,10 @@ pub const HELP: &[Section] = &[
             ),
             ("b", n!("renote / take back your renote")),
             ("D", n!("delete your own note: y confirms")),
+            (
+                "!",
+                n!("report the note and its author to the moderators: y confirms"),
+            ),
             ("enter", n!("open the profile of its author")),
             ("v", n!("open the thread with its replies")),
             ("space", n!("view the pictures and files")),
@@ -104,6 +108,10 @@ pub const HELP: &[Section] = &[
             ("f", n!("follow / unfollow the account shown")),
             ("M", n!("mute / unmute the account shown")),
             ("B", n!("block / unblock the account: y confirms")),
+            (
+                "!",
+                n!("report the account, or the note selected, to the moderators: y confirms"),
+            ),
             (
                 "",
                 n!("an account that approves followers, or of another server, is asked"),
@@ -274,6 +282,21 @@ fn view_hints(app: &App) -> Vec<Hint> {
             return vec![
                 ("j k", n!("preview")),
                 ("enter", n!("apply")),
+                ("esc", n!("cancel")),
+            ];
+        }
+        Some(Overlay::Report(r)) if r.writing => {
+            return vec![
+                ("tab", n!("the reasons")),
+                ("ctrl+enter", n!("send")),
+                ("esc", n!("stop writing")),
+            ];
+        }
+        Some(Overlay::Report(_)) => {
+            return vec![
+                ("j k", n!("reason")),
+                ("tab", n!("write a comment")),
+                ("enter", n!("send: y confirms")),
                 ("esc", n!("cancel")),
             ];
         }
@@ -522,6 +545,8 @@ pub fn actions(app: &App) -> Vec<Hint> {
     });
     if mine {
         v.push(("D", n!("delete your note")));
+    } else {
+        v.push(("!", n!("report it")));
     }
     translated(v)
 }

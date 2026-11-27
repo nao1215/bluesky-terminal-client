@@ -323,6 +323,147 @@ pub fn guarded(ctx: &Ctx, out: &mut dyn Write, what: Guard, limit: usize) -> Res
     Ok(())
 }
 
+/// Why something is reported, as bsky's `--reason`: Misskey's report has
+/// no kinds, so the reason starts the comment the moderators read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ReportReason {
+    Spam,
+    Violation,
+    Misleading,
+    Sexual,
+    Rude,
+    Other,
+}
+
+impl ReportReason {
+    pub const ALL: [ReportReason; 6] = [
+        ReportReason::Spam,
+        ReportReason::Violation,
+        ReportReason::Misleading,
+        ReportReason::Sexual,
+        ReportReason::Rude,
+        ReportReason::Other,
+    ];
+
+    /// How the comment starts.
+    pub fn label(self) -> &'static str {
+        match self {
+            ReportReason::Spam => crate::i18n::n!("Spam"),
+            ReportReason::Violation => crate::i18n::n!("Breaks the server's rules or the law"),
+            ReportReason::Misleading => crate::i18n::n!("Misleading"),
+            ReportReason::Sexual => crate::i18n::n!("Sexual content not marked as sensitive"),
+            ReportReason::Rude => crate::i18n::n!("Rude or harassing"),
+            ReportReason::Other => crate::i18n::n!("Other"),
+        }
+    }
+}
+
+/// The most a report's comment may hold (`users/report-abuse`).
+pub const MAX_REPORT_CHARS: usize = 2048;
+
+/// The comment sent with a report: the reason, the note's address when a
+/// note is reported (as Misskey's own form writes it), and what the user
+/// wrote. Too long is refused before anything is sent.
+pub fn report_comment(
+    reason: ReportReason,
+    note_url: Option<&str>,
+    comment: Option<&str>,
+) -> Result<String> {
+    let mut c = reason.label().to_string();
+    if let Some(u) = note_url {
+        c.push_str(&format!("\nNote: {u}"));
+    }
+    if let Some(t) = comment.map(str::trim).filter(|t| !t.is_empty()) {
+        c.push_str("\n-----\n");
+        c.push_str(t);
+    }
+    let n = c.chars().count();
+    if n > MAX_REPORT_CHARS {
+        return Err(Error::usage(format!(
+            "the report is {n} characters long; it can have {MAX_REPORT_CHARS}"
+        )));
+    }
+    Ok(c)
+}
+
+/// `msky report TARGET --reason R` (bsky's `report`): report an account,
+/// or a note's author with the note's address, to the moderators of the
+/// server written on. It is sent only once confirmed: `--yes`, or `y` to
+/// the question on a terminal.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each is one of the command's options, or where it reads and asks"
+)]
+pub fn report(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    target: &str,
+    reason: ReportReason,
+    comment: Option<&str>,
+    yes: bool,
+    input: &mut dyn std::io::BufRead,
+    asked: Option<&mut dyn Write>,
+) -> Result<()> {
+    let t = target.trim();
+    let is_note = !t.starts_with('@') && (t.contains("/notes/") || !t.contains('@'));
+    let client = ctx.writer(&["write:report-abuse"], "report")?;
+    let (user_id, shown, note_url) = if is_note {
+        let id = own_server_note(ctx, t)?;
+        let n = client.note(&id).map_err(|e| ctx.explained(e))?;
+        let url = format::note_url(client.origin(), &n.id);
+        let who = acct_of(&n.user, client.host());
+        (n.user.id.clone(), format!("{who} for {url}"), Some(url))
+    } else {
+        let who = parse_user(t)?;
+        if who.origin.as_deref().is_some_and(|o| o != ctx.origin) {
+            return Err(
+                Error::usage("the account is given by its address on another server")
+                    .with_hint("give it as @name@host"),
+            );
+        }
+        let host = who
+            .host
+            .as_deref()
+            .filter(|h| !h.eq_ignore_ascii_case(client.host()));
+        let u = client
+            .user(&who.username, host)
+            .map_err(|e| ctx.explained(e))?;
+        (u.id.clone(), acct_of(&u, client.host()), None)
+    };
+    let body = report_comment(reason, note_url.as_deref(), comment)?;
+    if !yes {
+        let Some(err) = asked else {
+            return Err(Error::usage("a report is sent only once confirmed")
+                .with_hint("pass --yes, or run msky report on a terminal to answer y"));
+        };
+        let question = format!(
+            "report {} to the moderators of {} as \"{}\"? [y/N] ",
+            crate::text::one_line(&shown),
+            client.host(),
+            reason.label()
+        );
+        err.write_all(question.as_bytes())
+            .and_then(|()| err.flush())
+            .map_err(|e| Error::io(format!("cannot ask: {e}")))?;
+        let mut answer = String::new();
+        input
+            .read_line(&mut answer)
+            .map_err(|e| Error::io(format!("cannot read the answer: {e}")))?;
+        if !matches!(answer.trim(), "y" | "Y" | "yes") {
+            return Err(Error::usage("not reported"));
+        }
+    }
+    client
+        .report(&user_id, &body)
+        .map_err(|e| ctx.explained(e))?;
+    did(
+        ctx,
+        out,
+        json!({"reported": user_id, "comment": body}),
+        format!("reported {}", crate::text::one_line(&shown)),
+    )
+}
+
 /// A chat message as `--json` prints it: who sent it and to whom (or to
 /// which room), in the account shape the other commands print.
 fn chat_json(m: &crate::api::types::ChatMessage, origin: &str) -> Value {
@@ -775,5 +916,147 @@ mod chat_tests {
         let v: Value = serde_json::from_str(body).unwrap();
         assert_eq!(v["toUserId"], "u-bob");
         assert_eq!(v["text"], "こんにちは");
+    }
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+    use crate::api::stub_tests::{reply, serve};
+    use crate::config::{AccountStore, Session};
+    use std::sync::Arc;
+
+    fn ctx_for(url: &str, dir: &std::path::Path) -> Ctx {
+        AccountStore::open(dir)
+            .save(&Session {
+                service: url.to_string(),
+                user_id: "u-me".into(),
+                username: "me".into(),
+                token: "fake-token-for-tests".into(),
+                permissions: crate::miauth::PERMISSIONS
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect(),
+            })
+            .unwrap();
+        Ctx {
+            origin: url.to_string(),
+            json: false,
+            host_given: true,
+            accounts: Ok(AccountStore::open(dir)),
+            env_token: None,
+        }
+    }
+
+    // A report is sent only once confirmed: --yes, or y on a terminal; a
+    // note reports its author with the note's address; nothing is sent
+    // otherwise.
+    #[test]
+    fn a_report_is_sent_only_once_confirmed() {
+        let (url, calls) = serve(Arc::new(|path, _, _| match path {
+            "/api/notes/show" => reply(
+                200,
+                r#"{"id":"n1","userId":"u-bob","user":{"id":"u-bob","username":"bob"},"text":"x"}"#,
+            ),
+            "/api/users/show" => reply(200, r#"{"id":"u-bob","username":"bob"}"#),
+            "/api/users/report-abuse" => reply(204, ""),
+            _ => reply(404, r#"{"error":{"code":"NO_SUCH_ENDPOINT"}}"#),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let c = ctx_for(&url, dir.path());
+        let mut out = Vec::new();
+        // No terminal, no --yes: refused before anything is sent.
+        let e = report(
+            &c,
+            &mut out,
+            "@bob",
+            ReportReason::Spam,
+            None,
+            false,
+            &mut std::io::empty(),
+            None,
+        )
+        .unwrap_err();
+        assert!(e.message().contains("only once confirmed"), "{e:?}");
+        // Asked, and n: not sent.
+        let mut asked = Vec::new();
+        let e = report(
+            &c,
+            &mut out,
+            "@bob",
+            ReportReason::Spam,
+            None,
+            false,
+            &mut "n\n".as_bytes(),
+            Some(&mut asked),
+        )
+        .unwrap_err();
+        assert!(e.message().contains("not reported"));
+        assert!(String::from_utf8(asked).unwrap().contains("report @bob@"));
+        assert!(
+            !calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(p, _)| p == "/api/users/report-abuse")
+        );
+        // y: sent, the note's address and the comment in it.
+        let mut asked = Vec::new();
+        report(
+            &c,
+            &mut out,
+            "n1",
+            ReportReason::Rude,
+            Some("ひどい 😡"),
+            false,
+            &mut "y\n".as_bytes(),
+            Some(&mut asked),
+        )
+        .unwrap();
+        report(
+            &c,
+            &mut out,
+            "@bob",
+            ReportReason::Other,
+            None,
+            true,
+            &mut std::io::empty(),
+            None,
+        )
+        .unwrap();
+        let log = calls.lock().unwrap();
+        let sent: Vec<Value> = log
+            .iter()
+            .filter(|(p, _)| p == "/api/users/report-abuse")
+            .map(|(_, b)| serde_json::from_str(b).unwrap())
+            .collect();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0]["userId"], "u-bob");
+        assert_eq!(
+            sent[0]["comment"],
+            format!(
+                "Rude or harassing\nNote: {}\n-----\nひどい 😡",
+                format::note_url(&url, "n1")
+            )
+        );
+        assert_eq!(sent[1]["comment"], "Other");
+        let printed = String::from_utf8(out).unwrap();
+        assert!(printed.contains("reported @bob@"), "{printed}");
+    }
+
+    // Over Misskey's 2048 characters, the report is refused before it is
+    // sent; at the limit it goes.
+    #[test]
+    fn a_report_over_the_limit_is_refused() {
+        let base = ReportReason::Other.label().chars().count() + "\n-----\n".chars().count();
+        let fits = "🇯".repeat(MAX_REPORT_CHARS - base);
+        assert!(report_comment(ReportReason::Other, None, Some(&fits)).is_ok());
+        let over = format!("{fits}x");
+        assert!(
+            report_comment(ReportReason::Other, None, Some(&over))
+                .unwrap_err()
+                .message()
+                .contains("2048")
+        );
     }
 }

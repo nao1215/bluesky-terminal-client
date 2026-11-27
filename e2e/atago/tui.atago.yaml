@@ -149,7 +149,10 @@ scenarios:
                 contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
             - send: "?"
             - expect_screen:
-                contains: ["Keys", "show / hide the text behind a content"]
+                contains: ["Keys", "add a tab: one not shown"]
+            - send: { key: pagedown }
+            - expect_screen:
+                contains: "show / hide the text behind a content"
             - send: q
             - send: q
       - assert:

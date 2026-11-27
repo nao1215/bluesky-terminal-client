@@ -56,6 +56,7 @@ It needs Rust 1.90 or later.
 | `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
 | `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
 | `e` on your own Profile tab | Edits your profile, as bsky's: the name, the description, and a new avatar and banner (a path, or `ctrl+o` to choose a picture); `tab` moves between them, `ctrl+s` saves (`i/update`, sending only what changed), `esc` closes without saving. On a note there, the actions list (`.`) still reacts with `e` |
+| `!` | Reports the note selected (its author, with its address), or on a profile with no note selected the account: choose a reason with `j` `k`, `tab` to write a comment, `enter` asks, and only `y` sends it |
 | `+`, `x` | Adds a tab, as bsky's `+` adds a column: one of the tabs not shown, or one of your antennas, lists and channels (followed or favorited), which then reads its notes as a timeline does; `x` closes the tab shown once `y` confirms, the last one staying. Both are kept in the `tabs` setting |
 | `s` | The settings: the theme, the language, the download folder, the browser and the tabs, kept in `settings.json`, as bsky's |
 | `T` | The themes, bsky's, each previewed as the selection moves; `enter` keeps one, `esc` puts the one before back |
@@ -125,6 +126,7 @@ msky asks the server `--host` or `MSKY_HOST` names (`--host misskey.design`, `--
 | `msky delete NOTE` | Deletes one of your own notes |
 | `msky mute ACTOR`, `unmute`, `mutes` | Mutes or unmutes an account; the accounts you muted |
 | `msky block ACTOR`, `unblock`, `blocks` | Blocks or unblocks an account; the accounts you blocked |
+| `msky report TARGET --reason R [--comment TEXT] [--yes]` | Reports an account, or a note's author with the note's address, to the server's moderators (`users/report-abuse`), as bsky's `report`: the reason (`spam`, `violation`, `misleading`, `sexual`, `rude`, `other`) starts the comment, since Misskey's report has no kinds, and the whole is at most 2048 characters. It is sent only once confirmed: `--yes`, or `y` to the question on a terminal; elsewhere it is refused (exit 1) |
 | `msky chat [ACTOR] [TEXT]` | Your conversations; with ACTOR the messages with them, oldest first; with TEXT too, sends it (`-` reads it from stdin) |
 | `msky follow ACTOR` | Follows the account |
 | `msky unfollow ACTOR` | Unfollows the account, or takes back a request to follow it |

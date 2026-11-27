@@ -3,8 +3,8 @@
 //! text for reading, or with `--json` one object per note per line, in the
 //! same shape for every command (see [`format::note_json`]).
 
-mod format;
-mod more;
+pub(crate) mod format;
+pub(crate) mod more;
 mod post;
 
 pub use post::{PostArgs, Visibility};
@@ -108,6 +108,20 @@ pub enum Command {
     Blocks {
         #[arg(short = 'n', long, default_value_t = 50)]
         limit: usize,
+    },
+    /// Report an account, or a note's author with the note, to the
+    /// server's moderators; asks to confirm unless --yes.
+    Report {
+        /// A note (ID or address) or an account (@name or @name@host).
+        target: String,
+        #[arg(long, value_enum)]
+        reason: more::ReportReason,
+        /// What the moderators should know.
+        #[arg(long, value_name = "TEXT")]
+        comment: Option<String>,
+        /// Send it without asking.
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
     /// Chat: the conversations; with ACTOR the messages with them; with
     /// TEXT too, send it (`-` reads it from stdin).
@@ -566,6 +580,26 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         Command::Block { actor } => more::guard(ctx, out, &actor, more::Guard::Block, true),
         Command::Unblock { actor } => more::guard(ctx, out, &actor, more::Guard::Block, false),
         Command::Blocks { limit } => more::guarded(ctx, out, more::Guard::Block, limit),
+        Command::Report {
+            target,
+            reason,
+            comment,
+            yes,
+        } => {
+            use std::io::IsTerminal;
+            let mut err = io::stderr();
+            let tty = io::stdin().is_terminal() && err.is_terminal();
+            more::report(
+                ctx,
+                out,
+                &target,
+                reason,
+                comment.as_deref(),
+                yes,
+                &mut io::stdin().lock(),
+                tty.then_some(&mut err as &mut dyn Write),
+            )
+        }
         Command::Chat { actor, text, limit } => {
             more::chat(ctx, out, actor.as_deref(), text, limit, &mut io::stdin())
         }

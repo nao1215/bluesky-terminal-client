@@ -644,6 +644,16 @@ impl Client {
             .collect())
     }
 
+    /// `users/report-abuse`: report account `user_id` to the server's
+    /// moderators with `comment`. Sent once, as every write is.
+    pub fn report(&self, user_id: &str, comment: &str) -> Result<()> {
+        self.call(
+            "users/report-abuse",
+            &json!({"userId": user_id, "comment": comment}),
+        )
+        .map(drop)
+    }
+
     /// `i/update`: change the account's own profile with the fields of
     /// `body` (`name`, `description`, `avatarId`, `bannerId`), and return
     /// it as it now is. Sent once, as every write is.

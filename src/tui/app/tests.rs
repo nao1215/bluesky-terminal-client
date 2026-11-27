@@ -529,7 +529,7 @@ fn the_actions_list_names_the_keys_and_runs_the_one_chosen() {
     let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
     assert_eq!(
         names,
-        ["r", "l", "e", "b", "Q", "space", "v", "d", "o", "c"]
+        ["r", "l", "e", "b", "Q", "space", "v", "d", "o", "c", "!"]
     );
     for _ in 0..6 {
         app.handle_key(key('j'));
@@ -708,6 +708,7 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('s'),
         key('T'),
         key('+'),
+        key('!'),
         key('x'),
         key('y'),
         key('e'),
@@ -821,6 +822,9 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                             Ok(page("f"))
                         },
                     },
+                    Job::Report { .. } => {
+                        Event::Reported(if fail { Err(Error::api("x")) } else { Ok(()) })
+                    }
                     Job::FeedChoices => Event::FeedChoices(if fail {
                         Err(Error::api("x"))
                     } else {
@@ -2376,4 +2380,57 @@ fn plus_adds_a_tab_and_x_closes_one() {
     app.handle_key(key('x'));
     assert!(app.confirm_close_tab.is_none());
     assert!(app.status.as_ref().unwrap().text.contains("last tab"));
+}
+
+// ! on another's note reports its author with the note: a reason, a
+// comment, enter asks, and only y sends; any other key goes back.
+#[test]
+fn bang_reports_a_note_once_y_confirms() {
+    let mut app = writer(vec![note(
+        json!({"id": "n1", "userId": "u-bob", "user": {"id": "u-bob", "username": "bob"}, "text": "x"}),
+    )]);
+    app.handle_key(key('!'));
+    let Some(Overlay::Report(r)) = &app.overlay else {
+        panic!("{:?}", app.overlay)
+    };
+    assert_eq!(r.user_id, "u-bob");
+    assert!(r.shown.starts_with("@bob@"), "{}", r.shown);
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Tab));
+    type_str(&mut app, "荒らし 🚫");
+    app.handle_key(code(KeyCode::Tab));
+    assert!(
+        app.handle_key(code(KeyCode::Enter)).is_empty(),
+        "asked first"
+    );
+    assert!(app.status.as_ref().unwrap().text.contains("press y"));
+    assert!(app.handle_key(key('n')).is_empty(), "not y: back");
+    assert!(matches!(app.overlay, Some(Overlay::Report(_))));
+    app.handle_key(code(KeyCode::Enter));
+    let jobs = app.handle_key(key('y'));
+    let Job::Report { user_id, comment } = &jobs[0].1 else {
+        panic!("{jobs:?}")
+    };
+    assert_eq!(user_id, "u-bob");
+    assert!(
+        comment.starts_with("Breaks the server's rules or the law\nNote: "),
+        "{comment}"
+    );
+    assert!(comment.ends_with("\n-----\n荒らし 🚫"), "{comment}");
+    assert!(app.handle_key(key('y')).is_empty(), "sent once");
+    app.handle_answer(jobs[0].0, Event::Reported(Ok(())));
+    assert!(app.overlay.is_none());
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .starts_with("reported @bob@")
+    );
+    // Your own note is not reported.
+    let mut app = writer(vec![note(
+        json!({"id": "n2", "userId": "u-me", "user": {"id": "u-me", "username": "me"}, "text": "x"}),
+    )]);
+    app.handle_key(key('!'));
+    assert!(app.overlay.is_none());
 }

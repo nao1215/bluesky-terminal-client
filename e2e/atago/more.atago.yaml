@@ -129,3 +129,42 @@ scenarios:
           exit_code: 0
           stdout:
             equals: "ボブ @bob@x.test  ${api.url}/@bob@x.test\n"
+
+  - name: report sends nothing until confirmed, and with --yes reports the note's author with its address
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/show, json: { id: n9, userId: u-bob, user: { id: u-bob, username: bob }, text: "x" } }
+          - { method: POST, path: /api/users/report-abuse, status: 204, body: "" }
+    steps:
+      - run:
+          command: msky report n9 --reason spam --host ${api.url}
+          stdin: ""
+          env:
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: ["a report is sent only once confirmed", "--yes"]
+      - assert:
+          mock:
+            name: api
+            path: /api/users/report-abuse
+            count: 0
+      - run:
+          command: msky report n9 --reason spam --comment "宣伝ばかり 📢" --yes --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "reported @bob@127.0.0.1:${api.port} for ${api.url}/notes/n9\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/users/report-abuse
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+                - { path: "$.comment", equals: "Spam\nNote: ${api.url}/notes/n9\n-----\n宣伝ばかり 📢" }
