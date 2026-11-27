@@ -419,4 +419,227 @@ mod tests {
             "the file has no video track"
         );
     }
+
+    fn mp4_box(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        let mut v = u32::try_from(body.len() + 8)
+            .unwrap()
+            .to_be_bytes()
+            .to_vec();
+        v.extend_from_slice(kind);
+        v.extend_from_slice(body);
+        v
+    }
+
+    /// A full box: its version, zero flags, and then `fields` as 32-bit
+    /// big-endian numbers.
+    fn full_box(kind: &[u8; 4], version: u8, fields: &[u32]) -> Vec<u8> {
+        let mut body = vec![version, 0, 0, 0];
+        for f in fields {
+            body.extend_from_slice(&f.to_be_bytes());
+        }
+        mp4_box(kind, &body)
+    }
+
+    // A box after the first one whose size is 0 runs to the end of the
+    // buffer, and one whose size is 1 takes its size from the 64 bits after
+    // its type.
+    #[test]
+    fn a_box_sized_to_the_end_or_by_64_bits_after_another_is_read() {
+        let mut buf = mp4_box(b"free", &[]);
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+        buf.extend_from_slice(b"mdat");
+        buf.extend_from_slice(&[1, 2, 3, 4]);
+        let (b, broken) = boxes_checked(&buf);
+        assert!(!broken);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b[1], (*b"mdat", &[1u8, 2, 3, 4][..]));
+
+        let mut buf = mp4_box(b"free", &[]);
+        buf.extend_from_slice(&[0, 0, 0, 1]);
+        buf.extend_from_slice(b"wide");
+        buf.extend_from_slice(&20u64.to_be_bytes());
+        buf.extend_from_slice(&[5, 6, 7, 8]);
+        buf.extend_from_slice(&mp4_box(b"skip", &[9]));
+        let (b, broken) = boxes_checked(&buf);
+        assert!(!broken);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b[1], (*b"wide", &[5u8, 6, 7, 8][..]));
+        assert_eq!(b[2], (*b"skip", &[9u8][..]));
+    }
+
+    // Two SPS and two PPS of different lengths each come out after a
+    // start code, in order, with the NAL length size from the low bits.
+    #[test]
+    fn an_avcc_with_two_sps_and_two_pps_gives_each_in_order() {
+        let avcc = [
+            1, 0x42, 0, 0x1e, 0xfd, 0xe2, // two-byte lengths, two SPS
+            0, 3, 0x67, 0xa1, 0xa2, // SPS 1
+            0, 1, 0x67, // SPS 2
+            2,    // two PPS
+            0, 3, 0x68, 0xb1, 0xb2, // PPS 1
+            0, 2, 0x68, 0xc1, // PPS 2
+        ];
+        let (length_size, config) = parse_avcc(&avcc).unwrap();
+        assert_eq!(length_size, 2);
+        assert_eq!(
+            config,
+            [
+                0, 0, 0, 1, 0x67, 0xa1, 0xa2, 0, 0, 0, 1, 0x67, 0, 0, 0, 1, 0x68, 0xb1, 0xb2, 0, 0,
+                0, 1, 0x68, 0xc1,
+            ]
+        );
+    }
+
+    // A full box whose count claims more entries than its bytes can hold is
+    // refused; one whose count fits is read.
+    #[test]
+    fn a_count_past_the_entries_is_refused() {
+        let fits = [0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 2];
+        assert_eq!(entries(&fits), Some((0, 2, &fits[8..])));
+        let over = [0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 2];
+        assert_eq!(entries(&over), None);
+    }
+
+    /// The boxes of a sample table, in order.
+    fn stbl(parts: &[Vec<u8>]) -> Vec<u8> {
+        parts.concat()
+    }
+
+    // Each chunk takes the samples of the run it falls in, at offsets that
+    // follow on from the chunk's, and each sample is shown at its decode
+    // time plus its composition offset, in 90 kHz ticks.
+    #[test]
+    fn the_sample_table_gives_each_sample_its_offset_size_and_time() {
+        let t = stbl(&[
+            full_box(b"stsz", 0, &[0, 5, 10, 20, 30, 40, 50]),
+            full_box(b"stco", 0, &[3, 100, 1000, 2000]),
+            full_box(b"stsc", 0, &[2, 1, 1, 1, 2, 2, 1]),
+            full_box(b"stts", 0, &[2, 2, 3000, 3, 1500]),
+            full_box(b"ctts", 0, &[2, 1, 6000, 4, 3000]),
+        ]);
+        assert_eq!(
+            sample_table(&t, 3000, 10_000),
+            Some(vec![
+                (100, 10, 180_000),
+                (1000, 20, 180_000),
+                (1020, 30, 270_000),
+                (2000, 40, 315_000),
+                (2040, 50, 360_000),
+            ])
+        );
+    }
+
+    // 64-bit chunk offsets are read like 32-bit ones.
+    #[test]
+    fn co64_chunk_offsets_are_read() {
+        let mut co64 = vec![0, 0, 0, 0, 0, 0, 0, 2];
+        co64.extend_from_slice(&100u64.to_be_bytes());
+        co64.extend_from_slice(&5000u64.to_be_bytes());
+        let t = stbl(&[
+            full_box(b"stsz", 0, &[7, 2]),
+            mp4_box(b"co64", &co64),
+            full_box(b"stsc", 0, &[1, 1, 1, 1]),
+            full_box(b"stts", 0, &[1, 2, 1000]),
+        ]);
+        assert_eq!(
+            sample_table(&t, 1000, 10_000),
+            Some(vec![(100, 7, 0), (5000, 7, 90_000)])
+        );
+    }
+
+    // A version 1 ctts holds signed offsets, so a picture can be shown
+    // before its decode time (clamped at zero).
+    #[test]
+    fn a_version_1_ctts_offset_is_signed() {
+        let t = stbl(&[
+            full_box(b"stsz", 0, &[1, 2]),
+            full_box(b"stco", 0, &[1, 0]),
+            full_box(b"stsc", 0, &[1, 1, 2, 1]),
+            full_box(b"stts", 0, &[1, 2, 3000]),
+            full_box(b"ctts", 1, &[1, 2, (-1500i32) as u32]),
+        ]);
+        assert_eq!(
+            sample_table(&t, 3000, 10_000),
+            Some(vec![(0, 1, 0), (1, 1, 45_000)])
+        );
+    }
+
+    // As many samples as the file has bytes is allowed; one more is not.
+    #[test]
+    fn a_sample_count_past_the_file_length_is_refused() {
+        let table = |count| {
+            stbl(&[
+                full_box(b"stsz", 0, &[1, count]),
+                full_box(b"stco", 0, &[1, 0]),
+                full_box(b"stsc", 0, &[1, 1, count, 1]),
+                full_box(b"stts", 0, &[1, count, 1]),
+            ])
+        };
+        assert_eq!(
+            sample_table(&table(2), 1, 2),
+            Some(vec![(0, 1, 0), (1, 1, 90_000)])
+        );
+        assert_eq!(sample_table(&table(3), 1, 2), None);
+    }
+
+    /// A file of two pictures, each one NAL unit with a 4-byte length, its
+    /// track timed by `mdhd`, a second apart at a time scale of 1000.
+    fn two_picture_mp4(mdhd: Vec<u8>) -> Vec<u8> {
+        let nal = [0, 0, 0, 2, 0x65, 0x88];
+        let mut file = mp4_box(b"mdat", &[nal, nal].concat());
+        let avcc = [
+            1, 0x42, 0, 0x1e, 0xff, 0xe1, 0, 2, 0x67, 0x42, 1, 0, 2, 0x68, 0xce,
+        ];
+        let mut entry = vec![0u8; 78];
+        entry.extend_from_slice(&mp4_box(b"avcC", &avcc));
+        let mut stsd = vec![0, 0, 0, 0, 0, 0, 0, 1];
+        stsd.extend_from_slice(&mp4_box(b"avc1", &entry));
+        let stbl = mp4_box(
+            b"stbl",
+            &[
+                mp4_box(b"stsd", &stsd),
+                full_box(b"stsz", 0, &[6, 2]),
+                full_box(b"stco", 0, &[1, 8]),
+                full_box(b"stsc", 0, &[1, 1, 2, 1]),
+                full_box(b"stts", 0, &[1, 2, 1000]),
+            ]
+            .concat(),
+        );
+        let mut hdlr = vec![0u8; 8];
+        hdlr.extend_from_slice(b"vide");
+        hdlr.extend_from_slice(&[0; 12]);
+        let mdia = mp4_box(
+            b"mdia",
+            &[mp4_box(b"hdlr", &hdlr), mdhd, mp4_box(b"minf", &stbl)].concat(),
+        );
+        file.extend_from_slice(&mp4_box(b"moov", &mp4_box(b"trak", &mdia)));
+        file
+    }
+
+    // A version 1 mdhd keeps its time scale after 64-bit times, and a time
+    // scale of 0 is refused.
+    #[test]
+    fn the_time_scale_is_read_from_either_mdhd_version() {
+        let pts = |file: &[u8]| -> Vec<u64> {
+            video_track(file)
+                .unwrap()
+                .samples
+                .iter()
+                .map(|s| s.pts)
+                .collect()
+        };
+        let v0 = two_picture_mp4(full_box(b"mdhd", 0, &[0, 0, 1000, 0]));
+        assert_eq!(pts(&v0), [0, 90_000]);
+        let v1 = two_picture_mp4(full_box(b"mdhd", 1, &[0, 0, 0, 0, 1000, 0, 0]));
+        assert_eq!(pts(&v1), [0, 90_000]);
+        assert_eq!(
+            video_track(&v1).unwrap().samples[0].data,
+            [0, 0, 0, 1, 0x65, 0x88]
+        );
+        let zero = two_picture_mp4(full_box(b"mdhd", 0, &[0, 0, 0, 0]));
+        assert_eq!(
+            video_track(&zero).err().unwrap(),
+            "the video track has no time scale"
+        );
+    }
 }
