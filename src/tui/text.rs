@@ -360,6 +360,12 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_paragraph_has_no_runs() {
+        assert!(split_keep_spaces("").is_empty());
+        assert_eq!(split_keep_spaces("ab  日本"), ["ab", "  ", "日", "本"]);
+    }
+
+    #[test]
     fn an_emoji_with_a_modifier_is_never_split() {
         for width in 1..6 {
             for line in wrap("👍🏽👍🏽👍🏽", width) {
