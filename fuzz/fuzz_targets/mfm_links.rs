@@ -65,16 +65,11 @@ fuzz_target!(|data: &[u8]| {
         Vec::<String>::new(),
         "{text:?}"
     );
-    // plain() leaves `<https://...>` as written, brackets and all, while its
-    // silenced form reads as the bare address, as Misskey's web client
-    // shows both; the relation holds for every other form.
-    if !links.iter().any(|l| l.form == Form::Angle) {
-        assert_eq!(
-            mfm::plain_text(&silenced),
-            mfm::plain_text(text),
-            "{text:?}"
-        );
-    }
+    assert_eq!(
+        mfm::plain_text(&silenced),
+        mfm::plain_text(text),
+        "{text:?}"
+    );
 
     // Markup is only taken away.
     let plain = mfm::plain_text(text);

@@ -69,3 +69,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A video whose MP4 gives a box a 64-bit size near the largest no longer leaves the viewer loading forever: the player stopped on it, and now the viewer says the file is broken.
 - A note whose reaction counts add up past the largest number no longer stops the client or prints a wrong total: the total stops at the largest.
 - `msky post --no-card` no longer leaves a preview under a link that a function holds (`$[x2 https://...]`) or that comes after a `[` closing nothing on its line: the `[` is written `<plain>[</plain>`, which reads the same.
+- An address in angle brackets (`<https://...>`) is shown in the client without its brackets, as Misskey's web client shows it, where it kept them.

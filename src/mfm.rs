@@ -332,7 +332,8 @@ pub struct Run {
 /// reading]` is `base(reading)`, `<center>`, `<small>`, `<i>`, `<s>`,
 /// `<sup>` and `<sub>` are what they hold, `<b>` and `**bold**` are bold,
 /// a link with a label (`[label](address)`, `?[label](address)`) is its
-/// label, and `<plain>` is what it holds as it is. Code, math, custom
+/// label, `<https://...>` is the address without its brackets, and
+/// `<plain>` is what it holds as it is. Code, math, custom
 /// emoji (`:name:`) and anything that does not close are left as written.
 /// The text never grows: markup is only taken away.
 pub fn plain(text: &str) -> Vec<Run> {
@@ -449,6 +450,15 @@ fn special<'a>(s: &'a str, i: usize, bold: bool, depth: usize) -> Drawn<'a> {
         ));
     }
     if b[i] == b'<' {
+        // `<https://...>` is the address alone, as Misskey's web client
+        // shows it and as its silenced form reads.
+        if let Some(link) = angle(b, i) {
+            let url = &s[i + 1..link.end - 1];
+            return Some((
+                link.end,
+                Box::new(move |r: &mut Vec<Run>| push(r, url, bold)),
+            ));
+        }
         for (tag, makes_bold) in TAGS {
             let open = format!("<{tag}>");
             if !b[i..].starts_with(open.as_bytes()) {
@@ -672,6 +682,7 @@ mod tests {
         assert_eq!(s, want);
         assert!(previewed(&s, &[]).is_empty(), "{s}");
         assert_eq!(urls(&s), urls(text));
+        assert_eq!(plain_text(&s), plain_text(text), "{s}");
     }
 
     // A `[` before a link on its line that closes nothing, or a function's
@@ -726,6 +737,9 @@ mod tests {
     #[case("`$[x2 code]` は $[x2 そのまま]", "`$[x2 code]` は そのまま")]
     #[case("$[x2 [label](https://example.com/a)]", "label")]
     #[case(":blobcat: :custom_emoji_name:", ":blobcat: :custom_emoji_name:")]
+    #[case("見て <https://a.test/x(y> 👍🏽", "見て https://a.test/x(y 👍🏽")]
+    #[case("<https://a.test/x >", "<https://a.test/x >")]
+    #[case("`<https://a.test>`", "`<https://a.test>`")]
     #[case(
         "家族👨\u{200d}👩\u{200d}👧$[x2 🇯🇵👍🏽❤\u{fe0f}]",
         "家族👨\u{200d}👩\u{200d}👧🇯🇵👍🏽❤\u{fe0f}"
