@@ -99,7 +99,6 @@ fn tag(s: &str) -> Option<(Tag, usize)> {
     for (i, c) in body.char_indices() {
         match (quote, c) {
             (Some(q), c) if c == q => quote = None,
-            (Some(_), _) => {}
             (None, '"' | '\'') => quote = Some(c),
             (None, '>') => {
                 end = Some(i);
@@ -111,9 +110,6 @@ fn tag(s: &str) -> Option<(Tag, usize)> {
     let end = end?;
     let inner = &body[..end];
     let used = 1 + end + 1;
-    if first == '!' || first == '?' {
-        return Some((Tag::default(), used));
-    }
     let (closing, inner) = match inner.strip_prefix('/') {
         Some(rest) => (true, rest),
         None => (false, inner),
@@ -359,8 +355,8 @@ impl Writer {
     /// Text already decoded (an entity's character): a line break written
     /// as one is the source's layout too, but in preformatted text.
     fn decoded(&mut self, s: &str) {
-        if self.pre > 0 || self.anchor.is_some() {
-            self.put(s, self.pre > 0);
+        if self.pre > 0 {
+            self.put(s, true);
         } else {
             self.text(s);
         }
@@ -422,7 +418,6 @@ impl Writer {
         }
         if self.pending > 0 {
             for i in 0..self.pending {
-                trim_line_end(&mut self.out);
                 self.out.push('\n');
                 // A blank line inside a quote still says it is quoted.
                 let depth = self.pending_quote.min(self.quote);
@@ -621,12 +616,6 @@ impl Writer {
 /// character, which no text keeps (see [`Writer::put_inline`]).
 const QUOTED_BLANK: char = '\u{1}';
 
-/// Remove the spaces at the end of the last line of `out`.
-fn trim_line_end(out: &mut String) {
-    let kept = out.trim_end_matches(' ').len();
-    out.truncate(kept);
-}
-
 fn is_web(href: &str) -> bool {
     let l = href.to_ascii_lowercase();
     l.starts_with("https://") || l.starts_with("http://")
@@ -795,6 +784,7 @@ mod tests {
         "t (https://e.test/?a>b)"
     )]
     #[case("<a href=\"https://e.test\">…</a>", "… (https://e.test)")]
+    #[case("<a title=\"x\"href=\"https://e.test/\">t</a>", "t (https://e.test/)")]
     fn links_are_told_apart_by_what_they_say_they_are(#[case] html: &str, #[case] want: &str) {
         assert_eq!(to_text(html), want);
     }

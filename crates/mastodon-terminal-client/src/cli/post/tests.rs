@@ -252,6 +252,10 @@ fn an_address_counts_as_the_server_says() {
 #[case("mail me@host.test", 17)]
 #[case("xhttps://e.test", 15)]
 #[case("https:// alone", 14)]
+#[case("a/https://e.test/x", 18)]
+#[case("_@bob@far.test", 14)]
+#[case("@a_b@far.test", 4)]
+#[case("@bob@localhost", 14)]
 #[case("http://e.test https://f.test", 23 + 1 + 23)]
 fn a_post_is_counted_as_mastodon_counts_it(#[case] text: &str, #[case] want: usize) {
     assert_eq!(counted(text, 23), want);
@@ -391,4 +395,71 @@ fn a_file_never_processed_is_given_up_on() {
             .iter()
             .any(|c| c.path() == "/api/v1/statuses")
     );
+}
+
+fn local(alt: &str, size: usize, video: bool) -> Local {
+    Local {
+        path: PathBuf::from("f"),
+        name: "f".into(),
+        data: vec![0; size],
+        alt: alt.into(),
+        video,
+    }
+}
+
+// Each limit takes what is at it and refuses one past it.
+#[test]
+fn the_limits_take_what_is_at_them_and_refuse_one_past() {
+    let l = Limits {
+        max_characters: 5,
+        characters_reserved_per_url: 23,
+        max_media_attachments: 2,
+        description_limit: 3,
+        image_size_limit: Some(10),
+        video_size_limit: Some(20),
+    };
+    let d = |text: &str, cw: Option<&str>, files: Vec<Local>| Draft {
+        text: text.into(),
+        cw: cw.map(str::to_string),
+        files,
+        reply: None,
+    };
+    assert!(too_much(&d("12345", None, vec![]), &l, "h").is_ok());
+    assert!(too_much(&d("123456", None, vec![]), &l, "h").is_err());
+    assert!(too_much(&d("123", Some("45"), vec![]), &l, "h").is_ok());
+    assert!(too_much(&d("123", Some("456"), vec![]), &l, "h").is_err());
+    assert!(
+        too_much(
+            &d("x", None, vec![local("", 1, false), local("", 1, false)]),
+            &l,
+            "h"
+        )
+        .is_ok()
+    );
+    assert!(
+        too_much(
+            &d("x", None, (0..3).map(|_| local("", 1, false)).collect()),
+            &l,
+            "h"
+        )
+        .is_err()
+    );
+    assert!(too_much(&d("x", None, vec![local("abc", 10, false)]), &l, "h").is_ok());
+    assert!(too_much(&d("x", None, vec![local("abcd", 1, false)]), &l, "h").is_err());
+    assert!(too_much(&d("x", None, vec![local("", 11, false)]), &l, "h").is_err());
+    assert!(too_much(&d("x", None, vec![local("", 20, true)]), &l, "h").is_ok());
+    assert!(too_much(&d("x", None, vec![local("", 21, true)]), &l, "h").is_err());
+}
+
+// As many --alt as files is fine; one more is a usage error.
+#[test]
+fn there_may_be_an_alt_for_each_file_and_no_more() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut a = args("x");
+    a.images.push(photo(dir.path()));
+    a.alts.push("one".into());
+    assert!(draft(&a, &mut "".as_bytes()).is_ok());
+    a.alts.push("two".into());
+    let e = draft(&a, &mut "".as_bytes()).err().unwrap();
+    assert_eq!(e.message(), "there is more --alt than pictures and videos");
 }
