@@ -793,6 +793,10 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
+                    Job::Emojis => Event::Emojis(Ok(vec![(
+                        "blobcat".into(),
+                        "http://127.0.0.1:9/b.png".into(),
+                    )])),
                     Job::Profile { .. } => Event::Profile(if fail {
                         Err(Error::api("x"))
                     } else {
@@ -1693,4 +1697,63 @@ fn m_mutes_and_b_blocks_after_y() {
             on: false
         }
     );
+}
+
+// e offers the recent reactions and Misskey's default ones; typing
+// searches the server's custom emoji, the names that start with it
+// first; enter reacts with the one chosen, which becomes recent.
+#[test]
+fn the_reaction_picker_searches_the_servers_emoji() {
+    let mut app = writer(vec![note(json!({"id": "a"}))]);
+    app.emojis = [
+        ("blobcat", "u1"),
+        ("blobcat_yay", "u2"),
+        ("ablobcat_dance", "u3"),
+        ("neko", "u4"),
+    ]
+    .into_iter()
+    .map(|(a, b)| (a.to_string(), b.to_string()))
+    .collect();
+    assert_eq!(
+        app.reaction_choices("")[..2],
+        ["👍".to_string(), "❤".to_string()]
+    );
+    assert_eq!(
+        app.reaction_choices("blob"),
+        [":blobcat:", ":blobcat_yay:", ":ablobcat_dance:"]
+    );
+    app.handle_key(key('e'));
+    type_str(&mut app, "blob");
+    app.handle_key(code(KeyCode::Down));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        jobs[0].1,
+        Job::React {
+            id: "a".into(),
+            reaction: Some(":blobcat_yay:".into()),
+            had: None
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Reacted {
+            id: "a".into(),
+            reaction: Some(":blobcat_yay:".into()),
+            had: None,
+            result: Ok(()),
+        },
+    );
+    let n = &timeline(&app).items[0];
+    assert_eq!(
+        n.my_reaction.as_deref(),
+        Some(":blobcat_yay@.:"),
+        "as the server counts it"
+    );
+    assert_eq!(n.reactions.get(":blobcat_yay@.:"), Some(&1));
+    assert_eq!(app.reaction_choices("")[0], ":blobcat_yay:");
+    // The same one again is said to be given already.
+    app.handle_key(key('e'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert!(jobs.is_empty());
+    assert!(app.status.as_ref().unwrap().text.contains("already"));
 }

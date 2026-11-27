@@ -165,6 +165,12 @@ pub struct Note {
     pub uri: Option<String>,
     /// The reaction the account asking gave it, if any.
     pub my_reaction: Option<String>,
+    /// The custom emoji of another server its text and name use, by name,
+    /// with their picture's address (the server's own are in `emojis`).
+    pub emojis: BTreeMap<String, String>,
+    /// The custom emoji of other servers its reactions use, `name@host`
+    /// to the picture's address.
+    pub reaction_emojis: BTreeMap<String, String>,
     /// Who may see it: `public`, `home`, `followers`, `specified`.
     pub visibility: Option<String>,
     /// Its address on the server it came from, for one of another server.

@@ -13,6 +13,9 @@ use crate::tui::input::TextInput;
 /// The reactions `e` offers: Misskey's own default palette.
 pub const REACTIONS: &[&str] = &["👍", "❤", "😆", "🤔", "😮", "🎉", "💢", "😥", "😇", "🍮"];
 
+/// How many recent reactions the picker keeps.
+const RECENT: usize = 10;
+
 /// The reaction `l` gives, as Misskey's like button does.
 pub const LIKE: &str = "❤";
 
@@ -406,20 +409,101 @@ impl App {
         self.react(id, reaction, had)
     }
 
-    /// The reaction picker's choice, `reactions[i]`.
-    pub(super) fn react_with(&mut self, i: usize) -> Jobs {
+    /// React with `r`, the picker's choice.
+    pub(super) fn react_with(&mut self, r: String) -> Jobs {
         let Some(n) = self.shown_note() else {
             return Vec::new();
         };
         let (id, had) = (n.id.clone(), n.my_reaction.clone());
-        let Some(r) = REACTIONS.get(i) else {
-            return Vec::new();
-        };
-        if had.as_deref() == Some(*r) {
+        // Your own reaction is written `:name@.:` on the note.
+        let same = had
+            .as_deref()
+            .is_some_and(|h| h == r || h.replace("@.:", ":") == r);
+        if same {
             self.info(format!("you reacted {r} already"));
             return Vec::new();
         }
-        self.react(id, Some((*r).to_string()), had)
+        self.react(id, Some(r), had)
+    }
+
+    /// What the picker offers: the recent reactions and Misskey's default
+    /// ones, or, with `query`, the server's custom emoji whose name has
+    /// it, those that start with it first.
+    pub fn reaction_choices(&self, query: &str) -> Vec<String> {
+        let q = query.trim().trim_matches(':').to_ascii_lowercase();
+        if q.is_empty() {
+            let mut v: Vec<String> = self.recent_reactions.clone();
+            for r in REACTIONS {
+                if !v.iter().any(|x| x == r) {
+                    v.push((*r).to_string());
+                }
+            }
+            return v;
+        }
+        let mut names: Vec<&String> = self
+            .emojis
+            .keys()
+            .filter(|n| n.to_ascii_lowercase().contains(&q))
+            .collect();
+        names.sort_by_key(|n| {
+            (
+                !n.to_ascii_lowercase().starts_with(&q),
+                n.len(),
+                (*n).clone(),
+            )
+        });
+        names
+            .into_iter()
+            .take(40)
+            .map(|n| format!(":{n}:"))
+            .collect()
+    }
+
+    /// A key in the reaction picker: arrows move, letters search the
+    /// server's custom emoji, a digit with nothing typed picks from
+    /// Misskey's default reactions, enter reacts.
+    pub(super) fn reactions_key(&mut self, key: KeyEvent) -> Jobs {
+        let Some(Overlay::Reactions { selected, query }) = &self.overlay else {
+            return Vec::new();
+        };
+        let (mut selected, mut query) = (*selected, query.clone());
+        let choices = self.reaction_choices(&query);
+        let n = choices.len().max(1);
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                return Vec::new();
+            }
+            KeyCode::Down | KeyCode::Right | KeyCode::Tab => selected = (selected + 1) % n,
+            KeyCode::Up | KeyCode::Left | KeyCode::BackTab => selected = (selected + n - 1) % n,
+            KeyCode::Enter => {
+                self.overlay = None;
+                return match choices.get(selected) {
+                    Some(r) => self.react_with(r.clone()),
+                    None => Vec::new(),
+                };
+            }
+            KeyCode::Backspace => {
+                query.pop();
+                selected = 0;
+            }
+            // A digit picks the default reaction at that place, 0 the tenth.
+            KeyCode::Char(c @ '0'..='9') if query.is_empty() => {
+                let i = (c as usize - '0' as usize + 9) % 10;
+                self.overlay = None;
+                return match REACTIONS.get(i) {
+                    Some(r) => self.react_with((*r).to_string()),
+                    None => Vec::new(),
+                };
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.push(c);
+                selected = 0;
+            }
+            _ => {}
+        }
+        self.overlay = Some(Overlay::Reactions { selected, query });
+        Vec::new()
     }
 
     fn react(&mut self, id: String, reaction: Option<String>, had: Option<String>) -> Jobs {
@@ -563,6 +647,14 @@ impl App {
             self.error(said(&e));
             return;
         }
+        // A note counts the server's own custom emoji as `:name@.:`.
+        let on_note = |r: &str| -> String {
+            match r.strip_prefix(':').and_then(|x| x.strip_suffix(':')) {
+                Some(name) if !name.contains('@') => format!(":{name}@.:"),
+                _ => r.to_string(),
+            }
+        };
+        let reaction_key = reaction.as_deref().map(on_note);
         self.update_notes(id, |n| {
             if let Some(h) = &had
                 && let Some(c) = n.reactions.get_mut(h)
@@ -572,13 +664,18 @@ impl App {
                     n.reactions.remove(h);
                 }
             }
-            if let Some(r) = &reaction {
+            if let Some(r) = &reaction_key {
                 *n.reactions.entry(r.clone()).or_insert(0) += 1;
             }
-            n.my_reaction = reaction.clone();
+            n.my_reaction = reaction_key.clone();
         });
         match reaction {
-            Some(r) => self.info(format!("reacted {r}")),
+            Some(r) => {
+                self.recent_reactions.retain(|x| *x != r);
+                self.recent_reactions.insert(0, r.clone());
+                self.recent_reactions.truncate(RECENT);
+                self.info(format!("reacted {r}"));
+            }
             None => self.info("took back the reaction"),
         }
     }

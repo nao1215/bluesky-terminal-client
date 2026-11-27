@@ -144,7 +144,7 @@ scenarios:
                 contains: "reacted ❤"
             - send: e
             - expect_screen:
-                contains: "← → choose"
+                contains: "↑ ↓ choose"
             - send: "1"
             - expect_screen:
                 contains: "reacted 👍"

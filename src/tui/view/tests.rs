@@ -628,8 +628,12 @@ fn the_reaction_picker_shows_the_reactions() {
     app.handle_key(key('e'));
     let screen = render(&mut app, 80, 20);
     assert!(screen.contains("React"), "{screen}");
-    assert!(screen.contains("👍  ❤  😆  🤔"), "{screen}");
-    assert!(screen.contains("← → choose  enter react"), "{screen}");
+    assert!(
+        screen.contains("type to search the server's emoji"),
+        "{screen}"
+    );
+    assert!(screen.contains("▶    👍"), "{screen}");
+    assert!(screen.contains("↑ ↓ choose  enter react"), "{screen}");
 }
 
 // The Profile tab shows the account's header (MFM of its description as
@@ -681,4 +685,35 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
     );
     assert!(screen.contains("crab"), "{screen}");
     assert!(screen.contains("enter profile  f follow"), "{screen}");
+}
+
+// A custom emoji the server has is drawn as its picture where pictures
+// are shown, in the text and in the counts; without pictures, and for one
+// it does not have, its name stays.
+#[test]
+fn custom_emoji_are_drawn_as_pictures_or_by_name() {
+    let mut app = with_notes(vec![json!({
+        "id": "e", "createdAt": "t", "user": {"username": "emi"},
+        "text": "おはよう :blobcat: と :unknown: 👨‍👩‍👧",
+        "reactions": {":blobcat@.:": 3, ":far@x.test:": 2},
+        "reactionEmojis": {"far@x.test": format!("{NOWHERE}/far.png")}
+    })]);
+    app.emojis = [("blobcat".to_string(), format!("{NOWHERE}/blobcat.png"))]
+        .into_iter()
+        .collect();
+    let screen = render(&mut app, 80, 12);
+    assert!(!screen.contains(":blobcat:"), "{screen}");
+    assert!(screen.contains(":unknown:"), "{screen}");
+    assert!(
+        !screen.contains('\u{E000}') && !screen.contains('\u{E001}'),
+        "{screen}"
+    );
+    assert!(screen.contains("おはよう"), "{screen}");
+    assert!(!screen.contains(":far@x.test:"), "{screen}");
+    let text = render_text(&mut app, 80, 12);
+    assert!(
+        text.contains("おはよう :blobcat: と :unknown: 👨‍👩‍👧"),
+        "{text}"
+    );
+    assert!(text.contains(":blobcat: 3"), "{text}");
 }

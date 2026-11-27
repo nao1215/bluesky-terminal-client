@@ -63,7 +63,7 @@ It needs Rust 1.90 or later.
 | `d` | Saves every file of the note, as `msky download` names them |
 | `o`, `c` | Opens the note in the browser, copies its address (OSC 52) |
 | `n`, `r`, `Q` | A new note, a reply to the note shown, a quote of it (see below) |
-| `l`, `e` | Reacts ❤ (bsky's like), or takes your reaction back; `e` chooses one of Misskey's default reactions (`←` `→` or `1`-`9` `0`, `enter`) |
+| `l`, `e` | Reacts ❤ (bsky's like), or takes your reaction back; `e` opens a picker of your recent reactions and Misskey's default ones (`1`-`9` `0` pick those), where typing searches the server's custom emoji by name, `↑` `↓` choose and `enter` reacts |
 | `b` | Renotes the note shown, or takes your renote of it back |
 | `D` | Deletes your own note: `y` confirms, any other key keeps it |
 | `R` `F5` | Loads the view again |
@@ -72,7 +72,7 @@ It needs Rust 1.90 or later.
 
 A renote is shown as the note it renotes under `⟳ renoted by`, a quote with a `❝` line for the note it quotes, a reply under a dim line for the note it answers. A file the uploader marked sensitive is drawn as any other, with a `⚠ sensitive` mark. A video in MP4 with H.264, what phones and Misskey's own encoding make, plays in the viewer, decoded with OpenH264 built into msky as bsky decodes its videos, up to 100 MB. A WebM (VP8, VP9, AV1) or an MP4 of another codec (HEVC, AV1) cannot be decoded by OpenH264, which decodes H.264 alone: the viewer says so, and `d` saves it and `o` opens it.
 
-MFM is drawn as plain text: `$[x2 大きい]` shows `大きい`, `$[ruby 漢字 かんじ]` shows `漢字(かんじ)`, `<center>` and `<small>` show what they hold, `**bold**` is bold, and `?[label](address)` shows its label. A custom emoji is shown by its name, `:blobcat:`. Without a picture protocol (or through a pipe of a multiplexer that answers none) the client runs as text and names the files instead; `MSKY_GRAPHICS=kitty|sixel|iterm2` names the protocol when the terminal does not answer. Pictures are kept in `MSKY_CACHE_DIR` (`off` for none), else `msky/images` in the platform's cache folder.
+MFM is drawn as plain text: `$[x2 大きい]` shows `大きい`, `$[ruby 漢字 かんじ]` shows `漢字(かんじ)`, `<center>` and `<small>` show what they hold, `**bold**` is bold, and `?[label](address)` shows its label. A custom emoji is drawn as its picture (two cells wide) where pictures are shown, in the text and in the reaction counts: the server's own from its list (`/api/emojis`, read when the client starts), another server's from what the note names; without pictures, or for one there is no picture of, its name stays, `:blobcat:`. Without a picture protocol (or through a pipe of a multiplexer that answers none) the client runs as text and names the files instead; `MSKY_GRAPHICS=kitty|sixel|iterm2` names the protocol when the terminal does not answer. Pictures are kept in `MSKY_CACHE_DIR` (`off` for none), else `msky/images` in the platform's cache folder.
 
 Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: the Home, Notifications and Profile tabs say how to log in, and the Local and Global tabs show the server where it shows them to visitors.
 

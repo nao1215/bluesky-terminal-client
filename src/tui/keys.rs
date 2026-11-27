@@ -46,7 +46,10 @@ pub const HELP: &[Section] = &[
             ("r", "reply to the selected note"),
             ("Q", "quote the selected note in a new note"),
             ("l", "react ❤ / take back your reaction"),
-            ("e", "choose a reaction"),
+            (
+                "e",
+                "choose a reaction: recent, default, or the server's emoji by name",
+            ),
             ("b", "renote / take back your renote"),
             ("D", "delete your own note: y confirms"),
             ("enter", "open the profile of its author"),
@@ -223,7 +226,12 @@ fn view_hints(app: &App) -> Vec<Hint> {
             return v;
         }
         Some(Overlay::Reactions { .. }) => {
-            return vec![("← →", "choose"), ("enter", "react"), ("esc", "close")];
+            return vec![
+                ("type", "search emoji"),
+                ("↑ ↓", "choose"),
+                ("enter", "react"),
+                ("esc", "close"),
+            ];
         }
         Some(Overlay::Login(f)) if f.waiting.is_some() => {
             return vec![("o", "open the page again"), ("esc", "call it off")];

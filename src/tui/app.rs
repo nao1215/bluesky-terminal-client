@@ -2,7 +2,7 @@
 //! the network, as in bsky: keys and finished jobs go in, numbered
 //! [`Job`]s come out.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -23,7 +23,7 @@ mod write;
 mod tests;
 
 pub use browse::{Profile, Search, SearchMode};
-pub use write::{Compose, REACTIONS};
+pub use write::Compose;
 
 /// The tabs. Each timeline is a tab of its own; which tabs there are and
 /// in what order is the `tabs` setting's, and the number keys follow that
@@ -421,8 +421,9 @@ pub enum Overlay {
     Login(Box<LoginForm>),
     /// The composer, opened with `n`, `r` or `Q`.
     Compose(Box<Compose>),
-    /// The reactions `e` offers.
-    Reactions { selected: usize },
+    /// The reactions `e` offers: the recent ones and Misskey's default
+    /// ones, or the server's custom emoji that match `query`.
+    Reactions { selected: usize, query: String },
 }
 
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
@@ -490,6 +491,10 @@ pub struct App {
     pub confirm_block: Option<String>,
     /// Whether the notifications loaded were marked read.
     read_sent: bool,
+    /// The server's custom emoji, name to picture address.
+    pub emojis: HashMap<String, String>,
+    /// The reactions given lately, the newest first.
+    pub recent_reactions: Vec<String>,
     /// The folder the file browser last showed, where it opens next.
     pub browse_from: Option<std::path::PathBuf>,
     /// The account `x` asked about, waiting for its `y`.
@@ -544,6 +549,8 @@ impl App {
             confirm_block: None,
             read_sent: false,
             browse_from: None,
+            emojis: HashMap::new(),
+            recent_reactions: Vec::new(),
             confirm_logout: None,
             to_copy: None,
             sent: 0,
@@ -837,6 +844,9 @@ impl App {
             | Event::SearchNotes { .. }
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
+            Event::Emojis(Ok(list)) => self.emojis = list.into_iter().collect(),
+            // Custom emoji are then shown by name, as before.
+            Event::Emojis(Err(_)) => {}
             Event::MarkedRead(Ok(())) => {}
             Event::MarkedRead(Err(e)) => self.error(said(&e)),
             Event::Opened(Ok(())) => {}
@@ -948,30 +958,7 @@ impl App {
             }
             Overlay::Login(_) => return self.login_key(key),
             Overlay::Compose(_) => return self.compose_key(key),
-            Overlay::Reactions { selected } => {
-                let n = REACTIONS.len();
-                match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
-                    KeyCode::Char('j' | 'l') | KeyCode::Down | KeyCode::Right => {
-                        *selected = (*selected + 1) % n
-                    }
-                    KeyCode::Char('k' | 'h') | KeyCode::Up | KeyCode::Left => {
-                        *selected = (*selected + n - 1) % n
-                    }
-                    KeyCode::Enter => {
-                        let i = *selected;
-                        self.overlay = None;
-                        return self.react_with(i);
-                    }
-                    // A digit picks the reaction at that place, 0 the tenth.
-                    KeyCode::Char(c @ '0'..='9') => {
-                        let i = (c as usize - '0' as usize + 9) % 10;
-                        self.overlay = None;
-                        return self.react_with(i);
-                    }
-                    _ => {}
-                }
-            }
+            Overlay::Reactions { .. } => return self.reactions_key(key),
             Overlay::Actions { selected } => {
                 let selected = *selected;
                 let entries = keys::actions(self);
@@ -1163,7 +1150,10 @@ impl App {
             KeyCode::Char('l') => return self.like(),
             KeyCode::Char('e') => {
                 if self.shown_note().is_some() {
-                    self.overlay = Some(Overlay::Reactions { selected: 0 });
+                    self.overlay = Some(Overlay::Reactions {
+                        selected: 0,
+                        query: String::new(),
+                    });
                 }
             }
             KeyCode::Char('b') => return self.toggle_renote(),
@@ -1250,6 +1240,12 @@ impl App {
             return self.load_notifications();
         }
         self.mark_read()
+    }
+
+    /// Ask for the server's custom emoji, which notes and reactions are
+    /// drawn with.
+    pub fn load_emojis(&mut self) -> Jobs {
+        vec![self.stamp(Job::Emojis)]
     }
 
     /// The tab `delta` places away in the order of the tabs, wrapping.

@@ -82,6 +82,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_tabs(frame, top, app);
     let ctx = Ctx {
         opened: &app.opened,
+        emojis: &app.emojis,
         t,
     };
     if let Some(th) = app.threads.last_mut() {
@@ -122,7 +123,19 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             draw_account_list(frame, area, &app.accounts, *selected, me.as_deref(), &t);
         }
         Some(Overlay::Login(f)) => draw_login(frame, area, f, &t),
-        Some(Overlay::Reactions { selected }) => draw_reactions(frame, area, *selected, &t),
+        Some(Overlay::Reactions { selected, query }) => {
+            let choices = app.reaction_choices(query);
+            draw_reactions(
+                frame,
+                area,
+                &choices,
+                *selected,
+                query,
+                &app.emojis,
+                images,
+                &t,
+            );
+        }
         Some(Overlay::Compose(_)) => {}
         Some(Overlay::Viewer {
             files,
@@ -161,6 +174,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
 struct Ctx<'a> {
     /// The notes whose warning `w` opened.
     opened: &'a std::collections::HashSet<String>,
+    /// The server's custom emoji, name to picture address.
+    emojis: &'a std::collections::HashMap<String, String>,
     t: Theme,
 }
 
@@ -463,13 +478,68 @@ fn first_line(n: &Note, opened: bool) -> String {
 /// A note's text as lines of `width`: its MFM drawn as plain text
 /// ([`crate::mfm::plain`]), the bold runs bold.
 fn mfm_lines(text: &str, width: usize) -> Vec<Line<'static>> {
+    mfm_lines_urls(text, width, &mut |_| None, &mut Vec::new())
+}
+
+/// The two cells a custom emoji's picture is drawn over: what is laid out
+/// in its place, and found again on screen to draw it.
+pub(super) const EMOJI_CELLS: &str = "\u{E000}\u{E001}";
+
+/// `text` with each `:name:` that `picture` has a picture for put as
+/// [`EMOJI_CELLS`], the pictures' addresses pushed in order.
+fn with_emoji_cells(
+    text: &str,
+    picture: &mut dyn FnMut(&str) -> Option<String>,
+    urls: &mut Vec<String>,
+) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(':') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let end = after.find(|c: char| {
+            !(c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '@' | '.'))
+        });
+        match end {
+            Some(e) if e > 0 && after[e..].starts_with(':') => {
+                let name = &after[..e];
+                match picture(name) {
+                    Some(url) => {
+                        urls.push(url);
+                        out.push_str(EMOJI_CELLS);
+                        rest = &after[e + 1..];
+                    }
+                    None => {
+                        out.push(':');
+                        rest = after;
+                    }
+                }
+            }
+            _ => {
+                out.push(':');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// [`mfm_lines`] with the custom emoji `picture` knows laid out as
+/// [`EMOJI_CELLS`], their addresses pushed to `urls` in order.
+fn mfm_lines_urls(
+    text: &str,
+    width: usize,
+    picture: &mut dyn FnMut(&str) -> Option<String>,
+    urls: &mut Vec<String>,
+) -> Vec<Line<'static>> {
     let runs = crate::mfm::plain(text);
     // The text as wrap lays it out, each run made drawable first, and
     // where each bold run is in it.
     let mut plain = String::new();
     let mut bold: Vec<(usize, usize)> = Vec::new();
     for r in &runs {
-        let t = drawable(&r.text);
+        let t = with_emoji_cells(&drawable(&r.text), picture, urls);
         if r.bold {
             bold.push((plain.len(), plain.len() + t.len()));
         }
@@ -511,6 +581,69 @@ fn mfm_lines(text: &str, width: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
+/// The picture of custom emoji `name` in the text of `n`: one of its own
+/// server's, else one of the server read (for a note of this server).
+fn emoji_of(n: &Note, name: &str, ctx: &Ctx) -> Option<String> {
+    if let Some(u) = n.emojis.get(name) {
+        return Some(u.clone());
+    }
+    if n.user.host.as_deref().is_none_or(str::is_empty) {
+        return ctx.emojis.get(name).cloned();
+    }
+    None
+}
+
+/// The picture of reaction `key`: `:name@.:` is the server read's own,
+/// `:name@host:` another server's, which the note names.
+fn reaction_picture(n: &Note, key: &str, ctx: &Ctx) -> Option<String> {
+    let inner = key.strip_prefix(':')?.strip_suffix(':')?;
+    match inner.split_once('@') {
+        Some((name, ".")) => ctx.emojis.get(name).cloned(),
+        Some(_) => n.reaction_emojis.get(inner).cloned(),
+        None => ctx.emojis.get(inner).cloned(),
+    }
+}
+
+/// Draw `urls` over the [`EMOJI_CELLS`] of `area`, in order, row by row.
+fn draw_emoji_cells(frame: &mut Frame, area: Rect, urls: &[String], images: &mut Images) {
+    if urls.is_empty() {
+        return;
+    }
+    let area = area.intersection(frame.area());
+    let mut found = Vec::new();
+    {
+        let buf = frame.buffer_mut();
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if buf[(x, y)].symbol() == "\u{E000}" {
+                    found.push((x, y));
+                }
+            }
+        }
+    }
+    for ((x, y), url) in found.into_iter().zip(urls) {
+        // Blank under the picture: one still loading draws a mark in the
+        // first cell only.
+        {
+            let buf = frame.buffer_mut();
+            buf[(x, y)].set_symbol(" ");
+            if x + 1 < area.right() {
+                buf[(x + 1, y)].set_symbol(" ");
+            }
+        }
+        images.draw(
+            frame,
+            Rect {
+                x,
+                y,
+                width: 2,
+                height: 1,
+            },
+            url,
+        );
+    }
+}
+
 /// A reaction as it reads: a custom emoji of the server read, `:name@.:`,
 /// as `:name:`; one of another server keeps its host. Custom emoji are
 /// shown by name: drawing them is for a later version.
@@ -532,6 +665,8 @@ struct NoteLines {
     image_rows: u16,
     /// Whether an avatar is drawn beside it.
     avatar: Option<String>,
+    /// The custom emoji drawn as pictures, in the order their cells come.
+    emoji: Vec<String>,
     stats: Line<'static>,
 }
 
@@ -653,6 +788,7 @@ impl NoteLines {
         let header = truncate_line(Line::from(header), width);
 
         let mut body: Vec<Line<'static>> = Vec::new();
+        let mut emoji: Vec<String> = Vec::new();
         let text_shown = shown.cw.is_none() || ctx.opened.contains(&shown.id);
         if let Some(cw) = &shown.cw {
             let cw = if cw.trim().is_empty() {
@@ -668,7 +804,12 @@ impl NoteLines {
         }
         if text_shown {
             if let Some(text) = &shown.text {
-                body.extend(mfm_lines(text, width));
+                if cell.is_some() {
+                    let mut picture = |name: &str| emoji_of(shown, name, ctx);
+                    body.extend(mfm_lines_urls(text, width, &mut picture, &mut emoji));
+                } else {
+                    body.extend(mfm_lines(text, width));
+                }
             }
         } else {
             let chars = shown.text.as_deref().map_or(0, |s| graphemes(s).count());
@@ -735,7 +876,13 @@ impl NoteLines {
         let mut reactions: Vec<(&String, &u64)> = shown.reactions.iter().collect();
         reactions.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
         for (k, v) in reactions.into_iter().take(REACTIONS_SHOWN) {
-            stats.push(Span::raw(format!("   {} {v}", reaction_label(k))));
+            match cell.and_then(|_| reaction_picture(shown, k, ctx)) {
+                Some(url) => {
+                    emoji.push(url);
+                    stats.push(Span::raw(format!("   {EMOJI_CELLS} {v}")));
+                }
+                None => stats.push(Span::raw(format!("   {} {v}", reaction_label(k)))),
+            }
         }
         let stats = truncate_line(Line::from(stats), width);
         Self {
@@ -747,6 +894,7 @@ impl NoteLines {
             avatar: cell
                 .and_then(|_| shown.user.avatar_url.clone())
                 .filter(|u| !u.is_empty()),
+            emoji,
             stats,
         }
     }
@@ -959,6 +1107,17 @@ fn draw_notes<T: NoteRow>(
                 },
             );
         }
+        // The custom emoji of the text and the counts, over their cells.
+        draw_emoji_cells(
+            frame,
+            Rect {
+                y,
+                height: visible,
+                ..content
+            },
+            &nl.emoji,
+            images,
+        );
         y += h;
     }
     // The pictures of the notes below the screen are ready when scrolled to.

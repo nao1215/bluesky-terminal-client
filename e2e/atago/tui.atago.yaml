@@ -437,3 +437,59 @@ scenarios:
           exit_code: 0
       - assert:
           mock: { name: api, path: /files/clip.mp4 }
+
+  # The server's custom emoji (/api/emojis) are drawn as pictures in a
+  # note's text and its reaction counts; one it does not have keeps its
+  # name.
+  - name: custom emoji are drawn as pictures from the server's list
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: e1, createdAt: "2026-11-26T10:00:00.000Z", user: { username: emi }, text: "おはよう :blobcat: と :unknown:", reactions: { ":blobcat@.:": 3 } }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/emojis
+            json: { emojis: [ { name: blobcat, url: "${api.url}/emoji/blobcat.png", category: null, aliases: [] } ] }
+          - { method: GET, path: /emoji/blobcat.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0101"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["おはよう", ":unknown:"]
+                not_contains: ":blobcat:"
+            # The text's and the count's are the same picture at the same
+            # size: kitty is sent it once, 2 cells by 1 (20 x 20 pixels).
+            - expect_screen:
+                images: { count: 1 }
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              count: 1
+              contains:
+                - { width: 20, height: 20 }
+      - assert:
+          mock: { name: api, path: /emoji/blobcat.png, count: 1 }

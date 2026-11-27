@@ -324,6 +324,24 @@ impl Client {
             .map(drop)
     }
 
+    /// `emojis`: the server's custom emoji, each its name and its
+    /// picture's address.
+    pub fn emojis(&self) -> Result<Vec<(String, String)>> {
+        let v = self.call("emojis", &json!({}))?;
+        let list = v
+            .get("emojis")
+            .and_then(Value::as_array)
+            .ok_or_else(|| Error::api("emojis: the server did not answer with a list"))?;
+        Ok(list
+            .iter()
+            .filter_map(|e| {
+                let name = e.get("name")?.as_str()?;
+                let url = e.get("url")?.as_str()?;
+                (!name.is_empty() && !url.is_empty()).then(|| (name.to_string(), url.to_string()))
+            })
+            .collect())
+    }
+
     /// `notes/reactions`: a page of who reacted to note `id`, with what,
     /// newest first, older than `until` when given.
     pub fn reactions(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Reaction>> {

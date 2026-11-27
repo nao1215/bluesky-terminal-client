@@ -72,6 +72,8 @@ pub enum Job {
     Delete { id: String },
     /// Mark every notification read.
     MarkRead,
+    /// The server's custom emoji.
+    Emojis,
     /// An account and the first page of its notes.
     Profile { who: Who },
     /// A page of account `user_id`'s notes older than `until`.
@@ -158,6 +160,8 @@ pub enum Event {
         result: Result<()>,
     },
     MarkedRead(Result<()>),
+    /// The server's custom emoji: name and picture address.
+    Emojis(Result<Vec<(String, String)>>),
     /// An account and the first page of its notes, answered under the
     /// number of the job that asked.
     Profile(Result<Box<(User, Vec<Note>)>>),
@@ -229,6 +233,7 @@ impl Job {
             },
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
+            Job::Emojis => Event::Emojis(Err(e)),
             Job::Profile { .. } => Event::Profile(Err(e)),
             Job::UserNotes { user_id, until } => Event::UserNotes {
                 user_id,
@@ -317,6 +322,7 @@ pub fn run(job: Job, client: &Client) -> Event {
             id,
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
+        Job::Emojis => Event::Emojis(client.emojis()),
         Job::Profile { who } => Event::Profile(profile(client, &who).map(Box::new)),
         Job::UserNotes { user_id, until } => Event::UserNotes {
             result: client.user_notes(&user_id, &ALL_NOTES, PAGE, Some(&until)),

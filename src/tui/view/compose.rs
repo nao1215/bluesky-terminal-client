@@ -2,7 +2,7 @@
 //! picker, drawn as bsky draws its composer and browser.
 
 use super::*;
-use crate::tui::app::{Compose, REACTIONS};
+use crate::tui::app::Compose;
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::input::TextInput;
 use ratatui::layout::Position;
@@ -358,23 +358,96 @@ pub(super) fn draw_browser(
     frame.render_widget(truncate_line(foot_line, usize::from(foot.width)), foot);
 }
 
-/// The reactions `e` offers, in a row, the one chosen marked.
-pub(super) fn draw_reactions(frame: &mut Frame, area: Rect, selected: usize, t: &Theme) {
-    let inner = popup(frame, area, 50, 4, "React", t);
-    let mut spans = vec![Span::raw(" ")];
-    for (i, r) in REACTIONS.iter().enumerate() {
+/// The reactions `e` offers: what is typed, then the choices, each with
+/// its picture when it is a custom emoji the server has.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the picker reads the choices, the typing and the server's emoji, and draws pictures"
+)]
+pub(super) fn draw_reactions(
+    frame: &mut Frame,
+    area: Rect,
+    choices: &[String],
+    selected: usize,
+    query: &str,
+    emojis: &std::collections::HashMap<String, String>,
+    images: &mut Images,
+    t: &Theme,
+) {
+    let rows = choices.len().clamp(1, 12) as u16;
+    let inner = popup(frame, area, 50, rows + 4, "React", t);
+    let [search, list, foot] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(2),
+    ])
+    .areas(inner);
+    let typed = if query.is_empty() {
+        Line::styled(" type to search the server's emoji", t.dim())
+    } else {
+        Line::from(vec![
+            Span::styled(" search: ", t.accent().bold()),
+            Span::raw(format!("{query}▏")),
+        ])
+    };
+    frame.render_widget(typed, search);
+    if choices.is_empty() {
+        frame.render_widget(
+            Paragraph::new(" no emoji has that name").style(t.dim()),
+            list,
+        );
+    }
+    for (row, (i, c)) in choices
+        .iter()
+        .enumerate()
+        .skip(first_shown(selected, list.height))
+        .take(usize::from(list.height))
+        .enumerate()
+    {
+        let y = list.y + row as u16;
+        let marker = if i == selected { "▶ " } else { "  " };
         let style = if i == selected {
-            t.selected()
+            t.base().bold()
         } else {
-            Style::new()
+            t.base()
         };
-        spans.push(Span::styled(format!(" {r} "), style));
+        frame.render_widget(
+            Line::from(vec![
+                Span::styled(marker, t.accent().bold()),
+                Span::raw("   "),
+                Span::styled(
+                    truncate(c, usize::from(list.width.saturating_sub(6))),
+                    style,
+                ),
+            ]),
+            Rect {
+                y,
+                height: 1,
+                ..list
+            },
+        );
+        let name = c.trim_matches(':');
+        if let Some(url) = emojis.get(name) {
+            images.draw(
+                frame,
+                Rect {
+                    x: list.x + 2,
+                    y,
+                    width: 2,
+                    height: 1,
+                },
+                url,
+            );
+        }
     }
     frame.render_widget(
         Paragraph::new(vec![
-            truncate_line(Line::from(spans), usize::from(inner.width)),
-            Line::styled(" ← → choose  enter react  1-9 0 pick  esc close", t.dim()),
+            Line::raw(""),
+            Line::styled(
+                " ↑ ↓ choose  enter react  1-9 0 default ones  esc close",
+                t.dim(),
+            ),
         ]),
-        inner,
+        foot,
     );
 }

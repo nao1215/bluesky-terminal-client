@@ -264,6 +264,12 @@ fn event_loop(
             app.account_error(why);
         }
     }
+    // The server's custom emoji, which notes and reactions are drawn with.
+    if images.shows() {
+        for (seq, job) in app.load_emojis() {
+            worker.send(seq, job);
+        }
+    }
     // Without an account at all the client opens on the login form, as
     // bsky's does; esc reads the server as a visitor.
     if app.session.is_none() && app.accounts.is_empty() && accounts.is_some() {
