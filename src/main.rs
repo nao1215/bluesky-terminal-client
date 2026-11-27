@@ -14,6 +14,7 @@ mod cli;
 mod clock;
 mod compose;
 mod config;
+mod download;
 mod error;
 mod hls;
 mod i18n;
