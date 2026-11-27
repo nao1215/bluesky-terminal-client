@@ -719,11 +719,17 @@ scenarios:
           - { method: POST, path: /api/notes/global-timeline, json: [] }
           - { method: POST, path: /api/i/notifications, json: [] }
     steps:
+      # The environment starts empty: run.sh exports LC_ALL=C.UTF-8, and on
+      # Windows atago's pty hands the child the inherited LC_ALL and this
+      # one both, in that order, so the client read the first and stayed in
+      # English. Linux and macOS keep the last one, as exec does.
       - pty:
           command: msky
           graphics: kitty
           rows: 30
           cols: 120
+          clear_env: true
+          pass_env: [PATH, HOME, USERPROFILE, APPDATA, LOCALAPPDATA]
           env:
             MSKY_CONFIG_DIR: ${workdir}/cfg
             MSKY_HOST: ${api.url}
