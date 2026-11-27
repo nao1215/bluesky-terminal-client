@@ -88,12 +88,12 @@ done
 for t in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
 	printf '%064d  bsky-v1.2.3-%s.tar.gz\n' 1 "$t"
 done >"$work/checksums.txt"
-"$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/bluesky-terminal-client >"$work/bsky.rb"
+"$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/sns-terminal-clients >"$work/bsky.rb"
 grep -q 'version "1.2.3"' "$work/bsky.rb" || fail "the formula has no version"
 [ "$(grep -c 'sha256 "0\{63\}1"' "$work/bsky.rb")" -eq 4 ] || fail "the formula does not carry four hashes"
 if command -v ruby >/dev/null; then ruby -c "$work/bsky.rb" >/dev/null || fail "the formula is not valid Ruby"; fi
 sed -i.bak '/aarch64-apple-darwin/d' "$work/checksums.txt"
-if "$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/bluesky-terminal-client >/dev/null 2>"$work/err"; then
+if "$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/sns-terminal-clients >/dev/null 2>"$work/err"; then
 	fail "a formula was rendered without every hash"
 fi
 
