@@ -42,7 +42,7 @@ jobs:
 
       # Pinned so a new cargo-deny release cannot change the verdict on its own.
       # The advisory database is intentionally not pinned.
-      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-deny@0.20.2
 
