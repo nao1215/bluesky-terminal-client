@@ -285,6 +285,7 @@ fn event_loop(
         }
     }
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
+    let mut input = events::Input::new().map_err(io_err)?;
     let mut dirty = true;
     while !app.quit {
         if dirty {
@@ -312,7 +313,7 @@ fn event_loop(
             if app.quit {
                 break;
             }
-            let Some(ev) = events::next(wait).map_err(io_err)? else {
+            let Some(ev) = input.next(wait).map_err(io_err)? else {
                 break;
             };
             match ev {
