@@ -24,6 +24,7 @@ use crate::tui::theme::Theme;
 mod browse;
 mod chat;
 mod compose;
+mod settings;
 #[cfg(test)]
 mod tests;
 
@@ -142,6 +143,14 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             );
         }
         Some(Overlay::Compose(_)) => {}
+        Some(Overlay::Settings { selected, edit }) => {
+            let rows = app.settings_rows();
+            settings::draw_settings(frame, area, &rows, *selected, edit.as_ref(), &t);
+        }
+        Some(Overlay::Themes { selected, .. }) => settings::draw_themes(frame, area, *selected, &t),
+        Some(Overlay::Languages { selected }) => {
+            settings::draw_languages(frame, area, *selected, app.language(), &t)
+        }
         Some(Overlay::Viewer {
             files,
             index,
@@ -251,7 +260,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
     for (i, &tab) in app.tabs.iter().enumerate() {
-        let label = format!(" {} {} ", i + 1, tab.title());
+        let label = format!(" {} {} ", i + 1, crate::i18n::t(tab.title()));
         let style = if tab == app.tab {
             t.selected()
         } else {

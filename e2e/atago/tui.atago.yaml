@@ -493,3 +493,102 @@ scenarios:
                 - { width: 20, height: 20 }
       - assert:
           mock: { name: api, path: /emoji/blobcat.png, count: 1 }
+
+  - name: s opens the settings, T picks a theme and the language turns the client Japanese, kept in settings.json
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json: []
+          - { method: POST, path: /api/i/notifications, json: [] }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0401", "permissions": []}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture:
+          file: cfg/settings.json
+          content: |
+            {"tabs": ["home", "chat"], "later": {"kept": true}}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            LC_ALL: C.UTF-8
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "1 Home  2 Chat"
+            - send: s
+            - expect_screen:
+                contains: ["Settings", "Theme", "terminal", "Language", "English", "Tabs", "home, chat"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["enter apply", "esc cancel"]
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "theme: ayu-dark"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: "日本語"
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["1 ホーム  2 チャット", "設定", "言語", "日本語"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "言語"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.language", equals: ja }
+              - { path: "$.theme", equals: ayu-dark }
+              - { path: "$.tabs[1]", equals: chat }
+              - { path: "$.later.kept", equals: true }
+
+  - name: the client is in the language the locale asks for
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/notes/local-timeline, json: [] }
+          - { method: POST, path: /api/notes/global-timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+    steps:
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_HOST: ${api.url}
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            LC_ALL: ja_JP.UTF-8
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 ホーム", "4 通知", "esc 戻る"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "q 終了"
+            - send: q
+      - assert:
+          exit_code: 0

@@ -14,6 +14,7 @@ mod clock;
 mod config;
 mod download;
 mod error;
+mod i18n;
 mod mfm;
 mod miauth;
 mod servers;

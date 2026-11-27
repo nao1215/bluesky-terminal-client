@@ -11,6 +11,7 @@ use crate::api::types::{DriveFile, Note, Notification};
 use crate::cli::TimelineKind;
 use crate::config::Session;
 use crate::error::Error;
+use crate::i18n::n;
 use crate::servers::Server;
 use crate::tui::keys;
 use crate::tui::theme::{self, Theme};
@@ -18,6 +19,7 @@ use crate::tui::worker::{Event, Job, Thread};
 
 mod browse;
 mod chat;
+mod settings;
 mod write;
 
 #[cfg(test)]
@@ -25,6 +27,7 @@ mod tests;
 
 pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
+pub use settings::{Environment, SettingRow};
 pub use write::Compose;
 
 /// The tabs. Each timeline is a tab of its own; which tabs there are and
@@ -54,14 +57,14 @@ pub const DEFAULT_TABS: [Tab; 7] = [
 impl Tab {
     pub fn title(self) -> &'static str {
         match self {
-            Tab::Timeline(TimelineKind::Home) => "Home",
-            Tab::Timeline(TimelineKind::Local) => "Local",
-            Tab::Timeline(TimelineKind::Social) => "Social",
-            Tab::Timeline(TimelineKind::Global) => "Global",
-            Tab::Notifications => "Notifications",
-            Tab::Search => "Search",
-            Tab::Profile => "Profile",
-            Tab::Chat => "Chat",
+            Tab::Timeline(TimelineKind::Home) => n!("Home"),
+            Tab::Timeline(TimelineKind::Local) => n!("Local"),
+            Tab::Timeline(TimelineKind::Social) => n!("Social"),
+            Tab::Timeline(TimelineKind::Global) => n!("Global"),
+            Tab::Notifications => n!("Notifications"),
+            Tab::Search => n!("Search"),
+            Tab::Profile => n!("Profile"),
+            Tab::Chat => n!("Chat"),
         }
     }
 
@@ -430,6 +433,17 @@ pub enum Overlay {
     /// The reactions `e` offers: the recent ones and Misskey's default
     /// ones, or the server's custom emoji that match `query`.
     Reactions { selected: usize, query: String },
+    /// The settings screen, opened with `s`; `edit` is a text row being
+    /// changed.
+    Settings {
+        selected: usize,
+        edit: Option<crate::tui::input::TextInput>,
+    },
+    /// The themes, opened with `T`: the one at `selected` is shown as a
+    /// preview, `previous` comes back on esc.
+    Themes { selected: usize, previous: usize },
+    /// The languages, from the settings screen.
+    Languages { selected: usize },
 }
 
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
@@ -478,6 +492,21 @@ pub struct App {
     /// The notes whose content warning was opened with `w`.
     pub opened: HashSet<String>,
     pub theme: Theme,
+    /// Where the theme is in bsky's list.
+    pub theme_index: usize,
+    pub color_depth: crate::tui::theme::ColorDepth,
+    /// The settings, as `settings.json` keeps them.
+    pub settings: crate::config::Settings,
+    /// Whether they can be written: a file that could not be read is left
+    /// as it is.
+    pub settings_writable: bool,
+    /// The variables that decide settings for the run.
+    pub env: Environment,
+    /// Settings to write, for the event loop, and what to say then.
+    pub settings_to_save: Option<crate::config::Settings>,
+    pub save_note: Option<String>,
+    /// The settings row a list opened from, to come back to.
+    pub settings_return: Option<usize>,
     /// Every account logged in, by host.
     pub accounts: Vec<Account>,
     /// The account the list asked to switch to, by host, for the event
@@ -547,7 +576,15 @@ impl App {
             quit: false,
             pictures: true,
             opened: HashSet::new(),
-            theme: theme::TERMINAL,
+            theme: theme::chosen(None, theme::ColorDepth::TrueColor).1,
+            theme_index: theme::chosen(None, theme::ColorDepth::TrueColor).0,
+            color_depth: theme::ColorDepth::TrueColor,
+            settings: crate::config::Settings::default(),
+            settings_writable: true,
+            env: Environment::default(),
+            settings_to_save: None,
+            save_note: None,
+            settings_return: None,
             accounts: Vec::new(),
             account_switch: None,
             account_logout: None,
@@ -957,13 +994,19 @@ impl App {
                         return Vec::new();
                     };
                     self.info("downloading…");
-                    return vec![self.stamp(Job::Download { files: vec![file] })];
+                    return vec![self.stamp(Job::Download {
+                        files: vec![file],
+                        dir: self.download_dir(),
+                    })];
                 }
                 KeyCode::Char('o') => {
                     let Some(url) = files.get(*index).and_then(|f| f.2.url.clone()) else {
                         return Vec::new();
                     };
-                    return vec![self.stamp(Job::OpenLink { url })];
+                    return vec![self.stamp(Job::OpenLink {
+                        url,
+                        browser: self.browser(),
+                    })];
                 }
                 KeyCode::Right | KeyCode::Char('l' | 'j') => {
                     *index = (*index + 1).min(files.len().saturating_sub(1))
@@ -978,6 +1021,20 @@ impl App {
             Overlay::Login(_) => return self.login_key(key),
             Overlay::Compose(_) => return self.compose_key(key),
             Overlay::Reactions { .. } => return self.reactions_key(key),
+            Overlay::Settings { selected, edit } => {
+                let (selected, edit) = (*selected, edit.clone());
+                return self.settings_key(key, selected, edit);
+            }
+            Overlay::Themes { selected, previous } => {
+                let (selected, previous) = (*selected, *previous);
+                self.themes_key(key, selected, previous);
+                return Vec::new();
+            }
+            Overlay::Languages { selected } => {
+                let selected = *selected;
+                self.languages_key(key, selected);
+                return Vec::new();
+            }
             Overlay::Actions { selected } => {
                 let selected = *selected;
                 let entries = keys::actions(self);
@@ -1079,7 +1136,10 @@ impl App {
                 }
                 KeyCode::Char('o') => {
                     let url = w.url.clone();
-                    return vec![self.stamp(Job::OpenLink { url })];
+                    return vec![self.stamp(Job::OpenLink {
+                        url,
+                        browser: self.browser(),
+                    })];
                 }
                 _ => {}
             }
@@ -1147,7 +1207,10 @@ impl App {
             url: url.clone(),
         });
         vec![
-            self.stamp(Job::OpenLink { url }),
+            self.stamp(Job::OpenLink {
+                url,
+                browser: self.browser(),
+            }),
             self.stamp(Job::Login { origin, session }),
         ]
     }
@@ -1179,6 +1242,8 @@ impl App {
             KeyCode::Char('D') => self.ask_delete(),
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
+            KeyCode::Char('s') => self.open_settings(),
+            KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {
                 let at = self
                     .session
@@ -1401,7 +1466,10 @@ impl App {
         };
         if !self.pictures {
             let url = self.note_url(n);
-            return vec![self.stamp(Job::OpenLink { url })];
+            return vec![self.stamp(Job::OpenLink {
+                url,
+                browser: self.browser(),
+            })];
         }
         let files = attached(n);
         if files.is_empty() {
@@ -1422,7 +1490,10 @@ impl App {
             return Vec::new();
         };
         let url = self.note_url(n);
-        vec![self.stamp(Job::OpenLink { url })]
+        vec![self.stamp(Job::OpenLink {
+            url,
+            browser: self.browser(),
+        })]
     }
 
     /// c: the note's address, for the event loop to put in the clipboard.
@@ -1446,7 +1517,10 @@ impl App {
             return Vec::new();
         }
         self.info("downloading…");
-        vec![self.stamp(Job::Download { files })]
+        vec![self.stamp(Job::Download {
+            files,
+            dir: self.download_dir(),
+        })]
     }
 
     /// w: show the text behind the note's content warning, or hide it

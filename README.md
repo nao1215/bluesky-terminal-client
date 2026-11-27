@@ -55,6 +55,8 @@ It needs Rust 1.90 or later.
 | `/` `i`, `t` | Type in the search box (it has focus when you arrive at an empty Search tab), and switch between searching notes and accounts |
 | `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
 | `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
+| `s` | The settings: the theme, the language, the download folder, the browser and the tabs, kept in `settings.json`, as bsky's |
+| `T` | The themes, bsky's, each previewed as the selection moves; `enter` keeps one, `esc` puts the one before back |
 | `M`, `B` | Mutes or unmutes that account; blocks it (`y` confirms) or unblocks it |
 | Chat tab: `enter`, `i`, `esc` | Opens a conversation (with an account or a room), writes a message (`enter` sends it), goes back; `k` `j` read further back and forward; read again every 15 s while shown, as bsky's |
 | `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
@@ -86,6 +88,8 @@ Each timeline is a tab of its own, and keeps its place, the pages it loaded and 
 ```
 
 The names are `home`, `local`, `social`, `global`, `notifications`, `search`, `profile` and `chat`; a name that is not one is said when the client starts and left out, and a list naming none is the default. `msky timeline social` reads Social whatever the setting says.
+
+The settings screen (`s`) changes the same file, and keeps what it does not know: `theme` (one of bsky's themes; `terminal`, the terminal's own palette, by default), `language` (`en` or `ja`; without it the client is in the language `LC_ALL`, `LC_MESSAGES` or `LANG` asks for, else English, by bsky's mechanism: a string not translated yet shows in English), `downloadDir` and `browser` (where `d` saves and what links open with; `MSKY_DOWNLOAD_DIR` and `MSKY_BROWSER` decide them for a run when set, and the screen says so), `tabs`, and `recentReactions`, the reactions given lately, which `e` offers first. `NO_COLOR` draws in `monochrome` whatever the theme. The command line is in English.
 
 The Chat tab is Misskey's chat (`chat/history`, `chat/messages/*`, from Misskey 2025.4): the conversations with accounts and rooms, the newest first and an unread one marked, and one conversation's messages, the newest at the bottom. A server without chat, or a role that may not chat, takes the tab away and says so.
 
@@ -254,12 +258,13 @@ A server that answers it is asked too often (HTTP 429, `RATE_LIMIT_EXCEEDED`) is
 | `MSKY_HOST` | Server to read (also `--host`); the account in use's, else misskey.io, by default |
 | `MSKY_TOKEN` | Access token to use in place of the saved login, on `MSKY_HOST` (or `--host`, else misskey.io) only |
 | `MSKY_CONFIG_DIR` | Where the logins are saved |
-| `MSKY_BROWSER` | The program `msky login` opens the address with |
+| `MSKY_BROWSER` | The program `msky login` and the client open addresses with; in the client it wins over the `browser` setting |
 | `MSKY_MIAUTH_SESSION` | The MiAuth session ID `msky login` uses instead of a random one; for tests against a stand-in server |
-| `MSKY_DOWNLOAD_DIR` | Where files are saved when `-o` is not given |
+| `MSKY_DOWNLOAD_DIR` | Where files are saved when `-o` is not given; in the client it wins over the `downloadDir` setting |
 | `MSKY_GRAPHICS` | The picture protocol the client uses, `kitty`, `sixel` or `iterm2`, for a terminal that does not answer the query |
 | `MSKY_CACHE_DIR` | Where the client keeps the pictures it downloaded; `off` keeps none |
 | `MSKY_SERVERS_URL` | Another address for the server list, or `off` for the servers msky knows; for tests against a stand-in server |
+| `LC_ALL`, `LC_MESSAGES`, `LANG` | The client's language, `en` or `ja`, when the settings name none |
 | `NO_COLOR` | Draws the client without color |
 | `TZ` | Time zone the times are shown in |
 

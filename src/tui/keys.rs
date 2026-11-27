@@ -5,6 +5,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
+use crate::i18n::{n, t};
 use crate::tui::app::{App, Overlay, Tab};
 
 /// A key and what it does.
@@ -19,161 +20,169 @@ pub struct Section {
 /// Everything `?` shows, in the order it shows it.
 pub const HELP: &[Section] = &[
     Section {
-        title: "Global",
+        title: n!("General"),
         keys: &[
-            ("1 2 3 …", "the tabs, in the order shown"),
-            ("tab shift+tab", "next / previous tab"),
-            ("", "which tabs, and their order: the tabs setting"),
-            ("A", "accounts: switch, log out"),
-            ("?", "this help"),
-            ("q ctrl+c", "quit"),
+            ("1 2 3 …", n!("the tabs, in the order shown")),
+            ("tab shift+tab", n!("next / previous tab")),
+            ("", n!("which tabs, and their order: the tabs setting")),
+            ("A", n!("accounts: switch, log out")),
+            (
+                "s",
+                n!("settings: theme, language, download folder, browser, tabs"),
+            ),
+            ("T", n!("theme: each previewed as you move, enter keeps it")),
+            ("?", n!("this help")),
+            ("q ctrl+c", n!("quit")),
         ],
     },
     Section {
-        title: "Lists",
+        title: n!("Lists"),
         keys: &[
-            ("j k ↓ ↑", "move the selection"),
-            ("g G home end", "first / last item"),
-            ("pgdn pgup", "move five items"),
-            ("", "more loads by itself near the end"),
-            ("R F5", "refresh the current view"),
+            ("j k ↓ ↑", n!("move the selection")),
+            ("g G home end", n!("first / last item")),
+            ("pgdn pgup", n!("move five items")),
+            ("", n!("more loads by itself near the end")),
+            ("R F5", n!("refresh the current view")),
         ],
     },
     Section {
-        title: "Notes",
+        title: n!("Notes"),
         keys: &[
-            ("n", "new note"),
-            ("r", "reply to the selected note"),
-            ("Q", "quote the selected note in a new note"),
-            ("l", "react ❤ / take back your reaction"),
+            ("n", n!("new note")),
+            ("r", n!("reply to the selected note")),
+            ("Q", n!("quote the selected note in a new note")),
+            ("l", n!("react ❤ / take back your reaction")),
             (
                 "e",
-                "choose a reaction: recent, default, or the server's emoji by name",
+                n!("choose a reaction: recent, default, or the server's emoji by name"),
             ),
-            ("b", "renote / take back your renote"),
-            ("D", "delete your own note: y confirms"),
-            ("enter", "open the profile of its author"),
-            ("v", "open the thread with its replies"),
-            ("space", "view the pictures and files"),
-            ("w", "show / hide the text behind a content warning"),
-            ("d", "save the note's files in the download folder"),
-            ("o", "open the note in the browser"),
-            ("c", "copy the note's address to the clipboard"),
-            (".", "list what the keys do to the note"),
+            ("b", n!("renote / take back your renote")),
+            ("D", n!("delete your own note: y confirms")),
+            ("enter", n!("open the profile of its author")),
+            ("v", n!("open the thread with its replies")),
+            ("space", n!("view the pictures and files")),
+            ("w", n!("show / hide the text behind a content warning")),
+            ("d", n!("save the note's files in the download folder")),
+            ("o", n!("open the note in the browser")),
+            ("c", n!("copy the note's address to the clipboard")),
+            (".", n!("list what the keys do to the note")),
         ],
     },
     Section {
-        title: "Thread",
+        title: n!("Thread"),
         keys: &[
-            ("j k", "move through the notes and replies"),
-            ("v", "open the thread of the selected reply"),
-            ("esc", "close the thread"),
+            ("j k", n!("move through the notes and replies")),
+            ("v", n!("open the thread of the selected reply")),
+            ("esc", n!("close the thread")),
         ],
     },
     Section {
-        title: "Search",
+        title: n!("Search"),
         keys: &[
-            ("type", "the search box has focus when you arrive"),
-            ("enter", "search, then move through the results"),
-            ("/ i", "type in the search box again"),
-            ("ctrl+t t", "search notes or accounts"),
-            ("enter", "open the account's profile"),
-            ("f", "follow / unfollow the account"),
-            ("esc", "leave the search box"),
+            ("type", n!("the search box has focus when you arrive")),
+            ("enter", n!("search, then move through the results")),
+            ("/ i", n!("type in the search box again")),
+            ("ctrl+t t", n!("search notes or accounts")),
+            ("enter", n!("open the account's profile")),
+            ("f", n!("follow / unfollow the account")),
+            ("esc", n!("leave the search box")),
         ],
     },
     Section {
-        title: "Profile",
+        title: n!("Profile"),
         keys: &[
-            ("", "its tab is your own profile"),
-            ("f", "follow / unfollow the account shown"),
-            ("M", "mute / unmute the account shown"),
-            ("B", "block / unblock the account: y confirms"),
+            ("", n!("its tab is your own profile")),
+            ("f", n!("follow / unfollow the account shown")),
+            ("M", n!("mute / unmute the account shown")),
+            ("B", n!("block / unblock the account: y confirms")),
             (
                 "",
-                "an account that approves followers, or of another server, is asked",
+                n!("an account that approves followers, or of another server, is asked"),
             ),
-            ("esc", "back to the list it was opened from"),
+            ("esc", n!("back to the list it was opened from")),
         ],
     },
     Section {
-        title: "Notifications",
+        title: n!("Notifications"),
         keys: &[
-            ("v space", "the thread or the files of the note it is about"),
-            ("r l b", "reply, react, renote the note it is about"),
-            ("", "they are marked read when the tab is shown"),
-            ("R", "load new notifications"),
+            (
+                "v space",
+                n!("the thread or the files of the note it is about"),
+            ),
+            ("r l b", n!("reply, react, renote the note it is about")),
+            ("", n!("they are marked read when the tab is shown")),
+            ("R", n!("load new notifications")),
         ],
     },
     Section {
-        title: "Composer",
+        title: n!("Composer"),
         keys: &[
-            ("ctrl+s", "send the note"),
-            ("ctrl+o", "attach pictures or a video"),
-            ("tab", "next field: the warning, a file's alt text"),
-            ("ctrl+w", "add / take off a content warning"),
-            ("ctrl+p", "who may see it: public, home, followers"),
-            ("ctrl+x", "remove the attachment"),
-            ("ctrl+u", "clear to the start of the line"),
-            ("esc", "close without sending"),
+            ("ctrl+s", n!("send the note")),
+            ("ctrl+o", n!("attach pictures or a video")),
+            ("tab", n!("next field: the warning, a file's alt text")),
+            ("ctrl+w", n!("add / take off a content warning")),
+            ("ctrl+p", n!("who may see it: public, home, followers")),
+            ("ctrl+x", n!("remove the attachment")),
+            ("ctrl+u", n!("clear to the start of the line")),
+            ("esc", n!("close without sending")),
         ],
     },
     Section {
-        title: "File browser",
+        title: n!("File browser"),
         keys: &[
-            ("j k", "move; pictures are previewed"),
-            ("enter l", "open the folder / choose the file"),
-            ("space", "mark files to choose together with enter"),
-            ("h backspace", "the folder above"),
-            (".", "show or hide hidden files"),
-            ("~", "your home folder"),
-            ("esc", "close without choosing"),
+            ("j k", n!("move; pictures are previewed")),
+            ("enter l", n!("open the folder / choose the file")),
+            ("space", n!("mark files to choose together with enter")),
+            ("h backspace", n!("the folder above")),
+            (".", n!("show or hide hidden files")),
+            ("~", n!("your home folder")),
+            ("esc", n!("close without choosing")),
         ],
     },
     Section {
-        title: "Viewer",
+        title: n!("Viewer"),
         keys: &[
-            ("← → h l", "previous / next file"),
-            ("r", "play the video again"),
-            ("d", "save it in the download folder"),
-            ("o", "open it in the browser"),
-            ("esc q", "back to where you were"),
+            ("← → h l", n!("previous / next file")),
+            ("r", n!("play the video again")),
+            ("d", n!("save it in the download folder")),
+            ("o", n!("open it in the browser")),
+            ("esc q", n!("back to where you were")),
         ],
     },
     Section {
-        title: "Chat",
+        title: n!("Chat"),
         keys: &[
-            ("enter", "open the conversation"),
-            ("i enter", "write a message; enter sends it"),
-            ("k j", "read further back / forward"),
-            ("esc", "back to the conversations"),
-            ("", "read again every 15 s while shown"),
+            ("enter", n!("open the conversation")),
+            ("i enter", n!("write a message; enter sends it")),
+            ("k j", n!("read further back / forward")),
+            ("esc", n!("back to the conversations")),
+            ("", n!("read again every 15 s while shown")),
         ],
     },
     Section {
-        title: "Accounts",
+        title: n!("Accounts"),
         keys: &[
-            ("A", "the accounts, the one in use marked"),
-            ("j k", "move"),
-            ("enter", "use the selected account"),
-            ("x", "log the selected account out: y confirms"),
-            ("a", "log in another account"),
-            ("esc", "close"),
+            ("A", n!("the accounts, the one in use marked")),
+            ("j k", n!("move")),
+            ("enter", n!("use the selected account")),
+            ("x", n!("log the selected account out: y confirms")),
+            ("a", n!("log in another account")),
+            ("esc", n!("close")),
         ],
     },
     Section {
-        title: "Log in",
+        title: n!("Log in"),
         keys: &[
-            ("j k", "choose a server from the list"),
-            ("/ i", "type another server's host"),
-            ("enter", "log in there: allow msky in the browser"),
-            ("o", "open the page that allows it again"),
-            ("esc", "back, or call the login off"),
+            ("j k", n!("choose a server from the list")),
+            ("/ i", n!("type another server's host")),
+            ("enter", n!("log in there: allow msky in the browser")),
+            ("o", n!("open the page that allows it again")),
+            ("esc", n!("back, or call the login off")),
         ],
     },
     Section {
-        title: "Help",
-        keys: &[("j k pgdn pgup", "scroll"), ("esc q ?", "close")],
+        title: n!("Help"),
+        keys: &[("j k pgdn pgup", n!("scroll")), ("esc q ?", n!("close"))],
     },
 ];
 
@@ -187,11 +196,12 @@ pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
                 .keys
                 .iter()
                 .map(|&(k, d)| match (pictures, s.title, k) {
-                    (false, "Notes", "space") => (k, "open the note in the browser"),
+                    (false, "Notes", "space") => (k, n!("open the note in the browser")),
                     _ => (k, d),
                 })
+                .map(|(k, d)| (k, t(d)))
                 .collect();
-            (s.title, keys)
+            (t(s.title), keys)
         })
         .collect()
 }
@@ -201,154 +211,208 @@ pub fn hints(app: &App) -> Vec<Hint> {
     let mut v = view_hints(app);
     if !app.pictures {
         for h in &mut v {
-            if *h == ("space", "view") {
-                h.1 = "open in browser";
+            if *h == ("space", n!("view")) {
+                h.1 = n!("open in browser");
             }
         }
+    }
+    translated(v)
+}
+
+/// The hints with what each does in the language in use.
+fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
+    for h in &mut v {
+        h.1 = t(h.1);
     }
     v
 }
 
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
-        Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Help { .. }) => return vec![("j k", n!("scroll")), ("esc", n!("close"))],
+        Some(Overlay::Settings { edit: Some(_), .. }) => {
+            return vec![("enter", n!("keep")), ("esc", n!("cancel"))];
+        }
+        Some(Overlay::Settings { selected, .. }) => {
+            let mut v = vec![("j k", n!("move")), ("enter", n!("change"))];
+            if app
+                .settings_rows()
+                .get(*selected)
+                .is_some_and(|r| r.resettable)
+            {
+                v.push(("x", n!("default")));
+            }
+            v.push(("esc", n!("close")));
+            return v;
+        }
+        Some(Overlay::Themes { .. }) => {
+            return vec![
+                ("j k", n!("preview")),
+                ("enter", n!("apply")),
+                ("esc", n!("cancel")),
+            ];
+        }
+        Some(Overlay::Languages { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("use")),
+                ("esc", n!("back")),
+            ];
+        }
         Some(Overlay::Compose(c)) if c.browser.is_some() => {
             return vec![
-                ("enter", "open / choose"),
-                ("space", "mark"),
-                ("h", "up"),
-                (".", "hidden"),
-                ("esc", "cancel"),
+                ("enter", n!("open / choose")),
+                ("space", n!("mark")),
+                ("h", n!("up")),
+                (".", n!("hidden")),
+                ("esc", n!("cancel")),
             ];
         }
         Some(Overlay::Compose(c)) => {
             let mut v = vec![
-                ("ctrl+s", "send"),
-                ("ctrl+o", "attach"),
-                ("ctrl+w", "warning"),
-                ("ctrl+p", "visibility"),
+                ("ctrl+s", n!("send")),
+                ("ctrl+o", n!("attach")),
+                ("ctrl+w", n!("warning")),
+                ("ctrl+p", n!("visibility")),
             ];
             if !c.media.is_empty() {
-                v.push(("tab", "alt text"));
-                v.push(("ctrl+x", "remove file"));
+                v.push(("tab", n!("alt text")));
+                v.push(("ctrl+x", n!("remove file")));
             }
-            v.push(("esc", "cancel"));
+            v.push(("esc", n!("cancel")));
             return v;
         }
         Some(Overlay::Reactions { .. }) => {
             return vec![
-                ("type", "search emoji"),
-                ("↑ ↓", "choose"),
-                ("enter", "react"),
-                ("esc", "close"),
+                ("type", n!("search emoji")),
+                ("↑ ↓", n!("choose")),
+                ("enter", n!("react")),
+                ("esc", n!("close")),
             ];
         }
         Some(Overlay::Login(f)) if f.waiting.is_some() => {
-            return vec![("o", "open the page again"), ("esc", "call it off")];
+            return vec![("o", n!("open the page again")), ("esc", n!("call it off"))];
         }
         Some(Overlay::Login(f)) if f.typed.is_some() => {
-            return vec![("enter", "log in"), ("esc", "back to the list")];
+            return vec![("enter", n!("log in")), ("esc", n!("back to the list"))];
         }
         Some(Overlay::Login(_)) => {
             return vec![
-                ("j k", "move"),
-                ("enter", "log in"),
-                ("/", "other server"),
-                ("esc", "back"),
+                ("j k", n!("move")),
+                ("enter", n!("log in")),
+                ("/", n!("other server")),
+                ("esc", n!("back")),
             ];
         }
         Some(Overlay::Actions { .. }) => {
-            return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("do it")),
+                ("esc", n!("close")),
+            ];
         }
         Some(Overlay::Accounts { .. }) => {
             return vec![
-                ("j k", "move"),
-                ("enter", "use"),
-                ("a", "add"),
-                ("x", "log out"),
-                ("esc", "close"),
+                ("j k", n!("move")),
+                ("enter", n!("use")),
+                ("a", n!("add")),
+                ("x", n!("log out")),
+                ("esc", n!("close")),
             ];
         }
         Some(Overlay::Viewer { files, index, .. }) => {
             let mut v = Vec::new();
             if files.len() > 1 {
-                v.push(("← →", "previous / next"));
+                v.push(("← →", n!("previous / next")));
             }
             if files
                 .get(*index)
                 .is_some_and(|f| f.2.mime.starts_with("video/"))
             {
-                v.push(("r", "replay"));
+                v.push(("r", n!("replay")));
             }
-            v.push(("d", "download"));
-            v.push(("o", "open"));
-            v.push(("esc", "back"));
+            v.push(("d", n!("download")));
+            v.push(("o", n!("open")));
+            v.push(("esc", n!("back")));
             return v;
         }
         None => {}
     }
     if !app.threads.is_empty() {
         return vec![
-            ("?", "help"),
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
-            ("esc", "back"),
+            ("?", n!("help")),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("esc", n!("back")),
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
         Tab::Chat => match &app.chat.open {
-            Some(o) if o.typing => return vec![("enter", "send"), ("esc", "stop writing")],
-            Some(_) => vec![("i", "write"), ("j k", "scroll"), ("esc", "back")],
-            None => vec![("j k", "move"), ("enter", "open"), ("R", "refresh")],
+            Some(o) if o.typing => return vec![("enter", n!("send")), ("esc", n!("stop writing"))],
+            Some(_) => vec![
+                ("i", n!("write")),
+                ("j k", n!("scroll")),
+                ("esc", n!("back")),
+            ],
+            None => vec![
+                ("j k", n!("move")),
+                ("enter", n!("open")),
+                ("R", n!("refresh")),
+            ],
         },
         Tab::Search if app.search.editing => {
             return vec![
-                ("enter", "search"),
-                ("ctrl+t", "notes / accounts"),
-                ("tab", "next tab"),
-                ("esc", "done"),
+                ("enter", n!("search")),
+                ("ctrl+t", n!("notes / accounts")),
+                ("tab", n!("next tab")),
+                ("esc", n!("done")),
             ];
         }
         Tab::Search if app.search.mode == crate::tui::app::SearchMode::Accounts => vec![
-            ("j k", "move"),
-            ("enter", "profile"),
-            ("f", "follow"),
-            ("/", "edit query"),
-            ("t", "notes"),
+            ("j k", n!("move")),
+            ("enter", n!("profile")),
+            ("f", n!("follow")),
+            ("/", n!("edit query")),
+            ("t", n!("notes")),
         ],
         Tab::Search => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("/", "edit query"),
-            ("t", "accounts"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("/", n!("edit query")),
+            ("t", n!("accounts")),
         ],
         Tab::Profile if app.profile.came_from.is_some() => vec![
-            ("esc", "back"),
-            ("j k", "move"),
-            (".", "actions"),
-            ("f", "follow"),
+            ("esc", n!("back")),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("f", n!("follow")),
         ],
-        Tab::Profile => vec![("j k", "move"), (".", "actions"), ("R", "reload")],
+        Tab::Profile => vec![
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("s", n!("settings")),
+            ("R", n!("reload")),
+        ],
         Tab::Timeline(_) => vec![
-            ("j k", "move"),
-            ("tab", "next tab"),
-            (".", "actions"),
-            ("space", "view"),
-            ("n", "note"),
-            ("R", "refresh"),
+            ("j k", n!("move")),
+            ("tab", n!("next tab")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("n", n!("note")),
+            ("R", n!("refresh")),
         ],
         Tab::Notifications => vec![
-            ("j k", "move"),
-            (".", "actions"),
-            ("space", "view"),
-            ("R", "refresh"),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("R", n!("refresh")),
         ],
     };
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
-    v.insert(0, ("?", "help"));
-    v.push(("q", "quit"));
+    v.insert(0, ("?", n!("help")));
+    v.push(("q", n!("quit")));
     v
 }
 
@@ -363,16 +427,16 @@ pub fn actions(app: &App) -> Vec<Hint> {
     };
     let mut v: Vec<Hint> = Vec::new();
     let files = !n.attached().is_empty();
-    v.push(("r", "reply to it"));
+    v.push(("r", n!("reply to it")));
     v.push((
         "l",
         if n.my_reaction.is_some() {
-            "take back your reaction"
+            n!("take back your reaction")
         } else {
-            "react ❤"
+            n!("react ❤")
         },
     ));
-    v.push(("e", "choose a reaction"));
+    v.push(("e", n!("choose a reaction")));
     v.push((
         "b",
         if app.renoted.contains(&n.id)
@@ -384,31 +448,31 @@ pub fn actions(app: &App) -> Vec<Hint> {
                         .is_some_and(|me| me.user_id == s.author_id())
             })
         {
-            "take back your renote"
+            n!("take back your renote")
         } else {
-            "renote it"
+            n!("renote it")
         },
     ));
-    v.push(("Q", "quote it in a new note"));
+    v.push(("Q", n!("quote it in a new note")));
     if app.pictures && files {
-        v.push(("space", "view its pictures and files"));
+        v.push(("space", n!("view its pictures and files")));
     }
     if n.cw.is_some() {
         v.push((
             "w",
             if app.text_shown(n) {
-                "hide the text behind its warning"
+                n!("hide the text behind its warning")
             } else {
-                "show the text behind its warning"
+                n!("show the text behind its warning")
             },
         ));
     }
-    v.push(("v", "open the thread"));
+    v.push(("v", n!("open the thread")));
     if files {
-        v.push(("d", "save its files"));
+        v.push(("d", n!("save its files")));
     }
-    v.push(("o", "open it in the web browser"));
-    v.push(("c", "copy its address"));
+    v.push(("o", n!("open it in the web browser")));
+    v.push(("c", n!("copy its address")));
     let mine = app.selected_note().is_some_and(|s| {
         !s.is_pure_renote()
             && app
@@ -417,9 +481,9 @@ pub fn actions(app: &App) -> Vec<Hint> {
                 .is_some_and(|me| me.user_id == s.author_id())
     });
     if mine {
-        v.push(("D", "delete your note"));
+        v.push(("D", n!("delete your note")));
     }
-    v
+    translated(v)
 }
 
 /// The key an entry of the actions list stands for.

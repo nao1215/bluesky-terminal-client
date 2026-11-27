@@ -674,6 +674,7 @@ impl App {
                 self.recent_reactions.retain(|x| *x != r);
                 self.recent_reactions.insert(0, r.clone());
                 self.recent_reactions.truncate(RECENT);
+                self.keep_recent_reactions();
                 self.info(format!("reacted {r}"));
             }
             None => self.info("took back the reaction"),

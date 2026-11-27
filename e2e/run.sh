@@ -10,6 +10,7 @@
 #
 # Environment contract used by the specs:
 #   PATH   msky resolves here (target/release from this checkout)
+#   LC_ALL C.UTF-8, so the client is in English unless a spec says otherwise
 #
 # Usage: e2e/run.sh [atago args...]        (e.g. e2e/run.sh --filter search)
 set -euo pipefail
@@ -29,6 +30,10 @@ echo "e2e: building msky (cargo build --release --locked)..."
 cargo build --release --locked
 
 export PATH="$REPO_ROOT/target/release:$PATH"
+# The client speaks the language the locale asks for; the specs read it in
+# English, and set the locale themselves where they read another one.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+unset LC_MESSAGES
 
 echo "e2e: $(msky --version)"
 echo "e2e: $(atago --version)"

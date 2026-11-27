@@ -31,12 +31,19 @@ fn opener(url: &str, program: Option<&str>) -> (String, Vec<String>) {
 /// links are opened. The address is printed either way, so an opener that
 /// is not there is no error.
 pub fn open(url: &str) -> bool {
+    open_with(url, None)
+}
+
+/// [`open`] with `program` when `MSKY_BROWSER` names none: the browser
+/// the client's settings name.
+pub fn open_with(url: &str, program: Option<&str>) -> bool {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return false;
     }
     let named = std::env::var(BROWSER_ENV)
         .ok()
-        .filter(|v| !v.trim().is_empty());
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| program.map(str::to_string).filter(|v| !v.trim().is_empty()));
     let (program, args) = opener(url, named.as_deref());
     let mut cmd = Command::new(program);
     cmd.args(args)

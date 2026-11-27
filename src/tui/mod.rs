@@ -246,7 +246,12 @@ fn event_loop(
         }
     };
     app.pictures = images.shows();
-    app.theme = theme::for_env(|k| std::env::var(k).ok());
+    let depth = theme::color_depth(|k| std::env::var(k).ok());
+    let env = app::Environment::read(|k| std::env::var(k).ok());
+    if accounts.is_none() {
+        app.apply_settings(crate::config::Settings::default(), depth, env.clone(), None);
+        app.settings_writable = false;
+    }
     if let Some(store) = accounts {
         app.accounts = store
             .list()
@@ -256,7 +261,8 @@ fn event_loop(
             .collect();
         // The tabs the settings name, in their order.
         let (settings, broken) = crate::config::load_settings(store.dir());
-        let (tabs, unknown) = app::tabs_of(&settings.tabs.unwrap_or_default());
+        let (tabs, unknown) = app::tabs_of(&settings.tabs.clone().unwrap_or_default());
+        app.apply_settings(settings, depth, env, broken.clone());
         for (seq, job) in app.set_tabs(tabs) {
             worker.send(seq, job);
         }
@@ -328,9 +334,24 @@ fn event_loop(
         if let Some(text) = app.take_copy() {
             write_now(&clipboard::osc52(&text)).map_err(io_err)?;
         }
+        if let Some(settings) = app.take_settings_save() {
+            match accounts {
+                Some(store) => {
+                    let saved = crate::config::save_settings(store.dir(), &settings);
+                    app.settings_saved(saved);
+                }
+                None => app.settings_saved(Ok(())),
+            }
+            dirty = true;
+        }
         while let Some((seq, ev)) = worker.try_recv() {
             for (seq, job) in app.handle_answer(seq, ev) {
                 worker.send(seq, job);
+            }
+            // A reaction given is kept with the settings.
+            if let (Some(settings), Some(store)) = (app.take_settings_save(), accounts) {
+                let saved = crate::config::save_settings(store.dir(), &settings);
+                app.settings_saved(saved);
             }
             if let Some(store) = accounts {
                 for (seq, job) in logged_in(app, worker, store) {

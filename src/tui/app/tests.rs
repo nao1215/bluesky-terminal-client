@@ -468,7 +468,7 @@ fn the_viewer_shows_every_file_and_d_saves_them() {
         app.handle_key(code(KeyCode::Right));
     }
     let jobs = app.handle_key(key('d'));
-    let Job::Download { files } = &jobs[0].1 else {
+    let Job::Download { files, .. } = &jobs[0].1 else {
         panic!("{jobs:?}")
     };
     assert_eq!(files.len(), 1);
@@ -476,7 +476,7 @@ fn the_viewer_shows_every_file_and_d_saves_them() {
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.overlay, None);
     let jobs = app.handle_key(key('d'));
-    let Job::Download { files } = &jobs[0].1 else {
+    let Job::Download { files, .. } = &jobs[0].1 else {
         panic!("{jobs:?}")
     };
     assert_eq!(files.len(), 3);
@@ -501,10 +501,19 @@ fn without_pictures_space_opens_the_note_in_the_browser() {
     app.timelines[0].set(vec![renote_of(json!({"id": "orig"}))]);
     let url = format!("{ORIGIN}/notes/orig");
     let jobs = app.handle_key(key(' '));
-    assert_eq!(jobs[0].1, Job::OpenLink { url: url.clone() });
+    assert_eq!(
+        jobs[0].1,
+        Job::OpenLink {
+            url: url.clone(),
+            browser: None
+        }
+    );
     assert_eq!(
         app.handle_key(key('o'))[0].1,
-        Job::OpenLink { url: url.clone() }
+        Job::OpenLink {
+            url: url.clone(),
+            browser: None
+        }
     );
     app.handle_key(key('c'));
     assert_eq!(app.take_copy(), Some(url));
@@ -696,6 +705,8 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('B'),
         key('7'),
         key('i'),
+        key('s'),
+        key('T'),
         key('t'),
         key('i'),
         key('f'),
@@ -1003,7 +1014,13 @@ fn a_login_opens_the_page_waits_and_hands_the_login_over() {
         "{}",
         w.url
     );
-    assert_eq!(jobs[0].1, Job::OpenLink { url: w.url.clone() });
+    assert_eq!(
+        jobs[0].1,
+        Job::OpenLink {
+            url: w.url.clone(),
+            browser: None
+        }
+    );
     assert_eq!(
         jobs[1].1,
         Job::Login {
@@ -1898,4 +1915,178 @@ fn a_server_without_chat_takes_the_tab_away() {
     let (mut v, _) = App::new(None, ORIGIN);
     assert!(v.handle_key(key('7')).is_empty());
     assert!(v.chat.convos.error.as_ref().unwrap().contains("log in"));
+}
+
+// s opens the settings; the theme row opens bsky's themes, previewed as
+// the selection moves, put back on esc and kept on enter; the language
+// row switches the client to Japanese at once; the tabs row takes names
+// in order; x puts a row back. What is kept goes to the event loop to
+// write.
+#[test]
+fn the_settings_screen_changes_and_keeps_theme_language_and_tabs() {
+    use crate::tui::theme::{ColorDepth, THEMES};
+    let mut app = logged_in(&[]);
+    app.apply_settings(
+        crate::config::Settings::default(),
+        ColorDepth::TrueColor,
+        Environment::default(),
+        None,
+    );
+    assert_eq!(THEMES[app.theme_index].name, "terminal");
+    let start = app.theme_index;
+    app.handle_key(key('s'));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 0, .. })
+    ));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(app.overlay, Some(Overlay::Themes { .. })));
+    app.handle_key(key('j'));
+    assert_ne!(app.theme_index, start, "previewed");
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.theme_index, start, "put back");
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 0, .. })
+    ));
+    assert!(app.take_settings_save().is_none());
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    let saved = app.take_settings_save().expect("kept");
+    assert_eq!(
+        saved.theme.as_deref(),
+        Some(THEMES[(start + 1) % THEMES.len()].name)
+    );
+    app.settings_saved(Ok(()));
+    assert!(app.status.as_ref().unwrap().text.starts_with("theme: "));
+    // The language, at once.
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(app.overlay, Some(Overlay::Languages { .. })));
+    app.handle_key(key('j'));
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        app.take_settings_save().unwrap().language.as_deref(),
+        Some("ja")
+    );
+    assert_eq!(crate::i18n::t(Tab::Profile.title()), "プロフィール");
+    assert_eq!(app.settings_rows()[1].value, "日本語");
+    // x: back to the language the environment asks for.
+    app.handle_key(key('x'));
+    assert_eq!(app.take_settings_save().unwrap().language, None);
+    assert_eq!(crate::i18n::current(), crate::i18n::Lang::En);
+    // The tabs, by name; a name that is no tab is refused.
+    for _ in 0..3 {
+        app.handle_key(key('j'));
+    }
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings {
+            selected: 4,
+            edit: Some(_)
+        })
+    ));
+    app.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+    type_str(&mut app, "chat, home, nope");
+    app.handle_key(code(KeyCode::Enter));
+    assert!(app.status.as_ref().unwrap().text.contains("nope"));
+    assert!(app.take_settings_save().is_none());
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+    type_str(&mut app, "chat, home");
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tabs, [Tab::Chat, Tab::Timeline(TimelineKind::Home)]);
+    assert_eq!(app.tab, Tab::Chat);
+    assert_eq!(
+        app.take_settings_save().unwrap().tabs,
+        Some(vec!["chat".to_string(), "home".to_string()])
+    );
+    app.handle_key(key('x'));
+    assert_eq!(app.tabs, DEFAULT_TABS);
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.overlay.is_none());
+}
+
+// A variable decides its setting for the run: the row says so and enter
+// does not change it; the folder and browser the settings name reach the
+// jobs only without one.
+#[test]
+fn a_variable_decides_its_setting_and_the_settings_reach_the_jobs() {
+    use crate::tui::theme::ColorDepth;
+    let mut app = writer(vec![]);
+    let settings = crate::config::Settings {
+        download_dir: Some("/tmp/saved".into()),
+        browser: Some("firefox".into()),
+        recent_reactions: Some(vec![":blobcat:".into()]),
+        ..Default::default()
+    };
+    app.apply_settings(
+        settings.clone(),
+        ColorDepth::TrueColor,
+        Environment::default(),
+        None,
+    );
+    assert_eq!(app.recent_reactions, [":blobcat:"]);
+    assert_eq!(
+        app.download_dir(),
+        Some(std::path::PathBuf::from("/tmp/saved"))
+    );
+    assert_eq!(app.browser().as_deref(), Some("firefox"));
+    let env = Environment {
+        browser: Some("lynx".into()),
+        ..Default::default()
+    };
+    app.apply_settings(settings, ColorDepth::TrueColor, env, None);
+    assert_eq!(app.browser(), None, "MSKY_BROWSER wins");
+    let row = &app.settings_rows()[3];
+    assert!(!row.editable);
+    assert!(row.note.contains("MSKY_BROWSER"), "{row:?}");
+    // NO_COLOR: monochrome, and T says why it does nothing.
+    app.apply_settings(
+        Default::default(),
+        ColorDepth::None,
+        Environment::default(),
+        None,
+    );
+    assert_eq!(
+        crate::tui::theme::THEMES[app.theme_index].name,
+        "monochrome"
+    );
+    app.handle_key(key('T'));
+    assert!(app.overlay.is_none());
+    // A settings file that could not be read is left as it is.
+    app.apply_settings(
+        Default::default(),
+        ColorDepth::TrueColor,
+        Environment::default(),
+        Some("broken".into()),
+    );
+    app.handle_key(key('T'));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(app.take_settings_save().is_none());
+    assert!(app.status.as_ref().unwrap().text.contains("not kept"));
+}
+
+// The language: the settings', else the locale's, else English.
+#[test]
+fn the_language_is_the_settings_then_the_locale() {
+    use super::settings::language;
+    use crate::i18n::Lang;
+    let env = |l: &str| Environment::read(|k| (k == "LANG").then(|| l.to_string()));
+    let set = |l: Option<&str>| crate::config::Settings {
+        language: l.map(str::to_string),
+        ..Default::default()
+    };
+    assert_eq!(language(&set(None), &env("ja_JP.UTF-8")), Lang::Ja);
+    assert_eq!(language(&set(Some("en")), &env("ja_JP.UTF-8")), Lang::En);
+    assert_eq!(language(&set(Some("ja")), &env("C.UTF-8")), Lang::Ja);
+    assert_eq!(language(&set(Some("klingon")), &env("fr_FR")), Lang::En);
+    let lc_all = Environment::read(|k| match k {
+        "LC_ALL" => Some("ja_JP.UTF-8".into()),
+        "LANG" => Some("en_US.UTF-8".into()),
+        _ => None,
+    });
+    assert_eq!(language(&set(None), &lc_all), Lang::Ja);
 }

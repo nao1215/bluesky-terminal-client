@@ -87,12 +87,31 @@ pub fn config_dir() -> Result<PathBuf> {
 
 /// What `settings.json` in the config directory sets. Every field is
 /// optional, and a key msky does not know is left alone.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     /// The client's tabs, in order: `home`, `local`, `social`, `global`,
-    /// `notifications`, `search`, `profile`.
+    /// `notifications`, `search`, `profile`, `chat`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tabs: Option<Vec<String>>,
+    /// The color theme, by name (bsky's themes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// The language the client is shown in: `en`, `ja`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// The folder the client saves files in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_dir: Option<String>,
+    /// The program links open with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    /// The reactions given lately, the newest first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_reactions: Option<Vec<String>>,
+    /// Keys a newer version wrote, kept on saving.
+    #[serde(flatten)]
+    pub other: serde_json::Map<String, serde_json::Value>,
 }
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -123,6 +142,18 @@ pub fn load_settings(dir: &Path) -> (Settings, Option<String>) {
             )),
         ),
     }
+}
+
+/// Write `settings` to `settings.json` in `dir`, whole or not at all.
+pub fn save_settings(dir: &Path, settings: &Settings) -> Result<()> {
+    let path = dir.join(SETTINGS_FILE);
+    fs::create_dir_all(dir)
+        .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
+    let mut json = serde_json::to_vec_pretty(settings)
+        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
+    json.push(b'\n');
+    write_private(&path, &json)
+        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
 }
 
 /// Which server's account is in use, kept in `accounts.json`.
@@ -543,6 +574,16 @@ mod tests {
         let (s, warn) = load_settings(dir.path());
         assert_eq!(s.tabs, Some(vec!["home".to_string(), "social".to_string()]));
         assert_eq!(warn, None);
+        // Saved, what this version does not know stays.
+        let mut s2 = s.clone();
+        s2.theme = Some("dracula".into());
+        save_settings(dir.path(), &s2).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.path().join(SETTINGS_FILE)).unwrap()).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"tabs": ["home", "social"], "theme": "dracula", "later": 1})
+        );
         fs::write(dir.path().join(SETTINGS_FILE), "{\"tabs\": oops").unwrap();
         let (s, warn) = load_settings(dir.path());
         assert_eq!(s, Settings::default());

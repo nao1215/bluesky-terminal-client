@@ -45,9 +45,15 @@ pub enum Job {
     /// names them.
     Download {
         files: Vec<(String, usize, DriveFile)>,
+        /// The folder the settings name, else the usual one.
+        dir: Option<PathBuf>,
     },
     /// Open an address in the web browser.
-    OpenLink { url: String },
+    OpenLink {
+        url: String,
+        /// The program the settings name, else the system's.
+        browser: Option<String>,
+    },
     /// The servers to log in to.
     Servers,
     /// Post a note: its files are uploaded first, each with its alt text.
@@ -328,7 +334,7 @@ pub fn run(job: Job, client: &Client) -> Event {
             result: thread(client, &id).map(Box::new),
             id,
         },
-        Job::Download { files } => Event::Downloaded(save(&files)),
+        Job::Download { files, dir } => Event::Downloaded(save(&files, dir)),
         Job::Post {
             text,
             cw,
@@ -426,16 +432,18 @@ pub fn run(job: Job, client: &Client) -> Event {
             result: login(&origin, &session),
             session,
         },
-        Job::OpenLink { url } => Event::Opened(if crate::browser::open(&url) {
-            Ok(())
-        } else {
-            Err(
-                Error::io(format!("cannot open {url} in the web browser")).with_hint(format!(
-                    "set {} to the program to open it with",
-                    crate::browser::BROWSER_ENV
-                )),
-            )
-        }),
+        Job::OpenLink { url, browser } => {
+            Event::Opened(if crate::browser::open_with(&url, browser.as_deref()) {
+                Ok(())
+            } else {
+                Err(
+                    Error::io(format!("cannot open {url} in the web browser")).with_hint(format!(
+                        "set {} to the program to open it with",
+                        crate::browser::BROWSER_ENV
+                    )),
+                )
+            })
+        }
     }
 }
 
@@ -613,8 +621,8 @@ fn login(origin: &str, session: &str) -> Result<Session> {
 }
 
 /// Save `files` in the download folder, as `msky download` saves them.
-fn save(files: &[(String, usize, DriveFile)]) -> Result<Vec<PathBuf>> {
-    let dir = download::download_dir(None)?;
+fn save(files: &[(String, usize, DriveFile)], dir: Option<PathBuf>) -> Result<Vec<PathBuf>> {
+    let dir = download::download_dir(dir)?;
     let agent = crate::api::agent();
     files
         .iter()

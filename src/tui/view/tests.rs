@@ -287,7 +287,7 @@ fn the_help_lists_the_keys() {
     let screen = render(&mut app, 100, 120);
     for want in [
         "Keys",
-        "Global",
+        "General",
         "1 2 3 …",
         "Notes",
         "w",
@@ -717,4 +717,47 @@ fn custom_emoji_are_drawn_as_pictures_or_by_name() {
         "{text}"
     );
     assert!(text.contains(":blobcat: 3"), "{text}");
+}
+
+// The settings screen in Japanese: the names padded by the cells they
+// take, so the values line up; the tabs and hints translated too.
+#[test]
+fn the_settings_screen_lines_up_in_japanese() {
+    let mut app = with_notes(vec![]);
+    crate::i18n::set(crate::i18n::Lang::Ja);
+    app.overlay = Some(Overlay::Settings {
+        selected: 0,
+        edit: None,
+    });
+    let screen = render_text(&mut app, 100, 24);
+    crate::i18n::set(crate::i18n::Lang::En);
+    assert!(screen.contains("1 ホーム"), "{screen}");
+    assert!(screen.contains("設定"), "{screen}");
+    let cols: Vec<usize> = ["terminal", "English"]
+        .iter()
+        .map(|v| {
+            let line = screen.lines().find(|l| l.contains(v)).unwrap();
+            crate::tui::text::cells(&line[..line.find(v).unwrap()])
+        })
+        .collect();
+    assert_eq!(cols[0], cols[1], "{screen}");
+    assert!(screen.contains("enter 変更"), "{screen}");
+}
+
+// The theme list shows where it is and its keys in every theme.
+#[test]
+fn the_theme_list_draws_every_theme() {
+    let mut app = with_notes(vec![]);
+    for i in 0..crate::tui::theme::THEMES.len() {
+        app.overlay = Some(Overlay::Themes {
+            selected: i,
+            previous: 0,
+        });
+        let screen = render_text(&mut app, 60, 20);
+        assert!(
+            screen.contains(crate::tui::theme::THEMES[i].name),
+            "{screen}"
+        );
+        assert!(screen.contains(&format!("{}/", i + 1)), "{screen}");
+    }
 }
