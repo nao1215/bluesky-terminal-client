@@ -156,6 +156,10 @@ From their READMEs and source, September 2026.
 | Key bindings | Fixed | Set in TOML | Not applicable |
 | MCP server | No | No | Yes |
 
+## Related projects
+
+- [msky](https://github.com/nao1215/misskey-terminal-client): the same client for Misskey, with the same keys.
+
 ## Testing
 
 | Technique | Bug class caught here |
