@@ -50,6 +50,15 @@ fuzz TARGET *ARGS:
     mkdir -p fuzz/work/{{TARGET}}
     cargo +nightly fuzz run {{TARGET}} fuzz/work/{{TARGET}} fuzz/corpus/{{TARGET}} -- {{ARGS}}
 
+# Check the properties in src/properties.rs with many cases, as the nightly job does.
+properties CASES="500000":
+    PROPTEST_CASES={{CASES}} cargo test --release --bin msky properties
+
+# Mutate the lines changed since main (needs cargo-mutants).
+mutants:
+    git diff main -- src > mutants.diff
+    cargo mutants --in-diff mutants.diff
+
 # Run every CI check locally
 ci: test lint fmt-check doc e2e
 

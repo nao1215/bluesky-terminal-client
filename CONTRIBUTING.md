@@ -47,6 +47,14 @@ msky has no library target, so a target includes the file it tests with `#[path 
 
 Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`). `just fuzz mp4_track -max_total_time=60` runs one target; new inputs go to the ignored `fuzz/work/`, and `fuzz/corpus/<target>/` holds the committed seeds. Pull requests that touch those files or `fuzz/` build the targets and run each over its seeds; `.github/workflows/fuzz.yml` explores every night. When it finds a crash, add the input to `fuzz/corpus/<target>/` and to a unit test before fixing it.
 
+## Properties
+
+`src/properties.rs` checks properties on generated text with proptest: wrapped lines fit their width and keep every character, a cut is the start of the text, the text field stays whole whatever is typed or pasted, and silencing a note's links leaves none with a preview and the same text to read. `cargo test` runs them with 256 cases each; `.github/workflows/properties.yml` runs them each night with 500,000 (`PROPTEST_CASES=500000 cargo test --release --bin msky properties` does the same here). When one fails, add the smallest input it prints as a unit test next to the code it breaks before fixing it.
+
+## Mutation testing
+
+`.github/workflows/mutation.yml` runs [cargo-mutants](https://mutants.rs) over the files `.cargo/mutants.toml` names: on a pull request over the lines it changes, and every week over all of them in eight shards. A mutant changes one operator, constant or return value; it is caught when a unit test fails. The run fails when the share caught falls below `MUTATION_MIN_SCORE`, the score of the last full run, so a change cannot leave the tests weaker. The job summary lists the mutants missed: add the test that catches one, and raise `MUTATION_MIN_SCORE` when the score goes up. `cargo mutants --in-diff <(git diff main -- src)` checks your own change before you push.
+
 ## Code style
 
 - Comments and documentation in English, explaining why rather than what.

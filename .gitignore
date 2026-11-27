@@ -7,3 +7,5 @@ __pycache__/
 
 # A recording of your own account: never committed.
 /doc/img/demo-account.gif
+proptest-regressions/
+mutants.diff
