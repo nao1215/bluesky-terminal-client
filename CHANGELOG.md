@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- An MP4 with a box msky cannot read (smaller than its header, longer than the file, or a 64-bit size cut short) is refused rather than uploaded: the walk stopped at such a box, and a user data or location box after it, or after one inside `moov`, went up as it was.
 - The client and `msky post --no-card` read a note's MFM with the grammar of mfm-js 0.28.0, the parser of Misskey's web client, rule for rule: `msky post --no-card` no longer makes an unclosed `$[x2 ` around a link close on the `]` it adds, which showed the note otherwise than it was written (`$[x2 \n$[x2 $[x2 [label](https://e.example/c)]`).
 - Markup that never closes (`**bold`, `$[x2 big`, `<small>`) is shown as written with all that follows it, links included, as Misskey shows it, and `msky post --no-card` leaves the links in it as they are, since Misskey shows no preview for them.
 - A quote (`> `), `*italic*`, `_italic_`, `~~strike~~` and `***big***` are read as Misskey reads them: the client shows what they hold (a quote's lines after the `>` they start with), and `msky post --no-card` silences the links in a quote.

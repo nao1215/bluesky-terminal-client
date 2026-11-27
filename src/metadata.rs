@@ -59,8 +59,7 @@ pub fn strip<'a>(name: &str, data: &'a [u8]) -> Result<Cow<'a, [u8]>> {
         Format::Gif => gif(data),
         Format::Mp4 => {
             let mut v = data.to_vec();
-            mp4(&mut v);
-            Some(v)
+            mp4(&mut v).then_some(v)
         }
         Format::WebM => webm(data),
     };
@@ -303,8 +302,12 @@ const CONTAINERS: &[&[u8; 4]] = &[b"moov", b"trak", b"mdia", b"minf", b"edts"];
 /// becomes a `free` box of the same size, its content zeroed, so every
 /// offset in the file (the media data's included) stays where it was. A
 /// track's handler name is blanked too.
-pub fn mp4(file: &mut [u8]) {
-    fn walk(buf: &mut [u8]) {
+///
+/// False when a box cannot be read (smaller than its header, or longer
+/// than what is left of the file or of the box it is in): what comes after
+/// it is not known, and a private box there would go up as it is.
+pub fn mp4(file: &mut [u8]) -> bool {
+    fn walk(buf: &mut [u8]) -> bool {
         let mut at = 0;
         while at + 8 <= buf.len() {
             let size =
@@ -314,7 +317,7 @@ pub fn mp4(file: &mut [u8]) {
                 0 => (buf.len() - at, 8),
                 1 => {
                     let Some(large) = buf.get(at + 8..at + 16) else {
-                        return;
+                        return false;
                     };
                     let large = u64::from_be_bytes(large.try_into().unwrap_or([0xFF; 8]));
                     (usize::try_from(large).unwrap_or(usize::MAX), 16)
@@ -324,7 +327,7 @@ pub fn mp4(file: &mut [u8]) {
             // Compared with what is left, not added to `at`: a 64-bit size
             // near the largest overflows the sum.
             if size < header || size > buf.len() - at {
-                return;
+                return false;
             }
             let body = at + header..at + size;
             if PRIVATE_BOXES.contains(&&kind) {
@@ -334,13 +337,14 @@ pub fn mp4(file: &mut [u8]) {
                 // The handler's name, which may name the device or the
                 // program: blanked, its length kept.
                 buf[body.start + 24..body.end].fill(0);
-            } else if CONTAINERS.contains(&&kind) {
-                walk(&mut buf[body]);
+            } else if CONTAINERS.contains(&&kind) && !walk(&mut buf[body]) {
+                return false;
             }
             at += size;
         }
+        true
     }
-    walk(file);
+    walk(file)
 }
 
 // --- WebM ---------------------------------------------------------------

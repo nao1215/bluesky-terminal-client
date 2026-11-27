@@ -411,6 +411,39 @@ fn an_mp4_handler_loses_only_its_name() {
     assert_eq!(data, [media, mp4_box(b"hdlr", &name_gone)].concat());
 }
 
+// A box that cannot be read hides what comes after it, a place among it:
+// the file is refused, not sent with that unread.
+#[rstest]
+#[case::smaller_than_its_header(&[0, 0, 0, 4, b'b', b'a', b'd', b'!'])]
+#[case::longer_than_the_file(&[0, 0, 0x10, 0, b'm', b'd', b'a', b't'])]
+#[case::a_64_bit_size_cut_short(&[0, 0, 0, 1, b'm', b'd', b'a', b't', 0, 0])]
+fn an_mp4_with_a_box_it_cannot_read_is_refused(#[case] bad: &[u8]) {
+    let ftyp = mp4_box(b"ftyp", b"isom\0\0\0\0");
+    let data = [&ftyp[..], bad, &mp4_box(b"udta", b"\xA9xyz+35.6+139.7/")].concat();
+    assert!(strip("cut.mp4", &data).is_err());
+}
+
+// The same holds inside a track: a broken box in `moov` is not stepped over.
+#[test]
+fn an_mp4_with_a_box_it_cannot_read_inside_moov_is_refused() {
+    let ftyp = mp4_box(b"ftyp", b"isom\0\0\0\0");
+    let inner = [&[0, 0, 0, 2][..], b"bad!", &mp4_box(b"udta", b"SecretCam")].concat();
+    let data = [ftyp, mp4_box(b"moov", &inner)].concat();
+    assert!(strip("cut.mp4", &data).is_err());
+}
+
+// Bytes too few for a box at the end are not one, and do not refuse a file.
+#[test]
+fn an_mp4_with_a_few_bytes_after_its_last_box_is_still_stripped() {
+    let ftyp = mp4_box(b"ftyp", b"isom\0\0\0\0");
+    let data = [&ftyp[..], &mp4_box(b"udta", b"SecretCam"), &[0; 3]].concat();
+    let out = strip("tail.mp4", &data).unwrap();
+    assert_eq!(
+        &out[..],
+        [&ftyp[..], &blanked(&[0, 0, 0, 17], 9), &[0; 3]].concat()
+    );
+}
+
 /// An EBML element: `id` (its length marker in it) and `body`, its size in
 /// one byte or eight.
 fn ebml(id: &[u8], body: &[u8]) -> Vec<u8> {
