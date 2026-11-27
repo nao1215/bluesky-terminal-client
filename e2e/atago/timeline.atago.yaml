@@ -999,6 +999,51 @@ scenarios:
       - assert:
           exit_code: 0
 
+  # A character with VS16 is two cells wide on the terminal; what comes
+  # after it on the line is drawn at its own place, and leaving the tab and
+  # coming back leaves nothing of it behind or doubled.
+  - name: the text after a VS16 emoji stays in place across tab changes
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "Alice ❤️", viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "古い水族館 🏛️ abc ❤️ xyz", createdAt: "2026-09-20T10:00:00.000Z" }
+                    likeCount: 4
+          - { method: GET, path: /xrpc/chat.bsky.convo.listConvos, json: { convos: [] } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 20
+          cols: 60
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Alice ❤️ @alice.test · 2026-09-20 10:00", "古い水族館 🏛️ abc ❤️ xyz"]
+                stable_for: 500ms
+            - send: "2"
+            - expect_screen:
+                contains: "No conversations yet"
+                not_contains: ["abc", "xyz", "alice.test"]
+                stable_for: 500ms
+            - send: "1"
+            - expect_screen:
+                contains: ["Alice ❤️ @alice.test · 2026-09-20 10:00", "古い水族館 🏛️ abc ❤️ xyz"]
+                not_contains: ["@alice.test·", "abcc", "xyzz", "No conversations"]
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+
   - name: a new post carries link, tag and mention facets at UTF-8 byte offsets
     mock_servers:
       - name: api

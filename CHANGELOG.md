@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- On kitty, the text after a character with VS16 (U+FE0F), such as the classical building or the red heart, in a post or a name is drawn where it belongs again: it was written one cell to the right, so after a tab change some of it stayed on screen and showed twice when the tab came back.
+
 ## [0.15.0] - 2026-11-27
 
 ### Added
