@@ -856,7 +856,15 @@ mod tests {
             upload.contains("name=\"comment\"\r\n\r\n黒猫 🐈‍⬛\r\n"),
             "{upload}"
         );
-        assert!(upload.contains("filename=\"猫 %221%22.png\""), "{upload}");
+        let filename = if cfg!(windows) {
+            "猫 1.png"
+        } else {
+            "猫 %221%22.png"
+        };
+        assert!(
+            upload.contains(&format!("filename=\"{filename}\"")),
+            "{upload}"
+        );
         assert!(
             !log[5].1.contains("name=\"comment\""),
             "the second has no alt"

@@ -26,7 +26,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{Event as TermEvent, KeyEventKind};
+use crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
+};
 use crossterm::execute;
 
 use crate::api::Client;
@@ -121,6 +123,10 @@ pub fn run(accounts: Option<AccountStore>, session: Option<Session>, origin: &st
         Ok(p) => p,
         Err(e) => return restored(Err(e)),
     };
+    // A paste comes as one piece, not as keys: a pasted `q` would quit.
+    if let Err(e) = execute!(io::stdout(), EnableBracketedPaste) {
+        return setup_failed(e);
+    }
     let result = event_loop(&mut term, picker, &mut app, &worker, accounts.as_ref());
     restored(result)
 }
@@ -145,10 +151,14 @@ fn with_restore(result: Result<()>, restore: std::result::Result<(), String>) ->
     })
 }
 
-/// Put the terminal back as msky found it, every step taken even after
-/// one fails, as bsky does.
+/// Put the terminal back as msky found it: bracketed paste off, raw mode
+/// off, the main screen back, every step taken even after one fails, as
+/// bsky does.
 fn restore_terminal() -> std::result::Result<(), String> {
     restore_steps(&mut [
+        ("turning bracketed paste off", &mut || {
+            execute!(io::stdout(), DisableBracketedPaste)
+        }),
         (
             "leaving raw mode",
             &mut crossterm::terminal::disable_raw_mode,

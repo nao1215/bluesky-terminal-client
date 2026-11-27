@@ -403,18 +403,48 @@ impl App {
         }
     }
 
-    /// Text pasted: it goes to the field that has focus in the composer.
+    /// Text pasted: it goes to whichever field has focus, as bsky's.
     pub fn handle_paste(&mut self, text: &str) {
         match &mut self.overlay {
+            // Not while the note is on its way or the profile loads or is
+            // saved: the answer would drop what was pasted.
             Some(Overlay::Compose(c)) if c.browser.is_none() && !c.sending => {
                 c.field().insert_str(text)
+            }
+            Some(Overlay::EditProfile(e)) if e.browser.is_none() && !e.loading && !e.saving => {
+                e.fields[e.focus].insert_str(text)
+            }
+            Some(Overlay::Report(r)) if r.writing && !r.confirming && !r.sending => {
+                r.comment.insert_str(text)
             }
             Some(Overlay::Login(f)) => {
                 if let Some(t) = &mut f.typed {
                     t.push_str(text.trim());
                 }
             }
-            _ => {}
+            Some(Overlay::Settings {
+                edit: Some(input), ..
+            }) => input.insert_str(text),
+            Some(Overlay::AddColumn {
+                query: Some(input), ..
+            }) => input.insert_str(text),
+            Some(Overlay::Reactions { selected, query }) => {
+                query.extend(
+                    text.chars()
+                        .filter(|c| !c.is_whitespace() && !c.is_control()),
+                );
+                *selected = 0;
+            }
+            Some(_) => {}
+            None if self.tab == Tab::Search && self.search.editing => {
+                self.search.input.insert_str(text)
+            }
+            None if self.tab == Tab::Chat => {
+                if let Some(o) = self.chat.open.as_mut().filter(|o| o.typing && !o.sending) {
+                    o.input.insert_str(text);
+                }
+            }
+            None => {}
         }
     }
 

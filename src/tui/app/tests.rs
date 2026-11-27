@@ -1,5 +1,7 @@
 use super::*;
+use crate::tui::app::chat::OpenChat;
 use crate::tui::columns::Source;
+use crate::tui::input::TextInput;
 use crate::tui::worker::ColumnPage;
 use serde_json::{Value, json};
 
@@ -2939,4 +2941,74 @@ fn e_edits_your_own_profile_opened_from_a_list() {
     assert!(app.profile.came_from.is_some());
     let jobs = app.handle_key(key('e'));
     assert_eq!(jobs[0].1, Job::LoadProfileEditor);
+}
+
+// A paste goes to the field with focus, as bsky's: the search box, the
+// reaction filter, a settings row, a column's search.
+#[test]
+fn a_paste_reaches_the_field_with_focus() {
+    let mut app = logged_in(&["a"]);
+    app.tab = Tab::Search;
+    app.search.editing = true;
+    app.handle_paste("pasted words 🏔️");
+    assert_eq!(app.search.input.text(), "pasted words 🏔️");
+
+    app.search.editing = false;
+    app.handle_paste("not taken");
+    assert_eq!(app.search.input.text(), "pasted words 🏔️");
+
+    app.overlay = Some(Overlay::Reactions {
+        selected: 3,
+        query: String::new(),
+    });
+    app.handle_paste(" blob cat\n");
+    assert_eq!(
+        app.overlay,
+        Some(Overlay::Reactions {
+            selected: 0,
+            query: "blobcat".into()
+        })
+    );
+
+    app.overlay = Some(Overlay::Settings {
+        selected: 0,
+        edit: Some(TextInput::single("")),
+    });
+    app.handle_paste("https://video.example/\n");
+    let Some(Overlay::Settings { edit: Some(t), .. }) = &app.overlay else {
+        panic!("{:?}", app.overlay);
+    };
+    assert_eq!(t.text(), "https://video.example/ ");
+
+    app.overlay = Some(Overlay::AddColumn {
+        selected: 0,
+        query: Some(TextInput::single("")),
+    });
+    app.handle_paste("水族館");
+    let Some(Overlay::AddColumn { query: Some(t), .. }) = &app.overlay else {
+        panic!("{:?}", app.overlay);
+    };
+    assert_eq!(t.text(), "水族館");
+}
+
+// A paste while a chat message is on its way would show in the box and be
+// lost when the box is cleared, so it is not taken.
+#[test]
+fn a_paste_into_a_chat_waits_for_the_message_being_sent() {
+    let mut app = logged_in(&["a"]);
+    app.tab = Tab::Chat;
+    app.chat.open = Some(OpenChat {
+        with: crate::tui::worker::ChatWith::User("u-bob".into()),
+        title: "Bob".into(),
+        user: None,
+        messages: List::default(),
+        input: TextInput::single(""),
+        typing: true,
+        sending: false,
+    });
+    app.handle_paste("hi 👋🏽");
+    assert_eq!(app.chat.open.as_ref().unwrap().input.text(), "hi 👋🏽");
+    app.chat.open.as_mut().unwrap().sending = true;
+    app.handle_paste(" more");
+    assert_eq!(app.chat.open.as_ref().unwrap().input.text(), "hi 👋🏽");
 }
