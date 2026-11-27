@@ -30,7 +30,7 @@ Binaries for Linux, macOS and Windows are on the [releases page](https://github.
 
 ### Verifying a release
 
-Each release carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files (`<tag>` is the release, for example `v0.1.0`):
+Each release carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files (`<tag>` is the release, for example `v0.1.1`):
 
 ```sh
 sha256sum --ignore-missing --check checksums.txt

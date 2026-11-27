@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-28
+
 ### Fixed
 
 - An MP4 with a box msky cannot read (smaller than its header, longer than the file, or a 64-bit size cut short) is refused rather than uploaded: the walk stopped at such a box, and a user data or location box after it, or after one inside `moov`, went up as it was.
