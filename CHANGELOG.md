@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- The client and `msky post --no-card` read a note's MFM with the grammar of mfm-js 0.28.0, the parser of Misskey's web client, rule for rule: `msky post --no-card` no longer makes an unclosed `$[x2 ` around a link close on the `]` it adds, which showed the note otherwise than it was written (`$[x2 \n$[x2 $[x2 [label](https://e.example/c)]`).
+- Markup that never closes (`**bold`, `$[x2 big`, `<small>`) is shown as written with all that follows it, links included, as Misskey shows it, and `msky post --no-card` leaves the links in it as they are, since Misskey shows no preview for them.
+- A quote (`> `), `*italic*`, `_italic_`, `~~strike~~` and `***big***` are read as Misskey reads them: the client shows what they hold (a quote's lines after the `>` they start with), and `msky post --no-card` silences the links in a quote.
+- A `<center>` is read only where a line starts, and `<sup>` and `<sub>` are shown as written, as Misskey shows them, where the client took their tags away anywhere.
+- A function Misskey's web client does not draw (`$[unknown text]`, `$[font text]` without a family) is shown as `$[unknown text]`, and a `$[ruby ...]` of more than one part shows its last part as the reading only when it is text, as Misskey shows them.
+
 ## [0.1.0] - 2026-11-28
 
 ### Added

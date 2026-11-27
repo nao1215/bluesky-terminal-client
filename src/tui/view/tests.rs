@@ -642,7 +642,7 @@ fn the_viewer_draws_the_picture_full_screen() {
 fn mfm_is_drawn_as_plain_text_with_bold_kept() {
     let mut app = with_notes(vec![
         json!({"id": "m", "createdAt": "t", "user": {"username": "mia"},
-               "text": "$[x2 $[tada 🎉祝]] <center>まんなか</center> **太字👨‍👩‍👧** ?[リンク](https://e.test/a) :blobcat:"}),
+               "text": "$[x2 $[tada 🎉祝]] <small>まんなか</small> **太字👨‍👩‍👧** ?[リンク](https://e.test/a) :blobcat:"}),
         json!({"id": "q", "createdAt": "t", "user": {"username": "quin"}, "text": "引用",
                "renoteId": "o", "renote": {"id": "o", "user": {"username": "olly"}, "text": "$[spin 回る]ノート"}}),
     ]);
