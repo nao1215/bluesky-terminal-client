@@ -2,19 +2,33 @@
 # Record the README's demo in a real kitty window, as bsky's
 # doc/record-demo.sh records its own:
 #
-#   doc/record-demo.sh demo     doc/img/demo.gif: the home timeline with its
-#                               pictures, a content warning opened, a
-#                               picture full screen, a thread, the local
-#                               timeline and the notifications
-#
-# It runs against doc/demo-server.py, with made-up accounts and notes, so no
-# real account is shown, and nothing reaches a real server: the login is a
-# made-up one for the stand-in, and the server list is not read.
+#   doc/record-demo.sh demo       doc/img/demo.gif: msky as the account you
+#                                 logged in with `msky login`, on your own
+#                                 PC: the home timeline with its pictures, a
+#                                 picture full screen, a thread and the
+#                                 local timeline (not the notifications:
+#                                 showing them marks them read). msky reads
+#                                 its own config folder; this script never
+#                                 reads, copies or prints the token, and
+#                                 presses read-only keys only (j space v L H
+#                                 esc): nothing is posted, reacted to,
+#                                 followed or marked read. It refuses to run
+#                                 on CI (CI or GITHUB_ACTIONS set). Look at
+#                                 every frame before committing the GIF.
+#   doc/record-demo.sh demo-fake  doc/img/demo-fake.gif: the same against
+#                                 doc/demo-server.py, with made-up accounts
+#                                 and notes, where nothing reaches a real
+#                                 server; for anything that is not your PC.
 #
 # Needs kitty, xdotool, xwininfo and ffmpeg, and an X11 display (Xwayland is fine):
 # kitty runs as an X11 window so ffmpeg can capture it, and the keys are sent
 # with kitty's remote control.
 set -eu
+# Your own account is recorded on your own PC only.
+if [ "${1:-demo}" = demo ] && { [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; }; then
+  echo "demo records your own account and runs on your own PC only; on CI use demo-fake" >&2
+  exit 2
+fi
 cd "$(dirname "$0")/.."
 OUT=$(pwd)/doc/img
 BIN=$(pwd)/target/release
@@ -59,7 +73,7 @@ start() {
     -o confirm_os_window_close=0 -o allow_remote_control=yes \
     -o cursor_blink_interval=0 -o window_padding_width=0 \
     --listen-on "$SOCK" --class mskydemo --title msky \
-    env PATH="$BIN:$PATH" COLORTERM=truecolor $DEMO_ENV msky &
+    env PATH="$BIN:$PATH" COLORTERM=truecolor ${DEMO_ENV:-} msky &
   KPID=$!
   W=""
   # kitty makes more than one X window; the one shown is the one to
@@ -126,7 +140,7 @@ stop() { # OUTPUT.gif [WIDTH] [FPS]
   ls -la "$1"
 }
 
-demo() {
+demo_fake() {
   serve
   start 1120 700
   ready "♡"
@@ -159,11 +173,47 @@ demo() {
   sleep 2
   send "1"
   sleep 1.5
+  stop "$OUT/demo-fake.gif"
+  quit
+}
+
+# Your own account, on your own PC only.
+demo() {
+  # msky's own config folder and picture cache; the server list is not
+  # read, and no key that writes is pressed. The notifications tab is not
+  # visited: showing it marks the notifications read, which is a write.
+  DEMO_ENV="MSKY_SERVERS_URL=off"
+  start 1120 700
+  ready "♡"
+  record
+  sleep 2
+  keys j 3 1.2
+  # The pictures of the note shown, if it has any, and back.
+  send " "
+  sleep 3
+  send "\033"
+  sleep 1.5
+  # A thread, and back.
+  send "v"
+  ready "Thread"
+  keys j 2 1
+  sleep 1
+  send "\033"
+  sleep 1.5
+  # The local timeline.
+  send "L"
+  ready "Local"
+  sleep 1.5
+  keys j 3 1.2
+  sleep 1
+  send "H"
+  sleep 1.5
   stop "$OUT/demo.gif"
   quit
 }
 
 case "${1:-demo}" in
   demo) demo ;;
-  *) echo "usage: $0 [demo]" >&2; exit 2 ;;
+  demo-fake) demo_fake ;;
+  *) echo "usage: $0 [demo|demo-fake]" >&2; exit 2 ;;
 esac
