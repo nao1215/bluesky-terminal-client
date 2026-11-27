@@ -63,6 +63,8 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN` and no build cache, packs reproducible archives, writes the third-party license texts (`cargo about`, from `about.toml` and `about.hbs`), `checksums.txt` and a CycloneDX SBOM, attests the build provenance of the archives and the SBOM, signs `checksums.txt` with cosign, creates the GitHub release with the CHANGELOG section as its text, adds SLSA provenance, verifies the published release the way README describes, and then publishes the crate and updates the formula in nao1215/homebrew-tap.
 
+Before a tag, two workflows run the same steps on pull requests and on main. `.github/workflows/release-smoke.yml` builds and packs every target with the pinned compiler, checks the glibc ceiling, then downloads each archive on a fresh runner and runs `bsky --version`. `.github/workflows/licenses.yml` checks the dependency licenses with cargo-deny and writes the third-party license texts with cargo-about, so a crate the release could not ship fails review instead of the release.
+
 1. In a pull request, set `version` in `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
 2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
 

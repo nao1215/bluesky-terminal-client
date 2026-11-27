@@ -1,8 +1,9 @@
 name: cargo-deny
 
-# RustSec advisories, dependency licenses, banned crates and allowed sources,
-# all read from deny.toml. The advisory database changes every day, so a check
-# that passed at merge time can fail tomorrow without a line of this repository
+# RustSec advisories, banned crates and allowed sources, all read from
+# deny.toml. Dependency licenses are checked in licenses.yml, beside the
+# license texts the release ships. The advisory database changes every day, so
+# a check that passed at merge time can fail tomorrow without a line of this repository
 # changing: the pull_request/push legs catch a newly added dependency, the
 # schedule catches a newly published advisory against Cargo.lock as it is.
 #
@@ -39,7 +40,7 @@ jobs:
         # commit, so a red schedule run names the cause in the job title.
         checks:
           - advisories
-          - bans licenses sources
+          - bans sources
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
