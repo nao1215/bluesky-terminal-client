@@ -60,7 +60,7 @@ pub(crate) fn serve(h: Handler) -> (String, Calls) {
                 }
                 let mut body = vec![0; len];
                 let _ = r.read_exact(&mut body);
-                let body = String::from_utf8(body).unwrap();
+                let body = String::from_utf8_lossy(&body).into_owned();
                 let n = {
                     let mut log = kept.lock().unwrap();
                     log.push((path.clone(), body.clone()));

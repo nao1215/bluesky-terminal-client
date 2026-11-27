@@ -5,7 +5,7 @@
 
 # msky
 
-An unofficial [Misskey](https://misskey-hub.net) client for the terminal. It reads what a Misskey server shows to visitors: an account's notes, one note, a search, and the files attached to notes. Logged in with MiAuth, with read-only access, it reads your timelines and notifications too.
+An unofficial [Misskey](https://misskey-hub.net) client for the terminal. It reads what a Misskey server shows to visitors: an account's notes, one note, a search, and the files attached to notes. Logged in with MiAuth, or given an access token in `MSKY_TOKEN`, it reads your timelines and notifications, posts notes with pictures and videos, and follows and unfollows accounts.
 
 ```sh
 msky login
@@ -16,6 +16,9 @@ msky note https://misskey.io/notes/au102erst5tf04vs
 msky search Misskey --json | jq -r .url
 msky download https://misskey.io/notes/au102erst5tf04vs -o pictures
 msky author syuilo -n 50 --filter media --download
+msky post "hello" --image cat.jpg --alt "a cat"
+msky post --dry-run "New article https://debimate.jp/post/a/"
+msky follow @syuilo@misskey.io
 ```
 
 A note as `msky author alice` prints it:
@@ -52,7 +55,10 @@ msky asks the server `--host` or `MSKY_HOST` names (`--host misskey.design`, `--
 | `msky timeline [KIND]` | A timeline, newest first: `home` (default), `local`, `social` or `global` |
 | `msky notifications` | Your notifications, newest first |
 | `msky whoami` | The account logged in on the server |
-| `msky login` | Logs in with MiAuth, with read-only access |
+| `msky post TEXT` | Posts a note (see Posting) |
+| `msky follow ACTOR` | Follows the account |
+| `msky unfollow ACTOR` | Unfollows the account, or takes back a request to follow it |
+| `msky login` | Logs in with MiAuth |
 | `msky logout` | Removes the saved token of the account in use (`--all`: of every account) |
 
 An account is `name`, `@name`, `@name@host`, or its address (`https://misskey.io/@name`). A note is its ID or its address (`https://misskey.io/notes/ID`). Either address works without `https://`.
@@ -75,7 +81,7 @@ Any other value is a usage error (exit 1). `--reposts` keeps the account's renot
 
 `msky login` logs in on the server with [MiAuth](https://misskey-hub.net/en/docs/for-developers/api/token/miauth/). It prints an address on the server, `https://misskey.io/miauth/<session>?name=msky&permission=...`, on stderr, and opens it in the web browser when stderr is a terminal (with `MSKY_BROWSER` when set, else `xdg-open`, `open`, or the Windows URL handler). Open it where you are signed in to the server and allow the access; msky asks the server every two seconds whether it was allowed, and saves the token it gets. msky never sees your password.
 
-The access is read-only: msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions`, and for nothing that writes. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
+msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post`, and `write:following` for `follow` and `unfollow`, and for nothing else: it deletes nothing, reacts to nothing, and changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
 
 The token is saved per server, as bsky saves its sessions: in `accounts/<host>.json` in the config directory (`MSKY_CONFIG_DIR`, else `msky` in the platform's config folder: `~/.config/msky` on Linux, `~/Library/Application Support/msky` on macOS, `%APPDATA%\msky` on Windows), readable and writable by you alone on Unix (mode 0600). `accounts.json` beside it names the server of the account in use, the one logged in last; it holds no secret. Logging in on the same server again replaces its account.
 
@@ -84,6 +90,68 @@ With a token saved for the server, every command sends it to that server, and on
 `timeline` reads pages as `author` does, and leaves the renotes out unless `--reposts` asks for them. `notifications` reads them the same way, and leaves them unread on the server. `msky logout` removes the token of the account in use, or of the one on `--host`, and prints `logged out @name@host`; `--all` removes every one. The access stays listed in the server's settings, where you can revoke it.
 
 Text that others wrote is printed without its control characters, so an escape sequence in a note or a name cannot set the clipboard or the window title, or clear the screen. A note's reactions are listed ten kinds at most, the most given first; `--json` has them all.
+
+### Posting
+
+`msky post TEXT` posts a note as the account logged in on the server and prints its address; TEXT `-` reads the text from stdin. It takes the options of bsky's `post`: `--image PATH` up to four times, or one `--video PATH`, and `--alt TEXT` for each of them in the same order; `--reply NOTE` for the note it answers; `--quote NOTE` for the note it quotes (Misskey's quote renote); and `--no-card` (below). Misskey's own are `--cw TEXT`, a content warning shown in place of the text until it is opened, and `--visibility public|home|followers` (`public` by default). The files are uploaded to your drive first (`drive/files/create`, with the alt text as their caption) and the note is made with them (`notes/create`). A note given to `--reply` or `--quote` is read first, and has to be one on the server posted to; a note of another server is given by its address there.
+
+What can be told before anything is sent is a usage error (exit 1) and nothing is sent: a text over 3000 characters (Misskey's limit, counted in code points as its API counts them, after the text is trimmed as the server trims it), a content warning over 100 or an alt text over 512, more than four pictures, pictures and a video together, more `--alt` than files, a note with no text, file or quote, a visibility Misskey does not have, a note to reply to or quote on another server, a file larger than the account may upload (the `maxFileSizeMb` that `i` gives), and a login that may not write. A file that cannot be read is exit 3. A post is sent once and never tried again; when the note cannot be made after its files were uploaded, the files stay in your drive.
+
+#### Link previews
+
+Bluesky and Misskey show a link's page differently. On Bluesky the client that posts reads the page and sends the card with the post, which is what bsky does. On Misskey nothing of the kind is sent: the note is its text, and each client that shows it draws a preview under the addresses it finds there. Misskey's web client parses the text as MFM, takes every address written as it is (`https://...`), in angle brackets (`<https://...>`) or as a link with a label (`[label](https://...)`), leaves out silent links (`?[label](https://...)`) and the address of the note quoted, and for each one asks its own server `GET /url?url=<address>&lang=<language>`. The server reads the page with [summaly](https://github.com/misskey-dev/summaly) (its Open Graph, Twitter card and other tags) and answers the title, description, thumbnail, icon and site name; the thumbnail and icon come through the server's media proxy. The server keeps an answer for an hour and marks it to be cached for a day, a failure too, and an administrator can turn previews off (`URL_PREVIEW_DISABLED`). The sources are [extract-url-from-mfm.ts](https://github.com/misskey-dev/misskey/blob/develop/packages/frontend/src/utility/extract-url-from-mfm.ts), [use-note.ts](https://github.com/misskey-dev/misskey/blob/develop/packages/frontend/src/composables/use-note.ts), [MkUrlPreview.vue](https://github.com/misskey-dev/misskey/blob/develop/packages/frontend/src/components/MkUrlPreview.vue), [UrlPreviewService.ts](https://github.com/misskey-dev/misskey/blob/develop/packages/backend/src/server/web/UrlPreviewService.ts) and the [MFM syntax](https://github.com/misskey-dev/mfm.js/blob/develop/docs/syntax.md).
+
+So msky sends the text as it is, and the preview is whatever the server of each viewer makes of the page. Every address in the text gets one, not only the first, and a note with pictures gets them as well. A server of another kind (Mastodon, for one) that receives the note makes its own preview in its own way.
+
+`--no-card` writes every link in the text as a silent link, which Misskey's clients show no preview of: `https://example.com/a` is sent as `?[<plain>https://example.com/a</plain>](https://example.com/a)`, which reads as the address it was (the `<plain>` keeps the address in the label from being read as MFM), and `[label](https://...)` as `?[label](https://...)`. The text is counted for the limit as it is sent. A server of another kind gets the link without the silent mark and may still show a preview.
+
+#### Checking the preview before posting
+
+`msky post --dry-run` does everything `post` does except write: it checks the note, reads the files, asks the server who the account is and reads the notes to reply to and quote, then prints what it would send and asks the server for the preview of the first address Misskey would show one under, as Misskey's web client asks for it (without the part after `#`, with `lang=ja-JP`). Nothing is uploaded or posted. It needs a login, or `MSKY_TOKEN`, as `post` does, so a job that dry-runs also finds a token that is missing or turned down.
+
+```
+$ msky post --dry-run "New article https://debimate.jp/post/a/"
+dry run: nothing was sent to misskey.io
+as @nchika@misskey.io, public
+text:
+New article https://debimate.jp/post/a/
+preview of https://debimate.jp/post/a/:
+  title: The article's title
+  description: What the page says it is about
+  image: <the server's media proxy>/preview.webp?url=...&preview=1
+  site: debimate
+```
+
+With `--json` it prints one line: `{"dryRun": true, "host", "username", "note": {"text", "cw", "visibility", "replyId", "renoteId", "files": [{"path", "name", "size", "alt"}]}, "previewed": [every address that gets a preview], "preview": {"url", "title", "description", "thumbnail", "icon", "sitename", "sensitive"}}`, `preview` null when no address gets one. When the server cannot make the preview (the page is down, not yet published, or the server makes no previews), it prints the same with `"preview": null` and `"previewError"`, and exits 4, so a job stops before it posts a note without one. As the server keeps a failure for a day, ask for the preview only once the page is up.
+
+#### Posting from CI
+
+`MSKY_TOKEN` holds an access token to use in place of the saved login, for a job with no one at the keyboard; it goes with `MSKY_HOST` (misskey.io when not set, and not the server of a saved login). It is used on that server only, for every command, and it is never printed. Make the token on the server in Settings, API, Generate access token, with "View your account information" (`read:account`) and "Compose or delete notes" (`write:notes`), and, to attach files and to follow, "Edit or delete your Drive files and folders" (`write:drive`) and "Follow or unfollow other accounts" (`write:following`). A token the server turns down says what it needs (exit 4).
+
+A GitHub Actions step, with the token in the repository's secrets as `MSKY_TOKEN`:
+
+```yaml
+- name: Install msky
+  run: cargo install --locked --git https://github.com/nao1215/misskey-terminal-client
+- name: Check the preview
+  env:
+    MSKY_HOST: misskey.io
+    MSKY_TOKEN: ${{ secrets.MSKY_TOKEN }}
+    URL: https://debimate.jp/post/a/
+  run: msky post --dry-run --json "New article $URL" | jq -e '.preview.title'
+- name: Post
+  env:
+    MSKY_HOST: misskey.io
+    MSKY_TOKEN: ${{ secrets.MSKY_TOKEN }}
+    URL: https://debimate.jp/post/a/
+  run: msky post "New article $URL"
+```
+
+The job's log masks the secret, and msky does not print it. The dry run exits 4 when the server makes no preview, and `jq -e` fails the step when the preview has no title. While this repository is private, `cargo install --git` needs credentials that can read it.
+
+### Following
+
+`msky follow ACTOR` follows the account (`following/create`) and prints `following @name@host`; one followed already is said so and nothing is sent. An account that approves its followers gets a request, `asked to follow @name@host; they approve their followers`. `msky unfollow ACTOR` unfollows (`following/delete`), or takes back a request not yet approved (`following/requests/cancel`); an account you do not follow, and yourself, are a usage error (exit 1). ACTOR is written as for `author`; an address on another server is a usage error, as the account is followed from the server logged in on (give it as `@name@host`).
 
 ### Saving files
 
@@ -99,7 +167,7 @@ A file is named after the note it is attached to, its place among that note's fi
 {"id":"9xyz0abc12","createdAt":"2026-11-26T10:54:49.672Z","url":"https://misskey.io/notes/9xyz0abc12","uri":null,"user":{"id":"9u0000abcd","username":"alice","host":"misskey.io","name":"Alice"},"text":"山の写真 🏔️","cw":null,"reactionCount":19,"reactions":{":blobcat@misskey.design:":2,":igyo@.:":12,"👍":5},"renoteCount":3,"repliesCount":1,"files":[{"id":"9xyz0f0001","name":"mountain.jpg","url":"https://media.misskey.example/files/mountain.jpg","type":"image/jpeg","size":204800,"isSensitive":false}],"replyId":null,"renoteId":null,"renote":null}
 ```
 
-`url` is the note on the server asked, `uri` where a note of another server was first posted. `host` is the server the account is on, filled in where Misskey writes null for an account of the server asked. `reactions` keeps the server's keys: `:name@.:` is a custom emoji of the server asked. `renote` is the note a renote or a quote carries, in the same shape. `timeline --json` prints notes in that shape. `notifications --json` prints one line per notification: `{"id", "createdAt", "type", "user", "reaction", "note"}`, where `type` is Misskey's (`follow`, `mention`, `reply`, `renote`, `quote`, `reaction`, ...), `user` is in the shape of a note's `user` (null for what the server itself says), and `note` is the note it is about in the shape above (or null). `whoami --json` prints the account as a note's `user` with `url`, `description`, `followersCount`, `followingCount` and `notesCount`. `logout --json` prints `{"loggedOut": [{"id", "username", "host"}]}`. `download --json` and `author --download --json` print one line per saved file instead, as bsky's `download` does with `post`: `{"note": "<the note's address>", "kind": "image" | "video" | "audio" | "file", "url": "<where it was fetched>", "path": "<where it was saved>"}`. An error is printed as `{"error": ..., "hint": ..., "status": ...}` on stdout as well as on stderr.
+`url` is the note on the server asked, `uri` where a note of another server was first posted. `host` is the server the account is on, filled in where Misskey writes null for an account of the server asked. `reactions` keeps the server's keys: `:name@.:` is a custom emoji of the server asked. `renote` is the note a renote or a quote carries, in the same shape. `timeline --json` prints notes in that shape. `notifications --json` prints one line per notification: `{"id", "createdAt", "type", "user", "reaction", "note"}`, where `type` is Misskey's (`follow`, `mention`, `reply`, `renote`, `quote`, `reaction`, ...), `user` is in the shape of a note's `user` (null for what the server itself says), and `note` is the note it is about in the shape above (or null). `whoami --json` prints the account as a note's `user` with `url`, `description`, `followersCount`, `followingCount` and `notesCount`. `logout --json` prints `{"loggedOut": [{"id", "username", "host"}]}`. `post --json` prints the note made as bsky's `post` prints its post, `{"uri": "<the note's address>", "id": "<its ID>"}` (a note of the server is known to others by that address); `--dry-run` prints as above. `follow --json` prints `{"id": "<the account's ID>"}`, with `"already": true` when it was followed already and `"requested": true` for a request; `unfollow --json` prints `{"deleted": "<the account's ID>"}`, as bsky's do with the follow's record. `download --json` and `author --download --json` print one line per saved file instead, as bsky's `download` does with `post`: `{"note": "<the note's address>", "kind": "image" | "video" | "audio" | "file", "url": "<where it was fetched>", "path": "<where it was saved>"}`. An error is printed as `{"error": ..., "hint": ..., "status": ...}` on stdout as well as on stderr.
 
 ### Rate limits
 
@@ -110,6 +178,7 @@ A server that answers it is asked too often (HTTP 429, `RATE_LIMIT_EXCEEDED`) is
 | Variable | Meaning |
 |---|---|
 | `MSKY_HOST` | Server to read (also `--host`); the account in use's, else misskey.io, by default |
+| `MSKY_TOKEN` | Access token to use in place of the saved login, on `MSKY_HOST` (or `--host`, else misskey.io) only |
 | `MSKY_CONFIG_DIR` | Where the logins are saved |
 | `MSKY_BROWSER` | The program `msky login` opens the address with |
 | `MSKY_MIAUTH_SESSION` | The MiAuth session ID `msky login` uses instead of a random one; for tests against a stand-in server |
@@ -121,9 +190,9 @@ A server that answers it is asked too often (HTTP 429, `RATE_LIMIT_EXCEEDED`) is
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Usage error: an unknown flag, a malformed `--host`, something that is not a note or an account, no login where one is needed, a login not allowed in time or denied |
+| 1 | Usage error: an unknown flag, a malformed `--host`, something that is not a note or an account, no login where one is needed, a login not allowed in time or denied, a note `post` can tell is wrong before it is sent, a login that may not post or follow |
 | 3 | A file could not be read or written: the output, a download, a login file |
-| 4 | The server could not be reached or said no |
+| 4 | The server could not be reached or said no, or could not make the preview `post --dry-run` asked for |
 
 ## License
 

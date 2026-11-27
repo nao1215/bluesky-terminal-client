@@ -9,7 +9,7 @@ use serde_json::Value;
 
 /// `User` (the lite form notes carry; `UserDetailed` from `users/show` has
 /// these and more).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct User {
     pub id: String,
@@ -23,6 +23,15 @@ pub struct User {
     pub followers_count: Option<u64>,
     pub following_count: Option<u64>,
     pub notes_count: Option<u64>,
+    /// Whether the account asking follows it (`UserDetailed`, logged in).
+    pub is_following: bool,
+    /// Whether it approves its followers.
+    pub is_locked: bool,
+    /// Whether the account asking has asked to follow it, not yet approved.
+    pub has_pending_follow_request_from_you: bool,
+    /// What the account may do on its server (`i` only): `maxFileSizeMb`
+    /// is the largest file it may upload.
+    pub policies: Option<Value>,
 }
 
 /// `Notification`: what happened, who did it, and the note it is about.
@@ -90,6 +99,8 @@ pub struct Note {
     pub poll: Option<Value>,
     /// Where a note from another server was first posted.
     pub uri: Option<String>,
+    /// Its address on the server it came from, for one of another server.
+    pub url: Option<String>,
 }
 
 impl Note {

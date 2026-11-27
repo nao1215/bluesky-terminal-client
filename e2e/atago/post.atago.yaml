@@ -1,0 +1,353 @@
+# msky post: a note with its files, as the account of MSKY_TOKEN (the way
+# a CI job posts) or of a saved login. The Misskey server is an atago mock,
+# so nothing reaches a real server. The tokens below are throwaway values;
+# they are masked in reports all the same.
+version: "1"
+
+suite:
+  name: msky post
+
+secrets:
+  - e2e-env-token-0001
+  - e2e-saved-token-0002
+
+scenarios:
+  # The pictures are uploaded to the drive with their alt text, then the
+  # note is made with them; the token goes with every call and is never
+  # printed.
+  - name: post uploads the pictures and makes the note with them
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/i
+            json: { id: u-me, username: nchika, policies: { maxFileSizeMb: 30 } }
+          - method: POST
+            path: /api/notes/show
+            json: { id: 9old, text: "前のノート" }
+          - method: POST
+            path: /api/drive/files/create
+            json: { id: f-photo, name: photo.png, type: image/png }
+          - method: POST
+            path: /api/notes/create
+            json: { createdNote: { id: 9new, text: "新しい記事 🐈‍⬛" } }
+    steps:
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: msky post "新しい記事 🐈‍⬛ https://debimate.jp/post/a/" --image photo.png --alt "黒猫 🐈‍⬛ の写真" --cw ネタバレ --visibility home --reply 9old --host ${api.url}
+          env: &env
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "${api.url}/notes/9new\n"
+          stderr:
+            empty: true
+      - assert:
+          mock:
+            name: api
+            path: /api/drive/files/create
+            count: 1
+            header: { name: Content-Type, contains: "multipart/form-data; boundary=" }
+            body:
+              contains:
+                - "name=\"i\"\r\n\r\ne2e-env-token-0001\r\n"
+                - "name=\"name\"\r\n\r\nphoto.png\r\n"
+                - "name=\"comment\"\r\n\r\n黒猫 🐈‍⬛ の写真\r\n"
+                - "filename=\"photo.png\""
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            count: 1
+            body:
+              json:
+                - { path: "$.i", equals: e2e-env-token-0001 }
+                - { path: "$.text", equals: "新しい記事 🐈‍⬛ https://debimate.jp/post/a/" }
+                - { path: "$.cw", equals: ネタバレ }
+                - { path: "$.visibility", equals: home }
+                - { path: "$.replyId", equals: 9old }
+                - { path: "$.fileIds[0]", equals: f-photo }
+      - run:
+          command: msky post "二つ目" --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.uri", equals: "${api.url}/notes/9new" }
+              - { path: "$.id", equals: 9new }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            count: 2
+            body:
+              json:
+                - { path: "$.text", equals: 二つ目 }
+                - { path: "$.visibility", equals: public }
+
+  # The text can come from stdin, and the server from MSKY_HOST, as a CI
+  # job gives them.
+  - name: post reads the text from stdin with - and posts on MSKY_HOST
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: 9in } } }
+    steps:
+      - run:
+          command: msky post -
+          stdin: "ブログを更新しました 📝\nhttps://debimate.jp/post/b/\n"
+          env:
+            MSKY_HOST: ${api.url}
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "${api.url}/notes/9in\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            body:
+              json: { path: "$.text", equals: "ブログを更新しました 📝\nhttps://debimate.jp/post/b/" }
+
+  # --dry-run shows what would be sent and the server's preview of the
+  # first link, asked as Misskey's web client asks for it, and sends
+  # nothing: no upload, no note.
+  - name: post --dry-run shows the note and the preview of its first link and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - method: GET
+            path: /url
+            json:
+              url: "https://debimate.jp/post/a/"
+              title: "記事の題 👨‍👩‍👧"
+              description: "記事の説明"
+              thumbnail: "${api.url}/proxy/preview.webp?url=ogp.png"
+              icon: null
+              sitename: debimate
+              sensitive: false
+              player: { url: null }
+          - { method: POST, path: /api/drive/files/create, json: { id: f1 } }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: 9no } } }
+    steps:
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: msky post "新しい記事 https://debimate.jp/post/a/#top ?[静か](https://quiet.test/)" --image photo.png --dry-run --json --host ${api.url}
+          env: &env2
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.dryRun", equals: true }
+              - { path: "$.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.username", equals: nchika }
+              - { path: "$.note.text", equals: "新しい記事 https://debimate.jp/post/a/#top ?[静か](https://quiet.test/)" }
+              - { path: "$.note.visibility", equals: public }
+              - { path: "$.note.files[0].name", equals: photo.png }
+              - { path: "$.previewed[0]", equals: "https://debimate.jp/post/a/#top" }
+              - { path: "$.preview.title", equals: "記事の題 👨‍👩‍👧" }
+              - { path: "$.preview.description", equals: 記事の説明 }
+              - { path: "$.preview.thumbnail", equals: "${api.url}/proxy/preview.webp?url=ogp.png" }
+      - assert:
+          mock:
+            name: api
+            path: /url
+            method: GET
+            count: 1
+            query: { name: url, equals: "https://debimate.jp/post/a/" }
+      - assert:
+          mock: { name: api, path: /url, query: { name: lang, equals: ja-JP } }
+      - assert:
+          mock: { name: api, path: /api/drive/files/create, count: 0 }
+      - assert:
+          mock: { name: api, path: /api/notes/create, count: 0 }
+      - run:
+          command: msky post "新しい記事 https://debimate.jp/post/a/" --dry-run --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              dry run: nothing was sent to 127.0.0.1:${api.port}
+              as @nchika@127.0.0.1:${api.port}, public
+              text:
+              新しい記事 https://debimate.jp/post/a/
+              preview of https://debimate.jp/post/a/:
+                title: 記事の題 👨‍👩‍👧
+                description: 記事の説明
+                image: ${api.url}/proxy/preview.webp?url=ogp.png
+                site: debimate
+      - assert:
+          mock: { name: api, path: /api/notes/create, count: 0 }
+
+  # A preview the server cannot make fails the dry run (exit 4), so a CI
+  # job stops before it posts a note without one.
+  - name: post --dry-run fails when the server cannot make the preview
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - method: GET
+            path: /url
+            status: 422
+            json: { error: { code: URL_PREVIEW_FAILED, message: "Failed to get preview" } }
+    steps:
+      - run:
+          command: msky post "https://down.test/a" --dry-run --json --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 4
+          stdout:
+            contains: ["\"preview\":null", "\"previewError\":", "URL_PREVIEW_FAILED"]
+          stderr:
+            contains:
+              - "error: 127.0.0.1:${api.port} could not make a preview of https://down.test/a: URL_PREVIEW_FAILED: Failed to get preview"
+              - "hint: check that the page is up"
+
+  # --no-card writes the links as silent links, which Misskey shows no
+  # preview of; the note reads as before.
+  - name: post --no-card makes the links silent
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: 9nc } } }
+    steps:
+      - run:
+          command: msky post "記事 https://debimate.jp/post/a/ と [前回](https://debimate.jp/post/z/)" --no-card --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            body:
+              json:
+                path: "$.text"
+                equals: "記事 ?[<plain>https://debimate.jp/post/a/</plain>](https://debimate.jp/post/a/) と ?[前回](https://debimate.jp/post/z/)"
+
+  # What can be told before anything is sent is exit 1, and nothing is
+  # asked of the server.
+  - name: what is wrong with a note is exit 1 before anything is sent
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+    steps:
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: msky post x --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --host ${api.url}
+          env: &env3
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: a note can have at most 4 pictures\n"
+      - fixture: { file: long.txt, from: testdata/long.txt }
+      - run:
+          command: msky post - --host ${api.url}
+          stdin: { file: long.txt }
+          env: *env3
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: the note is 3001 characters; the limit is 3000\n"
+      - run:
+          command: msky post x --cw "" --host ${api.url}
+          env: *env3
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: --cw is empty"
+      - run:
+          command: msky post "" --host ${api.url}
+          env: *env3
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: the note is empty"
+      - run:
+          command: msky post x --visibility specified --host ${api.url}
+          env: *env3
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid value 'specified' for '--visibility <VISIBILITY>'"
+      - run:
+          command: msky post x --image gone.png --host ${api.url}
+          env: *env3
+      - assert:
+          exit_code: 3
+          stderr:
+            contains: "error: cannot read gone.png"
+      - assert:
+          mock: { name: api, path: /api/i, count: 0 }
+
+  # A login saved when msky could only read says to log in again; none at
+  # all says to log in. Nothing is sent either way.
+  - name: post with a read-only login or none says to log in, and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: 9x } } }
+    steps:
+      - run:
+          command: msky post hello --host ${api.url}
+          env: &cfg
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `msky login --host 127.0.0.1:${api.port}`
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: '{"service": "${api.url}", "userId": "u-me", "username": "nchika", "token": "e2e-saved-token-0002"}'
+      - run:
+          command: msky post hello --host ${api.url}
+          env: *cfg
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: the login saved for 127.0.0.1:${api.port} does not allow msky to post notes: it lacks write:notes
+              hint: it was made when msky could only read; run `msky login --host 127.0.0.1:${api.port}` again and allow the access
+      - assert:
+          mock: { name: api, path: /api/notes/create, count: 0 }
+
+  # A token the server turns down for lacking a permission says what the
+  # token needs.
+  - name: an MSKY_TOKEN without the permission says what it needs
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/i
+            status: 403
+            json: { error: { code: PERMISSION_DENIED, message: "Your app does not have the necessary permissions to use this endpoint." } }
+          - method: POST
+            path: /api/notes/create
+            status: 403
+            json: { error: { code: PERMISSION_DENIED, message: "Your app does not have the necessary permissions to use this endpoint." } }
+    steps:
+      - run:
+          command: msky post hello --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 4
+          stderr:
+            contains:
+              - "error: notes/create failed: PERMISSION_DENIED"
+              - "hint: the token in MSKY_TOKEN was not given that permission; make one in Settings > API on 127.0.0.1:${api.port} with read:account, write:notes, write:drive and write:following"
+            not_contains: e2e-env-token-0001

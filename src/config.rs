@@ -22,6 +22,19 @@ use crate::error::{Error, Result};
 /// Environment variable that overrides the config directory.
 pub const CONFIG_DIR_ENV: &str = "MSKY_CONFIG_DIR";
 
+/// Environment variable holding an access token to use instead of the
+/// saved logins: one made in the server's settings (Settings, API), for
+/// a run with no one at the keyboard, such as a CI job.
+pub const TOKEN_ENV: &str = "MSKY_TOKEN";
+
+/// The token `MSKY_TOKEN` holds, if it holds one.
+pub fn env_token() -> Option<String> {
+    std::env::var(TOKEN_ENV)
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
 const ACCOUNTS_DIR: &str = "accounts";
 const ACCOUNTS_FILE: &str = "accounts.json";
 
@@ -37,6 +50,10 @@ pub struct Session {
     pub username: String,
     /// The access token MiAuth gave.
     pub token: String,
+    /// What the token was given, as `msky login` asked for it. A login
+    /// saved before msky could write has none of the `write:` ones.
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 impl std::fmt::Debug for Session {
@@ -45,6 +62,7 @@ impl std::fmt::Debug for Session {
             .field("service", &self.service)
             .field("user_id", &self.user_id)
             .field("username", &self.username)
+            .field("permissions", &self.permissions)
             .finish_non_exhaustive()
     }
 }
@@ -332,6 +350,7 @@ mod tests {
             user_id: format!("id-{name}"),
             username: name.into(),
             token: format!("{FAKE}-{name}"),
+            permissions: vec!["read:account".into()],
         }
     }
 

@@ -14,6 +14,7 @@ mod clock;
 mod config;
 mod download;
 mod error;
+mod mfm;
 mod miauth;
 mod text;
 
@@ -45,8 +46,9 @@ struct Cli {
 }
 
 const AFTER_HELP: &str = "\
-msky reads what a Misskey server shows to visitors, or, after `msky login`,
-what it shows to your account there, with read-only access. A note is its
+msky reads what a Misskey server shows to visitors, or, after `msky login`
+(or with a token in MSKY_TOKEN), what it shows to your account there, and
+posts and follows as that account. A note is its
 ID or its address (https://misskey.io/notes/ID); an account is name, @name,
 @name@host, or its address (https://misskey.io/@name). An address is read
 on its own server, whatever --host says.
@@ -58,8 +60,12 @@ fn run(cli: Cli) -> Result<()> {
     let accounts = config::config_dir().map(config::AccountStore::open);
     // A broken login file is what logout takes away, so it does not stop it.
     let logout = matches!(cli.command, Some(cli::Command::Logout { .. }));
+    let env_token = config::env_token();
     let origin = match cli.host.as_deref() {
         Some(h) => api::normalize_host(h)?,
+        // A token from the environment is not of the account in use: it
+        // is of the server --host names, else of misskey.io.
+        None if env_token.is_some() => api::normalize_host(api::DEFAULT_HOST)?,
         // The account in use names the server when nothing else does.
         None => match &accounts {
             Ok(a) => match a.current() {
@@ -86,6 +92,7 @@ fn run(cli: Cli) -> Result<()> {
         json: cli.json,
         host_given: cli.host.is_some(),
         accounts,
+        env_token,
     };
     cli::run(cmd, &ctx)
 }

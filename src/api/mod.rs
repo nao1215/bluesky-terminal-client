@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Kind, Result};
-use types::{Note, Notification, User};
+use types::{DriveFile, Note, Notification, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
 pub const DEFAULT_HOST: &str = "misskey.io";
@@ -169,22 +169,41 @@ impl Client {
     /// and said no) from a call that failed on the way.
     fn send(&self, endpoint: &str, body: &Value) -> Result<Answer> {
         let url = format!("{}/api/{endpoint}", self.origin);
-        let sent = match (&self.token, body) {
+        let sent = self.signed(body);
+        self.exchange(endpoint, true, &|| {
+            self.agent
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .send(sent.as_str())
+        })
+    }
+
+    /// `body` with the token in it as `i`, as the server reads it.
+    fn signed(&self, body: &Value) -> String {
+        match (&self.token, body) {
             (Some(t), Value::Object(fields)) => {
                 let mut fields = fields.clone();
                 fields.insert("i".into(), json!(t));
                 Value::Object(fields).to_string()
             }
             _ => body.to_string(),
-        };
+        }
+    }
+
+    /// Make the request `make` makes and read the answer. When `retry`, a
+    /// call turned away for being asked too often, or dropped by a busy
+    /// gateway, is made again after a wait; a write is not, as bsky sends
+    /// a write once: a gateway that dropped the answer may have let the
+    /// write through.
+    fn exchange(
+        &self,
+        endpoint: &str,
+        retry: bool,
+        make: &dyn Fn() -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    ) -> Result<Answer> {
         let mut attempt = 0;
         loop {
-            let mut resp = self
-                .agent
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .send(sent.as_str())
-                .map_err(|e| transport(endpoint, &e))?;
+            let mut resp = make().map_err(|e| transport(endpoint, &e))?;
             let status = resp.status().as_u16();
             let retry_after = resp
                 .headers()
@@ -210,7 +229,7 @@ impl Client {
             let err: ErrorBody = serde_json::from_str(&text).unwrap_or_default();
             let limited = status == 429 || err.error.code == "RATE_LIMIT_EXCEEDED";
             let busy = matches!(status, 502..=504);
-            if (limited || busy) && attempt < MAX_RETRIES {
+            if retry && (limited || busy) && attempt < MAX_RETRIES {
                 let wait = retry_after
                     .map(Duration::from_secs)
                     .unwrap_or_else(|| Duration::from_secs(1 << attempt))
@@ -224,6 +243,109 @@ impl Client {
                 detail: err.error,
             }));
         }
+    }
+
+    /// Make a write: `endpoint` with `body`, sent once.
+    fn write(&self, endpoint: &str, body: &Value) -> Result<Value> {
+        let url = format!("{}/api/{endpoint}", self.origin);
+        let sent = self.signed(body);
+        let answer = self.exchange(endpoint, false, &|| {
+            self.agent
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .send(sent.as_str())
+        })?;
+        match answer {
+            Answer::Took(v) => Ok(v),
+            Answer::Refused(r) => Err(self.refusal(endpoint, r.status, r.detail)),
+        }
+    }
+
+    /// `drive/files/create`: upload `data` to the account's drive as
+    /// `name`, with `comment` as its alt text, and return the file. Sent
+    /// once, as every write is.
+    pub fn upload(&self, name: &str, data: &[u8], comment: Option<&str>) -> Result<DriveFile> {
+        let endpoint = "drive/files/create";
+        let url = format!("{}/api/{endpoint}", self.origin);
+        let boundary = boundary()?;
+        let mut fields: Vec<(&str, &str)> = Vec::new();
+        if let Some(t) = &self.token {
+            fields.push(("i", t));
+        }
+        fields.push(("name", name));
+        if let Some(c) = comment.filter(|c| !c.is_empty()) {
+            fields.push(("comment", c));
+        }
+        let body = multipart(&boundary, &fields, name, data);
+        let answer = self.exchange(endpoint, false, &|| {
+            self.agent
+                .post(&url)
+                .header(
+                    "Content-Type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .send(&body[..])
+        })?;
+        let v = match answer {
+            Answer::Took(v) => v,
+            Answer::Refused(r) => return Err(self.refusal(endpoint, r.status, r.detail)),
+        };
+        serde_json::from_value(v)
+            .map_err(|e| Error::api(format!("{endpoint}: unexpected answer: {e}")))
+    }
+
+    /// `notes/create`: post a note; the note the server made.
+    pub fn create_note(&self, body: &Value) -> Result<Note> {
+        let v = self.write("notes/create", body)?;
+        v.get("createdNote")
+            .cloned()
+            .and_then(|n| serde_json::from_value::<Note>(n).ok())
+            .filter(|n| !n.id.is_empty())
+            .ok_or_else(|| Error::api("notes/create: the answer has no note in it"))
+    }
+
+    /// `following/create`: follow the account `user_id`.
+    pub fn follow(&self, user_id: &str) -> Result<()> {
+        self.write("following/create", &json!({"userId": user_id}))
+            .map(drop)
+    }
+
+    /// `following/delete`: stop following the account `user_id`.
+    pub fn unfollow(&self, user_id: &str) -> Result<()> {
+        self.write("following/delete", &json!({"userId": user_id}))
+            .map(drop)
+    }
+
+    /// `following/requests/cancel`: take back the request to follow the
+    /// account `user_id`, which approves its followers.
+    pub fn cancel_follow_request(&self, user_id: &str) -> Result<()> {
+        self.write("following/requests/cancel", &json!({"userId": user_id}))
+            .map(drop)
+    }
+
+    /// `GET /url?url=...&lang=...`: the preview the server makes of the
+    /// page at `page`, as Misskey's web client asks for it under every
+    /// address in a note's text. A refusal is returned as one: the server
+    /// answers 422 for a page it could not read, 403 when it makes no
+    /// previews.
+    pub fn url_preview(
+        &self,
+        page: &str,
+        lang: &str,
+    ) -> Result<std::result::Result<Value, Refusal>> {
+        let url = format!("{}/url", self.origin);
+        Ok(
+            match self.exchange("url", true, &|| {
+                self.agent
+                    .get(&url)
+                    .query("url", page)
+                    .query("lang", lang)
+                    .call()
+            })? {
+                Answer::Took(v) => Ok(v),
+                Answer::Refused(r) => Err(r),
+            },
+        )
     }
 
     /// The error for a call the server answered with `status` and `detail`.
@@ -250,7 +372,13 @@ impl Client {
                 "{host} no longer takes the token msky saved; run `msky login --host {host}` again"
             )),
             "PERMISSION_DENIED" => err.with_hint(format!(
-                "the token msky saved for {host} was not given that permission; run `msky login --host {host}` again"
+                "the token msky has for {host} was not given that permission; run `msky login --host {host}` again"
+            )),
+            "NO_SUCH_REPLY_TARGET" | "NO_SUCH_RENOTE_TARGET" => err.with_hint(format!(
+                "check the note given to --reply or --quote, and that it is on {host}"
+            )),
+            "MAX_FILE_SIZE_EXCEEDED" | "NO_FREE_SPACE" => err.with_hint(format!(
+                "{host} does not take the file; make it smaller, or free space in your drive"
             )),
             "LTL_DISABLED" | "GTL_DISABLED" | "STL_DISABLED" => err.with_hint(format!(
                 "{host} does not show this timeline to you; try another one, or log in with `msky login --host {host}`"
@@ -415,6 +543,41 @@ fn transport(endpoint: &str, e: &ureq::Error) -> Error {
         format!("{endpoint}: cannot reach the server: {e}"),
     )
     .with_hint("check the network connection and --host")
+}
+
+/// A boundary for a multipart body: random, so no file holds it.
+fn boundary() -> Result<String> {
+    let mut b = [0u8; 16];
+    getrandom::fill(&mut b)
+        .map_err(|e| Error::io(format!("cannot upload a file: no randomness: {e}")))?;
+    let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    Ok(format!("msky-{hex}"))
+}
+
+/// A `multipart/form-data` body: `fields` as text, then the file `data`
+/// named `name`. A quote or a line break in the name would end its header
+/// early, so they are written as a browser writes them.
+fn multipart(boundary: &str, fields: &[(&str, &str)], name: &str, data: &[u8]) -> Vec<u8> {
+    let mut body = Vec::with_capacity(data.len() + 512);
+    for (k, v) in fields {
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n")
+                .as_bytes(),
+        );
+    }
+    let shown = name
+        .replace('"', "%22")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A");
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{shown}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(data);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    body
 }
 
 /// Say on stderr why the command is quiet, then wait. stdout carries the

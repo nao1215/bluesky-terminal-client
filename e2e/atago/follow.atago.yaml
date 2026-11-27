@@ -1,0 +1,113 @@
+# msky follow and unfollow, as the account of MSKY_TOKEN, against an atago
+# mock: nothing reaches a real server. The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky follow
+
+secrets:
+  - e2e-env-token-0003
+
+scenarios:
+  - name: follow follows an account, and says so when it already does
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice, host: misskey.design, name: "アリス 🐈‍⬛" }
+          - { method: POST, path: /api/following/create, json: { id: u-alice } }
+    steps:
+      - run:
+          command: msky follow @alice@misskey.design --host ${api.url}
+          env: &env
+            MSKY_TOKEN: e2e-env-token-0003
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "following @alice@misskey.design\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/users/show
+            body:
+              json:
+                - { path: "$.username", equals: alice }
+                - { path: "$.host", equals: misskey.design }
+      - assert:
+          mock:
+            name: api
+            path: /api/following/create
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-alice }
+                - { path: "$.i", equals: e2e-env-token-0003 }
+
+  - name: follow of an account followed already writes nothing
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - { method: POST, path: /api/users/show, json: { id: u-bob, username: bob, isFollowing: true } }
+          - { method: POST, path: /api/following/create, json: {} }
+    steps:
+      - run:
+          command: msky follow bob --json --host ${api.url}
+          env: { MSKY_TOKEN: e2e-env-token-0003 }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"already\":true,\"id\":\"u-bob\"}\n"
+      - assert:
+          mock: { name: api, path: /api/following/create, count: 0 }
+
+  - name: unfollow unfollows, and an account not followed is exit 1
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - { method: POST, path: /api/users/show, json: { id: u-bob, username: bob, isFollowing: true } }
+          - { method: POST, path: /api/following/delete, json: { id: u-bob } }
+      - name: other
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: nchika } }
+          - { method: POST, path: /api/users/show, json: { id: u-carol, username: carol } }
+    steps:
+      - run:
+          command: msky unfollow bob --json --host ${api.url}
+          env: { MSKY_TOKEN: e2e-env-token-0003 }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"deleted\":\"u-bob\"}\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/following/delete
+            count: 1
+            body:
+              json: { path: "$.userId", equals: u-bob }
+      - run:
+          command: msky unfollow carol --host ${other.url}
+          env: { MSKY_TOKEN: e2e-env-token-0003 }
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: you do not follow @carol@127.0.0.1:${other.port}\n"
+
+  - name: follow without a login says to log in, and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/following/create, json: {} }
+    steps:
+      - run:
+          command: msky follow bob --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: not logged in on 127.0.0.1:${api.port}"
+      - assert:
+          mock: { name: api, path: /api/following/create, count: 0 }

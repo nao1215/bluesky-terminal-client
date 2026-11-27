@@ -4,6 +4,9 @@
 //! same shape for every command (see [`format::note_json`]).
 
 mod format;
+mod post;
+
+pub use post::{PostArgs, Visibility};
 
 use std::collections::HashSet;
 use std::io::{self, IsTerminal, Write};
@@ -89,8 +92,52 @@ pub enum Command {
     },
     /// The account logged in on the server.
     Whoami,
-    /// Log in with MiAuth, with read-only access, and make the account the
-    /// one in use.
+    /// Post a note; TEXT `-` reads it from stdin.
+    ///
+    /// The files are uploaded to your drive and attached. Misskey makes no
+    /// card: each viewer's server shows a preview of the addresses in the
+    /// text. --dry-run shows what would be sent and that preview, and sends
+    /// nothing.
+    Post {
+        text: String,
+        /// A picture to attach, up to four times.
+        #[arg(long = "image", value_name = "PATH")]
+        images: Vec<PathBuf>,
+        /// Alt text, one per --image or --video, in the same order.
+        #[arg(long = "alt", value_name = "TEXT")]
+        alts: Vec<String>,
+        /// A video to attach, alone.
+        #[arg(long, value_name = "PATH")]
+        video: Option<PathBuf>,
+        /// The note this one replies to.
+        #[arg(long, value_name = "NOTE")]
+        reply: Option<String>,
+        /// The note this one quotes (a quote renote).
+        #[arg(long, value_name = "NOTE")]
+        quote: Option<String>,
+        /// Show no preview under the links: they are written as silent
+        /// links, `?[address](address)`, which Misskey shows no preview of.
+        #[arg(long)]
+        no_card: bool,
+        /// A content warning, shown in place of the text until it is opened.
+        #[arg(long, value_name = "TEXT")]
+        cw: Option<String>,
+        /// Who may see the note.
+        #[arg(long, value_enum, default_value_t = Visibility::Public)]
+        visibility: Visibility,
+        /// Print what would be sent and the server's preview of the first
+        /// link, and send nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Follow an account: name, @name, @name@host, or its address.
+    Follow { actor: String },
+    /// Unfollow an account, or take back a request to follow it.
+    Unfollow { actor: String },
+    /// Log in with MiAuth, and make the account the one in use.
+    ///
+    /// msky asks to read your account, timelines and notifications, to
+    /// post notes and upload their files, and to follow and unfollow.
     ///
     /// msky prints an address on the server (and opens it in the browser
     /// when it can): open it, signed in there, and allow the access. msky
@@ -210,6 +257,9 @@ pub struct Ctx {
     pub host_given: bool,
     /// The saved logins, or why there is no config directory to keep them.
     pub accounts: Result<AccountStore>,
+    /// The token `MSKY_TOKEN` holds: used on `origin` in place of a saved
+    /// login.
+    pub env_token: Option<String>,
 }
 
 impl Ctx {
@@ -221,6 +271,17 @@ impl Ctx {
     /// The account saved for the server at `origin`. A token is only ever
     /// sent to the server that gave it, scheme and port included.
     fn session(&self, origin: &str) -> Result<Option<Session>> {
+        if let Some(token) = &self.env_token
+            && origin == self.origin
+        {
+            return Ok(Some(Session {
+                service: origin.to_string(),
+                user_id: String::new(),
+                username: String::new(),
+                token: token.clone(),
+                permissions: Vec::new(),
+            }));
+        }
         let Ok(store) = &self.accounts else {
             return Ok(None);
         };
@@ -245,6 +306,58 @@ impl Ctx {
             Ok(client)
         } else {
             Err(not_logged_in(client.host()))
+        }
+    }
+}
+
+impl Ctx {
+    /// A client of the server `--host` names, as its account, that may do
+    /// what `needs` names (`write:notes`, ...), for `what` the command
+    /// does. A login saved with fewer permissions (one made before msky
+    /// could write) is a usage error before anything is sent. A token from
+    /// `MSKY_TOKEN` is taken as it is; the server says what it lacks.
+    fn writer(&self, needs: &[&str], what: &str) -> Result<Client> {
+        let client = self.account_client()?;
+        if self.env_token.is_some() {
+            return Ok(client);
+        }
+        if let Some(s) = self.session(&self.origin)? {
+            let missing: Vec<&str> = needs
+                .iter()
+                .copied()
+                .filter(|p| !s.permissions.iter().any(|q| q == p))
+                .collect();
+            if !missing.is_empty() {
+                let host = client.host();
+                return Err(Error::usage(format!(
+                    "the login saved for {host} does not allow msky to {what}: it lacks {}",
+                    missing.join(", ")
+                ))
+                .with_hint(format!(
+                    "it was made when msky could only read; run `msky login --host {host}` again and allow the access"
+                )));
+            }
+        }
+        Ok(client)
+    }
+
+    /// `e` with what to do about `MSKY_TOKEN` when it is the token the
+    /// server turned down.
+    fn explained(&self, e: Error) -> Error {
+        if self.env_token.is_none() {
+            return e;
+        }
+        let host = api::authority(&self.origin);
+        if e.message().contains("AUTHENTICATION_FAILED") {
+            e.with_hint(format!(
+                "{host} does not take the token in MSKY_TOKEN; check it, or make a new one in Settings > API"
+            ))
+        } else if e.message().contains("PERMISSION_DENIED") {
+            e.with_hint(format!(
+                "the token in MSKY_TOKEN was not given that permission; make one in Settings > API on {host} with read:account, write:notes, write:drive and write:following"
+            ))
+        } else {
+            e
         }
     }
 }
@@ -303,6 +416,36 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         } => timeline(ctx, out, kind, limit, reposts),
         Command::Notifications { limit } => notifications(ctx, out, limit),
         Command::Whoami => whoami(ctx, out),
+        Command::Post {
+            text,
+            images,
+            alts,
+            video,
+            reply,
+            quote,
+            no_card,
+            cw,
+            visibility,
+            dry_run,
+        } => post::post(
+            ctx,
+            out,
+            &PostArgs {
+                text,
+                images,
+                alts,
+                video,
+                reply,
+                quote,
+                no_card,
+                cw,
+                visibility,
+                dry_run,
+            },
+            &mut io::stdin(),
+        ),
+        Command::Follow { actor } => post::follow(ctx, out, &actor, true),
+        Command::Unfollow { actor } => post::follow(ctx, out, &actor, false),
         Command::Login { timeout } => {
             let mut err = io::stderr();
             login(
@@ -686,8 +829,8 @@ fn say(err: &mut dyn Write, s: &str) {
     let _: io::Result<()> = err.write_all(s.as_bytes()).and_then(|()| err.flush());
 }
 
-/// `msky login`: ask the server for read-only access with MiAuth, wait for
-/// it, and save the token for the server.
+/// `msky login`: ask the server for access with MiAuth, wait for it, and
+/// save the token for the server with the permissions it was asked for.
 fn login(
     ctx: &Ctx,
     out: &mut dyn Write,
@@ -706,7 +849,7 @@ fn login(
     say(
         err,
         &format!(
-            "To log in on {host}, open this address, signed in there, and allow msky to read your account:\n{url}\n"
+            "To log in on {host}, open this address, signed in there, and allow msky to read your account, post notes and follow:\n{url}\n"
         ),
     );
     if open_browser && browser::open(&url) {
@@ -733,6 +876,7 @@ fn login(
         user_id: me.id.clone(),
         username: me.username.clone(),
         token: access.token,
+        permissions: miauth::PERMISSIONS.iter().map(|p| p.to_string()).collect(),
     };
     store.save(&saved)?;
     if ctx.json {
@@ -1115,6 +1259,7 @@ mod tests {
             json: false,
             host_given: true,
             accounts: Err(Error::io("no config directory")),
+            env_token: None,
         };
         let e = search(&ctx, &mut Vec::new(), "  ", 5).unwrap_err();
         assert_eq!(e.kind(), crate::error::Kind::Usage);
@@ -1149,6 +1294,7 @@ mod tests {
             json,
             host_given: true,
             accounts: Ok(AccountStore::open(dir)),
+            env_token: None,
         }
     }
 
@@ -1170,7 +1316,7 @@ mod tests {
         )
     }
 
-    // The address asks for reading only; the check is asked every two
+    // The address asks for what msky does; the check is asked every two
     // seconds until the access is given, and the token is saved for the
     // server, with the account the check names.
     #[test]
@@ -1205,7 +1351,7 @@ mod tests {
             "the check carries no token"
         );
         assert!(
-            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions\n")),
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following\n")),
             "{err}"
         );
         assert!(!err.contains(FAKE) && !out.contains(FAKE));
@@ -1292,6 +1438,7 @@ mod tests {
                 user_id: format!("id-{name}"),
                 username: name.into(),
                 token: format!("{FAKE}-{name}"),
+                permissions: miauth::PERMISSIONS.iter().map(|p| p.to_string()).collect(),
             })
             .unwrap();
     }
