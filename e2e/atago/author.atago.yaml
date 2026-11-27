@@ -1,0 +1,378 @@
+# msky author: an account's notes, newest first. The account is looked up
+# with users/show, then its notes are read with users/notes, a page at a
+# time, each page older than the last note of the one before (untilId).
+version: "1"
+
+suite:
+  name: msky author
+
+scenarios:
+  - name: author prints the account's notes as text, emoji and CJK whole
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice, host: null, name: "家族👨‍👩‍👧 アリス" }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - id: 9c
+                createdAt: "2026-09-20T10:00:00.000Z"
+                user: { id: u-alice, username: alice, host: null, name: "家族👨‍👩‍👧 アリス" }
+                text: "山の写真 🇯🇵👍🏽\n二行目 مرحبا"
+                reactions: { "👍": 2, ":blobcat@.:": 3, ":igyo@other.example:": 1 }
+                renoteCount: 1
+                repliesCount: 4
+                files:
+                  - { id: f1, name: "山.png", type: image/png, size: 242, url: "${api.url}/files/f1.png" }
+              - id: 9b
+                createdAt: "2026-09-20T09:00:00.000Z"
+                user: { id: u-alice, username: alice, host: null, name: "家族👨‍👩‍👧 アリス" }
+                cw: "ネタバレ"
+                text: "結末は…"
+    steps:
+      - run:
+          command: msky author @alice --host ${api.url}
+          env: &env
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              家族👨‍👩‍👧 アリス @alice · 2026-09-20 10:00
+              山の写真 🇯🇵👍🏽
+              二行目 مرحبا
+              [1 picture]
+              :blobcat: 3  👍 2  :igyo@other.example: 1
+              ♡ 6  ⟳ 1  ↩ 4
+              ${api.url}/notes/9c
+
+              家族👨‍👩‍👧 アリス @alice · 2026-09-20 09:00
+              CW: ネタバレ
+              結末は…
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/notes/9b
+      # An account of the server asked is named with a null host, and its
+      # replies and renotes are left out unless asked for.
+      - assert:
+          mock:
+            name: api
+            path: /api/users/show
+            count: 1
+            body:
+              json:
+                - { path: "$.username", equals: alice }
+                - { path: "$.host", equals: null }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.userId", equals: u-alice }
+                - { path: "$.withReplies", equals: false }
+                - { path: "$.withRenotes", equals: false }
+                - { path: "$.withFiles", equals: false }
+
+  # Each page asks for what is still wanted, older than the last note of
+  # the page before. A page that brings nothing new ends it, so a server
+  # that ignores untilId is not asked for good.
+  - name: author reads pages back until -n notes came, and stops on a page with nothing new
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - { id: 9c, createdAt: "2026-09-20T10:00:00.000Z", user: { username: alice }, text: "three" }
+              - { id: 9b, createdAt: "2026-09-20T09:00:00.000Z", user: { username: alice }, text: "two" }
+    steps:
+      - run:
+          command: msky author alice -n 3 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["three", "two"]
+            not_contains: "one"
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            count: 2
+            body:
+              json:
+                - { path: "$.untilId", equals: 9b }
+                - { path: "$.limit", equals: 1 }
+      # -n 1 asks for one note, once.
+      - run:
+          command: msky author alice -n 1 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @alice · 2026-09-20 10:00
+              three
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/notes/9c
+      - assert:
+          mock: { name: api, path: /api/users/notes, count: 3 }
+
+  - name: author --replies --renotes asks for them, and a renote shows the note it renotes
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - id: 9d
+                createdAt: "2026-09-21T10:00:00.000Z"
+                user: { username: alice, name: Alice }
+                renoteId: 8a
+                renote:
+                  id: 8a
+                  createdAt: "2026-09-19T08:00:00.000Z"
+                  user: { username: bob, host: other.example, name: "Bob 🐈‍⬛" }
+                  text: "リノートされた"
+                  renoteCount: 5
+    steps:
+      - run:
+          command: msky author alice --replies --renotes --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              ⟳ Alice @alice renoted · 2026-09-21 10:00
+              Bob 🐈‍⬛ @bob@other.example · 2026-09-19 08:00
+              リノートされた
+              ♡ 0  ⟳ 5  ↩ 0
+              ${api.url}/notes/8a
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.withReplies", equals: true }
+                - { path: "$.withRenotes", equals: true }
+      # Misskey refuses replies with files-only; msky says so before it asks.
+      - run:
+          command: msky author alice --replies --with-files --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot be used with"
+      # The two pages of the first run, and nothing more.
+      - assert:
+          mock: { name: api, path: /api/users/notes, count: 2 }
+
+  - name: author --json prints one note per line in the shape every command uses
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - id: 9c
+                createdAt: "2026-09-20T10:00:00.000Z"
+                user: { id: u-alice, username: alice, host: null, name: "アリス" }
+                text: "hi\e]52;c;cHduZWQ=\a 🇯🇵"
+                cw: null
+                reactions: { "👍": 2, ":blobcat@.:": 3 }
+                renoteCount: 1
+                repliesCount: 4
+                files:
+                  - { id: f1, name: "a.png", type: image/png, size: 242, url: "${api.url}/files/f1.png", isSensitive: true }
+              - { id: 9b, createdAt: "2026-09-20T09:00:00.000Z", user: { username: alice }, text: "two" }
+    steps:
+      - run:
+          command: msky author alice --json -n 2 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{[^\n]*\}\n\{[^\n]*\}\n$'
+      - run:
+          command: msky author alice --json -n 1 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 9c }
+              - { path: "$.createdAt", equals: "2026-09-20T10:00:00.000Z" }
+              - { path: "$.url", equals: "${api.url}/notes/9c" }
+              - { path: "$.text", equals: "hi\e]52;c;cHduZWQ=\a 🇯🇵" }
+              - { path: "$.cw", equals: null }
+              - { path: "$.reactionCount", equals: 5 }
+              - { path: "$.reactions['👍']", equals: 2 }
+              - { path: "$.reactions[':blobcat@.:']", equals: 3 }
+              - { path: "$.renoteCount", equals: 1 }
+              - { path: "$.repliesCount", equals: 4 }
+              - { path: "$.files[0].url", equals: "${api.url}/files/f1.png" }
+              - { path: "$.files[0].type", equals: image/png }
+              - { path: "$.files[0].size", equals: 242 }
+              - { path: "$.user.username", equals: alice }
+              - { path: "$.user.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.user.name", equals: "アリス" }
+      # The escape sequence stays escaped in JSON, and is not printed raw.
+      - assert:
+          stdout:
+            contains: 'hi\u001b]52;c;cHduZWQ=\u0007 🇯🇵'
+
+  # The server is the one --host names, MSKY_HOST when it is not given, and
+  # the one an account's address names whatever either says. An account of
+  # another server is asked for with its host; one written with the host of
+  # the server asked is the server's own.
+  - name: author asks the server --host, MSKY_HOST or the account's address names
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: other.example }
+          - method: POST
+            path: /api/users/notes
+            json: []
+    steps:
+      - run:
+          command: msky author @bob@Other.Example
+          env:
+            TZ: UTC
+            MSKY_HOST: ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            empty: true
+      - assert:
+          mock:
+            name: api
+            path: /api/users/show
+            body:
+              json:
+                - { path: "$.username", equals: bob }
+                - { path: "$.host", equals: other.example }
+      - run:
+          command: msky author ${api.url}/@bob --host 127.0.0.1:9
+          env: *env
+      - assert:
+          exit_code: 0
+      - run:
+          command: msky author bob@127.0.0.1:${api.port} --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/users/show
+            count: 3
+            body:
+              json: { path: "$.host", equals: null }
+
+  - name: an account the server does not know is an API error with what to check
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            status: 404
+            json: { error: { message: "No such user.", code: NO_SUCH_USER, id: 4362f8dc-731f-4ad8-a694-be5a88922a24 } }
+    steps:
+      - run:
+          command: msky author nobody --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 4
+          stdout:
+            empty: true
+          stderr:
+            equals: |
+              error: users/show failed: NO_SUCH_USER: No such user.
+              hint: check the name, and that it is on 127.0.0.1:${api.port} (or pass --host)
+      - run:
+          command: msky author nobody --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 4
+          stdout:
+            json:
+              - { path: "$.error", equals: "users/show failed: NO_SUCH_USER: No such user." }
+              - { path: "$.status", equals: 4 }
+      - run:
+          command: msky author "@アリス" --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not an account"
+      - assert:
+          mock: { name: api, path: /api/users/show, count: 2 }
+
+  # --download saves the files of the notes listed, each named after its
+  # note, its place among the note's files and its type, and writes over
+  # nothing: a second run takes the next names.
+  - name: author --download saves the notes' files and never writes over one
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - id: 9c
+                createdAt: "2026-09-20T10:00:00.000Z"
+                user: { username: alice }
+                text: "写真と動画 📷"
+                files:
+                  - { id: f1, name: "山.PNG", type: image/png, size: 242, url: "${api.url}/files/f1.png" }
+                  - { id: f2, name: "clip", type: video/mp4, size: 1838, url: "${api.url}/files/f2" }
+              - { id: 9b, createdAt: "2026-09-20T09:00:00.000Z", user: { username: alice }, text: "no files" }
+          - { method: GET, path: /files/f1.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /files/f2, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+    steps:
+      - fixture: { file: expected/photo.png, from: testdata/photo.png }
+      - run:
+          command: msky author alice -n 2 -o out --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["写真と動画 📷\n[1 picture]\n[1 video]\n", "saved out", "9c-1.png\n", "9c-2.mp4\n", "no files"]
+      - assert:
+          dir: { path: out, count: 2, contains: [9c-1.png, 9c-2.mp4] }
+      - assert:
+          file: { path: out/9c-1.png, equals_file: expected/photo.png }
+      - run:
+          command: msky author alice -n 1 --download --json --host ${api.url}
+          env:
+            TZ: UTC
+            MSKY_DOWNLOAD_DIR: out
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 9c }
+              - { path: "$.saved[0]", matches: "9c-1 \\(1\\)\\.png$" }
+              - { path: "$.saved[1]", matches: "9c-2 \\(1\\)\\.mp4$" }
+      - assert:
+          dir: { path: out, count: 4, contains: ["9c-1 (1).png", "9c-2 (1).mp4"] }
+      - assert:
+          file: { path: out/9c-1.png, size: 242 }

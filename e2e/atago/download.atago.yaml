@@ -1,0 +1,190 @@
+# msky download: the files attached to one note, saved as
+# <note id>-<n>.<ext>. The extension is the one the file was uploaded with
+# when it agrees with the type the server detected, else the type's own,
+# and nothing is written over.
+version: "1"
+
+suite:
+  name: msky download
+
+scenarios:
+  - name: download saves each file of a note under the note's name, and prints where
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: 9abc
+              createdAt: "2026-09-20T10:00:00.000Z"
+              user: { username: alice }
+              text: "三つのファイル 👨‍👩‍👧"
+              files:
+                - { id: f1, name: "写真.PNG", type: image/png, size: 242, url: "${api.url}/files/f1" }
+                - { id: f2, name: "clip.exe", type: video/mp4, size: 1838, url: "${api.url}/files/f2" }
+                - { id: f3, name: "tool.exe", type: application/x-msdownload, size: 242, url: "${api.url}/files/f3" }
+          - { method: GET, path: /files/f1, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /files/f2, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+          - { method: GET, path: /files/f3, body_file: testdata/photo.png }
+    steps:
+      - fixture: { file: expected/photo.png, from: testdata/photo.png }
+      - fixture: { file: expected/clip.mp4, from: testdata/clip.mp4 }
+      - run:
+          command: msky download ${api.url}/notes/9abc -o 写真👨‍👩‍👧 --host 127.0.0.1:9
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            matches: '^[^\n]*9abc-1\.png\n[^\n]*9abc-2\.mp4\n[^\n]*9abc-3\.bin\n$'
+      - assert:
+          dir: { path: 写真👨‍👩‍👧, count: 3, contains: [9abc-1.png, 9abc-2.mp4, 9abc-3.bin] }
+      - assert:
+          file: { path: 写真👨‍👩‍👧/9abc-1.png, equals_file: expected/photo.png }
+      - assert:
+          file: { path: 写真👨‍👩‍👧/9abc-2.mp4, equals_file: expected/clip.mp4 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/show
+            body:
+              json: { path: "$.noteId", equals: 9abc }
+
+  - name: download writes over nothing, and --json says what each saved file is
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: 9abc
+              user: { username: alice }
+              files:
+                - { id: f1, name: "a.png", type: image/png, size: 242, url: "${api.url}/files/f1" }
+          - { method: GET, path: /files/f1, body_file: testdata/photo.png }
+    steps:
+      - fixture: { file: out/9abc-1.png, content: "already here" }
+      - run:
+          command: msky download 9abc --json --host ${api.url}
+          env:
+            MSKY_DOWNLOAD_DIR: out
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.noteId", equals: 9abc }
+              - { path: "$.url", equals: "${api.url}/files/f1" }
+              - { path: "$.type", equals: image/png }
+              - { path: "$.size", equals: 242 }
+              - { path: "$.path", matches: "9abc-1 \\(1\\)\\.png$" }
+      - assert:
+          file: { path: out/9abc-1.png, equals: "already here" }
+      - assert:
+          file: { path: "out/9abc-1 (1).png", size: 242 }
+
+  # A pure renote has no files of its own: those of the note it renotes
+  # are saved, under that note's ID.
+  - name: download of a renote saves the files of the note it renotes
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: rn1
+              user: { username: alice }
+              renoteId: orig
+              renote:
+                id: orig
+                user: { username: bob, host: other.example }
+                files:
+                  - { id: f1, name: "a.png", type: image/png, size: 242, url: "${api.url}/files/f1" }
+          - { method: GET, path: /files/f1, body_file: testdata/photo.png }
+    steps:
+      - run:
+          command: msky download rn1 -o out --host ${api.url}
+      - assert:
+          exit_code: 0
+      - assert:
+          dir: { path: out, count: 1, contains: [orig-1.png] }
+
+  # Only an http(s) address is fetched, and a file the server says is over
+  # 200 MB is not fetched at all; either leaves nothing behind.
+  - name: a file not at a web address, too large, or missing is an error and leaves nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: bad
+              user: { username: eve }
+              files:
+                - { id: f1, name: "p", type: text/plain, size: 1, url: "file:///etc/passwd" }
+          - method: POST
+            path: /api/notes/search
+            json: []
+      - name: big
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: big
+              user: { username: eve }
+              files:
+                - { id: f1, name: "v.mp4", type: video/mp4, size: 209715201, url: "${big.url}/files/v" }
+      - name: gone
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: gone
+              user: { username: eve }
+              files:
+                - { id: f1, name: "a.png", type: image/png, size: 1, url: "${gone.url}/files/missing" }
+    steps:
+      - run:
+          command: msky download bad -o out --host ${api.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: "error: file:///etc/passwd is not an http(s) address; nothing was written\n"
+      - run:
+          command: msky download big -o out --host ${big.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "is larger than 200 MB, the most msky saves; nothing was written"
+      - assert:
+          mock: { name: big, path: /files/v, count: 0 }
+      - run:
+          command: msky download gone -o out --host ${gone.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "/files/missing: HTTP 404"
+      - assert:
+          dir: { path: out, exists: false }
+
+  - name: a note without files, or not written as a note, is a usage error
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json: { id: plain, user: { username: alice }, text: "文字だけ" }
+    steps:
+      - run:
+          command: msky download plain -o out --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: plain has no files\n"
+      - run:
+          command: msky download ${api.url}/@alice --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not a note"
+      - assert:
+          mock: { name: api, path: /api/notes/show, count: 1 }
