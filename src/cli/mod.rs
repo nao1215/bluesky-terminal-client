@@ -22,28 +22,25 @@ use crate::error::{Error, Result};
 pub enum Command {
     /// An account's notes, newest first.
     ///
-    /// USER is name, @name, @name@host, or the account's address
-    /// (misskey.io/@name). Its replies and renotes are left out
-    /// unless asked for.
+    /// ACTOR is name, @name, @name@host, or the account's address
+    /// (misskey.io/@name). Pages are read until there are --limit notes or
+    /// the account has no more.
     Author {
-        user: String,
-        /// How many notes.
+        actor: String,
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
-        /// Include its replies.
+        /// Which of the account's notes.
+        #[arg(long, value_enum, default_value_t = AuthorFilter::WithReplies)]
+        filter: AuthorFilter,
+        /// Keep the notes the account renoted too.
         #[arg(long)]
-        replies: bool,
-        /// Include its renotes.
-        #[arg(long)]
-        renotes: bool,
-        /// Only the notes with files attached.
-        #[arg(long, conflicts_with = "replies")]
-        with_files: bool,
-        /// Save the files of the notes listed (in the folder -o names).
+        reposts: bool,
+        /// Save the files of the notes instead of printing them, in the
+        /// folder -o names or the download folder, as `download` does.
         #[arg(long)]
         download: bool,
-        /// Folder the files are saved in; giving it saves them. Default:
-        /// MSKY_DOWNLOAD_DIR, else msky in your Downloads folder.
+        /// The folder to save in instead of the download folder; giving it
+        /// saves the files as --download does.
         #[arg(short = 'o', long, value_name = "DIR")]
         output: Option<PathBuf>,
     },
@@ -52,21 +49,82 @@ pub enum Command {
     /// Notes that match QUERY, newest first.
     Search {
         query: String,
-        /// How many notes.
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
-    /// Save the files attached to a note: its ID or its address.
+    /// Save the files attached to a note in the download folder.
     ///
-    /// Each is named after the note, its place among the note's files, and
-    /// its type (9abc-1.png), and none is written over.
+    /// NOTE is its ID or its address. The files of the note it renotes or
+    /// quotes are saved too, each named after the note it is attached to,
+    /// its place there and its type (9abc-1.png); a name already taken gets
+    /// a number, so nothing is overwritten. Each saved file is printed.
     Download {
         note: String,
-        /// Folder the files are saved in. Default: MSKY_DOWNLOAD_DIR, else
-        /// msky in your Downloads folder.
+        /// The folder to save in instead of the download folder.
         #[arg(short = 'o', long, value_name = "DIR")]
         output: Option<PathBuf>,
     },
+}
+
+/// Which notes of an account `author` lists, by the names bsky's `--filter`
+/// takes. Misskey's `users/notes` filters by replies and by files; a video
+/// and an account's own threads are told here, from the notes it sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum AuthorFilter {
+    /// Notes and replies.
+    #[value(alias = "posts_with_replies")]
+    WithReplies,
+    /// Notes, not replies.
+    #[value(alias = "posts_no_replies")]
+    NoReplies,
+    /// Notes with files attached (pictures, videos, any file).
+    #[value(alias = "posts_with_media")]
+    Media,
+    /// Notes with a video attached.
+    #[value(alias = "posts_with_video")]
+    Video,
+    /// Notes, and the account's replies to its own notes.
+    #[value(alias = "posts_and_author_threads")]
+    Threads,
+}
+
+impl AuthorFilter {
+    /// What `users/notes` is asked for.
+    fn asked(self, reposts: bool) -> NoteFilter {
+        let (replies, files) = match self {
+            AuthorFilter::WithReplies | AuthorFilter::Threads => (true, false),
+            AuthorFilter::NoReplies => (false, false),
+            // Misskey takes no replies with files only.
+            AuthorFilter::Media | AuthorFilter::Video => (false, true),
+        };
+        NoteFilter {
+            replies,
+            renotes: reposts,
+            files,
+        }
+    }
+
+    /// Whether the server's answer is filtered again here, so a page brings
+    /// fewer than it holds.
+    fn narrows(self) -> bool {
+        matches!(self, AuthorFilter::Video | AuthorFilter::Threads)
+    }
+
+    /// Whether `n`, a note of the account `account`, is kept.
+    fn keeps(self, n: &Note, account: &str) -> bool {
+        match self {
+            AuthorFilter::Video => n
+                .attached()
+                .iter()
+                .any(|(_, _, f)| f.mime.starts_with("video/")),
+            // A reply is kept when it answers the account itself; one whose
+            // note the server did not send along cannot be told, and is not.
+            AuthorFilter::Threads => {
+                n.reply_id.is_none() || n.reply.as_ref().is_some_and(|r| r.author_id() == account)
+            }
+            _ => true,
+        }
+    }
 }
 
 /// What a command runs with.
@@ -105,25 +163,19 @@ const PIPE_CLOSED: &str = "the output was closed";
 fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
     match cmd {
         Command::Author {
-            user,
+            actor,
             limit,
-            replies,
-            renotes,
-            with_files,
+            filter,
+            reposts,
             download,
             output,
         } => {
-            let filter = NoteFilter {
-                replies,
-                renotes,
-                files: with_files,
-            };
             let save_in = if download || output.is_some() {
                 Some(download::download_dir(output)?)
             } else {
                 None
             };
-            author(ctx, out, &user, limit, filter, save_in)
+            author(ctx, out, &actor, limit, filter, reposts, save_in)
         }
         Command::Note { note } => show_note(ctx, out, &note),
         Command::Search { query, limit } => search(ctx, out, &query, limit),
@@ -150,31 +202,48 @@ fn text(out: &mut dyn Write, s: &str) -> Result<()> {
 }
 
 /// Pages from `fetch` (how many to ask for, and the ID to list older notes
-/// than) until `limit` notes have come or there are no more. A page that
-/// brings nothing new ends it too: a server that ignores `untilId` would
-/// otherwise be asked for the same page for good. Misskey may answer a page
-/// with fewer notes than asked for while there are more, so only an empty
-/// page says the end was reached.
+/// than) until `limit` notes that `keep` keeps have come or there are no
+/// more. A note a later page repeats is kept once, and a page that brings
+/// nothing new or starts from an ID seen before ends the reading: a server
+/// that ignores `untilId` would otherwise be asked for the same page for
+/// good. Misskey may answer with fewer notes than asked for while there
+/// are more, so only an empty page says the end was reached. When `keep`
+/// leaves notes out, every page is a full one: a page of one could take as
+/// many requests as the account has notes left out.
 fn pages(
     limit: usize,
+    full_pages: bool,
+    keep: impl Fn(&Note) -> bool,
     mut fetch: impl FnMut(usize, Option<&str>) -> Result<Vec<Note>>,
 ) -> Result<Vec<Note>> {
     let mut notes = Vec::new();
     let mut seen = HashSet::new();
+    let mut untils = HashSet::new();
     let mut until: Option<String> = None;
     while notes.len() < limit {
-        let page = fetch((limit - notes.len()).min(api::MAX_PAGE), until.as_deref())?;
+        let want = if full_pages {
+            api::MAX_PAGE
+        } else {
+            (limit - notes.len()).min(api::MAX_PAGE)
+        };
+        let page = fetch(want, until.as_deref())?;
         let Some(last) = page.last().map(|n| n.id.clone()) else {
             break;
         };
-        let before = notes.len();
-        notes.extend(page.into_iter().filter(|n| seen.insert(n.id.clone())));
-        if notes.len() == before || until.as_deref() == Some(last.as_str()) {
+        let mut new = false;
+        for n in page {
+            if seen.insert(n.id.clone()) {
+                new = true;
+                if keep(&n) && notes.len() < limit {
+                    notes.push(n);
+                }
+            }
+        }
+        if !new || !untils.insert(last.clone()) {
             break;
         }
         until = Some(last);
     }
-    notes.truncate(limit);
     Ok(notes)
 }
 
@@ -278,12 +347,13 @@ fn parse_note(typed: &str) -> Result<(Option<String>, String)> {
 fn author(
     ctx: &Ctx,
     out: &mut dyn Write,
-    user: &str,
+    actor: &str,
     limit: usize,
-    filter: NoteFilter,
+    filter: AuthorFilter,
+    reposts: bool,
     save_in: Option<PathBuf>,
 ) -> Result<()> {
-    let who = parse_user(user)?;
+    let who = parse_user(actor)?;
     let client = ctx.client(who.origin.as_deref());
     // An account of the server asked is named without a host.
     let host = who
@@ -294,73 +364,85 @@ fn author(
         Vec::new()
     } else {
         let account = client.user(&who.username, host)?;
-        pages(limit, |n, until| {
-            client.user_notes(&account.id, &filter, n, until)
-        })?
+        let asked = filter.asked(reposts);
+        pages(
+            limit,
+            filter.narrows(),
+            |n| filter.keeps(n, &account.id),
+            |n, until| client.user_notes(&account.id, &asked, n, until),
+        )?
     };
-    let agent = api::agent();
+    if let Some(dir) = save_in {
+        let agent = api::agent();
+        for n in &notes {
+            save_files(ctx, out, &agent, client.origin(), n, &dir)?;
+        }
+        return Ok(());
+    }
+    print_notes(ctx, out, client.origin(), &notes)
+}
+
+/// Print notes: one JSON line each, or text with a blank line between.
+fn print_notes(ctx: &Ctx, out: &mut dyn Write, origin: &str, notes: &[Note]) -> Result<()> {
     for (i, n) in notes.iter().enumerate() {
-        let saved = match &save_in {
-            Some(dir) => save_files(&agent, n.shown(), dir)?,
-            None => Vec::new(),
-        };
-        print_note(
-            ctx,
-            out,
-            client.origin(),
-            n,
-            i,
-            save_in.as_ref().map(|_| &saved[..]),
-        )?;
+        if ctx.json {
+            json_line(out, &format::note_json(n, origin))?;
+            continue;
+        }
+        if i > 0 {
+            text(out, "\n")?;
+        }
+        text(out, &format::note(n, origin))?;
     }
     Ok(())
 }
 
-/// Print a note, and where its files were saved when they were.
-fn print_note(
+/// What a file is, as `download --json` says it: `image`, `video`,
+/// `audio`, or `file`.
+fn kind(mime: &str) -> &'static str {
+    match mime.split('/').next().unwrap_or("") {
+        "image" => "image",
+        "video" => "video",
+        "audio" => "audio",
+        _ => "file",
+    }
+}
+
+/// Save every file `n` carries, its own and those of the note it renotes
+/// or quotes, in `dir`, printing each as it is written.
+fn save_files(
     ctx: &Ctx,
     out: &mut dyn Write,
+    agent: &ureq::Agent,
     origin: &str,
     n: &Note,
-    i: usize,
-    saved: Option<&[PathBuf]>,
+    dir: &std::path::Path,
 ) -> Result<()> {
-    if ctx.json {
-        let mut v = format::note_json(n, origin);
-        if let Some(saved) = saved {
-            v["saved"] = json!(
-                saved
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-            );
+    for (owner, i, f) in n.attached() {
+        let path = download::save(agent, f, dir, &download::file_name(&owner.id, i, f))?;
+        let shown = path.to_string_lossy();
+        if ctx.json {
+            json_line(
+                out,
+                &json!({
+                    "note": format::note_url(origin, &n.id),
+                    "kind": kind(&f.mime),
+                    "url": f.url,
+                    "path": shown,
+                }),
+            )?;
+        } else {
+            text(out, &format!("{shown}\n"))?;
         }
-        return json_line(out, &v);
-    }
-    if i > 0 {
-        text(out, "\n")?;
-    }
-    text(out, &format::note(n, origin))?;
-    for p in saved.unwrap_or_default() {
-        text(out, &format!("saved {}\n", p.display()))?;
     }
     Ok(())
-}
-
-/// Save every file of `n` in `dir`.
-fn save_files(agent: &ureq::Agent, n: &Note, dir: &std::path::Path) -> Result<Vec<PathBuf>> {
-    n.files
-        .iter()
-        .enumerate()
-        .map(|(i, f)| download::save(agent, f, dir, &download::file_name(&n.id, i + 1, f)))
-        .collect()
 }
 
 fn show_note(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     let (origin, id) = parse_note(note)?;
     let client = ctx.client(origin.as_deref());
     let n = client.note(&id)?;
-    print_note(ctx, out, client.origin(), &n, 0, None)
+    print_notes(ctx, out, client.origin(), std::slice::from_ref(&n))
 }
 
 fn search(ctx: &Ctx, out: &mut dyn Write, query: &str, limit: usize) -> Result<()> {
@@ -368,40 +450,26 @@ fn search(ctx: &Ctx, out: &mut dyn Write, query: &str, limit: usize) -> Result<(
         return Err(Error::usage("the search query is empty"));
     }
     let client = ctx.client(None);
-    let notes = pages(limit, |n, until| client.search(query, n, until))?;
-    for (i, n) in notes.iter().enumerate() {
-        print_note(ctx, out, client.origin(), n, i, None)?;
-    }
-    Ok(())
+    let notes = pages(
+        limit,
+        false,
+        |_| true,
+        |n, until| client.search(query, n, until),
+    )?;
+    print_notes(ctx, out, client.origin(), &notes)
 }
 
 fn download_note(ctx: &Ctx, out: &mut dyn Write, note: &str, dir: &std::path::Path) -> Result<()> {
     let (origin, id) = parse_note(note)?;
     let client = ctx.client(origin.as_deref());
     let n = client.note(&id)?;
-    let shown = n.shown();
-    if shown.files.is_empty() {
-        return Err(Error::usage(format!("{} has no files", shown.id)));
+    if n.attached().is_empty() {
+        return Err(Error::usage(format!(
+            "{} has no files",
+            format::note_url(client.origin(), &n.id)
+        )));
     }
-    let agent = api::agent();
-    for (i, f) in shown.files.iter().enumerate() {
-        let path = download::save(&agent, f, dir, &download::file_name(&shown.id, i + 1, f))?;
-        if ctx.json {
-            json_line(
-                out,
-                &json!({
-                    "noteId": shown.id,
-                    "url": f.url,
-                    "type": f.mime,
-                    "size": f.size,
-                    "path": path.display().to_string(),
-                }),
-            )?;
-        } else {
-            text(out, &format!("{}\n", path.display()))?;
-        }
-    }
-    Ok(())
+    save_files(ctx, out, &api::agent(), client.origin(), &n, dir)
 }
 
 #[cfg(test)]
@@ -507,16 +575,21 @@ mod tests {
     #[test]
     fn pages_go_back_until_the_limit() {
         let mut asked = Vec::new();
-        let got = pages(250, |n, until| {
-            asked.push((n, until.map(str::to_string)));
-            let start = asked.len() * 1000;
-            Ok((0..n)
-                .map(|i| Note {
-                    id: format!("{}", start - i),
-                    ..Default::default()
-                })
-                .collect())
-        })
+        let got = pages(
+            250,
+            false,
+            |_| true,
+            |n, until| {
+                asked.push((n, until.map(str::to_string)));
+                let start = asked.len() * 1000;
+                Ok((0..n)
+                    .map(|i| Note {
+                        id: format!("{}", start - i),
+                        ..Default::default()
+                    })
+                    .collect())
+            },
+        )
         .unwrap();
         assert_eq!(got.len(), 250);
         assert_eq!(
@@ -534,14 +607,19 @@ mod tests {
     #[test]
     fn pages_end_on_an_empty_page_or_one_with_nothing_new() {
         let mut calls = 0;
-        let got = pages(10, |_, until| {
-            calls += 1;
-            Ok(match until {
-                None => page(&["c", "b"]),
-                Some("b") => page(&["a"]),
-                _ => Vec::new(),
-            })
-        })
+        let got = pages(
+            10,
+            false,
+            |_| true,
+            |_, until| {
+                calls += 1;
+                Ok(match until {
+                    None => page(&["c", "b"]),
+                    Some("b") => page(&["a"]),
+                    _ => Vec::new(),
+                })
+            },
+        )
         .unwrap();
         assert_eq!(
             got.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
@@ -549,21 +627,131 @@ mod tests {
         );
         assert_eq!(calls, 3);
         let mut calls = 0;
-        let got = pages(10, |_, _| {
-            calls += 1;
-            Ok(page(&["b", "a"]))
-        })
+        let got = pages(
+            10,
+            false,
+            |_| true,
+            |_, _| {
+                calls += 1;
+                Ok(page(&["b", "a"]))
+            },
+        )
         .unwrap();
         assert_eq!(got.len(), 2);
         assert_eq!(calls, 2, "the same page twice ends it");
     }
 
+    // A filter told here leaves notes out of each page, so every page asked
+    // for is a full one, and pages go on until enough are kept; a page that
+    // starts from an ID seen before ends it.
+    #[test]
+    fn a_filter_told_here_reads_full_pages_until_enough_are_kept() {
+        let mut asked = Vec::new();
+        let got = pages(
+            2,
+            true,
+            |n| n.id.ends_with('v'),
+            |n, until| {
+                asked.push((n, until.map(str::to_string)));
+                Ok(match until {
+                    None => page(&["9x", "8v", "7x"]),
+                    Some("7x") => page(&["6x", "5x"]),
+                    Some("5x") => page(&["4v", "3v", "2x"]),
+                    _ => Vec::new(),
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            got.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
+            ["8v", "4v"]
+        );
+        assert_eq!(
+            asked.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
+            [100, 100, 100]
+        );
+        let mut calls = 0;
+        pages(
+            10,
+            true,
+            |_| true,
+            |_, until| {
+                calls += 1;
+                Ok(match until {
+                    None => page(&["b", "a"]),
+                    _ => page(&["c", "a"]),
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(calls, 2, "a page from an ID seen before ends it");
+    }
+
+    fn note(v: Value) -> Note {
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[rstest]
+    #[case::with_replies(AuthorFilter::WithReplies, true, false)]
+    #[case::no_replies(AuthorFilter::NoReplies, false, false)]
+    #[case::media(AuthorFilter::Media, false, true)]
+    #[case::video(AuthorFilter::Video, false, true)]
+    #[case::threads(AuthorFilter::Threads, true, false)]
+    fn each_filter_asks_for_what_misskey_can_filter(
+        #[case] f: AuthorFilter,
+        #[case] replies: bool,
+        #[case] files: bool,
+    ) {
+        assert_eq!(
+            f.asked(true),
+            NoteFilter {
+                replies,
+                renotes: true,
+                files
+            }
+        );
+        assert!(!f.asked(false).renotes);
+    }
+
+    // video keeps the notes with a video, a renoted or quoted one's
+    // included; threads keeps notes and the replies the account made to
+    // itself.
+    #[test]
+    fn video_and_threads_are_told_from_the_notes() {
+        let clip = json!({"type": "video/mp4"});
+        let pic = json!({"type": "image/png"});
+        let v = AuthorFilter::Video;
+        assert!(v.keeps(&note(json!({"id": "a", "files": [pic, clip]})), "me"));
+        assert!(!v.keeps(&note(json!({"id": "a", "files": [pic]})), "me"));
+        assert!(v.keeps(
+            &note(json!({"id": "q", "renoteId": "o", "renote": {"id": "o", "files": [clip]}})),
+            "me"
+        ));
+        let t = AuthorFilter::Threads;
+        assert!(t.keeps(&note(json!({"id": "a"})), "me"));
+        assert!(t.keeps(
+            &note(json!({"id": "a", "replyId": "r", "reply": {"id": "r", "userId": "me"}})),
+            "me"
+        ));
+        assert!(!t.keeps(
+            &note(json!({"id": "a", "replyId": "r", "reply": {"id": "r", "userId": "bob"}})),
+            "me"
+        ));
+        assert!(!t.keeps(&note(json!({"id": "a", "replyId": "r"})), "me"));
+        assert!(AuthorFilter::Media.keeps(&note(json!({"id": "a", "replyId": "r"})), "me"));
+    }
+
     #[test]
     fn an_error_on_a_later_page_is_returned() {
-        let e = pages(10, |_, until| match until {
-            None => Ok(page(&["b"])),
-            Some(_) => Err(Error::api("boom")),
-        })
+        let e = pages(
+            10,
+            false,
+            |_| true,
+            |_, until| match until {
+                None => Ok(page(&["b"])),
+                Some(_) => Err(Error::api("boom")),
+            },
+        )
         .unwrap_err();
         assert_eq!(e.message(), "boom");
     }

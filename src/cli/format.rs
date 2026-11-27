@@ -68,16 +68,13 @@ fn file_lines(files: &[DriveFile]) -> String {
 
 /// A note: who and when, its warning and text, what it carries, its
 /// reactions, its counts, its address. A renote with nothing of its own
-/// shows the note it renotes, under a line that says who renoted it.
+/// shows the note it renotes, under a line that says who renoted it, as
+/// bsky says who reposted a post.
 pub fn note(n: &Note, origin: &str) -> String {
     let mut out = String::new();
     let shown = n.shown();
     if n.is_pure_renote() {
-        out.push_str(&format!(
-            "⟳ {} renoted · {}\n",
-            who(&n.user),
-            time(&n.created_at)
-        ));
+        out.push_str(&format!("⟳ renoted by @{}\n", one_line(&acct(&n.user))));
         if n.renote.is_none() {
             out.push_str("[renotes a note]\n");
         }
@@ -230,7 +227,7 @@ mod tests {
         }));
         assert_eq!(
             note(&n, ORIGIN),
-            "⟳ @alice renoted · t1\n\
+            "⟳ renoted by @alice\n\
              @bob@other.example · t0\n\
              CW: ネタバレ\n\
              本文\n\

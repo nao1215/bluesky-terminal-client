@@ -12,10 +12,10 @@ msky author syuilo -n 5
 msky note https://misskey.io/notes/au102erst5tf04vs
 msky search Misskey --json | jq -r .url
 msky download https://misskey.io/notes/au102erst5tf04vs -o pictures
-msky author syuilo --with-files -n 50 --download
+msky author syuilo -n 50 --filter media --download
 ```
 
-A note as `msky author alice --download` prints it:
+A note as `msky author alice` prints it:
 
 ```
 Alice @alice · 2026-11-26 19:54
@@ -24,8 +24,6 @@ Alice @alice · 2026-11-26 19:54
 :igyo: 12  👍 5  :blobcat@misskey.design: 2
 ♡ 19  ⟳ 3  ↩ 1
 https://misskey.io/notes/9xyz0abc12
-saved /home/alice/Downloads/msky/9xyz0abc12-1.jpg
-saved /home/alice/Downloads/msky/9xyz0abc12-2.png
 ```
 
 ## Install
@@ -44,24 +42,34 @@ msky asks misskey.io unless `--host` or `MSKY_HOST` names another server (`--hos
 
 | Command | What it does |
 |---|---|
-| `msky author USER` | The account's notes, newest first |
+| `msky author ACTOR` | The account's notes, newest first |
 | `msky note NOTE` | One note |
 | `msky search QUERY` | The notes that match, newest first |
 | `msky download NOTE` | Saves the files attached to the note |
 
 An account is `name`, `@name`, `@name@host`, or its address (`https://misskey.io/@name`). A note is its ID or its address (`https://misskey.io/notes/ID`). Either address works without `https://`.
 
-`-n` sets how many notes `author` and `search` print (20 by default). They read them a page of up to 100 at a time, each page older than the last note of the one before, until there are enough or no more.
+`-n` sets how many notes `author` and `search` print (20 by default). They read them a page of up to 100 at a time, each page older than the last note of the one before, until there are enough or no more. A note is printed once, and a page that starts from a note seen before ends the reading.
 
-`author` leaves out the account's replies and renotes. `--replies` and `--renotes` put them in, and `--with-files` keeps only the notes with files (Misskey does not take it with `--replies`). A renote shows the note it renotes, under a line that says who renoted it.
+`author` takes the options of bsky's `author`. `--filter` chooses which notes; Misskey's `users/notes` filters only by replies and by files, so two of the five are told by msky from the notes it gets, reading full pages until there are enough:
+
+| `--filter` | Notes listed |
+|---|---|
+| `with-replies` (default) | Notes and replies |
+| `no-replies` | Notes, not replies |
+| `media` | Notes with files attached, of any type (Misskey's `withFiles`, which it takes without replies) |
+| `video` | Notes with a video attached, its own or the renoted or quoted note's |
+| `threads` | Notes, and the account's replies to its own notes (a reply whose note the server does not send along is left out) |
+
+Any other value is a usage error (exit 1). `--reposts` keeps the account's renotes too, each under a `⟳ renoted by @name` line and shown as the note it renotes; a quote is the account's own note and is always listed.
 
 Text that others wrote is printed without its control characters, so an escape sequence in a note or a name cannot set the clipboard or the window title, or clear the screen. A note's reactions are listed ten kinds at most, the most given first; `--json` has them all.
 
 ### Saving files
 
-`msky download NOTE` saves each file attached to the note and prints where. `msky author USER --download` saves the files of every note it lists, and `-o DIR` saves them there. The folder is `-o`, else `MSKY_DOWNLOAD_DIR`, else `msky` in your Downloads folder.
+`msky download NOTE` saves each file attached to the note, and those of the note it renotes or quotes, and prints each saved path on a line. A note without files is a usage error (exit 1) and nothing is written. `msky author ACTOR --download` saves the files of the notes it read instead of printing them, in the same way, skipping the notes without files; `-o DIR` saves them there and implies `--download`. The folder is `-o`, else `MSKY_DOWNLOAD_DIR`, else `msky` in your Downloads folder.
 
-A file is named after its note, its place among the note's files, and its type: `9xyz0abc12-1.jpg`. The extension is the one the file was uploaded with when it agrees with the type the server detected, else the usual one for that type, and `.bin` for a type msky does not know, so a picture uploaded as `cat.exe` is not saved as a program. A file already there is never written over: the new one is saved as `9xyz0abc12-1 (1).jpg`. msky saves files up to 200 MB, fetches only http and https addresses, and removes a file it could not finish.
+A file is named after the note it is attached to, its place among that note's files, and its type: `9xyz0abc12-1.jpg`. The extension is the one the file was uploaded with when it agrees with the type the server detected, else the usual one for that type, and `.bin` for a type msky does not know, so a picture uploaded as `cat.exe` is not saved as a program. A file already there is never written over: the new one is saved as `9xyz0abc12-1 (1).jpg`. msky saves files up to 200 MB, fetches only http and https addresses, and removes a file it could not finish.
 
 ### JSON
 
@@ -71,7 +79,7 @@ A file is named after its note, its place among the note's files, and its type: 
 {"id":"9xyz0abc12","createdAt":"2026-11-26T10:54:49.672Z","url":"https://misskey.io/notes/9xyz0abc12","uri":null,"user":{"id":"9u0000abcd","username":"alice","host":"misskey.io","name":"Alice"},"text":"山の写真 🏔️","cw":null,"reactionCount":19,"reactions":{":blobcat@misskey.design:":2,":igyo@.:":12,"👍":5},"renoteCount":3,"repliesCount":1,"files":[{"id":"9xyz0f0001","name":"mountain.jpg","url":"https://media.misskey.example/files/mountain.jpg","type":"image/jpeg","size":204800,"isSensitive":false}],"replyId":null,"renoteId":null,"renote":null}
 ```
 
-`url` is the note on the server asked, `uri` where a note of another server was first posted. `host` is the server the account is on, filled in where Misskey writes null for an account of the server asked. `reactions` keeps the server's keys: `:name@.:` is a custom emoji of the server asked. `renote` is the note a renote or a quote carries, in the same shape. With `--download`, `author` adds `saved`, the paths of the files it saved; `download --json` prints one line per file with `noteId`, `url`, `type`, `size` and `path`. An error is printed as `{"error": ..., "hint": ..., "status": ...}` on stdout as well as on stderr.
+`url` is the note on the server asked, `uri` where a note of another server was first posted. `host` is the server the account is on, filled in where Misskey writes null for an account of the server asked. `reactions` keeps the server's keys: `:name@.:` is a custom emoji of the server asked. `renote` is the note a renote or a quote carries, in the same shape. `download --json` and `author --download --json` print one line per saved file instead, as bsky's `download` does with `post`: `{"note": "<the note's address>", "kind": "image" | "video" | "audio" | "file", "url": "<where it was fetched>", "path": "<where it was saved>"}`. An error is printed as `{"error": ..., "hint": ..., "status": ...}` on stdout as well as on stderr.
 
 ### Rate limits
 

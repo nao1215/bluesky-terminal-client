@@ -72,41 +72,48 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.noteId", equals: 9abc }
+              - { path: "$.note", equals: "${api.url}/notes/9abc" }
+              - { path: "$.kind", equals: image }
               - { path: "$.url", equals: "${api.url}/files/f1" }
-              - { path: "$.type", equals: image/png }
-              - { path: "$.size", equals: 242 }
               - { path: "$.path", matches: "9abc-1 \\(1\\)\\.png$" }
       - assert:
           file: { path: out/9abc-1.png, equals: "already here" }
       - assert:
           file: { path: "out/9abc-1 (1).png", size: 242 }
 
-  # A pure renote has no files of its own: those of the note it renotes
-  # are saved, under that note's ID.
-  - name: download of a renote saves the files of the note it renotes
+  # The files of the note a renote or a quote carries are saved too, each
+  # under the ID of the note it is attached to.
+  - name: download saves the files of the note a renote or a quote carries
     mock_servers:
       - name: api
         routes:
           - method: POST
             path: /api/notes/show
             json:
-              id: rn1
+              id: qt1
               user: { username: alice }
+              text: "これ見て 👀"
+              files:
+                - { id: f0, name: "mine.png", type: image/png, size: 242, url: "${api.url}/files/f0" }
               renoteId: orig
               renote:
                 id: orig
                 user: { username: bob, host: other.example }
                 files:
                   - { id: f1, name: "a.png", type: image/png, size: 242, url: "${api.url}/files/f1" }
+                  - { id: f2, name: "b.mp4", type: video/mp4, size: 1838, url: "${api.url}/files/f2" }
+          - { method: GET, path: /files/f0, body_file: testdata/photo.png }
           - { method: GET, path: /files/f1, body_file: testdata/photo.png }
+          - { method: GET, path: /files/f2, body_file: testdata/clip.mp4 }
     steps:
       - run:
-          command: msky download rn1 -o out --host ${api.url}
+          command: msky download qt1 -o out --json --host ${api.url}
       - assert:
           exit_code: 0
+          stdout:
+            matches: '"kind":"image","note":"[^"]*/notes/qt1","path":"[^"]*qt1-1\.png"[^\n]*\n[^\n]*"kind":"image","note":"[^"]*/notes/qt1","path":"[^"]*orig-1\.png"[^\n]*\n[^\n]*"kind":"video"[^\n]*orig-2\.mp4'
       - assert:
-          dir: { path: out, count: 1, contains: [orig-1.png] }
+          dir: { path: out, count: 3, contains: [qt1-1.png, orig-1.png, orig-2.mp4] }
 
   # Only an http(s) address is fetched, and a file the server says is over
   # 200 MB is not fetched at all; either leaves nothing behind.
@@ -179,7 +186,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "error: plain has no files\n"
+            equals: "error: ${api.url}/notes/plain has no files\n"
       - run:
           command: msky download ${api.url}/@alice --host ${api.url}
       - assert:

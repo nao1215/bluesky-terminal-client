@@ -55,8 +55,9 @@ scenarios:
               結末は…
               ♡ 0  ⟳ 0  ↩ 0
               ${api.url}/notes/9b
-      # An account of the server asked is named with a null host, and its
-      # replies and renotes are left out unless asked for.
+      # An account of the server asked is named with a null host. As bsky's
+      # author, replies are listed (--filter with-replies) and renotes are
+      # left out unless --reposts asks for them.
       - assert:
           mock:
             name: api
@@ -73,7 +74,7 @@ scenarios:
             body:
               json:
                 - { path: "$.userId", equals: u-alice }
-                - { path: "$.withReplies", equals: false }
+                - { path: "$.withReplies", equals: true }
                 - { path: "$.withRenotes", equals: false }
                 - { path: "$.withFiles", equals: false }
 
@@ -125,7 +126,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /api/users/notes, count: 3 }
 
-  - name: author --replies --renotes asks for them, and a renote shows the note it renotes
+  - name: author --reposts keeps the renotes, each under a line that says who renoted it
     mock_servers:
       - name: api
         routes:
@@ -147,13 +148,13 @@ scenarios:
                   renoteCount: 5
     steps:
       - run:
-          command: msky author alice --replies --renotes --host ${api.url}
+          command: msky author alice --reposts --filter no-replies --host ${api.url}
           env: *env
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              ⟳ Alice @alice renoted · 2026-09-21 10:00
+              ⟳ renoted by @alice
               Bob 🐈‍⬛ @bob@other.example · 2026-09-19 08:00
               リノートされた
               ♡ 0  ⟳ 5  ↩ 0
@@ -164,19 +165,84 @@ scenarios:
             path: /api/users/notes
             body:
               json:
-                - { path: "$.withReplies", equals: true }
+                - { path: "$.withReplies", equals: false }
                 - { path: "$.withRenotes", equals: true }
-      # Misskey refuses replies with files-only; msky says so before it asks.
+      # media is Misskey's withFiles, which it takes without replies.
       - run:
-          command: msky author alice --replies --with-files --host ${api.url}
+          command: msky author alice --filter media --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.withReplies", equals: false }
+                - { path: "$.withRenotes", equals: false }
+                - { path: "$.withFiles", equals: true }
+      # A filter bsky does not take is a usage error, and nothing is asked.
+      - run:
+          command: msky author alice --filter replies --host ${api.url}
           env: *env
       - assert:
           exit_code: 1
           stderr:
-            contains: "cannot be used with"
-      # The two pages of the first run, and nothing more.
+            contains: "invalid value 'replies' for '--filter <FILTER>'"
       - assert:
-          mock: { name: api, path: /api/users/notes, count: 2 }
+          mock: { name: api, path: /api/users/notes, count: 4 }
+
+  # Misskey cannot filter by video or by thread: msky asks for notes with
+  # files (video) or with replies (threads) and keeps those it should,
+  # reading full pages until -n are kept.
+  - name: author --filter video and threads keep what Misskey cannot filter by itself
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - { id: 9e, user: { username: alice }, text: "動画 🎬", files: [ { type: video/mp4, size: 1, url: "${api.url}/f/v" } ] }
+              - { id: 9d, user: { username: alice }, text: "写真", files: [ { type: image/png, size: 1, url: "${api.url}/f/p" } ] }
+              - { id: 9c, user: { username: alice }, text: "自分への返信", replyId: 9b, reply: { id: 9b, userId: u-alice, user: { username: alice } } }
+              - { id: 9b, user: { username: alice }, text: "ふつう" }
+              - { id: 9a, user: { username: alice }, text: "他人への返信", replyId: 8z, reply: { id: 8z, userId: u-bob, user: { username: bob } } }
+    steps:
+      - run:
+          command: msky author alice --filter video --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.id", equals: 9e }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.withFiles", equals: true }
+                - { path: "$.limit", equals: 100 }
+      - run:
+          command: msky author alice --filter threads --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["動画 🎬", "写真", "自分への返信", "ふつう"]
+            not_contains: "他人への返信"
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.withReplies", equals: true }
+                - { path: "$.withFiles", equals: false }
 
   - name: author --json prints one note per line in the shape every command uses
     mock_servers:
@@ -324,10 +390,11 @@ scenarios:
       - assert:
           mock: { name: api, path: /api/users/show, count: 2 }
 
-  # --download saves the files of the notes listed, each named after its
-  # note, its place among the note's files and its type, and writes over
-  # nothing: a second run takes the next names.
-  - name: author --download saves the notes' files and never writes over one
+  # --download saves the files of the notes read instead of printing
+  # them, as download does: each named after its note, its place among the
+  # note's files and its type, a note without files skipped, nothing
+  # written over (a second run takes the next names).
+  - name: author --download saves the notes' files instead of printing them, and never writes over one
     mock_servers:
       - name: api
         routes:
@@ -355,23 +422,20 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: ["写真と動画 📷\n[1 picture]\n[1 video]\n", "saved out", "9c-1.png\n", "9c-2.mp4\n", "no files"]
+            matches: '^out[/\\]9c-1\.png\nout[/\\]9c-2\.mp4\n$'
       - assert:
           dir: { path: out, count: 2, contains: [9c-1.png, 9c-2.mp4] }
       - assert:
           file: { path: out/9c-1.png, equals_file: expected/photo.png }
       - run:
-          command: msky author alice -n 1 --download --json --host ${api.url}
+          command: msky author alice -n 2 --download --json --host ${api.url}
           env:
             TZ: UTC
             MSKY_DOWNLOAD_DIR: out
       - assert:
           exit_code: 0
           stdout:
-            json:
-              - { path: "$.id", equals: 9c }
-              - { path: "$.saved[0]", matches: "9c-1 \\(1\\)\\.png$" }
-              - { path: "$.saved[1]", matches: "9c-2 \\(1\\)\\.mp4$" }
+            matches: '^\{"kind":"image","note":"[^"]*/notes/9c","path":"out[/\\]+9c-1 \(1\)\.png","url":"[^"]*/files/f1\.png"\}\n\{"kind":"video","note":"[^"]*/notes/9c","path":"out[/\\]+9c-2 \(1\)\.mp4","url":"[^"]*/files/f2"\}\n$'
       - assert:
           dir: { path: out, count: 4, contains: ["9c-1 (1).png", "9c-2 (1).mp4"] }
       - assert:

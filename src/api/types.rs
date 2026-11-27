@@ -42,6 +42,8 @@ pub struct DriveFile {
 pub struct Note {
     pub id: String,
     pub created_at: String,
+    /// The ID of the account that wrote it, as `user.id`.
+    pub user_id: String,
     pub user: User,
     pub text: Option<String>,
     /// The content warning shown in place of the text until it is opened.
@@ -53,6 +55,8 @@ pub struct Note {
     pub reactions: BTreeMap<String, u64>,
     pub files: Vec<DriveFile>,
     pub reply_id: Option<String>,
+    /// The note this one replies to, when the server sent it along.
+    pub reply: Option<Box<Note>>,
     pub renote_id: Option<String>,
     /// The note this one renotes or quotes.
     pub renote: Option<Box<Note>>,
@@ -79,6 +83,31 @@ impl Note {
         match &self.renote {
             Some(r) if self.is_pure_renote() => r,
             _ => self,
+        }
+    }
+
+    /// The files it carries: its own, then those of the note it renotes or
+    /// quotes, each with the note it is attached to and its place among
+    /// that note's files, from 1.
+    pub fn attached(&self) -> Vec<(&Note, usize, &DriveFile)> {
+        let mut all: Vec<(&Note, usize, &DriveFile)> = self
+            .files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (self, i + 1, f))
+            .collect();
+        if let Some(r) = &self.renote {
+            all.extend(r.files.iter().enumerate().map(|(i, f)| (&**r, i + 1, f)));
+        }
+        all
+    }
+
+    /// The ID of the account that wrote it.
+    pub fn author_id(&self) -> &str {
+        if self.user_id.is_empty() {
+            &self.user.id
+        } else {
+            &self.user_id
         }
     }
 
@@ -124,6 +153,23 @@ mod tests {
             serde_json::from_value(json!({"id": "w", "cw": "", "renoteId": "in", "renote": inner}))
                 .unwrap();
         assert!(!warned.is_pure_renote());
+    }
+
+    // A quote's files come after its own, each named after the note it is
+    // attached to.
+    #[test]
+    fn the_files_of_a_note_include_those_of_the_note_it_quotes() {
+        let n: Note = serde_json::from_value(json!({
+            "id": "q", "text": "見て", "files": [{"id": "a"}],
+            "renoteId": "o", "renote": {"id": "o", "files": [{"id": "b"}, {"id": "c"}]}
+        }))
+        .unwrap();
+        let got: Vec<(&str, usize, &str)> = n
+            .attached()
+            .into_iter()
+            .map(|(owner, i, f)| (owner.id.as_str(), i, f.id.as_str()))
+            .collect();
+        assert_eq!(got, [("q", 1, "a"), ("o", 1, "b"), ("o", 2, "c")]);
     }
 
     #[test]

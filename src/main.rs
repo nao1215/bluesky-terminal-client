@@ -173,7 +173,7 @@ mod tests {
     fn a_missing_argument_is_named() {
         assert_eq!(
             usage_error(&["msky", "author"]),
-            "the following required arguments were not provided: <USER>"
+            "the following required arguments were not provided: <ACTOR>"
         );
         assert_eq!(
             usage_error(&["msky", "note", "a", "b"]),
@@ -181,13 +181,26 @@ mod tests {
         );
     }
 
-    // Misskey refuses withReplies and withFiles together; msky says so
-    // before anything is asked.
+    // A filter is one of the names bsky's --filter takes, or its lexicon
+    // name; anything else is a usage error before anything is asked.
     #[test]
-    fn replies_and_files_only_cannot_go_together() {
+    fn a_filter_is_one_bsky_takes() {
+        for f in [
+            "with-replies",
+            "no-replies",
+            "media",
+            "video",
+            "threads",
+            "posts_no_replies",
+        ] {
+            assert!(
+                Cli::try_parse_from(["msky", "author", "a", "--filter", f]).is_ok(),
+                "{f}"
+            );
+        }
         assert!(
-            usage_error(&["msky", "author", "a", "--replies", "--with-files"])
-                .contains("cannot be used with"),
+            usage_error(&["msky", "author", "a", "--filter", "replies"])
+                .contains("invalid value 'replies' for '--filter <FILTER>'"),
         );
     }
 
