@@ -7,7 +7,7 @@
 
 An unofficial [Misskey](https://misskey-hub.net) client for the terminal. Pictures and videos are drawn in place.
 
-![the timeline, a note's pictures, a thread and the notifications](doc/img/demo.gif)
+![the timeline, a note's video and pictures, a thread, a profile and the notifications](doc/img/demo.gif)
 
 msky is built as [bsky](https://github.com/nao1215/bluesky-terminal-client) is for Bluesky, with the same keys. It is for Misskey itself; a fork such as Sharkey may work, but it is not looked after.
 
