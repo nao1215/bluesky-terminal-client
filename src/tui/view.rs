@@ -124,14 +124,27 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Login(f)) => draw_login(frame, area, f, &t),
         Some(Overlay::Reactions { selected }) => draw_reactions(frame, area, *selected, &t),
         Some(Overlay::Compose(_)) => {}
-        Some(Overlay::Viewer { files, index }) => {
+        Some(Overlay::Viewer {
+            files,
+            index,
+            replay,
+        }) => {
             let body = Rect {
                 height: area.height.saturating_sub(hint_h + 1),
                 ..area
             };
-            draw_viewer(frame, body, files, *index, images, &t);
+            draw_viewer(frame, body, files, *index, *replay, images, &t);
         }
         None => {}
+    }
+    // A video plays only while the viewer shows it.
+    let video_shown = matches!(
+        &app.overlay,
+        Some(Overlay::Viewer { files, index, .. })
+            if files.get(*index).is_some_and(|f| f.2.mime.starts_with("video/"))
+    );
+    if !video_shown {
+        images.stop_video();
     }
     if let Some(Overlay::Compose(c)) = &mut app.overlay {
         draw_compose(frame, area, c, images, &t);
@@ -1392,6 +1405,7 @@ fn draw_viewer(
     area: Rect,
     files: &[crate::tui::app::Attached],
     index: usize,
+    replay: u32,
     images: &mut Images,
     t: &Theme,
 ) {
@@ -1424,6 +1438,25 @@ fn draw_viewer(
         // The thumbnail at once, the full size as soon as it is here.
         let thumb = f.thumbnail_url.as_deref().unwrap_or("");
         images.draw_first(frame, r, &[url, thumb]);
+    } else if f.mime.starts_with("video/") && !url.is_empty() {
+        let r = match f.aspect() {
+            Some(d) => fit(pic, d, images.cell_size()),
+            None => pic,
+        };
+        let state = images.draw_video(frame, r, url, replay);
+        if !images.video_shown()
+            && let Some(thumb) = f.thumbnail_url.as_deref()
+        {
+            images.draw(frame, r, thumb);
+        }
+        use crate::tui::player::State;
+        let (text, style) = match state {
+            State::Loading => ("  loading the video…".to_string(), t.dim()),
+            State::Playing => ("  ▶ playing (no sound)".to_string(), t.accent()),
+            State::Ended => ("  ■ ended  r plays it again".to_string(), t.dim()),
+            State::Warning(why) => (format!("  ⚠ {why}; d saves it, o opens it"), t.error()),
+        };
+        head.push(Span::styled(text, style));
     } else {
         let what = if f.mime.starts_with("video/") {
             "▶ a video: d saves it, o opens it in the browser"

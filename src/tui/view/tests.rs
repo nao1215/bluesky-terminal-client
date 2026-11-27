@@ -367,21 +367,55 @@ fn notifications_say_who_did_what() {
 fn the_viewer_names_a_file_it_cannot_draw() {
     let mut app = with_notes(vec![json!({
         "id": "v", "createdAt": "t", "user": {"username": "lee"},
-        "files": [{"id": "a", "name": "動画🎬.mp4", "type": "video/mp4", "size": 3_355_443,
-                   "url": format!("{NOWHERE}/a.mp4"), "comment": "猫が走る", "isSensitive": true}]
+        "files": [{"id": "a", "name": "資料📄.pdf", "type": "application/pdf", "size": 3_355_443,
+                   "url": format!("{NOWHERE}/a.pdf"), "comment": "猫が走る", "isSensitive": true}]
     })]);
     app.handle_key(key(' '));
     let screen = render(&mut app, 80, 20);
     assert!(
-        screen.contains("1/1  動画🎬.mp4  video/mp4 · 3.2 MB  ⚠ sensitive"),
+        screen.contains("1/1  資料📄.pdf  application/pdf · 3.2 MB  ⚠ sensitive"),
         "{screen}"
     );
     assert!(
-        screen.contains("▶ a video: d saves it, o opens it in the browser"),
+        screen.contains("a file: d saves it, o opens it in the browser"),
         "{screen}"
     );
     assert!(screen.contains("猫が走る"), "{screen}");
     assert!(screen.contains(" d download  o open  esc back"), "{screen}");
+}
+
+// A video is played in the viewer, r replaying it, and says where it is;
+// one that cannot be loaded says why, with the keys that save or open it.
+#[test]
+fn the_viewer_plays_a_video_and_says_where_it_is() {
+    let mut app = with_notes(vec![json!({
+        "id": "v", "createdAt": "t", "user": {"username": "lee"},
+        "files": [{"id": "a", "name": "動画🎬.mp4", "type": "video/mp4", "size": 2000,
+                   "url": format!("{NOWHERE}/a.mp4"), "properties": {"width": 64, "height": 36}}]
+    })]);
+    app.handle_key(key(' '));
+    let mut images = Images::new(Picker::halfblocks(), None).unwrap();
+    let screen = rows(&mut app, &mut images, 120, 20).join("\n");
+    assert!(
+        screen.contains("1/1  動画🎬.mp4  video/mp4 · 1 KB  "),
+        "{screen}"
+    );
+    assert!(
+        screen.contains(" r replay  d download  o open  esc back"),
+        "{screen}"
+    );
+    let start = std::time::Instant::now();
+    let mut screen = String::new();
+    while start.elapsed() < std::time::Duration::from_secs(10) {
+        images.poll();
+        screen = rows(&mut app, &mut images, 120, 20).join("\n");
+        if screen.contains("⚠") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(screen.contains("⚠ cannot load the video"), "{screen}");
+    assert!(screen.contains("d saves it, o opens"), "{screen}");
 }
 
 // The account list marks the one in use.

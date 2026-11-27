@@ -406,8 +406,13 @@ pub type Attached = (String, usize, DriveFile);
 pub enum Overlay {
     /// The key reference, scrolled `scroll` lines down (the view clamps it).
     Help { scroll: u16 },
-    /// A note's files, full screen, `index` the one shown.
-    Viewer { files: Vec<Attached>, index: usize },
+    /// A note's files, full screen, `index` the one shown; `replay` counts
+    /// `r` presses, each playing the video from the start, as bsky's.
+    Viewer {
+        files: Vec<Attached>,
+        index: usize,
+        replay: u32,
+    },
     /// The accounts logged in, opened with `A`.
     Accounts { selected: usize },
     /// What the keys of this view do to the selected note, as in bsky.
@@ -911,8 +916,13 @@ impl App {
                 // A stray key must not close the reference opened on purpose.
                 _ => {}
             },
-            Overlay::Viewer { files, index } => match key.code {
+            Overlay::Viewer {
+                files,
+                index,
+                replay,
+            } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
+                KeyCode::Char('r') => *replay += 1,
                 KeyCode::Char('d') => {
                     let Some(file) = files.get(*index).cloned() else {
                         return Vec::new();
@@ -1376,7 +1386,11 @@ impl App {
             self.info("the note has no files");
             return Vec::new();
         }
-        self.overlay = Some(Overlay::Viewer { files, index: 0 });
+        self.overlay = Some(Overlay::Viewer {
+            files,
+            index: 0,
+            replay: 0,
+        });
         Vec::new()
     }
 

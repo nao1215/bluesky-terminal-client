@@ -453,7 +453,10 @@ fn the_viewer_shows_every_file_and_d_saves_them() {
     let mut app = logged_in(&[]);
     app.timelines[0].set(vec![with_files()]);
     assert!(app.handle_key(key(' ')).is_empty());
-    let Some(Overlay::Viewer { files, index: 0 }) = &app.overlay else {
+    let Some(Overlay::Viewer {
+        files, index: 0, ..
+    }) = &app.overlay
+    else {
         panic!("{:?}", app.overlay)
     };
     let named: Vec<(&str, usize, &str)> = files

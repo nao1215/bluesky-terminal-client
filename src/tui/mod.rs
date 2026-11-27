@@ -13,6 +13,8 @@ pub mod files;
 pub mod images;
 pub mod input;
 pub mod keys;
+pub mod mp4;
+pub mod player;
 pub mod scale;
 pub mod text;
 pub mod theme;
@@ -45,6 +47,8 @@ pub fn spawn<T: Send + 'static>(
 
 /// How long the loop waits for a key before checking the worker again.
 const TICK: Duration = Duration::from_millis(50);
+/// How long the loop waits while a video plays, as bsky's.
+const VIDEO_TICK: Duration = Duration::from_millis(5);
 /// How long it waits while answers or pictures are on their way.
 const ANSWER_TICK: Duration = Duration::from_millis(5);
 /// Most input events handled before the screen is drawn again: keys that
@@ -284,7 +288,9 @@ fn event_loop(
                 .map_err(io_err)?;
             dirty = false;
         }
-        let mut wait = if app.pending > 0 || images.loading() {
+        let mut wait = if images.playing() {
+            VIDEO_TICK
+        } else if app.pending > 0 || images.loading() {
             ANSWER_TICK
         } else {
             TICK

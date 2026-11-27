@@ -131,6 +131,7 @@ pub const HELP: &[Section] = &[
         title: "Viewer",
         keys: &[
             ("← → h l", "previous / next file"),
+            ("r", "play the video again"),
             ("d", "save it in the download folder"),
             ("o", "open it in the browser"),
             ("esc q", "back to where you were"),
@@ -250,10 +251,16 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("esc", "close"),
             ];
         }
-        Some(Overlay::Viewer { files, .. }) => {
+        Some(Overlay::Viewer { files, index, .. }) => {
             let mut v = Vec::new();
             if files.len() > 1 {
                 v.push(("← →", "previous / next"));
+            }
+            if files
+                .get(*index)
+                .is_some_and(|f| f.2.mime.starts_with("video/"))
+            {
+                v.push(("r", "replay"));
             }
             v.push(("d", "download"));
             v.push(("o", "open"));

@@ -27,6 +27,7 @@ use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Image, Resize};
 
+use crate::tui::player::{Player, State};
 use crate::tui::scale;
 
 /// Largest image body msky downloads.
@@ -205,6 +206,10 @@ pub struct Images {
     encode_rx: Receiver<(Key, Option<Protocol>)>,
     /// The pictures on the user's disk asked for, by key.
     local: HashMap<String, PathBuf>,
+    /// For the video player, which encodes its own pictures.
+    picker: Picker,
+    /// The video playing in the viewer.
+    video: Option<Player>,
     /// Whether the full-screen viewer was open in the last frame.
     viewer_open: bool,
     /// Pictures are sent inside tmux's passthrough, which a delete would
@@ -309,6 +314,8 @@ impl Images {
             encode_rx: channel().1,
             local: HashMap::new(),
             tmux: picker.tmux_detected(),
+            picker,
+            video: None,
             viewer_open: false,
             shows: true,
         }
@@ -340,7 +347,7 @@ impl Images {
     /// Collect finished downloads and encodes. Returns
     /// whether any arrived.
     pub fn poll(&mut self) -> bool {
-        let mut changed = false;
+        let mut changed = self.video.as_mut().is_some_and(Player::poll);
         while let Ok((url, result)) = self.fetch_rx.try_recv() {
             let slot = match result {
                 Ok(img) => Slot::Ready(Arc::new(img)),
@@ -366,9 +373,13 @@ impl Images {
 
     /// Whether any requested image is still downloading or encoding.
     pub fn loading(&self) -> bool {
-        self.slots
-            .values()
-            .any(|(s, _)| matches!(s, Slot::Loading { .. }))
+        self.video
+            .as_ref()
+            .is_some_and(|v| v.state == State::Loading)
+            || self
+                .slots
+                .values()
+                .any(|(s, _)| matches!(s, Slot::Loading { .. }))
             || self
                 .protocols
                 .values()
@@ -446,6 +457,51 @@ impl Images {
         self.protocols.clear();
         // Every image of this window and its data; quietly (q=2).
         (!self.tmux).then_some("\x1b_Ga=d,d=A,q=2\x1b\\")
+    }
+
+    /// Play the video at `url` in `area`, starting it (again, for a new
+    /// `generation`) when needed. Draws nothing until its first picture;
+    /// returns where playback is. As bsky's.
+    pub fn draw_video(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        url: &str,
+        generation: u32,
+    ) -> State {
+        if !self.shows {
+            return State::Warning("this terminal cannot show video".into());
+        }
+        let area = area.intersection(frame.area());
+        let size = (area.width, area.height);
+        let v = match &mut self.video {
+            Some(v) if v.is(url, generation) => {
+                v.resize(size);
+                v
+            }
+            video => video.insert(Player::start(self.picker.clone(), url, size, generation)),
+        };
+        if let Some(p) = v.frame() {
+            frame.render_widget(Image::new(p), area);
+        }
+        v.state.clone()
+    }
+
+    /// Stop the video, when the viewer no longer shows it.
+    pub fn stop_video(&mut self) {
+        self.video = None;
+    }
+
+    /// Whether a video is playing, so the screen should follow it closely.
+    pub fn playing(&self) -> bool {
+        self.video
+            .as_ref()
+            .is_some_and(|v| matches!(v.state, State::Loading | State::Playing))
+    }
+
+    /// Whether a video picture is on screen.
+    pub fn video_shown(&self) -> bool {
+        self.video.as_ref().is_some_and(|v| v.frame().is_some())
     }
 
     /// Draw the first of `urls` that is ready in `area`, asking for all of

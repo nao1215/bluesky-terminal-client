@@ -384,3 +384,56 @@ scenarios:
             body:
               json:
                 - { path: "$.i", equals: e2e-fake-token-0102 }
+
+  # A note's MP4 is played in the viewer with OpenH264, as bsky plays its
+  # videos: its pictures reach the terminal, and it ends.
+  - name: the viewer plays a note's MP4 video
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - id: v1
+                createdAt: "2026-11-26T10:00:00.000Z"
+                user: { username: vic }
+                text: "動画です 🎬"
+                files:
+                  - { id: f1, name: clip.mp4, type: video/mp4, size: 1838, url: "${api.url}/files/clip.mp4", properties: { width: 64, height: 36 } }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: GET, path: /files/clip.mp4, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0101"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["動画です 🎬", "▶ 1 video"]
+            - send: " "
+            - expect_screen:
+                contains: "■ ended  r plays it again"
+            # Pictures go under two kitty image ids in turn, as bsky's do.
+            - expect_screen:
+                images: { count: 2 }
+            - send: q
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /files/clip.mp4 }
