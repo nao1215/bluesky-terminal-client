@@ -36,7 +36,7 @@ env:
   CARGO_TERM_COLOR: never
   # The score of the last full run (cargo mutants over every file
   # .cargo/mutants.toml names). Raise it when the score goes up.
-  MUTATION_MIN_SCORE: "77"
+  MUTATION_MIN_SCORE: "94"
   # A mutant that allocates without end would take the runner down with it,
   # leaving no log; the limit turns it into a failed test instead. Two
   # mutants run at once on a 16 GB runner, so each gets 4 GiB. The limit is
