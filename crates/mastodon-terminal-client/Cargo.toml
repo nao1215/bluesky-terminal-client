@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Unofficial Mastodon client for the terminal: commands that read timelines, posts and accounts, save their files, and post with pictures."
 license.workspace = true
 readme = "README.md"
-repository = "https://github.com/nao1215/sns-terminal-clients"
+repository = "https://github.com/nao1215/social-terminal-clients"
 keywords = ["mastodon", "fediverse", "cli", "terminal"]
 categories = ["command-line-utilities"]
 # Not on crates.io yet: the release publishes bsky, and mstdn comes later.

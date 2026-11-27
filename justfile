@@ -44,6 +44,10 @@ bench *ARGS:
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}
 
+# Run mstdn's end-to-end suite with atago (builds mstdn, needs atago on PATH)
+e2e-mstdn *ARGS:
+    ./crates/mastodon-terminal-client/e2e/run.sh {{ARGS}}
+
 # Fuzz one target, e.g. `just fuzz hls_demux -max_total_time=60` (needs nightly and cargo-fuzz).
 # New inputs go to fuzz/work/, so the committed seeds in fuzz/corpus/ stay as they are.
 fuzz TARGET *ARGS:

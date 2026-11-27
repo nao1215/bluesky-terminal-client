@@ -7,6 +7,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/e2e.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/e2e.yml"
@@ -66,3 +68,38 @@ jobs:
       - name: Run atago E2E tests
         shell: bash
         run: ./e2e/run.sh
+
+  # mstdn's suite stubs the Mastodon API with atago mock servers; it runs
+  # mstdn as a command, with no terminal. Windows is left out for now: the
+  # specs compare saved paths with `/` and log in through a POSIX script.
+  mstdn:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install atago
+        uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
+        with:
+          version: v0.26.3
+          verify-attestation: "true"
+
+      - name: Run mstdn's atago E2E tests
+        shell: bash
+        run: ./crates/mastodon-terminal-client/e2e/run.sh

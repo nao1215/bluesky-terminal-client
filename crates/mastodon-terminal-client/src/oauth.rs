@@ -23,7 +23,7 @@ use crate::i18n::t;
 pub const APP_NAME: &str = "mstdn";
 
 /// The address the server shows beside the name.
-pub const WEBSITE: &str = "https://github.com/nao1215/sns-terminal-clients";
+pub const WEBSITE: &str = "https://github.com/nao1215/social-terminal-clients";
 
 /// What mstdn asks to do: read what the account sees, and write (post,
 /// upload the files of a post, and what later commands do). Mastodon's
