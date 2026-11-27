@@ -151,7 +151,7 @@ demo_fake() {
   ready "♡"
   record
   sleep 1.5
-  # The dolphin video, played in the client, and back.
+  # The game video, played in the client, and back.
   send " "
   sleep 3.5
   send "\033"
