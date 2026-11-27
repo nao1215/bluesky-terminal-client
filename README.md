@@ -51,7 +51,10 @@ It needs Rust 1.90 or later.
 
 | Key | What it does |
 |---|---|
-| `1` `4`, `tab` `shift+tab` | The Timeline and Notifications tabs (bsky's numbers; its Chat, Search and Profile tabs are for a later version) |
+| `1` `3` `4` `5`, `tab` `shift+tab` | The Timeline, Search, Notifications and Profile tabs (bsky's numbers; its Chat tab is for a later version) |
+| `/` `i`, `t` | Type in the search box (it has focus when you arrive at an empty Search tab), and switch between searching notes and accounts |
+| `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
+| `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
 | `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
 | `←` `→` `H` `L`, `+` | The previous / next timeline (home, local, social, global), or choose one from a list; bsky moves between its columns with these |
 | `v` | The thread: what the note answers, the note, and two levels of replies; `esc` closes it |
@@ -72,6 +75,8 @@ A renote is shown as the note it renotes under `⟳ renoted by`, a quote with a 
 Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: home and social say how to log in, and `→` shows the local and global timelines, where the server shows them to visitors.
 
 The client reads one server at a time: switching accounts in `A` switches to that account's server.
+
+The Profile tab shows the account's name and address, how you and it follow each other, its counts and what it says about itself (as plain text), over its notes, paged as the timelines are. The Search tab searches notes (`notes/search`, paged by `untilId`) or accounts (`users/search`, paged by offset).
 
 The composer (`n`, `r`, `Q`) takes bsky's keys: `ctrl+s` sends, `ctrl+o` opens a file browser to attach up to four pictures or one video (`space` marks several, `enter` chooses), `tab` moves to a file's alt text, `ctrl+x` removes a file, `esc` closes without sending. Misskey's own are `ctrl+w`, which adds or takes off a content warning, and `ctrl+p`, which steps through who may see the note (public, home, followers); a reply starts as visible as the note it answers. The length is checked against the server's own limit (its `meta`) when the note is sent. A write is sent once, and a key pressed again while one is on its way is refused. The notifications are marked read when their tab shows them.
 

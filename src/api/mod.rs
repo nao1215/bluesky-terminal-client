@@ -436,6 +436,31 @@ impl Client {
             .map_err(|e| Error::api(format!("users/show: unexpected answer: {e}")))
     }
 
+    /// `users/show` by ID: the account `id`.
+    pub fn user_by_id(&self, id: &str) -> Result<User> {
+        let v = self.call("users/show", &json!({"userId": id}))?;
+        serde_json::from_value(v)
+            .map_err(|e| Error::api(format!("users/show: unexpected answer: {e}")))
+    }
+
+    /// `users/search`: a page of the accounts that match `query`, from
+    /// the `offset`th on (the API pages accounts by offset).
+    pub fn search_users(&self, query: &str, limit: usize, offset: usize) -> Result<Vec<User>> {
+        let v = self.call(
+            "users/search",
+            &json!({"query": query, "limit": limit.clamp(1, MAX_PAGE), "offset": offset, "detail": true}),
+        )?;
+        let Value::Array(items) = v else {
+            return Err(Error::api(
+                "users/search: the server did not answer with a list",
+            ));
+        };
+        Ok(items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect())
+    }
+
     /// `users/notes`: a page of an account's notes, newest first, older
     /// than `until` when given.
     pub fn user_notes(

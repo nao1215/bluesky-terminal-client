@@ -21,7 +21,10 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            ("1 4", "the Timeline and Notifications tabs"),
+            (
+                "1 3 4 5",
+                "the Timeline, Search, Notifications and Profile tabs",
+            ),
             ("tab shift+tab", "next / previous tab"),
             ("A", "accounts: switch, log out"),
             ("?", "this help"),
@@ -58,6 +61,7 @@ pub const HELP: &[Section] = &[
             ("e", "choose a reaction"),
             ("b", "renote / take back your renote"),
             ("D", "delete your own note: y confirms"),
+            ("enter", "open the profile of its author"),
             ("v", "open the thread with its replies"),
             ("space", "view the pictures and files"),
             ("w", "show / hide the text behind a content warning"),
@@ -73,6 +77,30 @@ pub const HELP: &[Section] = &[
             ("j k", "move through the notes and replies"),
             ("v", "open the thread of the selected reply"),
             ("esc", "close the thread"),
+        ],
+    },
+    Section {
+        title: "Search",
+        keys: &[
+            ("type", "the search box has focus when you arrive"),
+            ("enter", "search, then move through the results"),
+            ("/ i", "type in the search box again"),
+            ("ctrl+t t", "search notes or accounts"),
+            ("enter", "open the account's profile"),
+            ("f", "follow / unfollow the account"),
+            ("esc", "leave the search box"),
+        ],
+    },
+    Section {
+        title: "Profile",
+        keys: &[
+            ("5", "your own profile"),
+            ("f", "follow / unfollow the account shown"),
+            (
+                "",
+                "an account that approves followers, or of another server, is asked",
+            ),
+            ("esc", "back to the list it was opened from"),
         ],
     },
     Section {
@@ -257,6 +285,34 @@ fn view_hints(app: &App) -> Vec<Hint> {
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
+        Tab::Search if app.search.editing => {
+            return vec![
+                ("enter", "search"),
+                ("ctrl+t", "notes / accounts"),
+                ("tab", "next tab"),
+                ("esc", "done"),
+            ];
+        }
+        Tab::Search if app.search.mode == crate::tui::app::SearchMode::Accounts => vec![
+            ("j k", "move"),
+            ("enter", "profile"),
+            ("f", "follow"),
+            ("/", "edit query"),
+            ("t", "notes"),
+        ],
+        Tab::Search => vec![
+            ("j k", "move"),
+            (".", "actions"),
+            ("/", "edit query"),
+            ("t", "accounts"),
+        ],
+        Tab::Profile if app.profile.came_from.is_some() => vec![
+            ("esc", "back"),
+            ("j k", "move"),
+            (".", "actions"),
+            ("f", "follow"),
+        ],
+        Tab::Profile => vec![("j k", "move"), (".", "actions"), ("R", "reload")],
         Tab::Timeline => vec![
             ("j k", "move"),
             ("← →", "timeline"),

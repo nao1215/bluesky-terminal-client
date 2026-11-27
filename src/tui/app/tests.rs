@@ -599,6 +599,13 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('e'),
         key('b'),
         key('D'),
+        key('3'),
+        key('5'),
+        key('t'),
+        key('i'),
+        key('f'),
+        key('x'),
+        KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
         KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
         KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL),
         KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
@@ -693,6 +700,61 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
+                    Job::Profile { .. } => Event::Profile(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok(Box::new((
+                            serde_json::from_value(
+                                json!({"id": format!("u{step}"), "username": "u"}),
+                            )
+                            .unwrap(),
+                            page("p"),
+                        )))
+                    }),
+                    Job::UserNotes { user_id, until } => Event::UserNotes {
+                        user_id,
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(page("q"))
+                        },
+                    },
+                    Job::SearchNotes { query, until } => Event::SearchNotes {
+                        query,
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(page("s"))
+                        },
+                    },
+                    Job::SearchUsers { query, offset } => Event::SearchUsers {
+                        query,
+                        offset,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok((0..size)
+                                .map(|i| {
+                                    serde_json::from_value(
+                                        json!({"id": format!("su{step}-{i}"), "username": "s"}),
+                                    )
+                                    .unwrap()
+                                })
+                                .collect())
+                        },
+                    },
+                    Job::Follow { user_id, .. } => {
+                        Event::Followed {
+                            user_id: user_id.clone(),
+                            result: if fail {
+                                Err(Error::api("x"))
+                            } else {
+                                Ok(Box::new(serde_json::from_value(json!({"id": user_id, "username": "f", "isFollowing": true})).unwrap()))
+                            },
+                        }
+                    }
                     Job::Login { session, .. } => Event::LoggedIn {
                         session,
                         result: if fail {
@@ -711,6 +773,9 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                 .iter()
                 .map(|l| (l.selected, l.items.len()))
                 .chain([(app.notifications.selected, app.notifications.items.len())])
+                .chain([(app.search.notes.selected, app.search.notes.items.len())])
+                .chain([(app.search.users.selected, app.search.users.items.len())])
+                .chain([(app.profile.notes.selected, app.profile.notes.items.len())])
                 .chain(
                     app.threads
                         .iter()
@@ -1265,4 +1330,194 @@ fn files_chosen_in_the_browser_go_with_the_post() {
         got,
         [("b.jpg".to_string(), "黒猫"), ("猫🐈.png".to_string(), "")]
     );
+}
+
+fn user(v: Value) -> crate::api::types::User {
+    serde_json::from_value(v).unwrap()
+}
+
+// 3 opens Search with the box focused; enter searches notes, t switches
+// to accounts and searches them; the accounts page by offset, the notes
+// by untilId, and an answer for another query is dropped.
+#[test]
+fn the_search_tab_searches_notes_and_accounts_and_pages_them() {
+    let mut app = logged_in(&[]);
+    app.handle_key(key('3'));
+    assert_eq!(app.tab, Tab::Search);
+    assert!(app.search.editing);
+    type_str(&mut app, "猫 🐈");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        jobs[0].1,
+        Job::SearchNotes {
+            query: "猫 🐈".into(),
+            until: None
+        }
+    );
+    assert!(!app.search.editing);
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchNotes {
+            query: "猫 🐈".into(),
+            until: None,
+            result: Ok(notes(&["s2", "s1"])),
+        },
+    );
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(
+        jobs[0].1,
+        Job::SearchNotes {
+            query: "猫 🐈".into(),
+            until: Some("s1".into())
+        }
+    );
+    let jobs = app.handle_key(key('t'));
+    assert_eq!(
+        jobs[0].1,
+        Job::SearchUsers {
+            query: "猫 🐈".into(),
+            offset: 0
+        }
+    );
+    let first: Vec<_> = (0..3)
+        .map(|i| user(json!({"id": format!("u{i}"), "username": format!("cat{i}")})))
+        .collect();
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchUsers {
+            query: "猫 🐈".into(),
+            offset: 0,
+            result: Ok(first),
+        },
+    );
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(
+        jobs[0].1,
+        Job::SearchUsers {
+            query: "猫 🐈".into(),
+            offset: 3
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchUsers {
+            query: "猫 🐈".into(),
+            offset: 3,
+            result: Ok(vec![]),
+        },
+    );
+    assert_eq!(
+        app.search.users.cursor, None,
+        "a page with nothing new ends it"
+    );
+    assert!(app.handle_key(key('G')).is_empty());
+    // / types again; esc leaves the box.
+    app.handle_key(key('/'));
+    assert!(app.search.editing);
+    app.handle_key(code(KeyCode::Esc));
+    assert!(!app.search.editing);
+}
+
+// enter on a note opens its author's profile, which esc leaves for where
+// it was opened from; 5 opens your own; the profile's notes page.
+#[test]
+fn enter_opens_the_authors_profile_and_esc_goes_back() {
+    let mut app = logged_in(&[]);
+    app.timelines[0].set(vec![renote_of(
+        json!({"id": "o", "userId": "u-bob", "user": {"id": "u-bob", "username": "bob"}}),
+    )]);
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        jobs[0].1,
+        Job::Profile {
+            who: crate::tui::worker::Who::Id("u-bob".into())
+        }
+    );
+    assert_eq!(app.tab, Tab::Profile);
+    let bob = user(json!({"id": "u-bob", "username": "bob", "notesCount": 3}));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((bob, notes(&["b2", "b1"]))))),
+    );
+    assert_eq!(app.profile.user.as_ref().unwrap().id, "u-bob");
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(
+        jobs[0].1,
+        Job::UserNotes {
+            user_id: "u-bob".into(),
+            until: "b1".into()
+        }
+    );
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.tab, Tab::Timeline);
+    let jobs = app.handle_key(key('5'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Profile {
+            who: crate::tui::worker::Who::Me
+        }
+    );
+    // A visitor's 5 says how to log in, and asks nothing.
+    let (mut visitor, _) = App::new(None, ORIGIN);
+    assert!(visitor.handle_key(key('5')).is_empty());
+    assert!(visitor.profile.error.as_ref().unwrap().contains("log in"));
+}
+
+// f follows the account shown, or unfollows it, or takes back a request;
+// what the server says after is shown, pending for one that approves.
+#[test]
+fn f_follows_and_unfollows_the_account_shown() {
+    let mut app = writer(vec![]);
+    let jobs = app.open_profile(crate::tui::worker::Who::Id("u-bob".into()));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-bob", "username": "bob", "host": "x.test"})),
+            vec![],
+        )))),
+    );
+    let jobs = app.handle_key(key('f'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Follow {
+            user_id: "u-bob".into(),
+            on: true,
+            requested: false
+        }
+    );
+    assert!(app.handle_key(key('f')).is_empty(), "one at a time");
+    app.handle_answer(jobs[0].0, Event::Followed { user_id: "u-bob".into(), result: Ok(Box::new(user(json!({"id": "u-bob", "username": "bob", "host": "x.test", "hasPendingFollowRequestFromYou": true})))) });
+    assert_eq!(
+        app.status.as_ref().unwrap().text,
+        "asked to follow @bob@x.test; pending until it is accepted"
+    );
+    let jobs = app.handle_key(key('f'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Follow {
+            user_id: "u-bob".into(),
+            on: false,
+            requested: true
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Followed {
+            user_id: "u-bob".into(),
+            result: Ok(Box::new(user(
+                json!({"id": "u-bob", "username": "bob", "host": "x.test"}),
+            ))),
+        },
+    );
+    assert_eq!(app.status.as_ref().unwrap().text, "unfollowed @bob@x.test");
+    // Your own profile cannot be followed.
+    let jobs = app.open_profile(crate::tui::worker::Who::Me);
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-me", "username": "me"})),
+            vec![],
+        )))),
+    );
+    assert!(app.handle_key(key('f')).is_empty());
 }

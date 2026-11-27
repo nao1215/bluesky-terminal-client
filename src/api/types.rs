@@ -27,6 +27,8 @@ pub struct User {
     pub notes_count: Option<u64>,
     /// Whether the account asking follows it (`UserDetailed`, logged in).
     pub is_following: bool,
+    /// Whether it follows the account asking.
+    pub is_followed: bool,
     /// Whether it approves its followers.
     pub is_locked: bool,
     /// Whether the account asking has asked to follow it, not yet approved.

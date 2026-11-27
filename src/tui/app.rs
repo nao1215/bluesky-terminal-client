@@ -16,29 +16,34 @@ use crate::tui::keys;
 use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{Event, Job, Thread};
 
+mod browse;
 mod write;
 
 #[cfg(test)]
 mod tests;
 
+pub use browse::{Profile, Search, SearchMode};
 pub use write::{Compose, REACTIONS};
 
-/// The tabs. They keep the numbers bsky gives its tabs: Timeline is 1 and
-/// Notifications 4; bsky's Chat (2), Search (3) and Profile (5) are for a
-/// later version.
+/// The tabs, with the numbers bsky gives its tabs: Timeline 1, Search 3,
+/// Notifications 4, Profile 5. bsky's Chat (2) is for a later version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Timeline,
+    Search,
     Notifications,
+    Profile,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 2] = [Tab::Timeline, Tab::Notifications];
+    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Notifications, Tab::Profile];
 
     pub fn title(self) -> &'static str {
         match self {
             Tab::Timeline => "Timeline",
+            Tab::Search => "Search",
             Tab::Notifications => "Notifications",
+            Tab::Profile => "Profile",
         }
     }
 
@@ -46,7 +51,9 @@ impl Tab {
     pub fn key(self) -> char {
         match self {
             Tab::Timeline => '1',
+            Tab::Search => '3',
             Tab::Notifications => '4',
+            Tab::Profile => '5',
         }
     }
 
@@ -408,6 +415,8 @@ pub struct App {
     /// finds it where it was left.
     pub timelines: [List<Note>; 4],
     pub notifications: List<Notification>,
+    pub search: Search,
+    pub profile: Profile,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
     pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
@@ -474,6 +483,8 @@ impl App {
             kind: TimelineKind::Home,
             timelines: Default::default(),
             notifications: List::default(),
+            search: Search::default(),
+            profile: Profile::default(),
             threads: Vec::new(),
             overlay: None,
             status: None,
@@ -514,6 +525,8 @@ impl App {
         self.threads.clear();
         self.opened.clear();
         self.renoted.clear();
+        self.search = Search::default();
+        self.profile = Profile::default();
         if self.session.is_none() {
             let host = self.host().to_string();
             for kind in TimelineKind::ALL.into_iter().filter(|k| k.needs_login()) {
@@ -774,6 +787,11 @@ impl App {
             } => self.reacted(&id, reaction, had, result),
             Event::Renoted { id, on, result } => self.renoted(&id, on, result),
             Event::Deleted { id, result } => self.deleted(&id, result),
+            e @ (Event::Profile(_)
+            | Event::UserNotes { .. }
+            | Event::SearchNotes { .. }
+            | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
+            Event::Followed { user_id, result } => self.followed(&user_id, result),
             Event::MarkedRead(Ok(())) => {}
             Event::MarkedRead(Err(e)) => self.error(said(&e)),
             Event::Opened(Ok(())) => {}
@@ -830,6 +848,9 @@ impl App {
         }
         if self.overlay.is_some() {
             return self.overlay_key(key);
+        }
+        if self.tab == Tab::Search && self.search.editing && self.threads.is_empty() {
+            return self.search_key(key);
         }
         self.main_key(key)
     }
@@ -1120,7 +1141,24 @@ impl App {
                 self.overlay = Some(Overlay::Accounts { selected: at });
             }
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
+            KeyCode::Char('3') => return self.switch_tab(Tab::Search),
             KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
+            KeyCode::Char('5') => return self.switch_tab(Tab::Profile),
+            KeyCode::Char('/') => {
+                let jobs = self.switch_tab(Tab::Search);
+                self.search.editing = true;
+                return jobs;
+            }
+            KeyCode::Char('i') if self.tab == Tab::Search && !in_thread => {
+                self.search.editing = true;
+            }
+            KeyCode::Char('t') if self.tab == Tab::Search && !in_thread => {
+                self.toggle_search_mode();
+                return self.run_search();
+            }
+            KeyCode::Char('f') => return self.toggle_follow(),
+            KeyCode::Enter => return self.open_selected_profile(),
+            KeyCode::Esc if !in_thread && self.tab == Tab::Profile => return self.profile_back(),
             KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
             KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
             KeyCode::Char('j') | KeyCode::Down => return self.step(1),
@@ -1166,6 +1204,12 @@ impl App {
         self.tab = tab;
         // Choosing a tab is a new place to be, not a detour to return from.
         self.threads.clear();
+        self.profile.came_from = None;
+        // Arriving at an empty Search tab means wanting to type, as in bsky.
+        self.search.editing = tab == Tab::Search && self.search.input.is_empty();
+        if tab == Tab::Profile && self.profile.who.is_none() {
+            return self.open_profile(crate::tui::worker::Who::Me);
+        }
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
@@ -1210,6 +1254,7 @@ impl App {
                     None => Vec::new(),
                 }
             }
+            Tab::Search | Tab::Profile => self.step_browse(delta),
         }
     }
 
@@ -1227,6 +1272,7 @@ impl App {
         match self.tab {
             Tab::Timeline => self.load_timeline(self.kind),
             Tab::Notifications => self.load_notifications(),
+            Tab::Search | Tab::Profile => self.refresh_browse(),
         }
     }
 
@@ -1238,6 +1284,11 @@ impl App {
         match self.tab {
             Tab::Timeline => self.timelines[self.kind.index()].current(),
             Tab::Notifications => self.notifications.current().and_then(|n| n.note.as_ref()),
+            Tab::Search => match self.search.mode {
+                SearchMode::Notes => self.search.notes.current(),
+                SearchMode::Accounts => None,
+            },
+            Tab::Profile => self.profile.notes.current(),
         }
     }
 

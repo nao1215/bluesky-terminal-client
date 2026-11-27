@@ -113,7 +113,7 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     let screen = render_text(&mut app, 100, 12);
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
-        lines[0].starts_with(" 1 Timeline: Home   4 Notifications"),
+        lines[0].starts_with(" 1 Timeline: Home   3 Search   4 Notifications   5 Profile"),
         "{screen}"
     );
     assert!(lines[0].ends_with("@me@misskey.test"), "{screen}");
@@ -599,4 +599,55 @@ fn the_reaction_picker_shows_the_reactions() {
     assert!(screen.contains("React"), "{screen}");
     assert!(screen.contains("👍  ❤  😆  🤔"), "{screen}");
     assert!(screen.contains("← → choose  enter react"), "{screen}");
+}
+
+// The Profile tab shows the account's header (MFM of its description as
+// plain text, its counts, how you are related) over its notes; the Search
+// tab its box over the accounts found.
+#[test]
+fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
+    let mut app = with_notes(vec![]);
+    let jobs = app.handle_key(key('5'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            serde_json::from_value(json!({"id": "u-me", "username": "me", "name": "わたし 👩🏽‍💻",
+                "description": "$[x2 Rust] と **Go** が好き\n二行目", "notesCount": 12, "followingCount": 3, "followersCount": 4})).unwrap(),
+            vec![note(json!({"id": "n1", "createdAt": "t", "user": {"username": "me"}, "text": "自分のノート"}))],
+        )))),
+    );
+    let screen = render_text(&mut app, 90, 20);
+    assert!(screen.contains("わたし 👩🏽‍💻 @me"), "{screen}");
+    assert!(
+        screen.contains("12 notes  3 following  4 followers"),
+        "{screen}"
+    );
+    assert!(screen.contains("Rust と Go が好き"), "{screen}");
+    assert!(screen.contains("自分のノート"), "{screen}");
+    app.handle_key(key('3'));
+    for c in "rust".chars() {
+        app.handle_key(key(c));
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    let jobs = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchUsers {
+            query: "rust".into(),
+            offset: 0,
+            result: Ok(vec![
+                serde_json::from_value(json!({"id": "u1", "username": "ferris", "host": "x.test",
+                "name": "Ferris 🦀", "description": "**crab**", "isFollowing": true}))
+                .unwrap(),
+            ]),
+        },
+    );
+    let screen = render_text(&mut app, 90, 20);
+    assert!(screen.contains("Search accounts: rust"), "{screen}");
+    assert!(
+        screen.contains("Ferris 🦀 @ferris@x.test  ✓ following"),
+        "{screen}"
+    );
+    assert!(screen.contains("crab"), "{screen}");
+    assert!(screen.contains("enter profile  f follow"), "{screen}");
 }

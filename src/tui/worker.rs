@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::api::Client;
-use crate::api::types::{DriveFile, Note, Notification};
+use crate::api::types::{DriveFile, Note, Notification, User};
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::Session;
 use crate::error::{Error, Result};
@@ -72,9 +72,37 @@ pub enum Job {
     Delete { id: String },
     /// Mark every notification read.
     MarkRead,
+    /// An account and the first page of its notes.
+    Profile { who: Who },
+    /// A page of account `user_id`'s notes older than `until`.
+    UserNotes { user_id: String, until: String },
+    /// A page of the notes that match `query`: the first, or the one older
+    /// than `until`.
+    SearchNotes {
+        query: String,
+        until: Option<String>,
+    },
+    /// A page of the accounts that match `query`, from the `offset`th on.
+    SearchUsers { query: String, offset: usize },
+    /// Follow account `user_id` (`on`), or unfollow it, or take back a
+    /// request to follow it (`requested`).
+    Follow {
+        user_id: String,
+        on: bool,
+        requested: bool,
+    },
     /// Wait for the access asked for with MiAuth `session` on the server at
     /// `origin`, and make the login of it.
     Login { origin: String, session: String },
+}
+
+/// Whose profile is asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Who {
+    /// The account in use.
+    Me,
+    /// An account by its ID.
+    Id(String),
 }
 
 /// A note's thread.
@@ -124,6 +152,29 @@ pub enum Event {
         result: Result<()>,
     },
     MarkedRead(Result<()>),
+    /// An account and the first page of its notes, answered under the
+    /// number of the job that asked.
+    Profile(Result<Box<(User, Vec<Note>)>>),
+    UserNotes {
+        user_id: String,
+        until: String,
+        result: Result<Vec<Note>>,
+    },
+    SearchNotes {
+        query: String,
+        until: Option<String>,
+        result: Result<Vec<Note>>,
+    },
+    SearchUsers {
+        query: String,
+        offset: usize,
+        result: Result<Vec<User>>,
+    },
+    /// The account as it is after a follow or an unfollow.
+    Followed {
+        user_id: String,
+        result: Result<Box<User>>,
+    },
     /// The servers to log in to, and why the Hub's list could not be read
     /// when the built-in one is given instead.
     Servers {
@@ -172,6 +223,26 @@ impl Job {
             },
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
+            Job::Profile { .. } => Event::Profile(Err(e)),
+            Job::UserNotes { user_id, until } => Event::UserNotes {
+                user_id,
+                until,
+                result: Err(e),
+            },
+            Job::SearchNotes { query, until } => Event::SearchNotes {
+                query,
+                until,
+                result: Err(e),
+            },
+            Job::SearchUsers { query, offset } => Event::SearchUsers {
+                query,
+                offset,
+                result: Err(e),
+            },
+            Job::Follow { user_id, .. } => Event::Followed {
+                user_id,
+                result: Err(e),
+            },
             Job::Login { session, .. } => Event::LoggedIn {
                 session,
                 result: Err(e),
@@ -240,6 +311,30 @@ pub fn run(job: Job, client: &Client) -> Event {
             id,
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
+        Job::Profile { who } => Event::Profile(profile(client, &who).map(Box::new)),
+        Job::UserNotes { user_id, until } => Event::UserNotes {
+            result: client.user_notes(&user_id, &ALL_NOTES, PAGE, Some(&until)),
+            user_id,
+            until,
+        },
+        Job::SearchNotes { query, until } => Event::SearchNotes {
+            result: client.search(&query, PAGE, until.as_deref()),
+            query,
+            until,
+        },
+        Job::SearchUsers { query, offset } => Event::SearchUsers {
+            result: client.search_users(&query, PAGE, offset),
+            query,
+            offset,
+        },
+        Job::Follow {
+            user_id,
+            on,
+            requested,
+        } => Event::Followed {
+            result: follow(client, &user_id, on, requested).map(Box::new),
+            user_id,
+        },
         Job::Servers => {
             let (list, failed) = crate::servers::list();
             Event::Servers { list, failed }
@@ -287,6 +382,37 @@ fn thread(client: &Client, id: &str) -> Result<Thread> {
         note,
         replies,
     })
+}
+
+/// The notes of an account a profile lists: its notes, replies and
+/// renotes, as Misskey's own profile lists them.
+const ALL_NOTES: crate::api::NoteFilter = crate::api::NoteFilter {
+    replies: true,
+    renotes: true,
+    files: false,
+};
+
+/// An account, and the first page of its notes.
+fn profile(client: &Client, who: &Who) -> Result<(User, Vec<Note>)> {
+    let id = match who {
+        Who::Me => client.me()?.id,
+        Who::Id(id) => id.clone(),
+    };
+    let user = client.user_by_id(&id)?;
+    let notes = client.user_notes(&user.id, &ALL_NOTES, PAGE, None)?;
+    Ok((user, notes))
+}
+
+/// Follow, unfollow, or take back a request, then read the account again:
+/// how it answers says whether the follow is made or waits for approval
+/// (an account that approves its followers, or one of another server).
+fn follow(client: &Client, id: &str, on: bool, requested: bool) -> Result<User> {
+    match (on, requested) {
+        (true, _) => client.follow(id)?,
+        (false, true) => client.cancel_follow_request(id)?,
+        (false, false) => client.unfollow(id)?,
+    }
+    client.user_by_id(id)
 }
 
 /// A note to post, as the composer made it.

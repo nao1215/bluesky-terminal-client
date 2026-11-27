@@ -1,0 +1,125 @@
+# The Search tab (3) and the Profile tab (5), driven in a pty with bsky's
+# keys against an atago mock: notes and accounts searched (/ and t), an
+# author's profile opened with enter and left with esc, its notes paged,
+# and the account followed with f. The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky client search and profiles
+
+secrets:
+  - e2e-fake-token-0401
+
+scenarios:
+  - name: search finds notes and accounts, enter opens a profile, f follows it
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: t1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test, name: "ボブ" }, text: "タイムラインのノート" }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/notes/search
+            json:
+              - { id: s1, createdAt: "2026-11-26T09:00:00.000Z", userId: u-cat, user: { id: u-cat, username: cat }, text: "$[x2 Rust] の話 🦀" }
+          - method: POST
+            path: /api/users/search
+            json:
+              - { id: u-ferris, username: ferris, host: x.test, name: "Ferris 🦀", description: "**crab**", isFollowing: false }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: x.test, name: "ボブ", description: "<center>Go と Rust</center>", notesCount: 9, followingCount: 2, followersCount: 5, hasPendingFollowRequestFromYou: true }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - { id: b1, createdAt: "2026-11-26T08:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test }, text: "ボブのノート" }
+          - { method: POST, path: /api/following/create, json: { id: u-bob } }
+          - { method: POST, path: /api/following/requests/cancel, json: { id: u-bob } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0401",
+             "permissions": ["read:account", "read:notifications", "read:following", "read:reactions", "write:notes", "write:drive", "write:following", "write:reactions", "write:notifications"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 36
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: ["タイムラインのノート", "3 Search", "5 Profile"]
+            - send: "3"
+            - expect_screen:
+                contains: ["Search notes:", "enter search", "ctrl+t notes / accounts"]
+            - send: "rust"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["cat @cat", "Rust の話 🦀"]
+                not_contains: "$[x2"
+            - send: t
+            - expect_screen:
+                contains: ["Search accounts: rust", "Ferris 🦀 @ferris@x.test", "crab"]
+            # A timeline note's author, opened with enter, and back.
+            - send: "1"
+            - expect_screen:
+                contains: "タイムラインのノート"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["ボブ @bob@x.test", "… requested", "9 notes  2 following  5 followers", "Go と Rust", "ボブのノート"]
+                not_contains: "<center>"
+            # The request is pending: f takes it back, and the account as
+            # the server has it after says how it stands.
+            - send: f
+            - expect_screen:
+                contains: "asked to follow @bob@x.test; pending until it is accepted"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "タイムラインのノート"
+                not_contains: "ボブのノート"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/search
+            body:
+              json:
+                - { path: "$.query", equals: rust }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/search
+            body:
+              json:
+                - { path: "$.query", equals: rust }
+                - { path: "$.offset", equals: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+      # The request is pending, so f takes it back; the account is read
+      # again after.
+      - assert:
+          mock:
+            name: api
+            path: /api/following/requests/cancel
+            count: 1
+      - assert:
+          mock: { name: api, path: /api/following/create, count: 0 }

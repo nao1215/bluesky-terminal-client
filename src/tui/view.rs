@@ -21,10 +21,12 @@ use crate::tui::keys;
 use crate::tui::text::{cells, cluster_width, drawable, format_time, graphemes, truncate, wrap};
 use crate::tui::theme::Theme;
 
+mod browse;
 mod compose;
 #[cfg(test)]
 mod tests;
 
+use browse::{draw_profile, draw_search};
 use compose::{draw_browser, draw_compose, draw_reactions};
 
 /// Width of the selection marker column.
@@ -100,6 +102,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             Tab::Notifications => {
                 draw_notifications(frame, body, &mut app.notifications, images, &ctx);
             }
+            Tab::Search => draw_search(frame, body, &mut app.search, images, &ctx),
+            Tab::Profile => draw_profile(frame, body, &mut app.profile, images, &ctx),
         }
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
@@ -247,7 +251,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
                 tab.title(),
                 timeline_title(app.kind)
             ),
-            Tab::Notifications => format!(" {} {} ", tab.key(), tab.title()),
+            _ => format!(" {} {} ", tab.key(), tab.title()),
         };
         let style = if tab == app.tab {
             t.selected()

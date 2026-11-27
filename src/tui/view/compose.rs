@@ -10,7 +10,7 @@ use ratatui::layout::Position;
 /// Size of a picture's thumbnail in the composer, in cells, as bsky's.
 const THUMB: (u16, u16) = (14, 5);
 
-fn draw_single_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
+pub(super) fn draw_single_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
     let width = usize::from(area.width.max(1));
     let layout = input.layout(width);
     // The visual line holding the cursor, so long input scrolls.
