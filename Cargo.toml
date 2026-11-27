@@ -7,7 +7,7 @@ authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
 description = "Unofficial Bluesky client for the terminal that shows pictures and videos inline (kitty graphics, sixel, iTerm2)."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/nao1215/sns-terminal-clients"
+repository = "https://github.com/nao1215/social-terminal-clients"
 keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
 categories = ["command-line-utilities"]
 # The unit tests read e2e/atago/testdata, so it ships; the rest of the
@@ -76,7 +76,7 @@ resolver = "3"
 edition = "2024"
 authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/nao1215/sns-terminal-clients"
+repository = "https://github.com/nao1215/social-terminal-clients"
 
 # Versions more than one member builds with, kept in step here.
 [workspace.dependencies]
