@@ -44,8 +44,14 @@ const NEST_LIMIT: usize = 20;
 
 /// Every link in `text`, in order.
 pub fn links(text: &str) -> Vec<Link> {
-    let b = text.as_bytes();
+    scan(text.as_bytes()).0
+}
+
+/// Every link in `b`, and where each `[` that opens neither a link nor a
+/// function is (outside code, `<plain>` and math, as the links are).
+fn scan(b: &[u8]) -> (Vec<Link>, Vec<usize>) {
     let mut found = Vec::new();
+    let mut strays = Vec::new();
     let mut i = 0;
     while i < b.len() {
         let line_start = i == 0 || b[i - 1] == b'\n';
@@ -53,16 +59,28 @@ pub fn links(text: &str) -> Vec<Link> {
             i = end;
             continue;
         }
+        // A function's `[` opens no label: mfm-js reads the function first.
+        // Its content is read on for links.
+        if b[i..].starts_with(b"$[")
+            && let Some((_, content)) = function(b, i)
+            && closing_bracket(b, content).is_some()
+        {
+            i = content;
+            continue;
+        }
         if let Some(link) = labeled(b, i).or_else(|| angle(b, i)).or_else(|| bare(b, i)) {
             i = link.end;
             found.push(link);
             continue;
         }
+        if b[i] == b'[' {
+            strays.push(i);
+        }
         // One character on: a byte inside a multi-byte one never starts
         // any of the forms above, which are all ASCII.
         i += 1;
     }
-    found
+    (found, strays)
 }
 
 /// The end of what starts at `i` and holds no link: code, `<plain>`, math.
@@ -263,10 +281,27 @@ pub fn without_hash(url: &str) -> &str {
 /// `?[<plain>address</plain>](address)` (the `<plain>` keeps the address
 /// in the label from being read as MFM), and `[label](address)` becomes
 /// `?[label](address)`.
+///
+/// A `[` before a link on its line that no `]` closes before the link
+/// would take the `](` added after the address as the end of its own label
+/// and make a link that is not silent, so it is written `<plain>[</plain>`,
+/// which reads as the same `[`.
 pub fn silenced(text: &str) -> String {
+    let b = text.as_bytes();
+    let (links, strays) = scan(b);
     let mut out = String::with_capacity(text.len() + 64);
     let mut last = 0;
-    for l in links(text) {
+    let mut strays = strays.into_iter().peekable();
+    for l in links {
+        while let Some(at) = strays.next_if(|at| *at < l.start) {
+            let open = label_end(b, at + 1);
+            let line_ends = b[at..l.start].contains(&b'\n');
+            if !line_ends && open.is_none_or(|close| close >= l.start) {
+                out.push_str(&text[last..at]);
+                out.push_str("<plain>[</plain>");
+                last = at + 1;
+            }
+        }
         out.push_str(&text[last..l.start]);
         match l.form {
             Form::Bare => out.push_str(&format!("?[<plain>{0}</plain>]({0})", l.url)),
@@ -637,6 +672,34 @@ mod tests {
         assert_eq!(s, want);
         assert!(previewed(&s, &[]).is_empty(), "{s}");
         assert_eq!(urls(&s), urls(text));
+    }
+
+    // A `[` before a link on its line that closes nothing, or a function's
+    // `$[`, does not take the `](` silencing adds as the end of a label of
+    // its own, which made a link that is not silent and kept the preview.
+    #[rstest]
+    #[case("https://example.com/wiki/Foo_(bar)_[baz. https://example.com/((((x))))")]
+    #[case("[baz. https://a.test")]
+    #[case("[メモ 🇯🇵 https://a.test と https://b.test")]
+    #[case("$[x2 https://a.test]")]
+    #[case("$[x2 https://a.test")]
+    #[case("$[x2 [baz https://a.test]")]
+    #[case("$[x2 $[tada 👨\u{200d}👩\u{200d}👧 https://a.test]] [x](https://b.test)")]
+    #[case("`[` [ https://a.test")]
+    fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
+        let s = silenced(text);
+        assert_eq!(previewed(&s, &[]), Vec::<String>::new(), "{s}");
+        assert_eq!(urls(&s), urls(text), "{s}");
+        assert_eq!(plain_text(&s), plain_text(text), "{s}");
+    }
+
+    // The `[` of a function is not a label's: the link in the function
+    // starts at its own bracket.
+    #[test]
+    fn a_function_bracket_opens_no_link() {
+        let got = links("$[x2 [a](https://a.test)]");
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].start, got[0].end), (5, 24));
     }
 
     fn runs(text: &str) -> Vec<(String, bool)> {
