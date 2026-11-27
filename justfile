@@ -28,13 +28,27 @@ fmt:
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
+# Run security audit (requires cargo-audit)
+audit:
+    cargo audit
+
 # Check dependency licenses and advisories (requires cargo-deny)
 deny:
     cargo deny --locked --all-features check
 
+# Measure performance with himorime (needs himorime and python3)
+bench *ARGS:
+    himorime run {{ARGS}} bench
+
 # Run the end-to-end suite with atago (builds msky, needs atago on PATH)
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}
+
+# Fuzz one target, e.g. `just fuzz mp4_track -max_total_time=60` (needs nightly and cargo-fuzz).
+# New inputs go to fuzz/work/, so the committed seeds in fuzz/corpus/ stay as they are.
+fuzz TARGET *ARGS:
+    mkdir -p fuzz/work/{{TARGET}}
+    cargo +nightly fuzz run {{TARGET}} fuzz/work/{{TARGET}} fuzz/corpus/{{TARGET}} -- {{ARGS}}
 
 # Run every CI check locally
 ci: test lint fmt-check doc e2e
@@ -46,6 +60,14 @@ build:
 # Build a release binary
 build-release:
     cargo build --release --locked
+
+# Line coverage of the unit tests and the E2E suite together, as lcov.info (needs cargo-llvm-cov and atago)
+coverage:
+    ./scripts/coverage.sh
+
+# Test the release scripts (packing, checks, notes, Homebrew formula) without a tag
+release-test:
+    ./scripts/release/test.sh
 
 # Remove build artifacts
 clean:

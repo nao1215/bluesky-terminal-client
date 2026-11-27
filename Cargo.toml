@@ -11,14 +11,31 @@ repository = "https://github.com/nao1215/misskey-terminal-client"
 keywords = ["misskey", "fediverse", "tui", "terminal", "sixel"]
 categories = ["command-line-utilities"]
 exclude = [
+    ".cargo/",
     ".github/",
     ".gitignore",
+    ".gitleaksignore",
+    ".octocov.yml",
+    "about.hbs",
+    "about.toml",
+    "bench/",
     "deny.toml",
     "doc/",
     "e2e/",
+    "fuzz/",
     "justfile",
     "scripts/",
 ]
+
+# `cargo binstall misskey-terminal-client` fetches the release archive instead
+# of building it.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/msky-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [[bin]]
 name = "msky"

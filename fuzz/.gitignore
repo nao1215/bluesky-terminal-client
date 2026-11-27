@@ -1,0 +1,5 @@
+target/
+artifacts/
+coverage/
+# What `just fuzz` finds; the committed seeds are in corpus/.
+work/

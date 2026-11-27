@@ -5,6 +5,7 @@
 - Rust stable (`rustup default stable`); the minimum supported version is the `rust-version` in `Cargo.toml`
 - [just](https://github.com/casey/just) (`cargo install just`)
 - [atago](https://github.com/nao1215/atago) for the end-to-end suite (`go install github.com/nao1215/atago@latest`)
+- [himorime](https://github.com/nao1215/himorime) and python3 for the benchmarks (`go install github.com/nao1215/himorime@latest`)
 
 ## Checks
 
@@ -15,9 +16,13 @@ just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
 just e2e         # end-to-end suite
 just deny        # dependency advisories and licenses (needs cargo-deny)
+just bench       # performance with himorime (see bench/README.md)
+just coverage    # line coverage of the unit tests and the E2E suite together (needs cargo-llvm-cov)
+just fuzz <target> -max_total_time=60   # one fuzz target (needs nightly and cargo-fuzz)
+just release-test                       # the release scripts, without a tag
 ```
 
-`just ci` runs all of them but `deny`.
+`just ci` runs the first five.
 
 ## End-to-end tests
 
@@ -30,6 +35,18 @@ The suite runs on Linux, macOS, and Windows. Skip a platform only for a reason w
 
 Write a scenario for every behavior you add or change, including how it fails. Do not point a scenario at a real server.
 
+## Benchmarks
+
+`bench/himorime.yaml` measures start-up, the commands, and the client from start to its first note, against a stand-in server. Every pull request is compared with its base by `.github/workflows/bench.yml`; see [bench/README.md](bench/README.md).
+
+## Fuzzing
+
+`fuzz/` holds cargo-fuzz targets for the code that reads untrusted input: `mfm_links` (the links in a note's MFM, its plain text, and silencing its links), `metadata_strip` (taking the metadata off a file before it is uploaded), `mp4_track` (the video track of an MP4 a note carries), and `note_json` (a server's notes, accounts and notifications). Each checks properties, not only that nothing panics: links fall on character boundaries without overlapping and a silenced note gets no preview, a stripped video keeps its length and a second pass changes nothing, every sample of a track is Annex B, and an answer reads the same from its bytes as from its JSON value.
+
+msky has no library target, so a target includes the file it tests with `#[path = "../../src/..."] mod ...;`. Only a file that uses nothing else from the crate can be included that way (`src/metadata.rs` uses `crate::error`, which the target includes beside it); keep `src/mfm.rs`, `src/metadata.rs`, `src/error.rs`, `src/tui/mp4.rs` and `src/api/types.rs` free of other `use crate::`.
+
+Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`). `just fuzz mp4_track -max_total_time=60` runs one target; new inputs go to the ignored `fuzz/work/`, and `fuzz/corpus/<target>/` holds the committed seeds. Pull requests that touch those files or `fuzz/` build the targets and run each over its seeds; `.github/workflows/fuzz.yml` explores every night. When it finds a crash, add the input to `fuzz/corpus/<target>/` and to a unit test before fixing it.
+
 ## Code style
 
 - Comments and documentation in English, explaining why rather than what.
@@ -40,3 +57,14 @@ Write a scenario for every behavior you add or change, including how it fails. D
 ## Commits and pull requests
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). Pull requests describe the change and how it was tested.
+
+## Releasing
+
+A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN` and no build cache, packs reproducible archives, writes the third-party license texts (`cargo about`, from `about.toml` and `about.hbs`), `checksums.txt` and a CycloneDX SBOM, attests the build provenance of the archives and the SBOM, signs `checksums.txt` with cosign, creates the GitHub release with the CHANGELOG section as its text, adds SLSA provenance, verifies the published release, and then publishes the crate and updates the formula in nao1215/homebrew-tap. Nothing else starts it: no branch push, pull request or schedule publishes anything.
+
+Before a tag, two workflows run the same steps on pull requests and on main. `.github/workflows/release-smoke.yml` builds and packs every target with the pinned compiler, checks the glibc ceiling, then downloads each archive on a fresh runner and runs `msky --version`. `.github/workflows/licenses.yml` checks the dependency licenses with cargo-deny and writes the third-party license texts with cargo-about, so a crate the release could not ship fails review instead of the release.
+
+1. In a pull request, set `version` in `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
+2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
+
+The workflow stops before building if the tag is not `v` plus the `Cargo.toml` version, the pinned compiler is older than `rust-version`, or the CHANGELOG has no section for the version. A tag with a hyphen (`v0.2.0-rc.1`) makes a pre-release and skips crates.io and Homebrew. Publishing to crates.io uses `CARGO_REGISTRY_TOKEN` when it is set, else trusted publishing (the first publish needs the token). The formula is updated only when `HOMEBREW_TAP_GITHUB_TOKEN` is set.
