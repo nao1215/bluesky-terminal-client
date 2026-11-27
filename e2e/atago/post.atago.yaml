@@ -351,3 +351,41 @@ scenarios:
               - "error: notes/create failed: PERMISSION_DENIED"
               - "hint: the token in MSKY_TOKEN was not given that permission; make one in Settings > API on 127.0.0.1:${api.port} with read:account, write:notes, write:drive and write:following"
             not_contains: e2e-env-token-0001
+
+  - name: a photo's EXIF (its GPS position among it) and a video's metadata are taken off before they are uploaded
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i, json: { id: u-me, username: me, policies: { maxFileSizeMb: 30 } } }
+          - { method: POST, path: /api/drive/files/create, json: { id: f1, name: gps.jpg, type: image/jpeg } }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: 9new } } }
+    steps:
+      - fixture: { file: gps.jpg, from: testdata/gps.jpg }
+      - fixture: { file: gps.mp4, from: testdata/gps.mp4 }
+      - run:
+          command: msky post "写真 📷" --image gps.jpg --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/drive/files/create
+            count: 1
+            body:
+              contains: ["filename=\"gps.jpg\"", "JFIF"]
+              not_contains: ["Exif", "SecretCam", "Taro Secret", "private comment", "http://ns.adobe.com/xap"]
+      - run:
+          command: msky post "動画 🎥" --video gps.mp4 --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0001
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/drive/files/create
+            body:
+              contains: ["filename=\"gps.mp4\"", "ftyp", "mdat"]
+              not_contains: ["SecretCam", "Taro Secret", "+35.68"]

@@ -804,7 +804,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         login(dir.path(), &url, crate::miauth::PERMISSIONS);
         let pic = dir.path().join("猫 \"1\".png");
-        std::fs::write(&pic, b"\x89PNG\r\n\x1a\nbinary\x00\xff").unwrap();
+        // A real PNG: one that only starts like one is refused, as what it
+        // carries cannot be known.
+        std::fs::copy(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/photo.png"),
+            &pic,
+        )
+        .unwrap();
         let a = PostArgs {
             images: vec![pic.clone(), pic],
             alts: vec!["黒猫 🐈‍⬛".into()],

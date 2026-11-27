@@ -889,6 +889,41 @@ mod tests {
         }
     }
 
+    // The composer's photo goes up without its EXIF, the GPS position
+    // among it: what the server receives has none of the fixture's.
+    #[test]
+    fn the_composer_uploads_a_photo_without_its_exif() {
+        let (url, log) = serve(Arc::new(|path, _body, _| match path {
+            "/api/meta" => reply(200, r#"{"maxNoteTextLength":3000}"#),
+            "/api/drive/files/create" => {
+                reply(200, r#"{"id":"f1","name":"gps.jpg","type":"image/jpeg"}"#)
+            }
+            "/api/notes/create" => reply(200, r#"{"createdNote":{"id":"n1"}}"#),
+            _ => reply(404, "{}"),
+        }));
+        let client = Client::new(&url).with_token(Some("fake-token-for-tests".into()));
+        let photo =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/metadata/gps.jpg");
+        let d = Draft {
+            text: "写真 📷".into(),
+            cw: None,
+            visibility: Visibility::Public,
+            reply: None,
+            renote: None,
+            files: vec![(photo, String::new())],
+        };
+        post(&client, &d).unwrap();
+        let log = log.lock().unwrap();
+        let (_, body) = log
+            .iter()
+            .find(|(p, _)| p == "/api/drive/files/create")
+            .unwrap();
+        for private in ["SecretCam", "Taro Secret", "private comment"] {
+            assert!(!body.contains(private), "{private} went up");
+        }
+        assert!(body.contains("JFIF"));
+    }
+
     // Saving the profile uploads the pictures chosen, then sends only what
     // changed to i/update, the pictures by their new IDs.
     #[test]
@@ -903,7 +938,11 @@ mod tests {
         }));
         let dir = tempfile::tempdir().unwrap();
         let png = dir.path().join("a.png");
-        std::fs::write(&png, b"\x89PNG\r\n\x1a\nfake").unwrap();
+        std::fs::copy(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/photo.png"),
+            &png,
+        )
+        .unwrap();
         let client = Client::new(&url).with_token(Some("fake-token-for-tests".into()));
         let change = ProfileChange {
             name: Some("ねこ 🐈‍⬛".into()),

@@ -268,7 +268,12 @@ impl Client {
     /// `drive/files/create`: upload `data` to the account's drive as
     /// `name`, with `comment` as its alt text, and return the file. Sent
     /// once, as every write is.
+    ///
+    /// The file goes without its metadata: a photo's EXIF, the place it
+    /// was taken among it, and a video's (see [`crate::metadata`]).
     pub fn upload(&self, name: &str, data: &[u8], comment: Option<&str>) -> Result<DriveFile> {
+        let data = crate::metadata::strip(name, data)?;
+        let data = &data[..];
         let endpoint = "drive/files/create";
         let url = format!("{}/api/{endpoint}", self.origin);
         let boundary = boundary()?;

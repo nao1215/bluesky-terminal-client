@@ -15,6 +15,7 @@ mod config;
 mod download;
 mod error;
 mod i18n;
+mod metadata;
 mod mfm;
 mod miauth;
 mod servers;
