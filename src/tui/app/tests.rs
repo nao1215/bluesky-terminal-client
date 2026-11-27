@@ -1,4 +1,6 @@
 use super::*;
+use crate::tui::columns::Source;
+use crate::tui::worker::ColumnPage;
 use serde_json::{Value, json};
 
 const ORIGIN: &str = "https://misskey.test";
@@ -682,6 +684,8 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('R'),
         key('L'),
         key('H'),
+        key('<'),
+        key('>'),
         key('a'),
         key('/'),
         code(KeyCode::Esc),
@@ -814,13 +818,24 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
-                    Job::FeedNotes { feed, until } => Event::FeedNotes {
-                        feed,
+                    Job::Column { id, source, until } => Event::Column {
+                        id,
                         until,
                         result: if fail {
                             Err(Error::api("x"))
+                        } else if source == crate::tui::columns::Source::Notifications {
+                            Ok(crate::tui::worker::ColumnPage::Notifications(
+                                page("cn")
+                                    .into_iter()
+                                    .map(|n| Notification {
+                                        id: n.id.clone(),
+                                        note: Some(n),
+                                        ..Default::default()
+                                    })
+                                    .collect(),
+                            ))
                         } else {
-                            Ok(page("f"))
+                            Ok(crate::tui::worker::ColumnPage::Notes(page("c")))
                         },
                     },
                     Job::ReadAhead { id } => Event::ReadAhead {
@@ -839,15 +854,13 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                     Job::Report { .. } => {
                         Event::Reported(if fail { Err(Error::api("x")) } else { Ok(()) })
                     }
-                    Job::FeedChoices => Event::FeedChoices(if fail {
+                    Job::ColumnChoices => Event::ColumnChoices(if fail {
                         Err(Error::api("x"))
                     } else {
                         Ok((0..size)
-                            .map(|i| Feed {
-                                kind: [FeedKind::Antenna, FeedKind::List, FeedKind::Channel][i % 3],
-                                host: "misskey.test".into(),
+                            .map(|i| crate::tui::columns::Source::List {
                                 id: format!("f{step}-{i}"),
-                                name: "名".into(),
+                                name: "名 🐈‍⬛".into(),
                             })
                             .collect())
                     }),
@@ -978,11 +991,10 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                 .chain([(app.search.notes.selected, app.search.notes.items.len())])
                 .chain([(app.search.users.selected, app.search.users.items.len())])
                 .chain([(app.profile.notes.selected, app.profile.notes.items.len())])
-                .chain(
-                    app.feeds
-                        .iter()
-                        .map(|f| (f.list.selected, f.list.items.len())),
-                )
+                .chain(app.columns.items.iter().map(|c| {
+                    crate::tui::columns::each_list!(&c.rows, |l| (l.selected, l.items.len()))
+                }))
+                .chain([(app.columns.focus, app.columns.items.len())])
                 .chain(
                     app.threads
                         .iter()
@@ -2281,75 +2293,412 @@ fn e_on_your_own_profile_edits_it() {
     assert_eq!(app.status.as_ref().unwrap().text, "profile saved");
 }
 
-fn feed(kind: FeedKind, id: &str, name: &str) -> Feed {
-    Feed {
-        kind,
-        host: crate::api::authority(ORIGIN).to_string(),
+fn antenna(id: &str, name: &str) -> Source {
+    Source::Antenna {
         id: id.into(),
         name: name.into(),
     }
 }
 
-// + offers the account's feeds once read; enter adds one as a tab after
-// the fixed ones and shows it, which reads its endpoint, pages by untilId
-// and reads again on R. Shown already, it is not offered again.
+/// The column jobs among `jobs`: the column, what it shows, the page.
+fn column_jobs(jobs: &Jobs) -> Vec<(u64, u64, Source, Option<String>)> {
+    jobs.iter()
+        .filter_map(|(seq, j)| match j {
+            Job::Column { id, source, until } => Some((*seq, *id, source.clone(), until.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn titles(app: &App) -> Vec<String> {
+    app.columns.items.iter().map(|c| c.source.title()).collect()
+}
+
+// + on the Home tab lists what a column can show, the account's antennas,
+// lists and channels among them once read; Enter adds the one chosen
+// beside the home timeline, which becomes a column of its own. The
+// columns are kept in settings.json under the account, and loaded.
 #[test]
-fn plus_adds_a_feed_tab() {
+fn plus_adds_a_column_beside_the_home_timeline_kept_and_loaded() {
     let mut app = logged_in(&["a"]);
     let jobs = app.handle_key(key('+'));
-    assert_eq!(jobs[0].1, Job::FeedChoices);
-    assert!(app.tab_choices().is_empty());
-    let list = feed(FeedKind::List, "l1", "猫, 犬 🐈");
+    assert_eq!(jobs[0].1, Job::ColumnChoices);
+    let shown =
+        |app: &App| -> Vec<String> { app.column_choices().iter().map(Source::title).collect() };
+    assert_eq!(
+        shown(&app),
+        ["Home", "Notifications", "@me", "Search: "],
+        "the account's feeds are not in yet"
+    );
     app.handle_answer(
         jobs[0].0,
-        Event::FeedChoices(Ok(vec![
-            feed(FeedKind::Antenna, "a1", "ニュース 📰"),
-            list.clone(),
+        Event::ColumnChoices(Ok(vec![
+            antenna("a1", "ニュース 📰"),
+            Source::Channel {
+                id: "c1".into(),
+                name: "お絵描き 🎨".into(),
+            },
         ])),
     );
-    assert_eq!(app.tab_choices().len(), 2);
+    assert_eq!(
+        shown(&app),
+        [
+            "Home",
+            "📡 ニュース 📰",
+            "# お絵描き 🎨",
+            "Notifications",
+            "@me",
+            "Search: "
+        ]
+    );
     app.handle_key(key('j'));
     let jobs = app.handle_key(code(KeyCode::Enter));
-    assert_eq!(app.tab, Tab::Feed(0));
-    assert_eq!(app.tabs().len(), TABS.len() + 1);
-    assert_eq!(app.tab_label(Tab::Feed(0)), "☰ 猫, 犬 🐈");
-    assert!(app.take_settings_save().is_none(), "not kept");
+    assert_eq!(app.overlay, None);
+    assert_eq!(app.tab, Tab::Columns);
+    assert_eq!(app.shown_tab(), Tab::Timeline(TimelineKind::Home));
+    assert_eq!(titles(&app), ["Home", "📡 ニュース 📰"]);
+    assert_eq!(app.columns.focus, 1, "the one added is focused");
+    let asked = column_jobs(&jobs);
     assert_eq!(
-        jobs[0].1,
-        Job::FeedNotes {
-            feed: list.clone(),
-            until: None
+        asked.iter().map(|j| j.2.clone()).collect::<Vec<_>>(),
+        [Source::Home, antenna("a1", "ニュース 📰")]
+    );
+    let saved = app.take_settings_save().expect("kept");
+    assert_eq!(
+        saved.columns["me@misskey.test"],
+        [Source::Home, antenna("a1", "ニュース 📰")]
+    );
+    // The search is typed after Enter on its row; esc goes back to the list.
+    app.handle_key(key('+'));
+    assert!(app.handle_key(key('+')).is_empty(), "+ closes the list");
+    assert_eq!(app.overlay, None);
+    app.handle_key(key('+'));
+    app.handle_key(key('k'));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::AddColumn { query: Some(_), .. })
+    ));
+    assert!(
+        app.handle_key(code(KeyCode::Enter)).is_empty(),
+        "nothing typed"
+    );
+    type_str(&mut app, "猫 🐈‍⬛");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(titles(&app)[2], "Search: 猫 🐈‍⬛");
+    assert_eq!(
+        column_jobs(&jobs)[0].2,
+        Source::Search {
+            query: "猫 🐈‍⬛".into()
         }
     );
-    assert_eq!(list.kind.endpoint(), ("notes/user-list-timeline", "listId"));
+    // The account's feeds were asked for once.
+    let jobs = app.handle_key(key('+'));
+    assert!(jobs.is_empty());
+    app.handle_key(code(KeyCode::Esc));
+    // On another tab, + adds nothing; 1 comes back to the columns.
+    app.handle_key(key('2'));
+    assert!(app.handle_key(key('+')).is_empty());
+    assert_eq!(app.overlay, None);
+    app.handle_key(key('1'));
+    assert_eq!(app.tab, Tab::Columns);
+}
+
+// ← → H L choose the column the keys act on, < > move it and keep the
+// order; j k and R act on the focused column only; a page lands only in
+// its column, not after a reload or a removal; x then y removes it, and
+// with the last gone the home timeline is shown alone again.
+#[test]
+fn the_keys_act_on_the_focused_column_and_x_removes_it() {
+    let mut app = logged_in(&["h1"]);
+    app.handle_key(key('+'));
+    app.handle_answer(1000, Event::ColumnChoices(Ok(vec![])));
+    // Notifications.
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    let asked = column_jobs(&jobs);
+    let (home_seq, home_id, _, _) = asked[0].clone();
+    let (note_seq, note_id, _, _) = asked[1].clone();
     app.handle_answer(
-        jobs[0].0,
-        Event::FeedNotes {
-            feed: list.clone(),
+        home_seq,
+        Event::Column {
+            id: home_id,
             until: None,
-            result: Ok(notes(&["n1", "n2"])),
+            result: Ok(ColumnPage::Notes(notes(&["c1", "c2"]))),
         },
     );
-    assert_eq!(app.selected_note().unwrap().id, "n1");
-    let jobs = app.handle_key(key('j'));
-    assert_eq!(
-        jobs[0].1,
-        Job::FeedNotes {
-            feed: list.clone(),
-            until: Some("n2".into())
-        }
+    let notif = Notification {
+        id: "nf1".into(),
+        user: Some(user(json!({"id": "u-gus", "username": "gus"}))),
+        note: Some(note(json!({"id": "nn1", "text": "通知 1️⃣"}))),
+        ..Default::default()
+    };
+    app.handle_answer(
+        note_seq,
+        Event::Column {
+            id: note_id,
+            until: None,
+            result: Ok(ColumnPage::Notifications(vec![notif])),
+        },
     );
+    assert_eq!(app.selected_note().unwrap().id, "nn1");
+    assert_eq!(app.selected_user_id().as_deref(), Some("u-gus"));
+    app.handle_key(code(KeyCode::Left));
+    assert_eq!(app.columns.focus, 0);
+    assert_eq!(app.selected_note().unwrap().id, "c1");
+    app.handle_key(key('j'));
+    assert_eq!(app.selected_note().unwrap().id, "c2");
+    // The thread, the files and the reactions are of the column's note.
+    let jobs = app.handle_key(key('v'));
+    assert_eq!(jobs[0].1, Job::Thread { id: "c2".into() });
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('L'));
+    assert_eq!(app.columns.focus, 1);
+    app.handle_key(key('L'));
+    assert_eq!(app.columns.focus, 1, "stops at the end");
+    app.handle_key(key('H'));
+    // R loads the focused column again; the answer to the earlier load is
+    // dropped, and so is one for a column removed.
     let jobs = app.handle_key(key('R'));
-    assert_eq!(
-        jobs[0].1,
-        Job::FeedNotes {
-            feed: list.clone(),
-            until: None
-        }
+    let again = column_jobs(&jobs);
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].1, home_id);
+    app.handle_answer(
+        home_seq,
+        Event::Column {
+            id: home_id,
+            until: None,
+            result: Ok(ColumnPage::Notes(notes(&["old"]))),
+        },
     );
+    assert_eq!(
+        app.selected_note().unwrap().id,
+        "c2",
+        "an earlier load's page is dropped"
+    );
+    app.handle_answer(
+        again[0].0,
+        Event::Column {
+            id: home_id,
+            until: None,
+            result: Ok(ColumnPage::Notes(notes(&["c0", "c1", "c2"]))),
+        },
+    );
+    assert_eq!(app.selected_note().unwrap().id, "c2", "R keeps the place");
+    // > moves the column right and keeps it so.
+    app.take_settings_save();
+    app.handle_key(key('>'));
+    assert_eq!(titles(&app), ["Notifications", "Home"]);
+    assert_eq!(app.columns.focus, 1);
+    assert_eq!(
+        app.take_settings_save().unwrap().columns["me@misskey.test"],
+        [Source::Notifications, Source::Home]
+    );
+    app.handle_key(key('<'));
+    assert_eq!(titles(&app), ["Home", "Notifications"]);
+    // x, then anything but y: the column stays. The settings < kept are
+    // written after x came, and saying so does not hide the question.
+    app.handle_key(key('x'));
+    app.settings_saved(Ok(()));
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("press y to remove the column Home")
+    );
+    app.handle_key(key('n'));
+    assert_eq!(
+        app.overlay, None,
+        "n answered the question, it opened nothing"
+    );
+    assert_eq!(app.columns.items.len(), 2);
+    assert_eq!(app.status.as_ref().unwrap().text, "the column stays");
+    app.handle_key(key('x'));
+    app.handle_key(key('y'));
+    assert_eq!(titles(&app), ["Notifications"]);
+    app.handle_answer(
+        again[0].0 + 1000,
+        Event::Column {
+            id: home_id,
+            until: None,
+            result: Ok(ColumnPage::Notes(notes(&["gone"]))),
+        },
+    );
+    app.handle_key(key('x'));
+    app.handle_key(key('y'));
+    assert!(app.columns.items.is_empty());
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    assert_eq!(timeline(&app).items[0].id, "h1", "the home timeline alone");
+    assert!(
+        !app.take_settings_save()
+            .unwrap()
+            .columns
+            .contains_key("me@misskey.test"),
+        "none left, none kept"
+    );
+    // x on the Home tab without columns removes nothing.
+    app.handle_key(key('x'));
+    assert_eq!(app.confirm_remove_column, None);
+}
+
+// Near the end of a column its next page is asked for, older than its last
+// note, and added to that column only.
+#[test]
+fn a_column_pages_on_its_own() {
+    let mut app = logged_in(&[]);
+    app.handle_key(key('+'));
+    app.handle_answer(1000, Event::ColumnChoices(Ok(vec![antenna("a1", "📡")])));
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    let (seq, id, source, _) = column_jobs(&jobs)[1].clone();
+    let ids: Vec<String> = (0..10).map(|i| format!("n{i:02}")).collect();
+    let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+    app.handle_answer(
+        seq,
+        Event::Column {
+            id,
+            until: None,
+            result: Ok(ColumnPage::Notes(notes(&ids))),
+        },
+    );
+    let jobs = app.handle_key(key('j'));
+    let more = column_jobs(&jobs);
+    assert_eq!(more[0].1, id);
+    assert_eq!(more[0].2, source);
+    assert_eq!(more[0].3.as_deref(), Some("n09"));
+    app.handle_answer(
+        more[0].0,
+        Event::Column {
+            id,
+            until: Some("n09".into()),
+            result: Ok(ColumnPage::Notes(notes(&["n10"]))),
+        },
+    );
+    let crate::tui::columns::Rows::Notes(l) = &app.columns.items[1].rows else {
+        panic!("notes");
+    };
+    assert_eq!(l.items.len(), 11);
+    let crate::tui::columns::Rows::Notes(home) = &app.columns.items[0].rows else {
+        panic!("notes");
+    };
+    assert!(home.items.is_empty(), "the other column is left alone");
+}
+
+// A note deleted, or reacted to, changes in every column that has it; a
+// note posted goes on top of the Home column. Each account has its own
+// columns.
+#[test]
+fn writes_show_in_the_columns_and_each_account_has_its_own() {
+    let mut app = logged_in(&[]);
+    app.handle_key(key('+'));
+    app.handle_answer(1000, Event::ColumnChoices(Ok(vec![])));
+    // Your notes.
+    app.handle_key(key('j'));
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    for (seq, id, _, _) in column_jobs(&jobs) {
+        app.handle_answer(
+            seq,
+            Event::Column {
+                id,
+                until: None,
+                result: Ok(ColumnPage::Notes(notes(&["x1", "x2"]))),
+            },
+        );
+    }
+    app.handle_answer(
+        2000,
+        Event::Deleted {
+            id: "x1".into(),
+            result: Ok(()),
+        },
+    );
+    for c in &app.columns.items {
+        crate::tui::columns::each_list!(&c.rows, |l| assert_eq!(l.items.len(), 1));
+    }
+    app.handle_answer(
+        2001,
+        Event::Posted(Ok(Box::new(note(json!({"id": "mine", "userId": "u-me"}))))),
+    );
+    for c in &app.columns.items {
+        let crate::tui::columns::Rows::Notes(l) = &c.rows else {
+            panic!("notes");
+        };
+        assert_eq!(l.items[0].id, "mine", "{:?}", c.source);
+    }
+    assert_eq!(app.settings.columns.len(), 1);
+    // Another account starts without them, and its own come back.
+    let other = Session {
+        username: "you".into(),
+        ..session()
+    };
+    app.switched_to(Some(other), ORIGIN);
+    assert!(app.columns.items.is_empty());
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    let jobs = app.switched_to(Some(session()), ORIGIN);
+    assert_eq!(app.tab, Tab::Columns);
+    assert_eq!(column_jobs(&jobs).len(), 2);
+}
+
+// The account's feeds come while the + list is open: the choice selected
+// stays the one Enter adds. A failure is said and the next + asks again.
+#[test]
+fn feeds_that_come_while_the_list_is_open_do_not_change_the_choice() {
+    let mut app = logged_in(&[]);
     let jobs = app.handle_key(key('+'));
-    app.handle_answer(jobs[0].0, Event::FeedChoices(Ok(vec![list.clone()])));
-    assert!(app.tab_choices().is_empty());
+    app.handle_answer(
+        jobs[0].0,
+        Event::ColumnChoices(Err(Error::api("antennas/list failed"))),
+    );
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("antennas/list failed")
+    );
+    app.handle_key(code(KeyCode::Esc));
+    let jobs = app.handle_key(key('+'));
+    assert_eq!(jobs[0].1, Job::ColumnChoices, "asked again");
+    app.handle_key(key('j'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ColumnChoices(Ok(vec![antenna("a1", "1"), antenna("a2", "2")])),
+    );
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(titles(&app), ["Home", "Notifications"]);
+    // A visitor has no columns to add.
+    let (mut v, _) = App::new(None, ORIGIN);
+    assert!(v.handle_key(key('+')).is_empty());
+    assert_eq!(v.overlay, None);
+    assert!(v.status.as_ref().unwrap().text.contains("log in"));
+}
+
+// A profile opened from a column says esc goes back to the timeline, and
+// goes back to the columns.
+#[test]
+fn a_profile_opened_from_a_column_goes_back_to_the_columns() {
+    let mut app = logged_in(&[]);
+    app.handle_key(key('+'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(titles(&app), ["Home"], "Home alone is one column");
+    let (seq, id, _, _) = column_jobs(&jobs)[0].clone();
+    app.handle_answer(
+        seq,
+        Event::Column {
+            id,
+            until: None,
+            result: Ok(ColumnPage::Notes(vec![note(
+                json!({"id": "a", "userId": "u-bob", "user": {"id": "u-bob", "username": "bob"}}),
+            )])),
+        },
+    );
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tab, Tab::Profile);
+    assert!(crate::tui::keys::hints(&app).contains(&("esc", "back to timeline")));
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.tab, Tab::Columns);
 }
 
 // ! on another's note reports its author with the note: a reason, a

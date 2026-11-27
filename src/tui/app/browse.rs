@@ -125,9 +125,17 @@ impl App {
 
     /// The account selected: the profile shown, an account found, a
     /// notification's sender, or a note's author.
-    pub(super) fn selected_user_id(&self) -> Option<String> {
+    pub fn selected_user_id(&self) -> Option<String> {
         if self.threads.is_empty() {
             match self.tab {
+                Tab::Columns => {
+                    if let Some(crate::tui::columns::Rows::Notifications(l)) =
+                        self.columns.focused().map(|c| &c.rows)
+                        && let Some(u) = l.current().and_then(|n| n.user.as_ref())
+                    {
+                        return Some(u.id.clone());
+                    }
+                }
                 Tab::Search if self.search.mode == SearchMode::Accounts => {
                     return self.search.users.current().map(|u| u.id.clone());
                 }

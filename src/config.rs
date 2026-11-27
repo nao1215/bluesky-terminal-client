@@ -12,6 +12,7 @@
 //!
 //! `msky logout` removes a server's file.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -105,9 +106,113 @@ pub struct Settings {
     /// The reactions given lately, the newest first.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recent_reactions: Option<Vec<String>>,
+    /// The columns of the Home tab, by the account they are for
+    /// (`username@host`), as bsky keeps its own by DID.
+    #[serde(
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "known_columns"
+    )]
+    pub columns: BTreeMap<String, Vec<ColumnSource>>,
     /// Keys a newer version wrote, kept on saving.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
+    /// The columns [`Self::columns`] leaves out (a kind a newer version
+    /// added), by account, as they were written: saving puts them back.
+    #[serde(skip)]
+    pub unknown_columns: BTreeMap<String, Vec<serde_json::Value>>,
+}
+
+/// The columns of the settings file `data` that this version cannot read,
+/// by account.
+fn unknown_columns(data: &[u8]) -> BTreeMap<String, Vec<serde_json::Value>> {
+    let Ok(serde_json::Value::Object(mut file)) = serde_json::from_slice(data) else {
+        return BTreeMap::new();
+    };
+    let Some(serde_json::Value::Object(columns)) = file.remove("columns") else {
+        return BTreeMap::new();
+    };
+    columns
+        .into_iter()
+        .filter_map(|(account, list)| {
+            let serde_json::Value::Array(list) = list else {
+                return None;
+            };
+            let unknown: Vec<serde_json::Value> = list
+                .into_iter()
+                .filter(|c| ColumnSource::deserialize(c).is_err())
+                .collect();
+            (!unknown.is_empty()).then_some((account, unknown))
+        })
+        .collect()
+}
+
+/// The columns of `settings.json`, leaving out any this version cannot
+/// read (a kind a newer version added): one column is not worth ignoring
+/// the whole file over.
+fn known_columns<'de, D>(d: D) -> std::result::Result<BTreeMap<String, Vec<ColumnSource>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: BTreeMap<String, Vec<serde_json::Value>> = Deserialize::deserialize(d)?;
+    Ok(raw
+        .into_iter()
+        .map(|(account, columns)| {
+            let known = columns
+                .into_iter()
+                .filter_map(|c| serde_json::from_value(c).ok())
+                .collect();
+            (account, known)
+        })
+        .collect())
+}
+
+/// What a column of the Home tab shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ColumnSource {
+    /// The home timeline.
+    Home,
+    /// An antenna, a list or a channel of the account, by ID, and the name
+    /// to show.
+    Antenna {
+        id: String,
+        name: String,
+    },
+    List {
+        id: String,
+        name: String,
+    },
+    Channel {
+        id: String,
+        name: String,
+    },
+    Notifications,
+    /// Notes found for `query`.
+    Search {
+        query: String,
+    },
+    /// An account's own notes, by ID, and the name to show.
+    Author {
+        id: String,
+        username: String,
+    },
+}
+
+impl ColumnSource {
+    /// The title of the column.
+    pub fn title(&self) -> String {
+        use crate::i18n::{t, tf};
+        use crate::tui::text::one_line;
+        match self {
+            ColumnSource::Home => t("Home").into(),
+            ColumnSource::Antenna { name, .. } => format!("📡 {}", one_line(name)),
+            ColumnSource::List { name, .. } => format!("☰ {}", one_line(name)),
+            ColumnSource::Channel { name, .. } => format!("# {}", one_line(name)),
+            ColumnSource::Notifications => t("Notifications").into(),
+            ColumnSource::Search { query } => tf("Search: {}", &[query]),
+            ColumnSource::Author { username, .. } => format!("@{username}"),
+        }
+    }
 }
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -126,8 +231,11 @@ pub fn load_settings(dir: &Path) -> (Settings, Option<String>) {
             );
         }
     };
-    match serde_json::from_slice(without_bom(&data)) {
-        Ok(s) => (s, None),
+    match serde_json::from_slice::<Settings>(without_bom(&data)) {
+        Ok(mut s) => {
+            s.unknown_columns = unknown_columns(without_bom(&data));
+            (s, None)
+        }
         Err(e) => (
             Settings::default(),
             Some(format!(
@@ -145,11 +253,31 @@ pub fn save_settings(dir: &Path, settings: &Settings) -> Result<()> {
     let path = dir.join(SETTINGS_FILE);
     fs::create_dir_all(dir)
         .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
-    let mut json = serde_json::to_vec_pretty(settings)
-        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))?;
+    let cannot_write =
+        |e: &dyn std::fmt::Display| Error::io(format!("cannot write {}: {e}", path.display()));
+    let mut value = serde_json::to_value(settings).map_err(|e| cannot_write(&e))?;
+    // The columns a newer version wrote go back after the ones this
+    // version keeps, for that version to show again.
+    if !settings.unknown_columns.is_empty()
+        && let Some(file) = value.as_object_mut()
+    {
+        let columns = file
+            .entry("columns")
+            .or_insert_with(|| serde_json::Value::Object(Default::default()));
+        if let Some(columns) = columns.as_object_mut() {
+            for (account, unknown) in &settings.unknown_columns {
+                let list = columns
+                    .entry(account.clone())
+                    .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+                if let Some(list) = list.as_array_mut() {
+                    list.extend(unknown.iter().cloned());
+                }
+            }
+        }
+    }
+    let mut json = serde_json::to_vec_pretty(&value).map_err(|e| cannot_write(&e))?;
     json.push(b'\n');
-    write_private(&path, &json)
-        .map_err(|e| Error::io(format!("cannot write {}: {e}", path.display())))
+    write_private(&path, &json).map_err(|e| cannot_write(&e))
 }
 
 /// Which server's account is in use, kept in `accounts.json`.
@@ -585,6 +713,55 @@ mod tests {
         let (s, warn) = load_settings(dir.path());
         assert_eq!(s, Settings::default());
         assert!(warn.unwrap().contains("is not valid settings (line 1"));
+    }
+
+    // A column of a kind a newer version added is left out of what this one
+    // shows; the rest of the file is still read, and saving puts the column
+    // back after the ones this version keeps.
+    #[test]
+    fn a_column_of_an_unknown_kind_is_left_out_and_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(SETTINGS_FILE),
+            serde_json::to_vec(
+                &serde_json::json!({"theme": "nord", "columns": {"me@misskey.test": [
+                    {"kind": "home"},
+                    {"kind": "gallery", "id": "g1"},
+                    {"kind": "search", "query": "猫 🐈‍⬛"}
+                ]}}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let (mut s, warn) = load_settings(dir.path());
+        assert_eq!(warn, None);
+        assert_eq!(s.theme.as_deref(), Some("nord"));
+        assert_eq!(
+            s.columns["me@misskey.test"],
+            [
+                ColumnSource::Home,
+                ColumnSource::Search {
+                    query: "猫 🐈‍⬛".into()
+                }
+            ]
+        );
+        s.columns
+            .get_mut("me@misskey.test")
+            .unwrap()
+            .push(ColumnSource::Notifications);
+        save_settings(dir.path(), &s).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.path().join(SETTINGS_FILE)).unwrap()).unwrap();
+        assert_eq!(
+            saved["columns"]["me@misskey.test"],
+            serde_json::json!([
+                {"kind": "home"},
+                {"kind": "search", "query": "猫 🐈‍⬛"},
+                {"kind": "notifications"},
+                {"kind": "gallery", "id": "g1"}
+            ])
+        );
+        assert!(saved.get("unknownColumns").is_none());
     }
 
     #[test]

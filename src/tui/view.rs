@@ -114,18 +114,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             }
             Tab::Search => draw_search(frame, body, &mut app.search, images, &ctx),
             Tab::Profile => draw_profile(frame, body, &mut app.profile, images, &ctx),
-            Tab::Feed(i) => {
-                if let Some(f) = app.feeds.get_mut(usize::from(i)) {
-                    draw_notes(
-                        frame,
-                        body,
-                        &mut f.list,
-                        images,
-                        n!("No notes yet. Press R to refresh."),
-                        &ctx,
-                    );
-                }
-            }
+            Tab::Columns => draw_columns(frame, body, &mut app.columns, images, &ctx),
             Tab::Chat => {
                 let me = app.session.as_ref().map(|s| s.user_id.clone());
                 chat::draw_chat(frame, body, &mut app.chat, me.as_deref(), images, &ctx);
@@ -169,50 +158,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         Some(Overlay::Themes { selected, .. }) => settings::draw_themes(frame, area, *selected, &t),
         Some(Overlay::Report(r)) => report::draw_report(frame, area, r, &t),
-        Some(Overlay::AddTab {
-            selected,
-            feeds,
-            error,
-        }) => {
-            let mut rows: Vec<String> = app
-                .tab_choices()
-                .iter()
-                .map(|f| {
-                    format!(
-                        "{} {}  ({})",
-                        f.kind.mark(),
-                        crate::tui::text::one_line(&f.name),
-                        crate::i18n::t(match f.kind {
-                            crate::tui::app::FeedKind::Antenna => crate::i18n::n!("antenna"),
-                            crate::tui::app::FeedKind::List => crate::i18n::n!("list"),
-                            crate::tui::app::FeedKind::Channel => crate::i18n::n!("channel"),
-                        })
-                    )
-                })
-                .collect();
-            if feeds.is_none() {
-                rows.push(crate::i18n::t("reading the antennas, lists and channels…").to_string());
-            }
-            if let Some(e) = error {
-                rows.push(e.clone());
-            }
-            if rows.is_empty() {
-                rows.push(
-                    crate::i18n::t(
-                        "every tab is shown, and the account has no antenna, list or channel",
-                    )
-                    .to_string(),
-                );
-            }
-            draw_choices(
-                frame,
-                area,
-                crate::i18n::t("Add a tab"),
-                &rows,
-                *selected,
-                None,
-                &t,
-            );
+        Some(Overlay::AddColumn { selected, query }) => {
+            let titles: Vec<String> = app.column_choices().iter().map(choice_title).collect();
+            draw_add_column(frame, area, &titles, *selected, query.as_ref(), &t);
         }
         Some(Overlay::Languages { selected }) => {
             settings::draw_languages(frame, area, *selected, app.language(), &t)
@@ -367,24 +315,19 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
+    let shown = app.shown_tab();
     for (i, &tab) in app.tabs().iter().enumerate() {
+        let title = i18n::t(tab.title());
         let label = match (tab, app.unread_label()) {
-            (Tab::Notifications, Some(count)) => {
-                format!(" {} {} {count} ", i + 1, app.tab_label(tab))
-            }
+            (Tab::Notifications, Some(count)) => format!(" {} {title} {count} ", i + 1),
             (Tab::Chat, _) if app.chat.unread(app.my_user_id()) > 0 => format!(
-                " {} {} ({}) ",
+                " {} {title} ({}) ",
                 i + 1,
-                app.tab_label(tab),
                 app.chat.unread(app.my_user_id())
             ),
-            _ => format!(" {} {} ", i + 1, app.tab_label(tab)),
+            _ => format!(" {} {title} ", i + 1),
         };
-        let style = if tab == app.tab {
-            t.selected()
-        } else {
-            t.dim()
-        };
+        let style = if tab == shown { t.selected() } else { t.dim() };
         spans.push(Span::styled(label, style));
         // A space between the tabs, as bsky's, so the ones not shown do not
         // run together.
@@ -1604,6 +1547,129 @@ fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) 
 /// one is among them.
 fn first_shown(selected: usize, rows: u16) -> usize {
     (selected + 1).saturating_sub(usize::from(rows.max(1)))
+}
+
+/// How `+` names a choice: a search is typed after it, your own notes
+/// say whose, an antenna, a list or a channel says which it is.
+fn choice_title(c: &crate::tui::columns::Source) -> String {
+    use crate::tui::columns::Source;
+    match c {
+        Source::Search { .. } => i18n::t("Search…").to_string(),
+        Source::Author { username, .. } => i18n::tf("Your notes (@{})", &[username]),
+        Source::Antenna { .. } => format!("{}  ({})", c.title(), i18n::t("antenna")),
+        Source::List { .. } => format!("{}  ({})", c.title(), i18n::t("list")),
+        Source::Channel { .. } => format!("{}  ({})", c.title(), i18n::t("channel")),
+        Source::Home | Source::Notifications => c.title(),
+    }
+}
+
+/// The list `+` opens on the Home tab, or the search being typed for a
+/// search column, as bsky's.
+fn draw_add_column(
+    frame: &mut Frame,
+    area: Rect,
+    titles: &[String],
+    selected: usize,
+    query: Option<&crate::tui::input::TextInput>,
+    t: &Theme,
+) {
+    let Some(input) = query else {
+        draw_choices(
+            frame,
+            area,
+            i18n::t("Add a column"),
+            titles,
+            selected,
+            None,
+            t,
+        );
+        return;
+    };
+    let inner = popup(frame, area, LIST_W, 4, i18n::t("Add a column"), t);
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            format!(" {}", i18n::t("Search notes for:")),
+            t.dim(),
+        )),
+        inner,
+    );
+    let field = Rect {
+        x: inner.x + 1,
+        y: inner.y + 1,
+        width: inner.width.saturating_sub(2),
+        height: 1,
+    };
+    compose::draw_single_input(frame, field, input, true);
+}
+
+/// Narrowest a column is drawn; fewer columns show on a narrow screen, as
+/// bsky's.
+const COLUMN_MIN_W: u16 = 36;
+
+/// The Home tab with columns: side by side, as many as fit, the focused
+/// one among them, each with its title above its list; how many are off
+/// screen on either side is said in the titles of the outermost ones.
+fn draw_columns(
+    frame: &mut Frame,
+    body: Rect,
+    columns: &mut crate::tui::columns::Columns,
+    images: &mut Images,
+    ctx: &Ctx,
+) {
+    use crate::tui::columns::Rows;
+    let n = columns.items.len();
+    // Without columns the Home tab shows the home timeline instead.
+    if n == 0 {
+        return;
+    }
+    let fit = usize::from((body.width / COLUMN_MIN_W).max(1)).min(n);
+    let focus = columns.focus.min(n - 1);
+    let first = focus.saturating_sub(fit - 1).min(n - fit);
+    let areas = Layout::horizontal(vec![Constraint::Ratio(1, fit as u32); fit]).split(body);
+    let t = &ctx.t;
+    for (slot, i) in (first..first + fit).enumerate() {
+        let area = areas[slot];
+        let [head, list] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        let col = &mut columns.items[i];
+        let mut title = col.source.title();
+        if slot == 0 && first > 0 {
+            title = format!("‹{first} {title}");
+        }
+        // The count of columns off to the right is kept whole: the title
+        // before it is what is shortened.
+        let right = n - (first + fit);
+        let after = if slot == fit - 1 && right > 0 {
+            format!(" {right}›")
+        } else {
+            String::new()
+        };
+        let style = if i == focus { t.selected() } else { t.dim() };
+        let width = usize::from(head.width.saturating_sub(1)).saturating_sub(cells(&after));
+        frame.render_widget(
+            Paragraph::new(format!(" {}{after}", truncate(&title, width))).style(style),
+            head,
+        );
+        // A gap on the right keeps the columns apart.
+        let list = Rect {
+            width: list.width.saturating_sub(u16::from(slot + 1 < fit)),
+            ..list
+        };
+        match &mut col.rows {
+            Rows::Notes(l) => draw_notes(
+                frame,
+                list,
+                l,
+                images,
+                match col.source {
+                    crate::tui::columns::Source::Home => empty_timeline(TimelineKind::Home),
+                    _ => n!("No notes yet. Press R to refresh."),
+                },
+                ctx,
+            ),
+            Rows::Notifications(l) => draw_notifications(frame, list, l, images, ctx),
+        }
+    }
 }
 
 /// A list to choose from over the screen; `current` is marked.

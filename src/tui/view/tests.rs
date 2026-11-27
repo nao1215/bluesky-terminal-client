@@ -284,11 +284,13 @@ fn a_terminal_too_small_says_the_size_it_needs() {
 fn the_help_lists_the_keys() {
     let mut app = with_notes(vec![]);
     app.handle_key(key('?'));
-    let screen = render(&mut app, 100, 120);
+    let screen = render(&mut app, 100, 140);
     for want in [
         "Keys",
         "General",
         "1 2 3 4 5 6 7",
+        "Columns",
+        "← → H L",
         "Notes",
         "w",
         "Viewer",
@@ -1057,4 +1059,119 @@ fn the_cells_after_a_vs16_emoji_land_where_they_are_meant_to() {
         .filter(|(x, _, at)| x != at)
         .collect();
     assert!(wrong.is_empty(), "{wrong:?}");
+}
+
+/// An app on the Home tab with columns of `sources`, each holding `note`.
+fn with_columns(sources: &[crate::tui::columns::Source], text: &str) -> App {
+    let mut app = with_notes(vec![]);
+    app.settings
+        .columns
+        .insert("me@misskey.test".into(), sources.to_vec());
+    for (seq, job) in app.show_columns() {
+        if let crate::tui::worker::Job::Column { id, .. } = job {
+            app.handle_answer(
+                seq,
+                Event::Column {
+                    id,
+                    until: None,
+                    result: Ok(crate::tui::worker::ColumnPage::Notes(vec![note(json!({
+                        "id": format!("n{id}"),
+                        "createdAt": "2026-11-26T10:00:00.000Z",
+                        "user": {"username": "ann"},
+                        "text": text,
+                    }))])),
+                },
+            );
+        }
+    }
+    app.status = None;
+    app
+}
+
+// Columns kept for the account are shown side by side on the Home tab, the
+// tab bar still saying Home, each titled; the focused title is marked.
+#[test]
+fn the_home_tab_shows_its_columns_side_by_side() {
+    use crate::tui::columns::Source;
+    let sources = [
+        Source::Home,
+        Source::Antenna {
+            id: "a1".into(),
+            name: "ニュース 📰".into(),
+        },
+        Source::Search {
+            query: "👨‍👩‍👧 🇯🇵".into(),
+        },
+    ];
+    let mut app = with_columns(&sources, "家族 👨‍👩‍👧 🇯🇵 1️⃣ ❤️");
+    assert_eq!(app.tab, Tab::Columns);
+    let screen = render_text(&mut app, 120, 20);
+    let lines: Vec<&str> = screen.lines().collect();
+    assert!(lines[0].starts_with(" 1 Home "), "{screen}");
+    assert!(lines[1].contains(" Home"), "{screen}");
+    assert!(lines[1].contains(" 📡 ニュース 📰"), "{screen}");
+    assert!(lines[1].contains(" Search: 👨‍👩‍👧 🇯🇵"), "{screen}");
+    assert_eq!(screen.matches("家族 👨‍👩‍👧 🇯🇵 1️⃣ ❤️").count(), 3, "{screen}");
+    assert!(screen.contains("← → column"), "{screen}");
+    assert!(screen.contains("x remove"), "{screen}");
+}
+
+// A terminal too narrow for every column shows as many as fit, the focused
+// one among them, and says how many are off screen on either side.
+#[test]
+fn a_narrow_terminal_shows_fewer_columns_and_counts_the_rest() {
+    use crate::tui::columns::Source;
+    let sources = [
+        Source::Home,
+        Source::Notifications,
+        Source::Search {
+            query: "猫".into()
+        },
+        Source::Antenna {
+            id: "a1".into(),
+            name: "長い名前のアンテナ 📡📡📡📡📡📡📡📡".into(),
+        },
+    ];
+    let mut app = with_columns(&sources, "x");
+    // 80 cells: two columns of at least 36.
+    let screen = render_text(&mut app, 80, 20);
+    let head = screen.lines().nth(1).unwrap().to_string();
+    assert!(head.contains(" Home"), "{head}");
+    assert!(head.contains("Notifications 2›"), "{head}");
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    let screen = render_text(&mut app, 80, 20);
+    let head = screen.lines().nth(1).unwrap().to_string();
+    assert!(head.contains("‹2 Search: 猫"), "{head}");
+    assert!(head.contains("📡 長い名前"), "{head}");
+    assert!(!head.contains("›"), "nothing off to the right: {head}");
+    // 30 cells: one column, the focused one.
+    let screen = render_text(&mut app, 30, 20);
+    let head = screen.lines().nth(1).unwrap().to_string();
+    assert!(head.starts_with(" ‹3 📡"), "{head}");
+}
+
+// + opens the list of what a column can show; Enter on the search row asks
+// for the query.
+#[test]
+fn plus_lists_what_a_column_can_show() {
+    let mut app = with_notes(vec![]);
+    app.handle_key(key('+'));
+    let screen = render_text(&mut app, 100, 30);
+    for want in [
+        "Add a column",
+        "▶ Home",
+        "Notifications",
+        "Your notes (@me)",
+        "Search…",
+        "enter add",
+    ] {
+        assert!(screen.contains(want), "{want}: {screen}");
+    }
+    app.handle_key(key('k'));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let screen = render_text(&mut app, 100, 30);
+    assert!(screen.contains("Search notes for:"), "{screen}");
+    assert!(screen.contains("esc back"), "{screen}");
 }

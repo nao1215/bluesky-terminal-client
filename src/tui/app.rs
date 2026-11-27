@@ -19,8 +19,8 @@ use crate::tui::worker::{Event, Job, Thread};
 
 mod browse;
 mod chat;
+mod deck;
 mod edit_profile;
-mod feeds;
 mod read_ahead;
 mod report;
 mod settings;
@@ -32,7 +32,6 @@ mod tests;
 pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
 pub use edit_profile::EditProfile;
-pub use feeds::{Feed, FeedKind, FeedTab};
 pub use report::Report;
 pub use settings::{Environment, SettingRow};
 pub use write::Compose;
@@ -46,8 +45,8 @@ pub enum Tab {
     Search,
     Profile,
     Chat,
-    /// An antenna, a list or a channel: the feed tab of that index.
-    Feed(u8),
+    /// The Home tab with columns beside the home timeline, added with `+`.
+    Columns,
 }
 
 /// The tabs, in the order of their numbers. Social, home and local mixed,
@@ -73,7 +72,7 @@ impl Tab {
             Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
             Tab::Chat => n!("Chat"),
-            Tab::Feed(_) => n!("Feed"),
+            Tab::Columns => n!("Home"),
         }
     }
 }
@@ -413,12 +412,10 @@ pub enum Overlay {
     Themes { selected: usize, previous: usize },
     /// The languages, from the settings screen.
     Languages { selected: usize },
-    /// What `+` adds: the tabs not shown, and the account's antennas,
-    /// lists and channels once read (`None` while they are).
-    AddTab {
+    /// What `+` adds a column of, or the search being typed for one.
+    AddColumn {
         selected: usize,
-        feeds: Option<Vec<Feed>>,
-        error: Option<String>,
+        query: Option<crate::tui::input::TextInput>,
     },
     /// The profile editor, opened with `e` on your own profile.
     EditProfile(Box<EditProfile>),
@@ -459,8 +456,14 @@ pub struct App {
     pub profile: Profile,
     /// The Chat tab.
     pub chat: ChatPane,
-    /// The antennas, lists and channels shown as tabs.
-    pub feeds: Vec<FeedTab>,
+    /// The columns of the Home tab.
+    pub columns: crate::tui::columns::Columns,
+    /// The account's antennas, lists and channels, which `+` offers, and
+    /// whether they were asked for.
+    pub column_feeds: Vec<crate::tui::columns::Source>,
+    column_feeds_asked: bool,
+    /// The column `x` asked to remove, waiting for `y`.
+    pub confirm_remove_column: Option<u64>,
     /// Threads read ahead of `v`.
     pub read_ahead: read_ahead::ReadAhead,
     /// The notifications not read yet, as the Notifications tab counts
@@ -564,7 +567,10 @@ impl App {
             search: Search::default(),
             profile: Profile::default(),
             chat: ChatPane::default(),
-            feeds: Vec::new(),
+            columns: Default::default(),
+            column_feeds: Vec::new(),
+            column_feeds_asked: false,
+            confirm_remove_column: None,
             read_ahead: Default::default(),
             unread: None,
             unread_any: false,
@@ -628,11 +634,11 @@ impl App {
         self.chat = ChatPane::default();
         // Another server or account may have chat: it is asked again.
         self.no_chat = false;
-        // The feed tabs are the server's: another server shows its own.
-        self.feeds.clear();
-        if matches!(self.tab, Tab::Feed(_)) {
-            self.tab = TABS[0];
-        }
+        // The columns are the account's: another shows its own.
+        self.column_feeds.clear();
+        self.column_feeds_asked = false;
+        self.confirm_remove_column = None;
+        self.columns = Default::default();
         if self.session.is_none() {
             let host = self.host().to_string();
             for kind in TimelineKind::ALL.into_iter().filter(|k| k.needs_login()) {
@@ -646,6 +652,7 @@ impl App {
             ));
         }
         let mut jobs = match self.tab {
+            Tab::Timeline(TimelineKind::Home) | Tab::Columns => self.show_columns(),
             Tab::Timeline(kind) => self.load_timeline(kind),
             _ => Vec::new(),
         };
@@ -702,10 +709,19 @@ impl App {
                 self.confirm_logout = None;
                 self.confirm_delete = None;
                 self.confirm_block = None;
+                self.confirm_remove_column = None;
                 true
             }
             _ => false,
         }
+    }
+
+    /// Whether a question waits for its `y`.
+    fn asking(&self) -> bool {
+        self.confirm_delete.is_some()
+            || self.confirm_block.is_some()
+            || self.confirm_logout.is_some()
+            || self.confirm_remove_column.is_some()
     }
 
     /// Whether files are shown full screen.
@@ -928,7 +944,8 @@ impl App {
             | Event::SearchNotes { .. }
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
-            e @ (Event::FeedNotes { .. } | Event::FeedChoices(_)) => self.feed_answer(seq, e),
+            Event::Column { id, until, result } => self.column_page(seq, id, until, result),
+            Event::ColumnChoices(result) => self.column_choices_answer(result),
             Event::Reported(result) => self.reported(result),
             // Taken before the rest, above.
             Event::ReadAhead { .. } => {}
@@ -1081,7 +1098,7 @@ impl App {
                 return Vec::new();
             }
             Overlay::EditProfile(_) => return self.edit_profile_key(key),
-            Overlay::AddTab { .. } => return self.add_tab_key(key),
+            Overlay::AddColumn { .. } => return self.add_column_key(key),
             Overlay::Report(_) => return self.report_key(key),
             Overlay::Languages { selected } => {
                 let selected = *selected;
@@ -1277,6 +1294,9 @@ impl App {
         if let Some(id) = self.confirm_block.take() {
             return self.answer_block(id, key);
         }
+        if let Some(id) = self.confirm_remove_column.take() {
+            return self.answer_remove_column(id, key);
+        }
         let in_thread = !self.threads.is_empty();
         match key.code {
             KeyCode::Char('n') => self.compose(false, false),
@@ -1296,7 +1316,29 @@ impl App {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('s') => self.open_settings(),
-            KeyCode::Char('+') => return self.open_add_tab(),
+            KeyCode::Char('+')
+                if matches!(self.tab, Tab::Timeline(TimelineKind::Home) | Tab::Columns)
+                    && !in_thread =>
+            {
+                return self.open_add_column();
+            }
+            KeyCode::Char('x') if self.tab == Tab::Columns && !in_thread => {
+                self.ask_remove_column();
+            }
+            KeyCode::Left | KeyCode::Char('H') if self.tab == Tab::Columns && !in_thread => {
+                self.columns.move_focus(-1);
+            }
+            KeyCode::Right | KeyCode::Char('L') if self.tab == Tab::Columns && !in_thread => {
+                self.columns.move_focus(1);
+            }
+            KeyCode::Char('<') if self.tab == Tab::Columns && !in_thread => {
+                self.columns.move_focused(-1);
+                self.save_columns();
+            }
+            KeyCode::Char('>') if self.tab == Tab::Columns && !in_thread => {
+                self.columns.move_focused(1);
+                self.save_columns();
+            }
             KeyCode::Char('!') => self.open_report(),
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {
@@ -1374,18 +1416,15 @@ impl App {
         if tab == Tab::Profile && self.profile.who.is_none() {
             return self.open_profile(crate::tui::worker::Who::Me);
         }
+        if matches!(tab, Tab::Timeline(TimelineKind::Home) | Tab::Columns) {
+            return self.settle_timeline();
+        }
         if let Tab::Timeline(kind) = tab {
             let list = &self.timelines[kind.index()];
             if !list.loaded && !list.loading {
                 return self.load_timeline(kind);
             }
             return Vec::new();
-        }
-        if let Tab::Feed(i) = tab {
-            return match self.feeds.get(usize::from(i)) {
-                Some(f) if !f.list.loaded && !f.list.loading => self.load_feed(i),
-                _ => Vec::new(),
-            };
         }
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
@@ -1427,19 +1466,28 @@ impl App {
     }
 
     /// The tabs shown, in the order of their numbers: every one, but Chat
-    /// on a server without it, then the feed tabs added with `+`.
+    /// on a server without it.
     pub fn tabs(&self) -> Vec<Tab> {
         TABS.into_iter()
             .filter(|t| !(self.no_chat && *t == Tab::Chat))
-            .chain((0..self.feeds.len()).map(|i| Tab::Feed(i as u8)))
             .collect()
+    }
+
+    /// The tab of [`Self::tabs`] that is shown: the Home tab for its
+    /// columns.
+    pub fn shown_tab(&self) -> Tab {
+        match self.tab {
+            Tab::Columns => Tab::Timeline(TimelineKind::Home),
+            t => t,
+        }
     }
 
     /// The tab `delta` places away in the order of the tabs, wrapping.
     pub(super) fn next_tab(&self, delta: isize) -> Tab {
         let tabs = self.tabs();
         let n = tabs.len().max(1) as isize;
-        let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0) as isize;
+        let shown = self.shown_tab();
+        let i = tabs.iter().position(|t| *t == shown).unwrap_or(0) as isize;
         tabs.get((i + delta).rem_euclid(n) as usize)
             .copied()
             .unwrap_or(self.tab)
@@ -1502,19 +1550,7 @@ impl App {
             Tab::Search | Tab::Profile => self.step_browse(delta),
             // The tab's own keys move through it.
             Tab::Chat => Vec::new(),
-            Tab::Feed(i) => {
-                let Some(t) = self.feeds.get_mut(usize::from(i)) else {
-                    return Vec::new();
-                };
-                t.list.step(delta);
-                match (t.list.want_more(), t.feed.clone()) {
-                    (Some(until), Some(feed)) => vec![self.stamp(Job::FeedNotes {
-                        feed,
-                        until: Some(until),
-                    })],
-                    _ => Vec::new(),
-                }
-            }
+            Tab::Columns => self.step_column(delta),
         }
     }
 
@@ -1534,7 +1570,7 @@ impl App {
             Tab::Notifications => self.load_notifications(),
             Tab::Search | Tab::Profile => self.refresh_browse(),
             Tab::Chat => Vec::new(),
-            Tab::Feed(i) => self.load_feed(i),
+            Tab::Columns => self.refresh_column(),
         }
     }
 
@@ -1552,10 +1588,7 @@ impl App {
             },
             Tab::Profile => self.profile.notes.current(),
             Tab::Chat => None,
-            Tab::Feed(i) => self
-                .feeds
-                .get(usize::from(i))
-                .and_then(|f| f.list.current()),
+            Tab::Columns => self.column_note(),
         }
     }
 

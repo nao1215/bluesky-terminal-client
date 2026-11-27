@@ -360,15 +360,38 @@ impl App {
                     self.overlay = None;
                 }
                 self.info(format!("posted {}/notes/{}", self.origin, note.id));
-                // Your own note is on your home timeline: it goes on top of
-                // it, as the next load would put it.
-                let home = &mut self.timelines[TimelineKind::Home.index()];
-                if home.loaded && !home.items.iter().any(|n| n.id == note.id) {
-                    if !home.items.is_empty() {
-                        home.selected += 1;
-                        home.offset += 1;
+                // Your own note is on your home timeline, and in its columns
+                // and those of your notes: it goes on top of them, as the
+                // next load would put it.
+                let me = self
+                    .session
+                    .as_ref()
+                    .map(|s| crate::tui::columns::Source::Author {
+                        id: s.user_id.clone(),
+                        username: s.username.clone(),
+                    });
+                let home = crate::tui::columns::Source::Home;
+                let lists = std::iter::once(&mut self.timelines[TimelineKind::Home.index()]).chain(
+                    self.columns
+                        .items
+                        .iter_mut()
+                        .filter_map(|c| match &mut c.rows {
+                            crate::tui::columns::Rows::Notes(l)
+                                if c.source == home || Some(&c.source) == me.as_ref() =>
+                            {
+                                Some(l)
+                            }
+                            _ => None,
+                        }),
+                );
+                for l in lists {
+                    if l.loaded && !l.items.iter().any(|n| n.id == note.id) {
+                        if !l.items.is_empty() {
+                            l.selected += 1;
+                            l.offset += 1;
+                        }
+                        l.items.insert(0, note.clone());
                     }
-                    home.items.insert(0, note);
                 }
             }
             Err(e) => {
@@ -588,12 +611,12 @@ impl App {
         let notes = self
             .timelines
             .iter()
-            .chain(self.feeds.iter().map(|f| &f.list))
+            .chain(self.columns.note_lists())
             .flat_map(|l| l.items.iter())
             .chain(
-                self.notifications
-                    .items
-                    .iter()
+                std::iter::once(&self.notifications)
+                    .chain(self.columns.notification_lists())
+                    .flat_map(|l| l.items.iter())
                     .filter_map(|n| n.note.as_ref()),
             )
             .chain(
@@ -632,15 +655,18 @@ impl App {
         for l in self
             .timelines
             .iter_mut()
-            .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+            .chain(self.columns.note_lists_mut())
         {
             l.items.iter_mut().for_each(apply);
         }
-        self.notifications
-            .items
-            .iter_mut()
-            .filter_map(|n| n.note.as_mut())
-            .for_each(apply);
+        for l in
+            std::iter::once(&mut self.notifications).chain(self.columns.notification_lists_mut())
+        {
+            l.items
+                .iter_mut()
+                .filter_map(|n| n.note.as_mut())
+                .for_each(apply);
+        }
         for t in &mut self.threads {
             t.list.items.iter_mut().for_each(|r| apply(&mut r.note));
         }
@@ -717,7 +743,7 @@ impl App {
             for l in self
                 .timelines
                 .iter_mut()
-                .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+                .chain(self.columns.note_lists_mut())
             {
                 l.retain(|n| !mine(n));
             }
@@ -735,7 +761,7 @@ impl App {
         for l in self
             .timelines
             .iter_mut()
-            .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+            .chain(self.columns.note_lists_mut())
         {
             l.retain(|n| n.id != id);
         }

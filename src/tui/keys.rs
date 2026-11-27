@@ -24,7 +24,6 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("1 2 3 4 5 6 7", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
-            ("+", n!("add a tab: an antenna, a list, a channel")),
             ("A", n!("accounts: switch, log out")),
             (
                 "s",
@@ -164,6 +163,18 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: n!("Columns"),
+        keys: &[
+            ("← → H L", n!("the column to the left / right")),
+            ("+", n!("add a column: an antenna, a list, a channel…")),
+            ("", n!("the last one removed, the timeline is alone")),
+            ("< >", n!("move the column left / right")),
+            ("x", n!("remove the column: y confirms")),
+            ("R", n!("load the column again")),
+            ("", n!("note keys act on the column's note")),
+        ],
+    },
+    Section {
         title: n!("Chat"),
         keys: &[
             ("enter", n!("open the conversation")),
@@ -297,7 +308,10 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("esc", n!("cancel")),
             ];
         }
-        Some(Overlay::AddTab { .. }) => {
+        Some(Overlay::AddColumn { query: Some(_), .. }) => {
+            return vec![("enter", n!("add")), ("esc", n!("back"))];
+        }
+        Some(Overlay::AddColumn { .. }) => {
             return vec![
                 ("j k", n!("move")),
                 ("enter", n!("add")),
@@ -453,11 +467,12 @@ fn view_hints(app: &App) -> Vec<Hint> {
             }
             v
         }
-        Tab::Feed(_) => vec![
+        Tab::Columns => vec![
+            ("← →", n!("column")),
             ("j k", n!("move")),
             (".", n!("actions")),
-            ("space", n!("view")),
-            ("R", n!("refresh")),
+            ("+", n!("add")),
+            ("x", n!("remove")),
         ],
         Tab::Timeline(_) => vec![
             ("j k", n!("move")),
@@ -519,7 +534,7 @@ fn account_actions(app: &App, v: &mut Vec<Hint>) {
         }
         return;
     }
-    if app.shown_note().is_some() || (app.tab == Tab::Notifications && in_list) {
+    if app.selected_user_id().is_some() || (app.tab == Tab::Notifications && in_list) {
         v.push(("enter", n!("open the profile")));
     }
 }
@@ -631,7 +646,7 @@ pub fn action_key(name: &str) -> KeyEvent {
 fn back_label(from: Option<Tab>) -> &'static str {
     match from {
         Some(Tab::Search) => n!("back to search"),
-        Some(Tab::Timeline(_) | Tab::Feed(_)) => n!("back to timeline"),
+        Some(Tab::Timeline(_) | Tab::Columns) => n!("back to timeline"),
         Some(Tab::Notifications) => n!("back to notifications"),
         Some(Tab::Chat) => n!("back to chat"),
         _ => n!("my profile"),

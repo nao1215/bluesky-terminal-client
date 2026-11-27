@@ -18,7 +18,7 @@ use crate::cli::{TimelineKind, Visibility};
 use crate::config::Session;
 use crate::error::{Error, Result};
 use crate::servers::Server;
-use crate::tui::app::{Feed, FeedKind};
+use crate::tui::columns::Source;
 use crate::{download, miauth};
 use serde_json::json;
 
@@ -88,11 +88,15 @@ pub enum Job {
     MarkRead,
     /// The server's custom emoji.
     Emojis,
-    /// The notes of an antenna, a list or a channel: the latest, or those
-    /// older than `until`.
-    FeedNotes { feed: Feed, until: Option<String> },
+    /// A page of the column `id`, which shows `source`: the first, or the
+    /// one older than `until`.
+    Column {
+        id: u64,
+        source: Source,
+        until: Option<String>,
+    },
     /// The account's antennas, lists and channels, for `+` to offer.
-    FeedChoices,
+    ColumnChoices,
     /// Report account `user_id` to the moderators with `comment`.
     Report { user_id: String, comment: String },
     /// The account's own profile, for the editor to start from.
@@ -248,12 +252,12 @@ pub enum Event {
     Unread(Result<(Option<u64>, bool)>),
     /// The server's custom emoji: name and picture address.
     Emojis(Result<Vec<(String, String)>>),
-    FeedNotes {
-        feed: Feed,
+    Column {
+        id: u64,
         until: Option<String>,
-        result: Result<Vec<Note>>,
+        result: Result<ColumnPage>,
     },
-    FeedChoices(Result<Vec<Feed>>),
+    ColumnChoices(Result<Vec<Source>>),
     Reported(Result<()>),
     ProfileEditor(Result<Box<User>>),
     ProfileSaved(Result<Box<User>>),
@@ -342,12 +346,12 @@ impl Job {
             Job::MarkRead => Event::MarkedRead(Err(e)),
             Job::Unread => Event::Unread(Err(e)),
             Job::Emojis => Event::Emojis(Err(e)),
-            Job::FeedNotes { feed, until } => Event::FeedNotes {
-                feed,
+            Job::Column { id, until, .. } => Event::Column {
+                id,
                 until,
                 result: Err(e),
             },
-            Job::FeedChoices => Event::FeedChoices(Err(e)),
+            Job::ColumnChoices => Event::ColumnChoices(Err(e)),
             Job::Report { .. } => Event::Reported(Err(e)),
             Job::LoadProfileEditor => Event::ProfileEditor(Err(e)),
             Job::SaveProfile(_) => Event::ProfileSaved(Err(e)),
@@ -462,15 +466,12 @@ pub fn run(job: Job, client: &Client) -> Event {
             )
         })),
         Job::Emojis => Event::Emojis(client.emojis()),
-        Job::FeedNotes { feed, until } => {
-            let (endpoint, key) = feed.kind.endpoint();
-            Event::FeedNotes {
-                result: client.feed_notes(endpoint, key, &feed.id, PAGE, until.as_deref()),
-                feed,
-                until,
-            }
-        }
-        Job::FeedChoices => Event::FeedChoices(feed_choices(client)),
+        Job::Column { id, source, until } => Event::Column {
+            id,
+            result: column_page(client, &source, until.as_deref()),
+            until,
+        },
+        Job::ColumnChoices => Event::ColumnChoices(column_choices(client)),
         Job::Report { user_id, comment } => Event::Reported(client.report(&user_id, &comment)),
         Job::LoadProfileEditor => Event::ProfileEditor(client.me().map(Box::new)),
         Job::SaveProfile(change) => {
@@ -661,32 +662,61 @@ fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
     client.user_by_id(id)
 }
 
+/// A page of a column: notes, or notifications.
+#[derive(Debug)]
+pub enum ColumnPage {
+    Notes(Vec<Note>),
+    Notifications(Vec<Notification>),
+}
+
+/// The page of the column showing `source`, older than `until` if given.
+fn column_page(client: &Client, source: &Source, until: Option<&str>) -> Result<ColumnPage> {
+    let feed = |endpoint, key, id: &str| {
+        client
+            .feed_notes(endpoint, key, id, PAGE, until)
+            .map(ColumnPage::Notes)
+    };
+    match source {
+        Source::Home => client
+            .timeline(TimelineKind::Home.endpoint(), true, PAGE, until)
+            .map(ColumnPage::Notes),
+        Source::Antenna { id, .. } => feed("antennas/notes", "antennaId", id),
+        Source::List { id, .. } => feed("notes/user-list-timeline", "listId", id),
+        Source::Channel { id, .. } => feed("channels/timeline", "channelId", id),
+        Source::Notifications => client
+            .notifications(PAGE, until)
+            .map(ColumnPage::Notifications),
+        Source::Search { query } => client.search(query, PAGE, until).map(ColumnPage::Notes),
+        Source::Author { id, .. } => client
+            .user_notes(id, &ALL_NOTES, PAGE, until)
+            .map(ColumnPage::Notes),
+    }
+}
+
 /// The account's antennas, lists, and the channels it follows and
-/// favorites, as feeds `+` can add. A kind the server does not have is
+/// favorites, as columns `+` can add. A kind the server does not have is
 /// left out; only all of them failing is an error.
-fn feed_choices(client: &Client) -> Result<Vec<Feed>> {
-    let host = client.host().to_ascii_lowercase();
-    let mut out: Vec<Feed> = Vec::new();
+fn column_choices(client: &Client) -> Result<Vec<Source>> {
+    let mut out: Vec<Source> = Vec::new();
     let mut first_error = None;
     let mut answered = false;
-    for (kind, endpoint) in [
-        (FeedKind::Antenna, "antennas/list"),
-        (FeedKind::List, "users/lists/list"),
-        (FeedKind::Channel, "channels/followed"),
-        (FeedKind::Channel, "channels/my-favorites"),
-    ] {
+    let antenna: fn(String, String) -> Source = |id, name| Source::Antenna { id, name };
+    let list: fn(String, String) -> Source = |id, name| Source::List { id, name };
+    let channel: fn(String, String) -> Source = |id, name| Source::Channel { id, name };
+    let kinds = [
+        ("antennas/list", antenna),
+        ("users/lists/list", list),
+        ("channels/followed", channel),
+        ("channels/my-favorites", channel),
+    ];
+    for (endpoint, make) in kinds {
         match client.named_items(endpoint) {
             Ok(items) => {
                 answered = true;
                 for (id, name) in items {
-                    let f = Feed {
-                        kind,
-                        host: host.clone(),
-                        id,
-                        name,
-                    };
-                    if !out.contains(&f) {
-                        out.push(f);
+                    let c = make(id, name);
+                    if !out.contains(&c) {
+                        out.push(c);
                     }
                 }
             }

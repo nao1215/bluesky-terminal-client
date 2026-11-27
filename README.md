@@ -44,7 +44,7 @@ msky speaks English and 日本語: the language of your system, or the one chose
 | Key | Action |
 |---|---|
 | `1`–`7` `tab` | Home, Local, Global, Notifications, Search, Profile, Chat |
-| `+` | Add a tab (an antenna, a list, a channel) |
+| `+` `x` | Add a column (an antenna, a list, a channel, notifications, a search), remove one |
 | `j` `k` `g` `G` | Move; more loads by itself near the end |
 | `n` `r` `Q` | Note, reply, quote |
 | `l` `e` `b` | React ❤, choose a reaction, renote |
@@ -60,7 +60,7 @@ msky speaks English and 日本語: the language of your system, or the one chose
 | `A` `T` `s` | Accounts, themes, settings |
 | `?` `q` | Help, quit |
 
-In the composer, `ctrl+s` sends, `ctrl+o` attaches up to four pictures or one video, `ctrl+w` adds a content warning, `ctrl+p` chooses who sees the note (public, home, followers). A write is sent once; `D`, `B`, `!` and logging out wait for `y`.
+In the composer, `ctrl+s` sends, `ctrl+o` attaches up to four pictures or one video, `ctrl+w` adds a content warning, `ctrl+p` chooses who sees the note (public, home, followers). A write is sent once; `D`, `B`, `x`, `!` and logging out wait for `y`.
 
 The Chat tab is Misskey's chat (from Misskey 2025.4). On a server without it, misskey.io among them, the tab is not shown. A thread is read ahead when the selection rests on a note, and the Notifications tab counts what is unread.
 

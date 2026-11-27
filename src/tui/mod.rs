@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod clipboard;
+pub mod columns;
 pub mod events;
 pub mod files;
 pub mod images;
@@ -263,6 +264,11 @@ fn event_loop(
         app.apply_settings(settings, depth, env, broken.clone());
         if let Some(why) = broken {
             app.account_error(why);
+        }
+        // The columns kept for the account, if any, are what the Home tab
+        // shows, as bsky's Timeline tab.
+        for (seq, job) in app.show_columns() {
+            worker.send(seq, job);
         }
     }
     // The server's custom emoji, which notes and reactions are drawn with.

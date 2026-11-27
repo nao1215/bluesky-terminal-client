@@ -118,7 +118,11 @@ impl App {
         let note = self.save_note.take();
         match result {
             Ok(()) => {
-                if let Some(n) = note {
+                // A question asked by a key after the one that saved stays
+                // up: its y is still waited for.
+                if let Some(n) = note
+                    && !self.asking()
+                {
                     self.info(n);
                 }
             }
