@@ -413,12 +413,20 @@ const TAGS: &[(&str, bool)] = &[
     ("b", true),
 ];
 
+/// Draw `s`, the whole text at depth 0 and some markup's content below it.
+/// Content always comes after the markup's opening on the same line, so
+/// only the whole text starts a line, where a code block or math block
+/// may open.
 fn render(s: &str, bold: bool, depth: usize, runs: &mut Vec<Run>) {
     let b = s.as_bytes();
     let mut i = 0;
     let mut last = 0;
     while i < b.len() {
-        let line_start = i == 0 || b[i - 1] == b'\n';
+        let line_start = if i == 0 {
+            depth == 0
+        } else {
+            b[i - 1] == b'\n'
+        };
         let found: Drawn<'_> = if b[i..].starts_with(b"<plain>") {
             find(b, i + 7, b"</plain>").map(|close| {
                 let inner = &s[i + 7..close];
@@ -795,6 +803,7 @@ mod tests {
         "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0<https://\0\0\0\0\0\0\0\0\0\0\0\0\0<https://expsb np\n["
     )]
     #[case("<https://🇯🇵https://a.test 後")]
+    #[case("$[x ```\n[a https://in.block/\n```]")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }
@@ -864,6 +873,7 @@ mod tests {
     #[case("見て <https://a.test/x(y> 👍🏽", "見て https://a.test/x(y 👍🏽")]
     #[case("$[x2 $[ab:c] 後]", "$[ab:c 後]")]
     #[case("$[x2 `]` 後]", "`]` 後")]
+    #[case("$[x2 ```\n**太字**\n```]", "```\n太字\n```")]
     #[case("<https://a.test/x >", "<https://a.test/x >")]
     #[case("`<https://a.test>`", "`<https://a.test>`")]
     #[case(
