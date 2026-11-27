@@ -9,7 +9,9 @@ secrets:
   - e2e-env-token-0003
 
 scenarios:
-  - name: follow follows an account, and says so when it already does
+  # An account of another server is followed once its server accepts the
+  # request: msky asks again after the follow, and this one is not yet.
+  - name: follow of an account of another server says it is pending until accepted
     mock_servers:
       - name: api
         routes:
@@ -26,11 +28,12 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "following @alice@misskey.design\n"
+            equals: "asked to follow @alice@misskey.design; pending until their server accepts (msky follows --pending lists it)\n"
       - assert:
           mock:
             name: api
             path: /api/users/show
+            count: 2
             body:
               json:
                 - { path: "$.username", equals: alice }

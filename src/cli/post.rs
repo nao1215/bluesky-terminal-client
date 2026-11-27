@@ -16,9 +16,6 @@ use crate::error::{Error, Kind, Result};
 use crate::mfm;
 use crate::text::{drawable, one_line};
 
-/// The most characters a note's text may have: Misskey's
-/// `MAX_NOTE_TEXT_LENGTH`, counted as its API counts them, in code points.
-pub const MAX_TEXT_CHARS: usize = 3000;
 /// The most characters a content warning may have (`notes/create`'s `cw`).
 pub const MAX_CW_CHARS: usize = 100;
 /// The most characters a file's alt text may have (`drive/files/create`'s
@@ -81,6 +78,8 @@ fn chars(s: &str) -> usize {
 /// The note to post, as the checks that need no server leave it.
 struct Draft {
     text: String,
+    /// Whether --no-card made links of the text silent, which made it longer.
+    silenced: bool,
     cw: Option<String>,
     files: Vec<Local>,
     reply: Option<String>,
@@ -139,20 +138,6 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read, origin: &str) -> Result<Draft> {
     } else {
         trimmed.to_string()
     };
-    if chars(&text) > MAX_TEXT_CHARS {
-        let why = if a.no_card && text != trimmed {
-            format!(
-                "the note is {} characters with its links made silent for --no-card; the limit is {MAX_TEXT_CHARS}",
-                chars(&text)
-            )
-        } else {
-            format!(
-                "the note is {} characters; the limit is {MAX_TEXT_CHARS}",
-                chars(&text)
-            )
-        };
-        return Err(Error::usage(why));
-    }
     if text.is_empty() && paths.is_empty() && a.quote.is_none() {
         return Err(Error::usage("the note is empty")
             .with_hint("give its text, or --image, --video or --quote"));
@@ -198,6 +183,7 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read, origin: &str) -> Result<Draft> {
         });
     }
     Ok(Draft {
+        silenced: text != trimmed,
         text,
         cw,
         files,
@@ -223,6 +209,22 @@ fn me(ctx: &Ctx, client: &Client) -> Result<Option<User>> {
     }
 }
 
+/// Why the text of `d` is longer than `max` characters, if it is.
+fn too_long(d: &Draft, max: usize) -> Result<()> {
+    let n = chars(&d.text);
+    if n <= max {
+        return Ok(());
+    }
+    let why = if d.silenced {
+        format!(
+            "the note is {n} characters with its links made silent for --no-card; the limit is {max}"
+        )
+    } else {
+        format!("the note is {n} characters; the limit is {max}")
+    };
+    Err(Error::usage(why))
+}
+
 /// `msky post`.
 pub fn post(ctx: &Ctx, out: &mut dyn Write, a: &PostArgs, stdin: &mut dyn Read) -> Result<()> {
     let d = draft(a, stdin, &ctx.origin)?;
@@ -231,6 +233,9 @@ pub fn post(ctx: &Ctx, out: &mut dyn Write, a: &PostArgs, stdin: &mut dyn Read) 
         needs.push("write:drive");
     }
     let client = ctx.writer(&needs, "post notes")?;
+    // The limit is the server's own: it says it in `meta`, counted in code
+    // points as its API counts them.
+    too_long(&d, client.max_note_chars())?;
     let me = me(ctx, &client)?;
     if let Some(max) = max_file_bytes(me.as_ref())
         && let Some(f) = d.files.iter().find(|f| f.data.len() as u64 > max)
@@ -482,6 +487,13 @@ fn handle(u: &User, host: &str) -> String {
     format!("@{}@{}", one_line(&u.username), one_line(at))
 }
 
+/// Whether `u` is an account of another server than `host`.
+fn remote(u: &User, host: &str) -> bool {
+    u.host
+        .as_deref()
+        .is_some_and(|h| !h.is_empty() && !h.eq_ignore_ascii_case(host))
+}
+
 /// `msky follow` (`on`) and `msky unfollow`.
 pub fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
     let who = parse_user(actor)?;
@@ -539,6 +551,22 @@ pub fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<(
                 json!({"id": u.id, "requested": true}),
                 format!("asked to follow {shown}; they approve their followers"),
             );
+        }
+        // An account of another server is followed once its server accepts
+        // the request, which it does in its own time: until then the
+        // follow is pending, and `msky follows --pending` lists it.
+        if remote(&u, client.host()) {
+            let now = client
+                .user(&who.username, host)
+                .map_err(|e| ctx.explained(e))?;
+            if !now.is_following {
+                return said(
+                    json!({"id": u.id, "requested": true}),
+                    format!(
+                        "asked to follow {shown}; pending until their server accepts (msky follows --pending lists it)"
+                    ),
+                );
+            }
         }
         return said(json!({"id": u.id}), format!("following {shown}"));
     }
@@ -655,7 +683,6 @@ mod tests {
     #[case::long_alt(PostArgs { images: vec!["a".into()], alts: vec!["あ".repeat(513)], ..args("x") }, "513 characters; the limit is 512")]
     #[case::empty_cw(PostArgs { cw: Some(" ".into()), ..args("x") }, "--cw is empty")]
     #[case::long_cw(PostArgs { cw: Some("🐈".repeat(101)), ..args("x") }, "101 characters; the limit is 100")]
-    #[case::long_text(args(&"あ".repeat(3001)), "3001 characters; the limit is 3000")]
     #[case::empty(args("  \n "), "the note is empty")]
     #[case::reply_elsewhere(PostArgs { reply: Some("https://other.test/notes/a1".into()), ..args("x") }, "is on other.test")]
     #[case::not_a_note(PostArgs { quote: Some("../x".into()), ..args("x") }, "is not a note")]
@@ -671,8 +698,45 @@ mod tests {
         assert!(paths(&calls).is_empty(), "{:?}", paths(&calls));
     }
 
-    // 3000 characters is the limit, counted in code points as the API
-    // counts them, and the text is counted as the server keeps it, trimmed.
+    // The limit is the one the server's `meta` names, counted in code
+    // points as its API counts them; a server that does not say has
+    // Misskey's 3000. Over it is exit 1, and nothing is sent.
+    #[rstest]
+    #[case::server_says_5000(r#"{"maxNoteTextLength":5000}"#, 5000, true)]
+    #[case::over_5000(r#"{"maxNoteTextLength":5000}"#, 5001, false)]
+    #[case::server_says_500(r#"{"maxNoteTextLength":500}"#, 501, false)]
+    #[case::meta_says_nothing(r#"{}"#, 3000, true)]
+    #[case::meta_fails_3001("", 3001, false)]
+    fn the_length_limit_is_the_servers_own(
+        #[case] meta: &'static str,
+        #[case] n: usize,
+        #[case] taken: bool,
+    ) {
+        let (url, calls) = serve(Arc::new(move |path, _, _| match path {
+            "/api/meta" if !meta.is_empty() => reply(200, meta),
+            "/api/i" => reply(200, r#"{"id":"u-me","username":"me"}"#),
+            "/api/notes/create" => reply(200, r#"{"createdNote":{"id":"9new"}}"#),
+            _ => reply(500, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        login(dir.path(), &url, crate::miauth::PERMISSIONS);
+        let (r, _) = run(&ctx(&url, dir.path(), false), &args(&"あ".repeat(n)));
+        if taken {
+            r.unwrap();
+            assert!(paths(&calls).contains(&"/api/notes/create".to_string()));
+        } else {
+            let e = r.unwrap_err();
+            assert_eq!(e.kind(), Kind::Usage);
+            assert!(
+                e.message()
+                    .contains(&format!("{n} characters; the limit is")),
+                "{e:?}"
+            );
+            assert_eq!(paths(&calls), ["/api/meta"]);
+        }
+    }
+
+    // The text is counted as the server keeps it, trimmed.
     #[test]
     fn the_limit_itself_is_taken() {
         let text = format!(" {}\n", "👍🏽".repeat(1500));
@@ -756,6 +820,7 @@ mod tests {
         assert_eq!(
             paths(&calls),
             [
+                "/api/meta",
                 "/api/i",
                 "/api/notes/show",
                 "/api/notes/show",
@@ -765,7 +830,7 @@ mod tests {
             ]
         );
         let log = calls.lock().unwrap();
-        let upload = &log[3].1;
+        let upload = &log[4].1;
         assert!(
             upload.contains(&format!("name=\"i\"\r\n\r\n{FAKE}\r\n")),
             "{upload}"
@@ -780,7 +845,7 @@ mod tests {
         );
         assert!(upload.contains("filename=\"猫 %221%22.png\""), "{upload}");
         assert!(
-            !log[4].1.contains("name=\"comment\""),
+            !log[5].1.contains("name=\"comment\""),
             "the second has no alt"
         );
         drop(log);
@@ -793,7 +858,7 @@ mod tests {
                 "visibility": "followers",
                 "replyId": "n0",
                 "renoteId": "n0",
-                "fileIds": ["f3", "f4"],
+                "fileIds": ["f4", "f5"],
             })
         );
     }
@@ -831,7 +896,7 @@ mod tests {
             e.message().contains("takes files up to 1048576 bytes"),
             "{e:?}"
         );
-        assert_eq!(paths(&calls), ["/api/i"]);
+        assert_eq!(paths(&calls), ["/api/meta", "/api/i"]);
     }
 
     // --dry-run reads the files and asks the server for the preview of
@@ -873,6 +938,7 @@ mod tests {
         assert_eq!(
             paths(&calls),
             [
+                "/api/meta",
                 "/api/i",
                 "/url?url=https%3A%2F%2Fdebimate.jp%2Fpost%2Fa%2F&lang=ja-JP"
             ]
@@ -1002,7 +1068,7 @@ mod tests {
         assert_eq!(e.kind().exit_code(), 4);
         assert!(e.hint().unwrap().contains("MSKY_TOKEN"), "{e:?}");
         assert!(!e.to_string().contains("env-fake-token"));
-        assert_eq!(paths(&calls), ["/api/i", "/api/notes/create"]);
+        assert_eq!(paths(&calls), ["/api/meta", "/api/i", "/api/notes/create"]);
         assert_eq!(body(&calls, "/api/notes/create")["i"], "env-fake-token");
         // Another server gets neither token.
         assert!(!c.client(Some("http://other.test")).unwrap().logged_in());
@@ -1136,5 +1202,50 @@ mod tests {
         assert_eq!(e.kind(), Kind::Usage);
         assert!(e.hint().unwrap().contains("@name@host"), "{e:?}");
         assert!(paths(&calls).is_empty());
+    }
+
+    // An account of another server is followed once its server accepts:
+    // until then the account is asked again after the follow, and the
+    // output says the follow is pending; one accepted at once is followed.
+    #[rstest]
+    #[case::pending(
+        false,
+        "asked to follow @bob@mstdn.test; pending until their server accepts (msky follows --pending lists it)\n",
+        r#"{"id":"u-bob","requested":true}"#
+    )]
+    #[case::accepted_at_once(true, "following @bob@mstdn.test\n", r#"{"id":"u-bob"}"#)]
+    fn following_an_account_of_another_server_says_it_is_pending_until_accepted(
+        #[case] accepted: bool,
+        #[case] said: &str,
+        #[case] json: &str,
+    ) {
+        let (url, calls) = serve(Arc::new(move |path, _, n| match path {
+            "/api/users/show" if n % 3 == 2 && accepted => reply(
+                200,
+                r#"{"id":"u-bob","username":"bob","host":"mstdn.test","isFollowing":true}"#,
+            ),
+            "/api/users/show" => reply(
+                200,
+                r#"{"id":"u-bob","username":"bob","host":"mstdn.test"}"#,
+            ),
+            "/api/following/create" => reply(200, r#"{"id":"u-bob"}"#),
+            _ => reply(404, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        login(dir.path(), &url, crate::miauth::PERMISSIONS);
+        let (r, out) = run_follow(&ctx(&url, dir.path(), false), "@bob@mstdn.test", true);
+        r.unwrap();
+        assert_eq!(out, said);
+        assert_eq!(
+            paths(&calls),
+            [
+                "/api/users/show",
+                "/api/following/create",
+                "/api/users/show"
+            ]
+        );
+        let (r, out) = run_follow(&ctx(&url, dir.path(), true), "bob@mstdn.test", true);
+        r.unwrap();
+        assert_eq!(out.trim_end(), json);
     }
 }

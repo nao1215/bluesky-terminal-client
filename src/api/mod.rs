@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Kind, Result};
-use types::{DriveFile, Note, Notification, User};
+use types::{DriveFile, Note, Notification, Relation, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
 pub const DEFAULT_HOST: &str = "misskey.io";
@@ -40,6 +40,10 @@ const MAX_ANSWER_BYTES: u64 = 32 * 1024 * 1024;
 /// How long opening a connection may take, all of a host's addresses and
 /// the TLS handshake together.
 const CONNECT_WITHIN: Duration = Duration::from_secs(10);
+
+/// The most characters a note's text may have on a server that does not
+/// say: Misskey's default `maxNoteTextLength`.
+pub const DEFAULT_MAX_NOTE_CHARS: usize = 3000;
 
 /// The most notes one call asks for: the API's limit.
 pub const MAX_PAGE: usize = 100;
@@ -481,6 +485,63 @@ impl Client {
                 Answer::Refused(r) => Err(r),
             },
         )
+    }
+
+    /// `notes/children`: the replies to note `id` (and the quotes of it
+    /// with text of their own), oldest first as the server lists them.
+    pub fn children(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
+        notes(self.call(
+            "notes/children",
+            &json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)}),
+        )?)
+    }
+
+    /// `notes/conversation`: the notes note `id` answers, its parent first,
+    /// then the parent's, up to `limit` of them.
+    pub fn conversation(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
+        notes(self.call(
+            "notes/conversation",
+            &json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)}),
+        )?)
+    }
+
+    /// A page of a list of follows: `users/following` or `users/followers`
+    /// with `body` naming the account, or `following/requests/sent` or
+    /// `following/requests/list` for the account logged in; older than
+    /// `until` when given.
+    pub fn relations(
+        &self,
+        endpoint: &str,
+        mut body: Value,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Relation>> {
+        body["limit"] = json!(limit.clamp(1, MAX_PAGE));
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        let Value::Array(items) = self.call(endpoint, &body)? else {
+            return Err(Error::api(format!(
+                "{endpoint}: the server did not answer with a list"
+            )));
+        };
+        Ok(items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect())
+    }
+
+    /// `meta`: the most characters a note's text may have on this server
+    /// (`maxNoteTextLength`), or [`DEFAULT_MAX_NOTE_CHARS`] when the server
+    /// does not say: an old version, a fork, or a call that failed, which
+    /// `notes/create` then decides.
+    pub fn max_note_chars(&self) -> usize {
+        self.call("meta", &json!({"detail": false}))
+            .ok()
+            .and_then(|v| v.get("maxNoteTextLength").and_then(Value::as_u64))
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(DEFAULT_MAX_NOTE_CHARS)
     }
 
     /// `notes/show`: one note.

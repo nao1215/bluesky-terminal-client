@@ -130,6 +130,32 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// The accounts that follow ACTOR (you by default).
+    ///
+    /// With --pending, the accounts that asked to follow you and wait for
+    /// your approval.
+    Followers {
+        actor: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+        /// The requests to follow you not yet approved.
+        #[arg(long)]
+        pending: bool,
+    },
+    /// The accounts ACTOR follows (you by default).
+    ///
+    /// An account of another server is listed once its server accepts the
+    /// follow; with --pending, the accounts you asked to follow that have
+    /// not accepted yet (one that approves its followers, or a server that
+    /// has not answered).
+    Follows {
+        actor: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+        /// Your requests to follow not yet accepted.
+        #[arg(long)]
+        pending: bool,
+    },
     /// Follow an account: name, @name, @name@host, or its address.
     Follow { actor: String },
     /// Unfollow an account, or take back a request to follow it.
@@ -143,10 +169,30 @@ pub enum Command {
     /// when it can): open it, signed in there, and allow the access. msky
     /// never sees the password. The token is saved for the server, readable
     /// by you alone; logging in on the same server again replaces it.
+    ///
+    /// Without --host, in a terminal, msky lists servers (`msky servers`)
+    /// and asks which one; elsewhere it logs in on misskey.io, or on the
+    /// server of the account in use.
     Login {
         /// How long to wait for the access to be allowed.
         #[arg(long, value_name = "SECONDS", default_value_t = miauth::DEFAULT_TIMEOUT.as_secs())]
         timeout: u64,
+    },
+    /// Servers to log in to, the most accounts first: Misskey Hub's list
+    /// of servers that run Misskey, or, when it cannot be read, a short
+    /// one msky carries.
+    Servers {
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// The accounts logged in, the one in use marked.
+    ///
+    /// --use makes the account on HOST the one in use: the commands and
+    /// the client read its server when --host does not name one.
+    Accounts {
+        /// The host of the account to use from now on.
+        #[arg(long = "use", value_name = "HOST")]
+        use_host: Option<String>,
     },
     /// Log the account in use (or the one on --host) out: its saved token
     /// is removed.
@@ -172,7 +218,42 @@ pub enum TimelineKind {
 }
 
 impl TimelineKind {
-    fn endpoint(self) -> &'static str {
+    /// Every timeline, in the order of Misskey's tabs, which is the order
+    /// the client steps through them.
+    pub const ALL: [TimelineKind; 4] = [
+        TimelineKind::Home,
+        TimelineKind::Local,
+        TimelineKind::Social,
+        TimelineKind::Global,
+    ];
+
+    /// Its name, as the command line takes it.
+    pub fn name(self) -> &'static str {
+        match self {
+            TimelineKind::Home => "home",
+            TimelineKind::Local => "local",
+            TimelineKind::Social => "social",
+            TimelineKind::Global => "global",
+        }
+    }
+
+    /// Where it is in [`TimelineKind::ALL`].
+    pub fn index(self) -> usize {
+        match self {
+            TimelineKind::Home => 0,
+            TimelineKind::Local => 1,
+            TimelineKind::Social => 2,
+            TimelineKind::Global => 3,
+        }
+    }
+
+    /// The timeline `delta` places away in [`TimelineKind::ALL`], wrapping.
+    pub fn next(self, delta: isize) -> TimelineKind {
+        let n = Self::ALL.len() as isize;
+        Self::ALL[(self.index() as isize + delta).rem_euclid(n) as usize]
+    }
+
+    pub fn endpoint(self) -> &'static str {
         match self {
             TimelineKind::Home => "notes/timeline",
             TimelineKind::Local => "notes/local-timeline",
@@ -182,7 +263,7 @@ impl TimelineKind {
     }
 
     /// Whether it is an account's: the server shows it to no visitor.
-    fn needs_login(self) -> bool {
+    pub fn needs_login(self) -> bool {
         matches!(self, TimelineKind::Home | TimelineKind::Social)
     }
 }
@@ -263,6 +344,12 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// The account the client opens as: the one saved for the server
+    /// `--host` names (or the token in `MSKY_TOKEN`), as the commands use.
+    pub fn account_in_use(&self) -> Result<Option<Session>> {
+        self.session(&self.origin)
+    }
+
     /// The logins, for the commands that save or remove one.
     fn store(&self) -> Result<&AccountStore> {
         self.accounts.as_ref().map_err(Clone::clone)
@@ -444,12 +531,44 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
             },
             &mut io::stdin(),
         ),
+        Command::Followers {
+            actor,
+            limit,
+            pending,
+        } => relations(ctx, out, actor.as_deref(), limit, pending, Side::Followers),
+        Command::Follows {
+            actor,
+            limit,
+            pending,
+        } => relations(ctx, out, actor.as_deref(), limit, pending, Side::Follows),
+        Command::Accounts { use_host } => accounts(ctx, out, use_host.as_deref()),
+        Command::Servers { limit } => {
+            let (list, failed) = crate::servers::list();
+            if let Some(e) = failed {
+                say(
+                    &mut io::stderr(),
+                    &format!("{}; showing the servers msky knows\n", e.message()),
+                );
+            }
+            servers(ctx, out, &list, limit)
+        }
         Command::Follow { actor } => post::follow(ctx, out, &actor, true),
         Command::Unfollow { actor } => post::follow(ctx, out, &actor, false),
         Command::Login { timeout } => {
             let mut err = io::stderr();
+            let origin =
+                if !ctx.host_given && io::stdin().is_terminal() && io::stderr().is_terminal() {
+                    let (list, failed) = crate::servers::list();
+                    if let Some(e) = failed {
+                        say(&mut err, &format!("{}\n", e.message()));
+                    }
+                    choose_server(&list, &mut io::stdin().lock(), &mut err)?
+                } else {
+                    ctx.origin.clone()
+                };
             login(
                 ctx,
+                &origin,
                 out,
                 &mut err,
                 Duration::from_secs(timeout),
@@ -485,6 +604,12 @@ trait Paged {
 }
 
 impl Paged for Note {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+impl Paged for crate::api::types::Relation {
     fn id(&self) -> &str {
         &self.id
     }
@@ -809,6 +934,139 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
     Ok(())
 }
 
+/// Which side of a follow `follows` and `followers` list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    /// The accounts followed.
+    Follows,
+    /// The accounts that follow.
+    Followers,
+}
+
+/// `msky follows` and `msky followers`: the accounts on one side of an
+/// account's follows, or, with `pending`, of your requests not yet
+/// accepted, newest first.
+fn relations(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    actor: Option<&str>,
+    limit: usize,
+    pending: bool,
+    side: Side,
+) -> Result<()> {
+    let (client, endpoint, body) = if pending {
+        if actor.is_some() {
+            return Err(Error::usage(
+                "--pending lists your own requests, of the account logged in",
+            )
+            .with_hint("leave ACTOR out"));
+        }
+        let client = ctx.account_client()?;
+        let endpoint = match side {
+            Side::Follows => "following/requests/sent",
+            Side::Followers => "following/requests/list",
+        };
+        (client, endpoint, json!({}))
+    } else {
+        let (client, id) = match actor {
+            Some(a) => {
+                let who = parse_user(a)?;
+                let client = ctx.client(who.origin.as_deref())?;
+                let host = who
+                    .host
+                    .as_deref()
+                    .filter(|h| !h.eq_ignore_ascii_case(client.host()));
+                let id = client.user(&who.username, host)?.id;
+                (client, id)
+            }
+            None => {
+                let client = ctx.account_client()?;
+                let id = match ctx.session(&ctx.origin)?.map(|s| s.user_id) {
+                    Some(id) if !id.is_empty() => id,
+                    _ => client.me().map_err(|e| ctx.explained(e))?.id,
+                };
+                (client, id)
+            }
+        };
+        let endpoint = match side {
+            Side::Follows => "users/following",
+            Side::Followers => "users/followers",
+        };
+        (client, endpoint, json!({"userId": id}))
+    };
+    let all = pages(
+        limit,
+        false,
+        |_| true,
+        |n, until| client.relations(endpoint, body.clone(), n, until),
+    )
+    .map_err(|e| ctx.explained(e))?;
+    for r in &all {
+        let who = match side {
+            Side::Follows => r.followee.as_ref(),
+            Side::Followers => r.follower.as_ref(),
+        };
+        let Some(u) = who else { continue };
+        if ctx.json {
+            json_line(out, &format::account_json(u, client.origin()))?;
+        } else {
+            text(out, &format::account_line(u, client.origin()))?;
+        }
+    }
+    Ok(())
+}
+
+/// `msky accounts`: the accounts logged in, by host, the one in use
+/// marked; with `use_host`, that one made the one in use first.
+fn accounts(ctx: &Ctx, out: &mut dyn Write, use_host: Option<&str>) -> Result<()> {
+    let store = ctx.store()?;
+    if let Some(typed) = use_host {
+        let host = api::authority(&api::normalize_host(typed)?).to_string();
+        if store.find(&host)?.is_none() {
+            let known: Vec<String> = store.list()?.iter().map(|s| s.host().to_string()).collect();
+            let hint = if known.is_empty() {
+                "no account is logged in; run `msky login --host HOST`".to_string()
+            } else {
+                format!("logged in on: {}", known.join(", "))
+            };
+            return Err(Error::usage(format!("no account is logged in on {host}")).with_hint(hint));
+        }
+        store.set_current(&host)?;
+    }
+    let current = store.current()?.map(|s| s.service);
+    let all = store.list()?;
+    if all.is_empty() && !ctx.json {
+        return text(out, "not logged in\n");
+    }
+    for s in all {
+        let used = current.as_deref() == Some(s.service.as_str());
+        if ctx.json {
+            json_line(
+                out,
+                &json!({
+                    "id": s.user_id,
+                    "username": s.username,
+                    "host": s.host(),
+                    "service": s.service,
+                    "current": used,
+                }),
+            )?;
+        } else {
+            let mark = if used { "* " } else { "  " };
+            text(
+                out,
+                &format!(
+                    "{mark}@{}@{}  {}\n",
+                    crate::text::one_line(&s.username),
+                    s.host(),
+                    crate::text::one_line(&s.user_id)
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn whoami(ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
     let client = ctx.account_client()?;
     let me = client.me()?;
@@ -829,10 +1087,106 @@ fn say(err: &mut dyn Write, s: &str) {
     let _: io::Result<()> = err.write_all(s.as_bytes()).and_then(|()| err.flush());
 }
 
+/// How many servers the login lists to choose from.
+const CHOICES: usize = 15;
+
+/// Ask on `err` which of `servers` to log in on, and read the answer from
+/// `input`: its number, or any host; nothing is the first.
+fn choose_server(
+    servers: &[crate::servers::Server],
+    input: &mut dyn io::BufRead,
+    err: &mut dyn Write,
+) -> Result<String> {
+    let mut menu = String::from("Which server do you log in on?\n");
+    let shown: Vec<_> = servers.iter().take(CHOICES).collect();
+    for (i, s) in shown.iter().enumerate() {
+        let users = s
+            .users
+            .map(|n| format!("  {n} accounts"))
+            .unwrap_or_default();
+        menu.push_str(&format!(
+            "{:>3}. {}  {}{users}\n",
+            i + 1,
+            s.host,
+            crate::text::one_line(&s.name)
+        ));
+    }
+    menu.push_str("Number, or another server's host [1]: ");
+    say(err, &menu);
+    let mut line = String::new();
+    input
+        .read_line(&mut line)
+        .map_err(|e| Error::io(format!("cannot read the answer: {e}")))?;
+    let answer = line.trim();
+    let host = match answer.parse::<usize>() {
+        _ if answer.is_empty() => shown.first().map(|s| s.host.clone()),
+        Ok(n) => n
+            .checked_sub(1)
+            .and_then(|i| shown.get(i))
+            .map(|s| s.host.clone()),
+        Err(_) => Some(answer.to_string()),
+    };
+    let Some(host) = host else {
+        return Err(
+            Error::usage(format!("{answer} is not one of the servers listed"))
+                .with_hint("give its number, or its host"),
+        );
+    };
+    api::normalize_host(&host)
+}
+
+/// `msky servers`: the servers to log in to, one a line, or one JSON
+/// object a line.
+fn servers(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    list: &[crate::servers::Server],
+    limit: usize,
+) -> Result<()> {
+    for s in list.iter().take(limit) {
+        if ctx.json {
+            json_line(
+                out,
+                &json!({
+                    "host": s.host,
+                    "name": s.name,
+                    "users": s.users,
+                    "langs": s.langs,
+                    "openRegistrations": s.open,
+                }),
+            )?;
+        } else {
+            let users = s
+                .users
+                .map(|n| format!("  {n} accounts"))
+                .unwrap_or_default();
+            let closed = if s.open == Some(false) {
+                "  (closed to new accounts)"
+            } else {
+                ""
+            };
+            text(
+                out,
+                &format!(
+                    "{}  {}{users}{closed}\n",
+                    s.host,
+                    crate::text::one_line(&s.name)
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// `msky login`: ask the server for access with MiAuth, wait for it, and
 /// save the token for the server with the permissions it was asked for.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "what the login reads and writes, each one a test gives its own"
+)]
 fn login(
     ctx: &Ctx,
+    origin: &str,
     out: &mut dyn Write,
     err: &mut dyn Write,
     timeout: Duration,
@@ -842,7 +1196,7 @@ fn login(
 ) -> Result<()> {
     let store = ctx.store()?;
     // The check is asked as a visitor: an old token is not sent along.
-    let client = Client::new(&ctx.origin);
+    let client = Client::new(origin);
     let host = client.host().to_string();
     let session = miauth::session()?;
     let url = miauth::auth_url(client.origin(), &session);
@@ -863,33 +1217,19 @@ fn login(
         ),
     );
     let access = miauth::wait_for_access(&client, &session, timeout, interval, clock)?;
-    // The account the token is of, from the check, else from the server.
-    let me = if access.user.id.is_empty() || access.user.username.is_empty() {
-        Client::new(client.origin())
-            .with_token(Some(access.token.clone()))
-            .me()?
-    } else {
-        access.user
-    };
-    let saved = Session {
-        service: client.origin().to_string(),
-        user_id: me.id.clone(),
-        username: me.username.clone(),
-        token: access.token,
-        permissions: miauth::PERMISSIONS.iter().map(|p| p.to_string()).collect(),
-    };
+    let saved = miauth::session_of(&client, access)?;
     store.save(&saved)?;
     if ctx.json {
         return json_line(
             out,
-            &json!({"id": me.id, "username": me.username, "host": host}),
+            &json!({"id": saved.user_id, "username": saved.username, "host": host}),
         );
     }
     text(
         out,
         &format!(
             "logged in as @{}@{host}\n",
-            crate::text::one_line(&me.username)
+            crate::text::one_line(&saved.username)
         ),
     )
 }
@@ -1265,7 +1605,7 @@ mod tests {
         assert_eq!(e.kind(), crate::error::Kind::Usage);
     }
 
-    use crate::api::stub_tests::{reply, serve};
+    use crate::api::stub_tests::{Calls, reply, serve};
     use std::sync::Arc;
 
     /// A throwaway value in the place of a token; no server gave it.
@@ -1302,6 +1642,7 @@ mod tests {
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let r = login(
             ctx,
+            &ctx.origin,
             &mut out,
             &mut err,
             Duration::from_secs(timeout),
@@ -1559,5 +1900,235 @@ mod tests {
             "{\"loggedOut\":[{\"host\":\"a.test\",\"id\":\"id-alice\",\"username\":\"alice\"},{\"host\":\"b.test\",\"id\":\"id-bob\",\"username\":\"bob\"}]}\n"
         );
         assert_eq!(run(&in_use, false), "not logged in\n");
+    }
+
+    fn relation_server() -> (String, Calls) {
+        serve(Arc::new(|path, body, _| {
+            let v: Value = serde_json::from_str(body).unwrap();
+            let page = |k: &str| match v["untilId"].as_str() {
+                None => format!(
+                    r#"[{{"id":"r2","{k}":{{"id":"u-bob","username":"bob","host":"mstdn.test","name":"ボブ 👨‍👩‍👧","isFollowing":true}}}},{{"id":"r1","{k}":{{"id":"u-cat","username":"cat"}}}}]"#
+                ),
+                Some("r1") => format!(r#"[{{"id":"r0","{k}":{{"id":"u-dan","username":"dan"}}}}]"#),
+                _ => "[]".into(),
+            };
+            match path {
+                "/api/users/show" => reply(200, r#"{"id":"u-alice","username":"alice"}"#),
+                "/api/users/following" | "/api/following/requests/sent" => {
+                    reply(200, &page("followee"))
+                }
+                "/api/users/followers" | "/api/following/requests/list" => {
+                    reply(200, &page("follower"))
+                }
+                _ => reply(404, "{}"),
+            }
+        }))
+    }
+
+    fn run_relations(
+        ctx: &Ctx,
+        actor: Option<&str>,
+        pending: bool,
+        side: Side,
+    ) -> (Result<()>, String) {
+        let mut out = Vec::new();
+        let r = relations(ctx, &mut out, actor, 10, pending, side);
+        (r, String::from_utf8(out).unwrap())
+    }
+
+    // follows and followers page by untilId as bsky's page by cursor, say
+    // who is followed, and print the account shape whoami prints.
+    #[test]
+    fn follows_and_followers_list_the_accounts_page_by_page() {
+        let (url, log) = relation_server();
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), &url, "me");
+        let host = api::authority(&url).to_string();
+        let ctx = ctx_of(&url, dir.path(), false);
+        let (r, out) = run_relations(&ctx, Some("@alice"), false, Side::Follows);
+        r.unwrap();
+        assert_eq!(
+            out,
+            format!(
+                "ボブ 👨‍👩‍👧 @bob@mstdn.test  (following)  {url}/@bob@mstdn.test\n@cat@{host}  {url}/@cat\n@dan@{host}  {url}/@dan\n"
+            )
+        );
+        {
+            let log = log.lock().unwrap();
+            assert_eq!(log[0].0, "/api/users/show");
+            assert_eq!(log[1].0, "/api/users/following");
+            let second: Value = serde_json::from_str(&log[2].1).unwrap();
+            assert_eq!(second["userId"], "u-alice");
+            assert_eq!(second["untilId"], "r1");
+        }
+        // Without ACTOR it is your own, by the ID saved at login.
+        let json_ctx = ctx_of(&url, dir.path(), true);
+        let (r, out) = run_relations(&json_ctx, None, false, Side::Followers);
+        r.unwrap();
+        let first: Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+        assert_eq!(
+            first,
+            format::account_json(
+                &serde_json::from_value(
+                    json!({"id":"u-bob","username":"bob","host":"mstdn.test","name":"ボブ 👨‍👩‍👧"})
+                )
+                .unwrap(),
+                &url
+            )
+        );
+        let log = log.lock().unwrap();
+        let asked = log
+            .iter()
+            .find(|(p, _)| p == "/api/users/followers")
+            .unwrap();
+        let v: Value = serde_json::from_str(&asked.1).unwrap();
+        assert_eq!(v["userId"], "id-me");
+    }
+
+    // --pending lists your own requests: those sent (follows) and those
+    // received (followers); it needs an account, and no ACTOR.
+    #[test]
+    fn pending_lists_the_requests_not_yet_accepted() {
+        let (url, log) = relation_server();
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx_of(&url, dir.path(), false);
+        let e = run_relations(&ctx, None, true, Side::Follows)
+            .0
+            .unwrap_err();
+        assert!(e.message().starts_with("not logged in on"), "{e:?}");
+        save(dir.path(), &url, "me");
+        let e = run_relations(&ctx, Some("bob"), true, Side::Follows)
+            .0
+            .unwrap_err();
+        assert_eq!(e.kind(), crate::error::Kind::Usage);
+        assert!(log.lock().unwrap().is_empty());
+        let (r, out) = run_relations(&ctx, None, true, Side::Follows);
+        r.unwrap();
+        assert_eq!(out.lines().count(), 3);
+        assert!(out.starts_with("ボブ 👨‍👩‍👧 @bob@mstdn.test"), "{out}");
+        run_relations(&ctx, None, true, Side::Followers).0.unwrap();
+        let log = log.lock().unwrap();
+        assert_eq!(log[0].0, "/api/following/requests/sent");
+        let v: Value = serde_json::from_str(&log[0].1).unwrap();
+        assert_eq!(v, json!({"i": format!("{FAKE}-me"), "limit": 10}));
+        assert!(log.iter().any(|(p, _)| p == "/api/following/requests/list"));
+    }
+
+    // accounts lists the logins as bsky's does, the one in use marked;
+    // --use makes another the one in use, and one not logged in is a usage
+    // error that names those that are.
+    #[test]
+    fn accounts_lists_the_logins_and_use_switches_between_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = |ctx: &Ctx, use_host: Option<&str>| {
+            let mut out = Vec::new();
+            let r = accounts(ctx, &mut out, use_host);
+            (r, String::from_utf8(out).unwrap())
+        };
+        let ctx = ctx_of("https://a.test", dir.path(), false);
+        assert_eq!(run(&ctx, None).1, "not logged in\n");
+        save(dir.path(), "https://a.test", "alice");
+        save(dir.path(), "http://127.0.0.1:8080", "bob");
+        assert_eq!(
+            run(&ctx, None).1,
+            "* @bob@127.0.0.1:8080  id-bob\n  @alice@a.test  id-alice\n"
+        );
+        let (r, out) = run(&ctx, Some("https://A.test/"));
+        r.unwrap();
+        assert_eq!(
+            out,
+            "  @bob@127.0.0.1:8080  id-bob\n* @alice@a.test  id-alice\n"
+        );
+        let e = run(&ctx, Some("c.test")).0.unwrap_err();
+        assert_eq!(e.message(), "no account is logged in on c.test");
+        assert_eq!(e.hint(), Some("logged in on: 127.0.0.1:8080, a.test"));
+        let json_ctx = ctx_of("https://a.test", dir.path(), true);
+        let lines: Vec<Value> = run(&json_ctx, None)
+            .1
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(
+            lines[1],
+            json!({"id": "id-alice", "username": "alice", "host": "a.test", "service": "https://a.test", "current": true})
+        );
+    }
+
+    fn server_list() -> Vec<crate::servers::Server> {
+        crate::servers::builtin()
+    }
+
+    // The login asks which server: a number, nothing for the first, or any
+    // host; a number not listed is a usage error.
+    #[rstest]
+    #[case("\n", "https://misskey.io")]
+    #[case("3\n", "https://takusuki.com")]
+    #[case(" Mi.Example.Test \n", "https://mi.example.test")]
+    #[case("http://127.0.0.1:9\n", "http://127.0.0.1:9")]
+    fn the_login_lists_servers_and_takes_a_number_or_a_host(
+        #[case] typed: &str,
+        #[case] want: &str,
+    ) {
+        let mut err = Vec::new();
+        let got = choose_server(&server_list(), &mut typed.as_bytes(), &mut err).unwrap();
+        assert_eq!(got, want);
+        let err = String::from_utf8(err).unwrap();
+        assert!(
+            err.starts_with("Which server do you log in on?\n  1. misskey.io  Misskey.io\n"),
+            "{err}"
+        );
+        assert!(
+            err.ends_with("Number, or another server's host [1]: "),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_number_not_listed_is_a_usage_error() {
+        for typed in ["0\n", "99\n"] {
+            let e =
+                choose_server(&server_list(), &mut typed.as_bytes(), &mut Vec::new()).unwrap_err();
+            assert_eq!(e.kind(), crate::error::Kind::Usage, "{typed}");
+        }
+        let e =
+            choose_server(&server_list(), &mut "a/b\n".as_bytes(), &mut Vec::new()).unwrap_err();
+        assert!(e.message().starts_with("invalid host"), "{e:?}");
+    }
+
+    #[test]
+    fn servers_prints_each_with_its_accounts_or_json() {
+        let list = vec![crate::servers::Server {
+            host: "big.test".into(),
+            name: "大きい🐈".into(),
+            users: Some(9000),
+            langs: vec!["ja".into()],
+            open: Some(false),
+        }];
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        servers(
+            &ctx_of("https://a.test", dir.path(), false),
+            &mut out,
+            &list,
+            5,
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "big.test  大きい🐈  9000 accounts  (closed to new accounts)\n"
+        );
+        let mut out = Vec::new();
+        servers(
+            &ctx_of("https://a.test", dir.path(), true),
+            &mut out,
+            &list,
+            5,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            v,
+            json!({"host": "big.test", "name": "大きい🐈", "users": 9000, "langs": ["ja"], "openRegistrations": false})
+        );
     }
 }

@@ -103,6 +103,25 @@ pub struct Access {
     pub user: User,
 }
 
+/// The login to save for the access given on `client`'s server: the
+/// account the check named, else the one the server says the token is of.
+pub fn session_of(client: &Client, access: Access) -> Result<crate::config::Session> {
+    let me = if access.user.id.is_empty() || access.user.username.is_empty() {
+        Client::new(client.origin())
+            .with_token(Some(access.token.clone()))
+            .me()?
+    } else {
+        access.user
+    };
+    Ok(crate::config::Session {
+        service: client.origin().to_string(),
+        user_id: me.id,
+        username: me.username,
+        token: access.token,
+        permissions: PERMISSIONS.iter().map(|p| p.to_string()).collect(),
+    })
+}
+
 /// Time as `wait_for_access` sees it, so the tests wait without sleeping.
 pub trait Clock {
     /// How long it has been since the wait began.

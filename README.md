@@ -5,9 +5,12 @@
 
 # msky
 
-An unofficial [Misskey](https://misskey-hub.net) client for the terminal. It reads what a Misskey server shows to visitors: an account's notes, one note, a search, and the files attached to notes. Logged in with MiAuth, or given an access token in `MSKY_TOKEN`, it reads your timelines and notifications, posts notes with pictures and videos, and follows and unfollows accounts.
+An unofficial [Misskey](https://misskey-hub.net) client for the terminal, built as [bsky](https://github.com/nao1215/bluesky-terminal-client) is for Bluesky. `msky` alone opens a full-screen client: the home, local, social and global timelines, threads and notifications, with avatars and pictures drawn in the terminal (kitty graphics, sixel, or iTerm2 inline images). The commands read what a Misskey server shows to visitors: an account's notes, one note, a search, and the files attached to notes. Logged in with MiAuth, or given an access token in `MSKY_TOKEN`, they read your timelines and notifications, post notes with pictures and videos, and follow and unfollow accounts.
+
+msky is for Misskey itself; a fork (Sharkey and the like) may work, but it is not looked after.
 
 ```sh
+msky
 msky login
 msky timeline -n 10
 msky notifications --json | jq -r .type
@@ -42,6 +45,30 @@ cargo install --locked --path .
 
 It needs Rust 1.90 or later.
 
+## The client
+
+`msky` with no command opens the client on the server of the account in use (or the one `--host` names), in bsky's layout: the tabs on the top row, the notes, the keys that work in the view, and a status row that names the picture protocol at its right. The keys are bsky's where bsky has the action; `?` lists them all, and `.` lists what the keys do to the selected note.
+
+| Key | What it does |
+|---|---|
+| `1` `4`, `tab` `shift+tab` | The Timeline and Notifications tabs (bsky's numbers; its Chat, Search and Profile tabs are for a later version) |
+| `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
+| `←` `→` `H` `L`, `+` | The previous / next timeline (home, local, social, global), or choose one from a list; bsky moves between its columns with these |
+| `v` | The thread: what the note answers, the note, and two levels of replies; `esc` closes it |
+| `space` | The note's files full screen (`←` `→` between them, `d` saves the one shown, `o` opens it in the browser); without pictures, the note in the browser |
+| `w` | Shows or hides the text behind a content warning, which is folded until then |
+| `d` | Saves every file of the note, as `msky download` names them |
+| `o`, `c` | Opens the note in the browser, copies its address (OSC 52) |
+| `R` `F5` | Loads the view again |
+| `A` | The accounts: `enter` uses one (and its server), `x` then `y` logs one out, `a` logs another in |
+| `?`, `q` | The keys, quit |
+
+A renote is shown as the note it renotes under `⟳ renoted by`, a quote with a `❝` line for the note it quotes, a reply under a dim line for the note it answers. A file the uploader marked sensitive is drawn as any other, with a `⚠ sensitive` mark. A custom emoji is shown by its name, `:blobcat:`. Without a picture protocol (or through a pipe of a multiplexer that answers none) the client runs as text and names the files instead; `MSKY_GRAPHICS=kitty|sixel|iterm2` names the protocol when the terminal does not answer. Pictures are kept in `MSKY_CACHE_DIR` (`off` for none), else `msky/images` in the platform's cache folder.
+
+Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: home and social say how to log in, and `→` shows the local and global timelines, where the server shows them to visitors.
+
+The client reads one server at a time: switching accounts in `A` switches to that account's server.
+
 ## Use
 
 msky asks the server `--host` or `MSKY_HOST` names (`--host misskey.design`, `--host https://misskey.example`), else the server of the account in use (see Logging in), else misskey.io. Without a login it shows what the server shows to visitors. A note or an account given by its address is read on the server in the address, whatever `--host` says.
@@ -58,8 +85,12 @@ msky asks the server `--host` or `MSKY_HOST` names (`--host misskey.design`, `--
 | `msky post TEXT` | Posts a note (see Posting) |
 | `msky follow ACTOR` | Follows the account |
 | `msky unfollow ACTOR` | Unfollows the account, or takes back a request to follow it |
+| `msky follows [ACTOR]` | The accounts ACTOR (you by default) follows; `--pending`: your requests not yet accepted |
+| `msky followers [ACTOR]` | The accounts that follow ACTOR (you by default); `--pending`: the requests waiting for your approval |
 | `msky login` | Logs in with MiAuth |
 | `msky logout` | Removes the saved token of the account in use (`--all`: of every account) |
+| `msky accounts` | The accounts logged in, the one in use marked; `--use HOST` makes another the one in use |
+| `msky servers` | Servers to log in to, the most accounts first |
 
 An account is `name`, `@name`, `@name@host`, or its address (`https://misskey.io/@name`). A note is its ID or its address (`https://misskey.io/notes/ID`). Either address works without `https://`.
 
@@ -79,6 +110,8 @@ Any other value is a usage error (exit 1). `--reposts` keeps the account's renot
 
 ### Logging in
 
+`msky login` without `--host` (and without `MSKY_HOST`), in a terminal, lists servers to choose from and takes a number, or any server's host; elsewhere it logs in on the server of the account in use, else misskey.io. The list is the one [Misskey Hub](https://misskey-hub.net/servers/) publishes (`https://instanceapp.misskey.page/instances.json`), the servers whose nodeinfo says `misskey`, the most accounts first; when it cannot be read, msky offers the few it knows (misskey.io, misskey-square.net, takusuki.com, oekakiskey.com, misskey.day) and says why. `msky servers` prints the list (`-n`, 20 by default; `--json`: `{"host", "name", "users", "langs", "openRegistrations"}` a line).
+
 `msky login` logs in on the server with [MiAuth](https://misskey-hub.net/en/docs/for-developers/api/token/miauth/). It prints an address on the server, `https://misskey.io/miauth/<session>?name=msky&permission=...`, on stderr, and opens it in the web browser when stderr is a terminal (with `MSKY_BROWSER` when set, else `xdg-open`, `open`, or the Windows URL handler). Open it where you are signed in to the server and allow the access; msky asks the server every two seconds whether it was allowed, and saves the token it gets. msky never sees your password.
 
 msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post`, and `write:following` for `follow` and `unfollow`, and for nothing else: it deletes nothing, reacts to nothing, and changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
@@ -89,13 +122,15 @@ With a token saved for the server, every command sends it to that server, and on
 
 `timeline` reads pages as `author` does, and leaves the renotes out unless `--reposts` asks for them. `notifications` reads them the same way, and leaves them unread on the server. `msky logout` removes the token of the account in use, or of the one on `--host`, and prints `logged out @name@host`; `--all` removes every one. The access stays listed in the server's settings, where you can revoke it.
 
+`msky accounts` lists the accounts logged in as bsky's `accounts` does, one a line with the one in use marked `*` (`--json`: `{"id", "username", "host", "service", "current"}`). `msky accounts --use HOST` makes the account on HOST the one in use; a server with no account logged in is a usage error that names those that have one.
+
 Text that others wrote is printed without its control characters, so an escape sequence in a note or a name cannot set the clipboard or the window title, or clear the screen. A note's reactions are listed ten kinds at most, the most given first; `--json` has them all.
 
 ### Posting
 
 `msky post TEXT` posts a note as the account logged in on the server and prints its address; TEXT `-` reads the text from stdin. It takes the options of bsky's `post`: `--image PATH` up to four times, or one `--video PATH`, and `--alt TEXT` for each of them in the same order; `--reply NOTE` for the note it answers; `--quote NOTE` for the note it quotes (Misskey's quote renote); and `--no-card` (below). Misskey's own are `--cw TEXT`, a content warning shown in place of the text until it is opened, and `--visibility public|home|followers` (`public` by default). The files are uploaded to your drive first (`drive/files/create`, with the alt text as their caption) and the note is made with them (`notes/create`). A note given to `--reply` or `--quote` is read first, and has to be one on the server posted to; a note of another server is given by its address there.
 
-What can be told before anything is sent is a usage error (exit 1) and nothing is sent: a text over 3000 characters (Misskey's limit, counted in code points as its API counts them, after the text is trimmed as the server trims it), a content warning over 100 or an alt text over 512, more than four pictures, pictures and a video together, more `--alt` than files, a note with no text, file or quote, a visibility Misskey does not have, a note to reply to or quote on another server, a file larger than the account may upload (the `maxFileSizeMb` that `i` gives), and a login that may not write. A file that cannot be read is exit 3. A post is sent once and never tried again; when the note cannot be made after its files were uploaded, the files stay in your drive.
+What can be told before anything is written is a usage error (exit 1) and nothing is sent: a text longer than the server takes (the `maxNoteTextLength` its `meta` gives, else Misskey's 3000; counted in code points as its API counts them, after the text is trimmed as the server trims it), a content warning over 100 or an alt text over 512, more than four pictures, pictures and a video together, more `--alt` than files, a note with no text, file or quote, a visibility Misskey does not have, a note to reply to or quote on another server, a file larger than the account may upload (the `maxFileSizeMb` that `i` gives), and a login that may not write. A file that cannot be read is exit 3. A post is sent once and never tried again; when the note cannot be made after its files were uploaded, the files stay in your drive.
 
 #### Link previews
 
@@ -151,7 +186,9 @@ The job's log masks the secret, and msky does not print it. The dry run exits 4 
 
 ### Following
 
-`msky follow ACTOR` follows the account (`following/create`) and prints `following @name@host`; one followed already is said so and nothing is sent. An account that approves its followers gets a request, `asked to follow @name@host; they approve their followers`. `msky unfollow ACTOR` unfollows (`following/delete`), or takes back a request not yet approved (`following/requests/cancel`); an account you do not follow, and yourself, are a usage error (exit 1). ACTOR is written as for `author`; an address on another server is a usage error, as the account is followed from the server logged in on (give it as `@name@host`).
+`msky follow ACTOR` follows the account (`following/create`) and prints `following @name@host`; one followed already is said so and nothing is sent. An account that approves its followers gets a request, `asked to follow @name@host; they approve their followers`. An account of another server is followed once its server accepts: msky asks again after the follow, and until then says `asked to follow @name@host; pending until their server accepts`.
+
+`msky follows [ACTOR]` and `msky followers [ACTOR]` list the accounts on each side of an account's follows (`users/following`, `users/followers`), yours without ACTOR, with the options of bsky's: `-n` (50 by default), paged by `untilId`. A line is `name @name@host  (following)  address`; `--json` prints an account a line in the shape `whoami --json` prints. `--pending` lists your own requests instead: `follows --pending` the accounts you asked to follow that have not accepted (`following/requests/sent`), `followers --pending` the accounts waiting for your approval (`following/requests/list`). `msky unfollow ACTOR` unfollows (`following/delete`), or takes back a request not yet approved (`following/requests/cancel`); an account you do not follow, and yourself, are a usage error (exit 1). ACTOR is written as for `author`; an address on another server is a usage error, as the account is followed from the server logged in on (give it as `@name@host`).
 
 ### Saving files
 
@@ -183,6 +220,10 @@ A server that answers it is asked too often (HTTP 429, `RATE_LIMIT_EXCEEDED`) is
 | `MSKY_BROWSER` | The program `msky login` opens the address with |
 | `MSKY_MIAUTH_SESSION` | The MiAuth session ID `msky login` uses instead of a random one; for tests against a stand-in server |
 | `MSKY_DOWNLOAD_DIR` | Where files are saved when `-o` is not given |
+| `MSKY_GRAPHICS` | The picture protocol the client uses, `kitty`, `sixel` or `iterm2`, for a terminal that does not answer the query |
+| `MSKY_CACHE_DIR` | Where the client keeps the pictures it downloaded; `off` keeps none |
+| `MSKY_SERVERS_URL` | Another address for the server list, or `off` for the servers msky knows; for tests against a stand-in server |
+| `NO_COLOR` | Draws the client without color |
 | `TZ` | Time zone the times are shown in |
 
 ## Exit status
@@ -191,6 +232,7 @@ A server that answers it is asked too often (HTTP 429, `RATE_LIMIT_EXCEEDED`) is
 |---|---|
 | 0 | Success |
 | 1 | Usage error: an unknown flag, a malformed `--host`, something that is not a note or an account, no login where one is needed, a login not allowed in time or denied, a note `post` can tell is wrong before it is sent, a login that may not post or follow |
+| 2 | `msky` without a command not run in an interactive terminal |
 | 3 | A file could not be read or written: the output, a download, a login file |
 | 4 | The server could not be reached or said no, or could not make the preview `post --dry-run` asked for |
 

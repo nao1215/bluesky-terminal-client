@@ -1,0 +1,850 @@
+use super::*;
+use serde_json::{Value, json};
+
+const ORIGIN: &str = "https://misskey.test";
+
+fn session() -> Session {
+    Session {
+        service: ORIGIN.into(),
+        user_id: "u-me".into(),
+        username: "me".into(),
+        token: "fake-token-for-tests".into(),
+        permissions: Vec::new(),
+    }
+}
+
+fn note(v: Value) -> Note {
+    serde_json::from_value(v).unwrap()
+}
+
+fn notes(ids: &[&str]) -> Vec<Note> {
+    ids.iter()
+        .map(|id| {
+            note(json!({"id": id, "text": format!("note {id}"), "user": {"username": "alice"}}))
+        })
+        .collect()
+}
+
+fn key(c: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+}
+
+fn code(c: KeyCode) -> KeyEvent {
+    KeyEvent::new(c, KeyModifiers::NONE)
+}
+
+/// The number of the job `want` among `jobs`.
+fn seq_of(jobs: &Jobs, want: &Job) -> u64 {
+    jobs.iter()
+        .find(|(_, j)| j == want)
+        .map(|(s, _)| *s)
+        .unwrap_or_else(|| panic!("{want:?} not in {jobs:?}"))
+}
+
+fn home(until: Option<&str>) -> Job {
+    Job::Timeline {
+        kind: TimelineKind::Home,
+        until: until.map(str::to_string),
+    }
+}
+
+/// A logged-in app with the home timeline loaded with `ids`.
+fn logged_in(ids: &[&str]) -> App {
+    let (mut app, jobs) = App::new(Some(session()), ORIGIN);
+    let seq = seq_of(&jobs, &home(None));
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(ids)),
+        },
+    );
+    app
+}
+
+fn timeline(app: &App) -> &List<Note> {
+    &app.timelines[app.kind.index()]
+}
+
+// The client opens on the home timeline, as Misskey's does, and asks for
+// the notifications in the background.
+#[test]
+fn a_logged_in_start_opens_on_home_and_reads_the_notifications_too() {
+    let (app, jobs) = App::new(Some(session()), ORIGIN);
+    assert_eq!(app.kind, TimelineKind::Home);
+    assert_eq!(app.tab, Tab::Timeline);
+    let asked: Vec<&Job> = jobs.iter().map(|(_, j)| j).collect();
+    assert_eq!(asked, [&home(None), &Job::Notifications { until: None }]);
+    assert_eq!(app.pending, 2);
+    assert!(timeline(&app).loading);
+}
+
+// Without an account home says how to log in, nothing is asked for it,
+// and → shows the local timeline as a visitor; social and the
+// notifications say the same as home, without asking either.
+#[test]
+fn a_visitor_is_told_how_to_log_in_and_reads_local_and_global() {
+    let (mut app, jobs) = App::new(None, ORIGIN);
+    assert!(jobs.is_empty(), "{jobs:?}");
+    assert_eq!(app.kind, TimelineKind::Home);
+    let why = timeline(&app).error.clone().unwrap();
+    assert!(
+        why.contains("run `msky login --host misskey.test`"),
+        "{why}"
+    );
+    assert!(app.status.as_ref().unwrap().text.contains("→"));
+    let jobs = app.handle_key(code(KeyCode::Right));
+    assert_eq!(app.kind, TimelineKind::Local);
+    assert_eq!(
+        jobs.iter().map(|(_, j)| j.clone()).collect::<Vec<_>>(),
+        [Job::Timeline {
+            kind: TimelineKind::Local,
+            until: None
+        }]
+    );
+    let jobs = app.handle_key(code(KeyCode::Right));
+    assert_eq!(app.kind, TimelineKind::Social);
+    assert!(jobs.is_empty());
+    assert!(timeline(&app).error.is_some());
+    assert_eq!(app.handle_key(key('R')), []);
+    assert!(app.handle_key(key('4')).is_empty());
+    assert!(
+        app.notifications
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("msky login")
+    );
+    // L and H step too, wrapping from global back to home.
+    app.handle_key(key('1'));
+    app.handle_key(key('L'));
+    assert_eq!(app.kind, TimelineKind::Global);
+    app.handle_key(key('L'));
+    assert_eq!(app.kind, TimelineKind::Home);
+    app.handle_key(key('H'));
+    assert_eq!(app.kind, TimelineKind::Global);
+}
+
+// Each timeline keeps its notes and its place: going to another and back
+// asks for nothing again.
+#[test]
+fn a_timeline_switched_back_to_is_where_it_was_left() {
+    let mut app = logged_in(&["c", "b", "a"]);
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(key('L'));
+    let seq = jobs[0].0;
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Local,
+            until: None,
+            result: Ok(notes(&["x"])),
+        },
+    );
+    assert_eq!(timeline(&app).items.len(), 1);
+    assert!(app.handle_key(key('H')).is_empty());
+    assert_eq!(timeline(&app).selected, 1);
+    // + picks one from a list.
+    app.handle_key(key('+'));
+    assert_eq!(app.overlay, Some(Overlay::Timelines { selected: 0 }));
+    app.handle_key(key('j'));
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.kind, TimelineKind::Social);
+    assert_eq!(app.overlay, None);
+    assert_eq!(jobs.len(), 1);
+}
+
+// Near the end the next page is asked for once, older than the last note;
+// a page repeating notes adds only the new ones, and one with nothing new
+// ends the list.
+#[test]
+fn pages_continue_from_the_last_note_and_end_when_nothing_is_new() {
+    let ids: Vec<String> = (0..10).map(|i| format!("n{:02}", 99 - i)).collect();
+    let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let mut app = logged_in(&ids);
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(jobs.len(), 1);
+    let (seq, job) = jobs[0].clone();
+    assert_eq!(job, home(Some("n90")));
+    assert!(app.handle_key(key('j')).is_empty(), "asked once");
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: Some("n90".into()),
+            result: Ok(notes(&["n90", "n89"])),
+        },
+    );
+    assert_eq!(timeline(&app).items.len(), 11);
+    assert_eq!(timeline(&app).cursor.as_deref(), Some("n89"));
+    let jobs = app.handle_key(key('G'));
+    let (seq, job) = jobs[0].clone();
+    assert_eq!(job, home(Some("n89")));
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: Some("n89".into()),
+            result: Ok(notes(&["n89"])),
+        },
+    );
+    assert_eq!(timeline(&app).cursor, None);
+    assert!(app.handle_key(key('k')).is_empty());
+    assert_eq!(app.pending, 1, "the notifications are still out");
+}
+
+// A failed next page is asked for again on the next move, and says why.
+#[test]
+fn a_failed_next_page_is_asked_again() {
+    let ids: Vec<String> = (0..5).map(|i| format!("n{i}")).collect();
+    let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let mut app = logged_in(&ids);
+    let (seq, _) = app.handle_key(key('j'))[0].clone();
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: Some("n4".into()),
+            result: Err(Error::api("boom").with_hint("try again")),
+        },
+    );
+    assert_eq!(app.status.as_ref().unwrap().text, "boom: try again");
+    assert!(app.status.as_ref().unwrap().error);
+    assert_eq!(app.handle_key(key('j')).len(), 1);
+}
+
+// R asks for the first page again; the answer to the earlier one, coming
+// late, is not applied over it.
+#[test]
+fn a_first_page_answered_after_a_newer_one_was_asked_is_dropped() {
+    let (mut app, jobs) = App::new(Some(session()), ORIGIN);
+    let old = seq_of(&jobs, &home(None));
+    let new = app.handle_key(key('R'))[0].0;
+    app.handle_answer(
+        new,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["new"])),
+        },
+    );
+    app.handle_answer(
+        old,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["old"])),
+        },
+    );
+    assert_eq!(timeline(&app).items[0].id, "new");
+    // R keeps the selection on the note it was on.
+    let mut app = logged_in(&["c", "b", "a"]);
+    app.handle_key(key('j'));
+    let seq = app.handle_key(key('R'))[0].0;
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["d", "c", "b", "a"])),
+        },
+    );
+    assert_eq!(timeline(&app).current().unwrap().id, "b");
+}
+
+fn renote_of(inner: Value) -> Note {
+    note(
+        json!({"id": "rn", "user": {"username": "carol"}, "renoteId": inner["id"], "renote": inner}),
+    )
+}
+
+// v opens the thread of the note shown, the renoted one for a renote; the
+// selection starts on it, under what it answers; Esc closes it.
+#[test]
+fn v_opens_the_thread_of_the_note_shown_with_the_selection_on_it() {
+    let mut app = logged_in(&[]);
+    app.timelines[0].set(vec![renote_of(
+        json!({"id": "orig", "user": {"username": "bob"}}),
+    )]);
+    let jobs = app.handle_key(key('v'));
+    let (seq, job) = jobs[0].clone();
+    assert_eq!(job, Job::Thread { id: "orig".into() });
+    assert_eq!(app.threads.len(), 1);
+    let t = Thread {
+        ancestors: notes(&["root", "parent"]),
+        note: note(json!({"id": "orig"})),
+        replies: vec![(note(json!({"id": "r1"})), notes(&["r1a"]))],
+    };
+    app.handle_answer(
+        seq,
+        Event::Thread {
+            id: "orig".into(),
+            result: Ok(Box::new(t)),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    let rows: Vec<(&str, u16)> = th
+        .list
+        .items
+        .iter()
+        .map(|r| (r.note.id.as_str(), r.depth))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("root", 0),
+            ("parent", 0),
+            ("orig", 0),
+            ("r1", 1),
+            ("r1a", 2)
+        ]
+    );
+    assert_eq!(th.list.current().unwrap().note.id, "orig");
+    assert!(
+        app.handle_key(key('j')).is_empty(),
+        "a thread has no next page"
+    );
+    let jobs = app.handle_key(key('v'));
+    assert_eq!(jobs[0].1, Job::Thread { id: "r1".into() });
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.threads.is_empty());
+    // A thread that cannot be read says why, in the thread.
+    let (seq, _) = app.handle_key(key('v'))[0].clone();
+    app.handle_answer(
+        seq,
+        Event::Thread {
+            id: "orig".into(),
+            result: Err(Error::api("notes/show failed: NO_SUCH_NOTE")),
+        },
+    );
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(
+        th.list.error.as_deref(),
+        Some("notes/show failed: NO_SUCH_NOTE")
+    );
+}
+
+// w opens the text behind a warning, and closes it again; on a note
+// without one it does nothing.
+#[test]
+fn w_shows_and_hides_the_text_behind_a_content_warning() {
+    let mut app = logged_in(&[]);
+    app.timelines[0].set(vec![
+        note(json!({"id": "w1", "cw": "ネタバレ", "text": "結末"})),
+        note(json!({"id": "plain", "text": "hi"})),
+    ]);
+    let n = app.timelines[0].items[0].clone();
+    assert!(!app.text_shown(&n));
+    app.handle_key(key('w'));
+    assert!(app.text_shown(&n));
+    app.handle_key(key('w'));
+    assert!(!app.text_shown(&n));
+    app.handle_key(key('j'));
+    app.handle_key(key('w'));
+    assert!(app.opened.is_empty());
+}
+
+fn with_files() -> Note {
+    note(json!({
+        "id": "f", "text": "見て",
+        "files": [
+            {"id": "a", "type": "image/png", "url": "https://cdn.test/a.png", "isSensitive": true},
+            {"id": "b", "type": "video/mp4", "url": "https://cdn.test/b.mp4"}
+        ],
+        "renoteId": "q", "renote": {"id": "q", "files": [{"id": "c", "type": "image/jpeg", "url": "https://cdn.test/c.jpg"}]}
+    }))
+}
+
+// space shows the note's files, its quote's too; ← → step through them,
+// and d saves the one shown; d on the list saves them all, sensitive ones
+// included, as `msky download` does.
+#[test]
+fn the_viewer_shows_every_file_and_d_saves_them() {
+    let mut app = logged_in(&[]);
+    app.timelines[0].set(vec![with_files()]);
+    assert!(app.handle_key(key(' ')).is_empty());
+    let Some(Overlay::Viewer { files, index: 0 }) = &app.overlay else {
+        panic!("{:?}", app.overlay)
+    };
+    let named: Vec<(&str, usize, &str)> = files
+        .iter()
+        .map(|(n, i, f)| (n.as_str(), *i, f.id.as_str()))
+        .collect();
+    assert_eq!(named, [("f", 1, "a"), ("f", 2, "b"), ("q", 1, "c")]);
+    for _ in 0..5 {
+        app.handle_key(code(KeyCode::Right));
+    }
+    let jobs = app.handle_key(key('d'));
+    let Job::Download { files } = &jobs[0].1 else {
+        panic!("{jobs:?}")
+    };
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].2.id, "c");
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.overlay, None);
+    let jobs = app.handle_key(key('d'));
+    let Job::Download { files } = &jobs[0].1 else {
+        panic!("{jobs:?}")
+    };
+    assert_eq!(files.len(), 3);
+    app.handle_answer(
+        jobs[0].0,
+        Event::Downloaded(Ok(vec!["/dl/f-1.png".into(), "/dl/f-2.mp4".into()])),
+    );
+    assert_eq!(app.status.as_ref().unwrap().text, "saved 2 files in /dl");
+    // A note without files says so, and opens nothing.
+    app.timelines[0].set(notes(&["x"]));
+    assert!(app.handle_key(key(' ')).is_empty());
+    assert_eq!(app.overlay, None);
+    assert_eq!(app.status.as_ref().unwrap().text, "the note has no files");
+}
+
+// Without pictures space opens the note in the browser, as bsky opens a
+// post on bsky.app; o does too, and c copies its address.
+#[test]
+fn without_pictures_space_opens_the_note_in_the_browser() {
+    let mut app = logged_in(&[]);
+    app.pictures = false;
+    app.timelines[0].set(vec![renote_of(json!({"id": "orig"}))]);
+    let url = format!("{ORIGIN}/notes/orig");
+    let jobs = app.handle_key(key(' '));
+    assert_eq!(jobs[0].1, Job::OpenLink { url: url.clone() });
+    assert_eq!(
+        app.handle_key(key('o'))[0].1,
+        Job::OpenLink { url: url.clone() }
+    );
+    app.handle_key(key('c'));
+    assert_eq!(app.take_copy(), Some(url));
+    assert_eq!(app.take_copy(), None);
+}
+
+// . lists what the keys do to the note, and Enter does the one chosen.
+#[test]
+fn the_actions_list_names_the_keys_and_runs_the_one_chosen() {
+    let mut app = logged_in(&[]);
+    app.timelines[0].set(vec![with_files()]);
+    app.handle_key(key('.'));
+    let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
+    assert_eq!(names, ["space", "v", "d", "o", "c"]);
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(jobs[0].1, Job::Thread { id: "f".into() });
+    assert_eq!(app.overlay, None);
+}
+
+// ? opens the help; a stray key does not close it, ? does.
+#[test]
+fn the_help_stays_open_until_closed() {
+    let mut app = logged_in(&["a"]);
+    app.handle_key(key('?'));
+    app.handle_key(key('x'));
+    app.handle_key(key('j'));
+    assert_eq!(app.overlay, Some(Overlay::Help { scroll: 1 }));
+    app.handle_key(key('?'));
+    assert_eq!(app.overlay, None);
+    app.handle_key(key('q'));
+    assert!(app.quit);
+}
+
+// Answers to what was asked as the account before a switch are dropped.
+#[test]
+fn answers_for_the_account_before_a_switch_are_dropped() {
+    let (mut app, jobs) = App::new(Some(session()), ORIGIN);
+    let old = seq_of(&jobs, &home(None));
+    let other = Session {
+        service: "https://other.test".into(),
+        username: "bob".into(),
+        ..session()
+    };
+    let jobs = app.switched_to(Some(other), "https://other.test");
+    assert_eq!(app.host(), "other.test");
+    app.handle_answer(
+        old,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["of-me"])),
+        },
+    );
+    assert!(!timeline(&app).loaded);
+    let new = seq_of(&jobs, &home(None));
+    app.handle_answer(
+        new,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["of-bob"])),
+        },
+    );
+    assert_eq!(timeline(&app).items[0].id, "of-bob");
+    assert_eq!(app.status.as_ref().unwrap().text, "now @bob@other.test");
+}
+
+// x asks before logging an account out; any key but y keeps it.
+#[test]
+fn logging_out_from_the_account_list_takes_a_y() {
+    let mut app = logged_in(&["a"]);
+    app.accounts = vec![Account {
+        host: "misskey.test".into(),
+        username: "me".into(),
+    }];
+    app.handle_key(key('A'));
+    app.handle_key(key('x'));
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .starts_with("press y to log @me@misskey.test out")
+    );
+    app.handle_key(key('n'));
+    assert_eq!(app.take_account_logout(), None);
+    app.handle_key(key('x'));
+    app.handle_key(key('y'));
+    assert_eq!(app.take_account_logout().as_deref(), Some("misskey.test"));
+    // Logging out the one in use reads the server as a visitor.
+    app.logged_out("misskey.test", None);
+    assert!(app.session.is_none());
+    assert!(app.accounts.is_empty());
+    assert!(timeline(&app).error.is_some());
+}
+
+// The notifications page as a timeline does; v and space act on the note
+// a notification is about.
+#[test]
+fn notifications_page_and_act_on_their_note() {
+    let (mut app, jobs) = App::new(Some(session()), ORIGIN);
+    let seq = seq_of(&jobs, &Job::Notifications { until: None });
+    let items: Vec<Notification> = (0..3)
+        .map(|i| {
+            serde_json::from_value(json!({
+                "id": format!("n{i}"), "type": "reply",
+                "note": {"id": format!("note{i}"), "files": [{"id": "f", "type": "image/png", "url": "https://cdn.test/f.png"}]}
+            }))
+            .unwrap()
+        })
+        .collect();
+    app.handle_answer(
+        seq,
+        Event::Notifications {
+            until: None,
+            result: Ok(items),
+        },
+    );
+    app.handle_key(key('4'));
+    assert_eq!(app.tab, Tab::Notifications);
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Notifications {
+            until: Some("n2".into())
+        }
+    );
+    let jobs = app.handle_key(key('v'));
+    assert_eq!(jobs[0].1, Job::Thread { id: "note1".into() });
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key(' '));
+    assert!(app.viewer_open());
+}
+
+/// A random walk over every key and every kind of answer: whatever comes
+/// in whatever order, nothing panics, the selection stays in its list, and
+/// once every job is answered nothing says it still waits.
+#[test]
+fn random_keys_and_answers_leave_the_state_consistent() {
+    let keys = [
+        key('j'),
+        key('k'),
+        key('g'),
+        key('G'),
+        key('v'),
+        key(' '),
+        key('w'),
+        key('d'),
+        key('o'),
+        key('c'),
+        key('.'),
+        key('?'),
+        key('+'),
+        key('A'),
+        key('x'),
+        key('y'),
+        key('1'),
+        key('4'),
+        key('R'),
+        key('L'),
+        key('H'),
+        key('a'),
+        key('/'),
+        code(KeyCode::Esc),
+        code(KeyCode::Enter),
+        code(KeyCode::Tab),
+        code(KeyCode::BackTab),
+        code(KeyCode::PageDown),
+        code(KeyCode::Right),
+        code(KeyCode::Left),
+    ];
+    let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut rand = move |n: usize| {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        (x % n as u64) as usize
+    };
+    for run in 0..200 {
+        let (mut app, jobs) = if run % 3 == 0 {
+            App::new(None, ORIGIN)
+        } else {
+            App::new(Some(session()), ORIGIN)
+        };
+        app.accounts = vec![Account {
+            host: "misskey.test".into(),
+            username: "me".into(),
+        }];
+        let mut out: Vec<(u64, Job)> = jobs;
+        for step in 0..120 {
+            if rand(3) == 0 && !out.is_empty() {
+                let (seq, job) = out.remove(rand(out.len()));
+                let fail = rand(4) == 0;
+                let size = rand(25);
+                let page = |p: &str| -> Vec<Note> {
+                    (0..size).map(|i| note(json!({"id": format!("{p}{step}-{i}"), "cw": if i % 3 == 0 { json!("cw") } else { Value::Null }, "files": [{"id":"f","type":"image/png"}]}))).collect()
+                };
+                let ev = match job {
+                    Job::Timeline { kind, until } => Event::Timeline {
+                        kind,
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(page("t"))
+                        },
+                    },
+                    Job::Notifications { until } => Event::Notifications {
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(page("n")
+                                .into_iter()
+                                .map(|n| Notification {
+                                    id: n.id.clone(),
+                                    note: Some(n),
+                                    ..Default::default()
+                                })
+                                .collect())
+                        },
+                    },
+                    Job::Thread { id } => Event::Thread {
+                        id,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(Box::new(Thread {
+                                note: note(json!({"id": "t"})),
+                                ancestors: page("a"),
+                                replies: vec![],
+                            }))
+                        },
+                    },
+                    Job::Download { .. } => Event::Downloaded(Err(Error::io("x"))),
+                    Job::OpenLink { .. } => Event::Opened(Ok(())),
+                    Job::Servers => Event::Servers {
+                        list: crate::servers::builtin(),
+                        failed: None,
+                    },
+                    Job::Login { session, .. } => Event::LoggedIn {
+                        session,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(session_ok())
+                        },
+                    },
+                };
+                out.extend(app.handle_answer(seq, ev));
+            } else {
+                out.extend(app.handle_key(keys[rand(keys.len())]));
+            }
+            let lists = app
+                .timelines
+                .iter()
+                .map(|l| (l.selected, l.items.len()))
+                .chain([(app.notifications.selected, app.notifications.items.len())])
+                .chain(
+                    app.threads
+                        .iter()
+                        .map(|t| (t.list.selected, t.list.items.len())),
+                );
+            for (sel, len) in lists {
+                assert!(sel < len.max(1), "run {run} step {step}: {sel} of {len}");
+            }
+            assert_eq!(app.pending, out.len(), "run {run} step {step}");
+            if app.quit {
+                break;
+            }
+        }
+    }
+}
+
+fn session_ok() -> Session {
+    Session {
+        service: "https://mi.test".into(),
+        username: "new".into(),
+        ..session()
+    }
+}
+
+fn form(app: &App) -> &LoginForm {
+    match &app.overlay {
+        Some(Overlay::Login(f)) => f,
+        other => panic!("{other:?}"),
+    }
+}
+
+// a in the account list opens the login form with the servers msky knows,
+// and asks for Misskey Hub's list, which takes their place, the selection
+// staying on the server it was on.
+#[test]
+fn the_login_form_offers_servers_and_takes_the_hubs_list() {
+    let mut app = logged_in(&["x"]);
+    app.handle_key(key('A'));
+    let jobs = app.handle_key(key('a'));
+    assert_eq!(jobs[0].1, Job::Servers);
+    assert_eq!(form(&app).servers, crate::servers::builtin());
+    assert!(form(&app).loading);
+    app.handle_key(key('j'));
+    let hub: Vec<Server> = ["big.test", "takusuki.com", "misskey-square.net"]
+        .into_iter()
+        .map(|h| Server {
+            host: h.into(),
+            name: h.into(),
+            users: Some(1),
+            langs: vec![],
+            open: None,
+        })
+        .collect();
+    app.handle_answer(
+        jobs[0].0,
+        Event::Servers {
+            list: hub,
+            failed: None,
+        },
+    );
+    let f = form(&app);
+    assert!(!f.loading);
+    assert_eq!(f.servers[f.selected].host, "misskey-square.net");
+    // A list that cannot be read leaves the built-in one, and says why.
+    let jobs = app.open_login();
+    app.handle_answer(
+        jobs[0].0,
+        Event::Servers {
+            list: crate::servers::builtin(),
+            failed: Some(Error::api("cannot read the server list at X: HTTP 503")),
+        },
+    );
+    assert!(form(&app).error.as_ref().unwrap().contains("HTTP 503"));
+}
+
+// Enter asks for access on the server chosen: the page that allows it is
+// opened, the wait for it is a job, and the login it makes is handed to
+// the event loop; one that is not allowed says why, in the form.
+#[test]
+fn a_login_opens_the_page_waits_and_hands_the_login_over() {
+    let (mut app, _) = App::new(None, ORIGIN);
+    app.open_login();
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    let w = form(&app).waiting.clone().unwrap();
+    assert_eq!(w.origin, "https://misskey-square.net");
+    assert!(
+        w.url.starts_with(&format!(
+            "https://misskey-square.net/miauth/{}?name=msky&permission=read:account,",
+            w.session
+        )),
+        "{}",
+        w.url
+    );
+    assert_eq!(jobs[0].1, Job::OpenLink { url: w.url.clone() });
+    assert_eq!(
+        jobs[1].1,
+        Job::Login {
+            origin: w.origin.clone(),
+            session: w.session.clone()
+        }
+    );
+    // A browser that cannot be opened is no error: the address is shown.
+    app.handle_answer(jobs[0].0, Event::Opened(Err(Error::io("no browser"))));
+    assert!(app.status.as_ref().is_none_or(|s| !s.error));
+    // An answer for another session is not this login's.
+    app.handle_answer(
+        99,
+        Event::LoggedIn {
+            session: "other".into(),
+            result: Ok(session_ok()),
+        },
+    );
+    assert_eq!(app.take_logged_in(), None);
+    app.handle_answer(
+        jobs[1].0,
+        Event::LoggedIn {
+            session: w.session.clone(),
+            result: Err(Error::usage(
+                "misskey-square.net did not give msky the access: ACCESS_DENIED",
+            )),
+        },
+    );
+    assert!(form(&app).waiting.is_none());
+    assert!(form(&app).error.as_ref().unwrap().contains("ACCESS_DENIED"));
+    // A host typed after / is a server not listed.
+    app.handle_key(key('/'));
+    for c in "Mi.Test".chars() {
+        app.handle_key(key(c));
+    }
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    let w = form(&app).waiting.clone().unwrap();
+    assert_eq!(w.origin, "https://mi.test");
+    app.handle_answer(
+        jobs[1].0,
+        Event::LoggedIn {
+            session: w.session,
+            result: Ok(session_ok()),
+        },
+    );
+    assert_eq!(app.overlay, None);
+    assert_eq!(app.take_logged_in().unwrap().username, "new");
+}
+
+// esc while waiting calls the login off; a host that is not one stays in
+// the form with why.
+#[test]
+fn a_login_can_be_called_off_and_a_bad_host_is_refused() {
+    let (mut app, _) = App::new(None, ORIGIN);
+    app.open_login();
+    app.handle_key(code(KeyCode::Enter));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(form(&app).waiting.is_none());
+    assert_eq!(
+        form(&app).error.as_deref(),
+        Some("the login was called off")
+    );
+    app.handle_key(key('/'));
+    for c in "a/b".chars() {
+        app.handle_key(key(c));
+    }
+    assert!(app.handle_key(code(KeyCode::Enter)).is_empty());
+    assert!(
+        form(&app)
+            .error
+            .as_ref()
+            .unwrap()
+            .starts_with("invalid host")
+    );
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.overlay, None);
+}

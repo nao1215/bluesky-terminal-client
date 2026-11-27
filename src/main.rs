@@ -16,12 +16,15 @@ mod download;
 mod error;
 mod mfm;
 mod miauth;
+mod servers;
+mod terminal;
 mod text;
+mod tui;
 
 use std::io::Write;
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 
 use crate::error::{Error, Kind, Result};
 
@@ -46,6 +49,11 @@ struct Cli {
 }
 
 const AFTER_HELP: &str = "\
+Without a command msky opens the client: the timelines, the threads and
+the notifications, with pictures drawn with kitty graphics, sixel, or
+iTerm2 inline images (? lists its keys). The commands read and write from
+scripts.
+
 msky reads what a Misskey server shows to visitors, or, after `msky login`
 (or with a token in MSKY_TOKEN), what it shows to your account there, and
 posts and follows as that account. A note is its
@@ -53,8 +61,9 @@ ID or its address (https://misskey.io/notes/ID); an account is name, @name,
 @name@host, or its address (https://misskey.io/@name). An address is read
 on its own server, whatever --host says.
 
-Exit status: 0 success, 1 usage error, 3 local file error, 4 network or
-server error.";
+Exit status: 0 success, 1 usage error, 2 not an interactive terminal,
+3 local file error, 4 network or server error (a command's; the client
+shows them and keeps running).";
 
 fn run(cli: Cli) -> Result<()> {
     let accounts = config::config_dir().map(config::AccountStore::open);
@@ -77,22 +86,17 @@ fn run(cli: Cli) -> Result<()> {
         }
         .map_or_else(|| api::normalize_host(api::DEFAULT_HOST), Ok)?,
     };
-    let Some(cmd) = cli.command else {
-        // Nothing to do yet without a command: the full-screen client is
-        // still to come, so the help says what there is.
-        let help = Cli::command().render_help().to_string();
-        let mut out = std::io::stdout().lock();
-        return cli::ended_by_reader(
-            out.write_all(help.as_bytes())
-                .map_err(|e| Error::io(format!("cannot write the output: {e}"))),
-        );
-    };
     let ctx = cli::Ctx {
         origin,
         json: cli.json,
         host_given: cli.host.is_some(),
         accounts,
         env_token,
+    };
+    let Some(cmd) = cli.command else {
+        // Without a command msky opens the client, as bsky does.
+        let session = ctx.account_in_use()?;
+        return tui::run(ctx.accounts.ok(), session, &ctx.origin);
     };
     cli::run(cmd, &ctx)
 }
@@ -184,6 +188,7 @@ fn first_paragraph(msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     fn usage_error(args: &[&str]) -> String {
         let e = Cli::try_parse_from(args).unwrap_err();

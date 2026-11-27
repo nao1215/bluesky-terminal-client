@@ -1,0 +1,383 @@
+# The full-screen client msky opens without a command, driven in a pty with
+# kitty graphics as bsky's suite drives bsky: the home timeline with its
+# avatars and pictures, a content warning opened with w, a renote and a
+# quote, the next page by untilId, a thread, the viewer and its download,
+# the local timeline, the notifications, the login form with its server
+# list, and the account list. Every server is an atago mock, and the server
+# list is too (MSKY_SERVERS_URL): nothing reaches Misskey Hub or a real
+# server. The tokens are throwaway values.
+version: "1"
+
+suite:
+  name: msky client
+
+secrets:
+  - e2e-fake-token-0101
+  - e2e-fake-token-0102
+  - e2e-fake-token-0109
+
+scenarios:
+  - name: the home timeline draws its notes and pictures, and the keys act on them
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - id: a1
+                createdAt: "2026-11-26T10:00:00.000Z"
+                user: { id: u-alice, username: alice, name: "アリス 👩🏽‍💻", avatarUrl: "${api.url}/img/alice.png" }
+                text: "おはよう 👨‍👩‍👧 🇯🇵 :blobcat:"
+                reactions: { "👍🏽": 2, ":blobcat@.:": 3 }
+                renoteCount: 1
+                repliesCount: 0
+                files:
+                  - id: f1
+                    name: photo.png
+                    type: image/png
+                    size: 242
+                    url: "${api.url}/img/photo.png"
+                    thumbnailUrl: "${api.url}/img/photo.png"
+                    isSensitive: true
+                    comment: "山の写真"
+                    properties: { width: 120, height: 90 }
+              - id: rn1
+                createdAt: "2026-11-26T09:30:00.000Z"
+                user: { id: u-carol, username: carol, name: Carol }
+                renoteId: o1
+                renote:
+                  id: o1
+                  createdAt: "2026-11-26T09:00:00.000Z"
+                  user: { id: u-bob, username: bob, host: misskey.design, name: "ボブ" }
+                  cw: "ネタバレ"
+                  text: "犯人は執事"
+              - id: q1
+                createdAt: "2026-11-26T08:00:00.000Z"
+                user: { id: u-dave, username: dave }
+                text: "これ見て"
+                renoteId: o2
+                renote: { id: o2, user: { username: erin, host: x.test }, text: "引用元のノート" }
+          - method: POST
+            path: /api/notes/local-timeline
+            json:
+              - { id: l1, createdAt: "2026-11-26T07:00:00.000Z", user: { username: fay }, text: "ローカルのノート" }
+          - method: POST
+            path: /api/i/notifications
+            json:
+              - id: n1
+                createdAt: "2026-11-26T06:00:00.000Z"
+                type: reaction
+                reaction: ":blobcat@.:"
+                user: { username: gus, name: "Gus 🐈‍⬛" }
+                note: { id: a1, text: "おはよう" }
+          - method: POST
+            path: /api/notes/show
+            json: { id: o1, createdAt: "2026-11-26T09:00:00.000Z", user: { username: bob, host: misskey.design, name: "ボブ" }, cw: "ネタバレ", text: "犯人は執事" }
+          - { method: GET, path: /img/alice.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - fixture: &account
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0101"}
+      - fixture: &in_use
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture: { file: expected/photo.png, from: testdata/photo.png }
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_DOWNLOAD_DIR: ${workdir}/dl
+            MSKY_SERVERS_URL: "off"
+            MSKY_BROWSER: "true"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains:
+                  - "1 Timeline: Home"
+                  - "4 Notifications"
+                  - "@me@127.0.0.1:${api.port}"
+                  - "アリス 👩🏽‍💻 @alice · 2026-11-26 10:00"
+                  - "おはよう 👨‍👩‍👧 🇯🇵 :blobcat:"
+                  - "⚠ 1 sensitive file"
+                  - "♡ 5   ⟳ 1   ↩ 0   :blobcat: 3   👍🏽 2"
+                  - "⟳ renoted by Carol @carol"
+                  - "ボブ @bob@misskey.design · 2026-11-26 09:00"
+                  - "⚠ CW: ネタバレ"
+                  - "w shows it (5 characters)"
+                  - "❝ @erin@x.test: 引用元のノート"
+                  - "? help  j k move  ← → timeline"
+                not_contains: "犯人は執事"
+            # The avatar and the picture, the sensitive one drawn as any
+            # other, the picture at its own 4:3 shape.
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 500ms
+            - send: j
+            - send: w
+            - expect_screen:
+                contains: "犯人は執事"
+            - send: v
+            - expect_screen:
+                contains: ["Thread", "esc back", "犯人は執事"]
+            # Each esc is waited out: a key right after it reads as alt+key.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Thread"
+            - send: k
+            - send: " "
+            - expect_screen:
+                contains: ["1/1  photo.png  image/png · 242 B  ⚠ sensitive", "山の写真", "d download"]
+            - send: d
+            - expect_screen:
+                contains: "saved"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "山の写真"
+            - send: { key: right }
+            - expect_screen:
+                contains: ["1 Timeline: Local", "ローカルのノート"]
+            - send: "4"
+            - expect_screen:
+                contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
+            - send: "?"
+            - expect_screen:
+                contains: ["Keys", "show / hide the text behind a content"]
+            - send: q
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              count: 2
+              contains:
+                - { width: 40, height: 40, similar_to: testdata/expected/alice-avatar-40.png, max_diff: 0.01 }
+                - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/timeline
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0101 }
+                - { path: "$.limit", equals: 30 }
+                - { path: "$.withRenotes", equals: true }
+      # j near the end asks for the page older than the last note; it
+      # repeats the first, which ends the list.
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/timeline
+            count: 2
+            body:
+              json:
+                - { path: "$.untilId", equals: q1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/show
+            count: 1
+            body:
+              json:
+                - { path: "$.noteId", equals: o1 }
+      # The renoted note answers nothing and has no replies: nothing more
+      # is asked for its thread.
+      - assert:
+          mock: { name: api, path: /api/notes/children, count: 0 }
+      - assert:
+          mock: { name: api, path: /api/notes/local-timeline, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/i/notifications
+            body:
+              json:
+                - { path: "$.markAsRead", equals: false }
+      - assert:
+          file: { path: dl/a1-1.png, equals_file: expected/photo.png }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 2 }
+
+  - name: without an account the login form lists the servers, and esc reads as a visitor
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /instances.json
+            json:
+              instancesInfos:
+                - url: hub-one.test
+                  name: "ハブいち 🐈"
+                  langs: [ja]
+                  nodeinfo: { software: { name: misskey }, usage: { users: { total: 1234 } }, openRegistrations: true }
+                - url: fork.test
+                  name: fork
+                  nodeinfo: { software: { name: sharkey }, usage: { users: { total: 99999 } } }
+          - method: POST
+            path: /api/notes/local-timeline
+            json:
+              - { id: l1, createdAt: "2026-11-26T07:00:00.000Z", user: { username: fay }, text: "訪問者にも見えるノート" }
+    steps:
+      - pty:
+          command: msky --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: ${api.url}/instances.json
+            MSKY_BROWSER: "true"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Log in", "hub-one.test  ハブいち 🐈  1234 accounts", "j k move  enter log in  / other server  esc back"]
+                not_contains: fork.test
+            - send: { key: esc }
+            - expect_screen:
+                contains:
+                  - "127.0.0.1:${api.port} (visitor)"
+                  - "no account is logged in on 127.0.0.1:${api.port}"
+            - send: { key: right }
+            - expect_screen:
+                contains: ["1 Timeline: Local", "訪問者にも見えるノート"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /api/notes/timeline, count: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/local-timeline
+            count: 1
+            body:
+              json:
+                - { path: "$.limit", equals: 30 }
+      - assert:
+          file: { path: cfg/accounts, exists: false }
+
+  - name: the login form logs in with MiAuth on a server typed, saves it, and reads its home
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/miauth/e2e-tui-session-0001/check
+            json: { ok: true, token: e2e-fake-token-0109, user: { id: u-new, username: newbie } }
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: h1, createdAt: "2026-11-26T07:00:00.000Z", user: { username: hal }, text: "ログインして見えたノート" }
+          - { method: POST, path: /api/i/notifications, json: [] }
+    steps:
+      - pty:
+          command: msky --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            MSKY_BROWSER: "true"
+            MSKY_MIAUTH_SESSION: e2e-tui-session-0001
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Log in", "misskey.io  Misskey.io"]
+            - send: /
+            - send: "http://127.0.0.1:${api.port}"
+            - send: { key: enter }
+            - expect_screen:
+                contains:
+                  - "@newbie@127.0.0.1:${api.port}"
+                  - "ログインして見えたノート"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: cfg/accounts/127.0.0.1_${api.port}.json
+            contains: ["\"username\": \"newbie\"", "\"userId\": \"u-new\""]
+      - assert:
+          file:
+            path: cfg/accounts.json
+            contains: "127.0.0.1:${api.port}"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/timeline
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0109 }
+
+  - name: the account list switches to another server's account and keeps it in use
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json: [{ id: a1, createdAt: "2026-11-26T07:00:00.000Z", user: { username: ann }, text: "一つ目のサーバー" }]
+          - { method: POST, path: /api/i/notifications, json: [] }
+      - name: other
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json: [{ id: b1, createdAt: "2026-11-26T07:00:00.000Z", user: { username: ben }, text: "二つ目のサーバー" }]
+          - { method: POST, path: /api/i/notifications, json: [] }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-a", "username": "ann", "token": "e2e-fake-token-0101"}
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${other.port}.json
+          content: |
+            {"service": "${other.url}", "userId": "u-b", "username": "ben", "token": "e2e-fake-token-0102"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "一つ目のサーバー"
+            - send: A
+            - expect_screen:
+                contains: ["Accounts", "@ann@127.0.0.1:${api.port}  in use", "@ben@127.0.0.1:${other.port}"]
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["二つ目のサーバー", "@ben@127.0.0.1:${other.port}"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          file: { path: cfg/accounts.json, contains: "127.0.0.1:${other.port}" }
+      - assert:
+          mock:
+            name: other
+            path: /api/notes/timeline
+            count: 1
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0102 }

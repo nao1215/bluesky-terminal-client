@@ -18,6 +18,8 @@ pub struct User {
     pub host: Option<String>,
     /// The display name, which may be unset.
     pub name: Option<String>,
+    /// The address of its avatar picture.
+    pub avatar_url: Option<String>,
     /// What the account says about itself (`UserDetailed` only).
     pub description: Option<String>,
     pub followers_count: Option<u64>,
@@ -69,7 +71,48 @@ pub struct DriveFile {
     /// Its size in bytes.
     pub size: u64,
     pub url: Option<String>,
+    /// What the uploader wrote about it: its alt text.
+    pub comment: Option<String>,
+    /// A smaller picture of it the server made, for a list to show.
+    pub thumbnail_url: Option<String>,
     pub is_sensitive: bool,
+    /// Its width and height in pixels, for a picture the server measured.
+    pub properties: FileProperties,
+}
+
+/// What the server measured of a file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct FileProperties {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+impl DriveFile {
+    /// Whether it is a picture the client can draw.
+    pub fn is_picture(&self) -> bool {
+        self.mime.starts_with("image/")
+    }
+
+    /// Its width and height, when the server measured both.
+    pub fn aspect(&self) -> Option<(u32, u32)> {
+        match (self.properties.width, self.properties.height) {
+            (Some(w), Some(h)) if w > 0 && h > 0 => Some((w, h)),
+            _ => None,
+        }
+    }
+}
+
+/// An entry of `users/following`, `users/followers` or a follow request:
+/// the account on each side, as the server sent them.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Relation {
+    /// The ID of the entry, which the next page is asked from.
+    pub id: String,
+    pub created_at: Option<String>,
+    pub followee: Option<User>,
+    pub follower: Option<User>,
 }
 
 /// `Note`.

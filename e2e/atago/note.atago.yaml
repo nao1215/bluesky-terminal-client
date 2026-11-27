@@ -120,11 +120,17 @@ scenarios:
               - { path: "$.error", equals: "the following required arguments were not provided: <NOTE>" }
               - { path: "$.status", equals: 1 }
 
-  - name: msky without a command prints its help
+  # Without a command msky opens the client, as bsky does, which needs a
+  # terminal: through a pipe it is exit 2 and says so.
+  - name: msky without a command needs an interactive terminal
     steps:
       - run:
           command: msky
       - assert:
-          exit_code: 0
+          exit_code: 2
           stdout:
-            contains: ["Usage: msky [OPTIONS] [COMMAND]", "author", "download"]
+            empty: true
+          stderr:
+            equals: |
+              error: msky needs an interactive terminal
+              hint: run msky directly in a terminal, not through a pipe or redirect

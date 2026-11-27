@@ -178,6 +178,21 @@ pub fn account(u: &User, origin: &str) -> String {
     out
 }
 
+/// An account on one line, as `follows` and `followers` print it, and as
+/// bsky's do: who, whether you follow it, and its address.
+pub fn account_line(u: &User, origin: &str) -> String {
+    let mut with_host = u.clone();
+    if with_host.host.as_deref().is_none_or(str::is_empty) {
+        with_host.host = Some(crate::api::authority(origin).to_string());
+    }
+    let following = if u.is_following { "  (following)" } else { "" };
+    format!(
+        "{}{following}  {}\n",
+        who(&with_host),
+        one_line(&account_url(u, origin))
+    )
+}
+
 /// Your account as `whoami --json` prints it: a note's `user` with its
 /// address, what it says about itself and its counts.
 pub fn account_json(u: &User, origin: &str) -> Value {

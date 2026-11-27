@@ -160,6 +160,12 @@ impl AccountStore {
         self.write_current(Some(session.host()))
     }
 
+    /// Make the account on `host` the one in use, as `msky accounts --use`
+    /// and the client's account list do.
+    pub fn set_current(&self, host: &str) -> Result<()> {
+        self.write_current(Some(&host.to_ascii_lowercase()))
+    }
+
     /// The host `accounts.json` names as the one in use, without reading
     /// its account's file.
     pub fn current_host(&self) -> Option<String> {

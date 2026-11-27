@@ -8,11 +8,11 @@
 //! |------|-----------|------------------------------------------------------------------|
 //! | 0    | success   |                                                                  |
 //! | 1    | usage     | unknown flag, malformed `--host`, a note or account not written as one |
+//! | 2    | terminal  | `msky` without a command not run in an interactive terminal      |
 //! | 3    | local I/O | the output or a download cannot be written                       |
 //! | 4    | API       | a request failed on the network or the server said no            |
 //!
-//! Code 2 is kept for the terminal not being able to host the full-screen
-//! client, as bsky uses it.
+//! The codes are bsky's.
 
 use std::fmt;
 
@@ -21,6 +21,8 @@ use std::fmt;
 pub enum Kind {
     /// The command line cannot be acted on.
     Usage,
+    /// The terminal cannot host the full-screen client.
+    Terminal,
     /// A local file could not be read or written.
     Io,
     /// The Misskey server could not be reached or refused the request.
@@ -32,6 +34,7 @@ impl Kind {
     pub fn exit_code(self) -> u8 {
         match self {
             Kind::Usage => 1,
+            Kind::Terminal => 2,
             Kind::Io => 3,
             Kind::Api => 4,
         }
@@ -126,7 +129,7 @@ mod tests {
 
     #[test]
     fn exit_codes_are_distinct_and_nonzero() {
-        let codes = [Kind::Usage, Kind::Io, Kind::Api].map(Kind::exit_code);
-        assert_eq!(codes, [1, 3, 4]);
+        let codes = [Kind::Usage, Kind::Terminal, Kind::Io, Kind::Api].map(Kind::exit_code);
+        assert_eq!(codes, [1, 2, 3, 4]);
     }
 }
