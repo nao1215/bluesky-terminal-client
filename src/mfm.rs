@@ -2434,4 +2434,346 @@ mod tests {
         let deep = format!("{}x{}", "$[x2 ".repeat(40), "]".repeat(40));
         assert!(plain_text(&deep).chars().count() <= deep.chars().count());
     }
+
+    /// The tree of `text` in a short form: text as it is, and each node in
+    /// braces (`{kept:@a}`, `{italic|a}`, `{link:address|label}`,
+    /// `{$name.args|content}`), so that it can be checked against what
+    /// mfm-js reads.
+    fn tree(text: &str) -> String {
+        fn of(nodes: &[Node], src: &str) -> String {
+            let mut o = String::new();
+            for n in nodes {
+                match n {
+                    Node::Text { s, e, .. } => o.push_str(&src[*s..*e]),
+                    Node::Kept { s, e } => {
+                        o.push_str(&format!(
+                            "{{kept:{}}}",
+                            src[*s..*e].trim_matches(['\r', '\n'])
+                        ));
+                    }
+                    Node::Plain { cs, ce } => o.push_str(&format!("{{plain|{}}}", &src[*cs..*ce])),
+                    Node::Url { s, e, brackets } => {
+                        let form = if *brackets { "url<>" } else { "url" };
+                        o.push_str(&format!("{{{form}:{}}}", url_of(src, *s, *e, *brackets)));
+                    }
+                    Node::Link {
+                        silent, url, label, ..
+                    } => {
+                        let Node::Url { s, e, brackets } = **url else {
+                            unreachable!()
+                        };
+                        let form = if *silent { "?link" } else { "link" };
+                        let url = url_of(src, s, e, brackets);
+                        o.push_str(&format!("{{{form}:{url}|{}}}", of(label, src)));
+                    }
+                    Node::Fn {
+                        s,
+                        name_end,
+                        args,
+                        children,
+                        ..
+                    } => {
+                        let args: Vec<String> = args
+                            .iter()
+                            .map(|(k, v)| v.as_ref().map_or(k.clone(), |v| format!("{k}={v}")))
+                            .collect();
+                        let args = if args.is_empty() {
+                            String::new()
+                        } else {
+                            format!(".{}", args.join(","))
+                        };
+                        let name = &src[s + 2..*name_end];
+                        o.push_str(&format!("{{${name}{args}|{}}}", of(children, src)));
+                    }
+                    Node::Styled { style, children } => {
+                        let style = match style {
+                            Style::Bold => "bold",
+                            Style::Big => "$tada",
+                            Style::Small => "small",
+                            Style::Italic => "italic",
+                            Style::Strike => "strike",
+                        };
+                        o.push_str(&format!("{{{style}|{}}}", of(children, src)));
+                    }
+                    Node::Center { children, .. } => {
+                        o.push_str(&format!("{{center|{}}}", of(children, src)));
+                    }
+                    Node::Quote {
+                        content, children, ..
+                    } => o.push_str(&format!("{{quote|{}}}", of(children, content))),
+                }
+            }
+            o
+        }
+        of(&parse(text), text)
+    }
+
+    // Each case is read as mfm-js 0.28.0 reads it.
+    #[rstest]
+    // Italic and bold of letters, digits and spaces (an ideographic space
+    // too), not right after a letter or digit.
+    #[case("_a_", "{italic|a}")]
+    #[case("*ab\u{3000}c*", "{italic|ab\u{3000}c}")]
+    #[case("a*b*", "a*b*")]
+    #[case(" *b*", " {italic|b}")]
+    #[case("__a__ b", "{bold|a} b")]
+    #[case("__", "__")]
+    #[case("____", "____")]
+    #[case("**_a_**", "{bold|{italic|a}}")]
+    // Math in markup, and math that holds nothing.
+    #[case("**\\(x\\)**", "{bold|{kept:\\(x\\)}}")]
+    #[case("\\(\\)", "\\(\\)")]
+    // A keycap is an emoji, with the variation selector or without.
+    #[case("1\u{20e3}", "{kept:1\u{20e3}}")]
+    #[case("1\u{fe0f}\u{20e3}", "{kept:1\u{fe0f}\u{20e3}}")]
+    // A function needs a name, and takes the arguments after a `.`.
+    #[case("$[ a]", "$[ a]")]
+    #[case("$[x2.a=1 c]", "{$x2.a=1|c}")]
+    #[case("$[x2.a=1-,b=2 c]", "{$x2.a=1-,b=2|c}")]
+    // An address in brackets is no address in a label.
+    #[case(
+        "[<https://a.test>](https://b.test)",
+        "{link:https://b.test|<https://a.test>}"
+    )]
+    fn inline_markup_is_read_as_mfm_js_reads_it(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(tree(text), want, "{text:?}");
+    }
+
+    // A mention is a name and a host of letters, digits, `_`, `.` and `-`,
+    // without the `.` and `-` at their ends; one that starts with them, or
+    // is right after a letter or digit, is text.
+    #[rstest]
+    #[case("@a", "{kept:@a}")]
+    #[case("@alice@host.test", "{kept:@alice@host.test}")]
+    #[case("@a@bc", "{kept:@a@bc}")]
+    #[case("@alice@", "{kept:@alice}@")]
+    #[case("@alice x", "{kept:@alice} x")]
+    #[case("@a.", "{kept:@a}.")]
+    #[case("@a@b.test.", "{kept:@a@b.test}.")]
+    #[case("@a@..", "@a@..")]
+    #[case("@a.@b", "@a.@b")]
+    #[case("@.a", "@.a")]
+    #[case("a@b", "a@b")]
+    #[case("[@a](https://x.test)", "{link:https://x.test|@a}")]
+    fn a_mention_is_read_as_mfm_js_reads_it(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(tree(text), want, "{text:?}");
+    }
+
+    // A hashtag ends at a space, a line break or a mark, takes brackets
+    // that pair up, and is not digits alone or right after a letter.
+    #[rstest]
+    #[case("#_b_", "{kept:#_b_}")]
+    #[case("#a.b", "{kept:#a}.b")]
+    #[case("#a\nb", "{kept:#a}\nb")]
+    #[case("#a\u{3000}b", "{kept:#a}\u{3000}b")]
+    #[case("#(a)b", "{kept:#(a)b}")]
+    #[case("#a(b)c", "{kept:#a(b)c}")]
+    #[case("#\u{300c}a\u{300d}", "{kept:#\u{300c}a\u{300d}}")]
+    #[case("#123", "#123")]
+    #[case("#1a", "{kept:#1a}")]
+    #[case("a#b", "a#b")]
+    #[case("[#a](https://x.test)", "{link:https://x.test|#a}")]
+    fn a_hashtag_is_read_as_mfm_js_reads_it(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(tree(text), want, "{text:?}");
+    }
+
+    // A custom emoji is not followed by a letter or digit.
+    #[rstest]
+    #[case(":a:", "{kept::a:}")]
+    #[case(":a: ", "{kept::a:} ")]
+    #[case(":a:b", ":a:b")]
+    fn a_custom_emoji_is_read_as_mfm_js_reads_it(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(tree(text), want, "{text:?}");
+    }
+
+    // Code, math, search boxes and quotes start at the start of a line.
+    #[rstest]
+    #[case("a> b", "a> b")]
+    #[case("a```\nb\n```", "a```\nb\n```")]
+    #[case("a\n```\nb\n```", "a{kept:```\nb\n```}")]
+    #[case("```js\nb\n```", "{kept:```js\nb\n```}")]
+    #[case("\\[x\\]", "{kept:\\[x\\]}")]
+    #[case("a\\[x\\]", "a\\[x\\]")]
+    #[case("ab\n\\[x\\]", "ab{kept:\\[x\\]}")]
+    #[case("\\[x\\]y", "\\[x\\]y")]
+    #[case("\\[x\\]\na", "{kept:\\[x\\]}a")]
+    #[case("a 検索", "{kept:a 検索}")]
+    #[case("a search", "{kept:a search}")]
+    #[case("a [search]", "{kept:a [search]}")]
+    #[case("> a", "{quote|a}")]
+    #[case(">a", "{quote|a}")]
+    #[case(">", ">")]
+    #[case(">\n>", "{quote|\n}")]
+    fn a_block_is_read_as_mfm_js_reads_it(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(tree(text), want, "{text:?}");
+    }
+
+    // Markup nests twenty deep, as in mfm-js: past that, what would nest
+    // is text. The depth is that of the markup around, not of what was
+    // read before it.
+    #[test]
+    fn markup_nests_as_deep_as_mfm_js_lets_it() {
+        let nested = |n: usize| format!("{}**a**{}", "<small>".repeat(n), "</small>".repeat(n));
+        let inside = |text: &str| tree(text).replace("{small|", "").replace('}', "");
+        assert_eq!(inside(&nested(19)), "{bold|a");
+        assert_eq!(inside(&nested(20)), "**a**");
+        let long = format!("<small>{}**b**</small>", "a".repeat(25));
+        assert_eq!(
+            tree(&long),
+            format!("{{small|{}{{bold|b}}}}", "a".repeat(25))
+        );
+        let brackets = format!("https://a.test/{}b{}", "(".repeat(20), ")".repeat(20));
+        assert_eq!(urls(&brackets), [brackets]);
+    }
+
+    // A link that fails is remembered as failed for the text it was read
+    // in and the depth it was read at, and for nothing else: not for the
+    // content of another quote, and not for the same link read at another
+    // depth (here a center that never closes reads it one deeper, where
+    // the code in its label is past the limit).
+    #[test]
+    fn a_failed_link_fails_again_only_where_it_failed() {
+        let quotes = "> [a\nx\n> [c\nx\n> [b](https://x.test)\nx\n> [b](https://x.test)";
+        let forms: Vec<Form> = links(quotes).into_iter().map(|l| l.form).collect();
+        assert_eq!(forms, [Form::Labeled { silent: false }; 2]);
+        let deep = format!("{} <center>[`]`](https://x.test)", ">".repeat(18));
+        let forms: Vec<Form> = links(&deep).into_iter().map(|l| l.form).collect();
+        assert_eq!(forms, [Form::Labeled { silent: false }]);
+    }
+
+    // A link that failed fails again at once, which keeps the reads of a
+    // run of `[` within mfm-js's budget: the markup after it is read.
+    #[test]
+    fn a_run_of_brackets_leaves_the_budget_for_what_follows() {
+        let text = format!("{}\n<small>**b**</small>", "[".repeat(200));
+        let got = tree(&text);
+        assert!(got.ends_with("\n{small|{bold|b}}"), "{got}");
+    }
+
+    // mfm-js lets a note nest twenty reads per character and a thousand.
+    // A center that never closes reads its addresses twice, once in it and
+    // once after it fails, and with fifteen characters before it the last
+    // read the budget allows is the bold's; with fourteen it runs out just
+    // before, and the bold is text.
+    #[test]
+    fn the_budget_runs_out_at_the_read_mfm_js_stops_at() {
+        let note = |pad: usize| {
+            let (pad, addresses) = ("y".repeat(pad), "https://a(".repeat(31));
+            format!("{pad}\n<center>{addresses}\nx<small>**b**</small>**#(")
+        };
+        assert!(tree(&note(15)).ends_with("x{small|{bold|b}}**#("));
+        assert!(tree(&note(14)).ends_with("x{small|**b**}**#("));
+    }
+
+    #[test]
+    fn a_character_ends_after_its_last_byte() {
+        let s = "é日";
+        let cx = Cx {
+            s,
+            b: s.as_bytes(),
+            id: 0,
+        };
+        assert_eq!(next_char(cx, 0), Some(2));
+        assert_eq!(next_char(cx, 2), Some(5));
+        assert_eq!(next_char(cx, 5), None);
+    }
+
+    // Text next to text is one node, but text as written of markup that
+    // never closed stays apart.
+    #[test]
+    fn merge_joins_text_that_touches() {
+        let spans = |items: Vec<Item>| -> Vec<(usize, usize, bool)> {
+            merge(items)
+                .into_iter()
+                .map(|n| match n {
+                    Node::Text { s, e, raw } => (s, e, raw),
+                    _ => unreachable!(),
+                })
+                .collect()
+        };
+        let t = |s, e, raw| Item::Text(s, e, raw);
+        assert_eq!(spans(vec![t(0, 1, false), t(1, 2, false)]), [(0, 2, false)]);
+        assert_eq!(
+            spans(vec![t(0, 1, false), t(2, 3, false)]),
+            [(0, 1, false), (2, 3, false)]
+        );
+        assert_eq!(
+            spans(vec![t(0, 1, true), t(1, 2, false)]),
+            [(0, 1, true), (1, 2, false)]
+        );
+        assert_eq!(
+            spans(vec![t(0, 1, false), t(1, 2, true)]),
+            [(0, 1, false), (1, 2, true)]
+        );
+    }
+
+    // Silenced, a `[` or `<` is written in `<plain>` where it is needed and
+    // only there: in a function, a quote or markup, and the `/` of text
+    // that ends like an address before a link.
+    #[rstest]
+    #[case(
+        "$[x2 [baz https://a.test]",
+        "$[x2 <plain>[</plain>baz ?[<plain>https://a.test</plain>](https://a.test)]"
+    )]
+    #[case(
+        "> [baz https://a.test",
+        "> <plain>[</plain>baz ?[<plain>https://a.test</plain>](https://a.test)"
+    )]
+    #[case(
+        "http://<https://a.test>",
+        "http:/<plain>/</plain>?[<plain>https://a.test</plain>](<https://a.test>)"
+    )]
+    #[case(
+        "[x] [baz. https://a.test",
+        "[x] <plain>[</plain>baz. ?[<plain>https://a.test</plain>](https://a.test)"
+    )]
+    // The `</plain>` that the `/` is written with, or that an address
+    // after it is, would close a `<plain>` before a link or in its label.
+    #[case(
+        "<plain>https://[[l](https://a.test)",
+        "<plain><</plain>plain>https:/<plain>/</plain>?[[l](https://a.test)"
+    )]
+    #[case(
+        "[<plain>x](https://b.test) https://a.test",
+        "?[<plain><</plain>plain>x](https://b.test) ?[<plain>https://a.test</plain>](https://a.test)"
+    )]
+    fn silencing_escapes_only_what_it_must(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(silenced(text), want);
+        silencing_keeps_the_text(text);
+    }
+
+    fn written(text: &str) -> String {
+        let mut w = Writer::default();
+        w.nodes(&parse(text), text, Ctx::Full);
+        w.finish()
+    }
+
+    // Written again, text is in `<plain>`, markup and blocks are kept, and
+    // a block starts its line as it did.
+    #[rstest]
+    #[case("$[x2 a]", "$[x2 <plain>a</plain>]")]
+    #[case("$[ruby 漢字 かんじ]", "<plain>漢字(かんじ)</plain>")]
+    #[case("**a** `c`", "<b><plain>a</plain></b><plain> `c`</plain>")]
+    #[case("[l](<https://a.test>)", "?[<plain>l</plain>](<https://a.test>)")]
+    #[case(
+        "a\n<center>b</center>",
+        "<plain>a</plain>\n<center><plain>b</plain></center>"
+    )]
+    #[case(
+        "<center>a</center>\n\nb",
+        "<center><plain>a</plain></center>\n<plain>\n\nb</plain>"
+    )]
+    #[case("a\n> b", "<plain>a</plain>\n> <plain>b</plain>")]
+    #[case("```\na\n```\n> b", "<plain>```\na\n```</plain>\n> <plain>b</plain>")]
+    fn a_note_is_written_again_as_it_reads(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(written(text), want);
+        assert_eq!(plain_text(want), plain_text(text));
+    }
+
+    // A ruby of one text, which mfm-js joins from what never closed and
+    // the text around it, is split at its spaces.
+    #[test]
+    fn a_ruby_of_joined_text_is_split_at_its_spaces() {
+        assert_eq!(plain_text("$[ruby a $[ b]"), "a($[)");
+    }
 }
