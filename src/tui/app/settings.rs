@@ -75,6 +75,8 @@ impl Tab {
             Tab::Search => "search",
             Tab::Profile => "profile",
             Tab::Chat => "chat",
+            // Kept as `kind/host/id/name`, which `tabs_setting` writes.
+            Tab::Feed(_) => "feed",
         }
     }
 }
@@ -300,7 +302,7 @@ impl App {
             value: self
                 .tabs
                 .iter()
-                .map(|t| t.setting_name())
+                .map(|t| self.tab_label(*t))
                 .collect::<Vec<_>>()
                 .join(", "),
             note: if self.settings.tabs.is_some() {
@@ -389,7 +391,7 @@ impl App {
                         let now = match selected {
                             ROW_DOWNLOAD => self.settings.download_dir.clone(),
                             ROW_BROWSER => self.settings.browser.clone(),
-                            _ => Some(row.value.clone()),
+                            _ => Some(self.tabs_setting().join(", ")),
                         };
                         self.overlay = Some(Overlay::Settings {
                             selected,
@@ -417,21 +419,22 @@ impl App {
             }
             ROW_TABS => {
                 let names: Vec<String> = value
-                    .split([',', ' '])
+                    .split(',')
                     .map(str::trim)
                     .filter(|n| !n.is_empty())
                     .map(str::to_string)
                     .collect();
-                let (tabs, unknown) = tabs_of(&names);
+                let before = self.feeds.clone();
+                let (tabs, unknown) = self.tabs_for_host(&names);
                 if let Some(why) = unknown {
+                    self.feeds = before;
                     self.error(why);
                     return Vec::new();
                 }
-                self.settings.tabs =
-                    Some(tabs.iter().map(|t| t.setting_name().to_string()).collect());
-                let shown = self.settings.tabs.clone().unwrap_or_default().join(", ");
+                self.tabs = tabs.clone();
                 let jobs = self.set_tabs(tabs);
-                self.save_settings(tf("tabs: {}", &[&shown]));
+                let shown = self.tabs_setting().join(", ");
+                self.keep_tabs(tf("tabs: {}", &[&shown]));
                 return jobs;
             }
             _ => {}

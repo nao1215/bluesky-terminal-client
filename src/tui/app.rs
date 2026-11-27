@@ -20,6 +20,7 @@ use crate::tui::worker::{Event, Job, Thread};
 mod browse;
 mod chat;
 mod edit_profile;
+mod feeds;
 mod settings;
 mod write;
 
@@ -29,6 +30,7 @@ mod tests;
 pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
 pub use edit_profile::EditProfile;
+pub use feeds::{Feed, FeedKind, FeedTab, TabChoice};
 pub use settings::{Environment, SettingRow};
 pub use write::Compose;
 
@@ -42,7 +44,24 @@ pub enum Tab {
     Search,
     Profile,
     Chat,
+    /// An antenna, a list or a channel: the feed tab of that index.
+    Feed(u8),
 }
+
+/// Every built-in tab, in the order `+` offers them.
+pub const ALL_TABS: [Tab; 8] = [
+    Tab::Timeline(TimelineKind::Home),
+    Tab::Timeline(TimelineKind::Local),
+    Tab::Timeline(TimelineKind::Social),
+    Tab::Timeline(TimelineKind::Global),
+    Tab::Notifications,
+    Tab::Search,
+    Tab::Profile,
+    Tab::Chat,
+];
+
+/// How many tabs there may be.
+pub const MAX_TABS: usize = 20;
 
 /// The tabs without a `tabs` setting: Social, home and local mixed, is
 /// left out, and a setting can put it in.
@@ -67,6 +86,7 @@ impl Tab {
             Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
             Tab::Chat => n!("Chat"),
+            Tab::Feed(_) => n!("Feed"),
         }
     }
 
@@ -84,31 +104,6 @@ impl Tab {
             _ => return None,
         })
     }
-}
-
-/// The tabs `names` (the `tabs` setting) name, in order, each once; the
-/// default ones when it names none. What is not a tab's name is said, and
-/// left out.
-pub fn tabs_of(names: &[String]) -> (Vec<Tab>, Option<String>) {
-    let mut tabs: Vec<Tab> = Vec::new();
-    let mut unknown = Vec::new();
-    for n in names {
-        match Tab::from_name(n) {
-            Some(t) if !tabs.contains(&t) => tabs.push(t),
-            Some(_) => {}
-            None => unknown.push(n.clone()),
-        }
-    }
-    let warning = (!unknown.is_empty()).then(|| {
-        format!(
-            "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile, chat)",
-            unknown.join(", ")
-        )
-    });
-    if tabs.is_empty() {
-        tabs = DEFAULT_TABS.to_vec();
-    }
-    (tabs, warning)
 }
 
 /// Items that are the same item when their keys are equal: a further page
@@ -446,6 +441,13 @@ pub enum Overlay {
     Themes { selected: usize, previous: usize },
     /// The languages, from the settings screen.
     Languages { selected: usize },
+    /// What `+` adds: the tabs not shown, and the account's antennas,
+    /// lists and channels once read (`None` while they are).
+    AddTab {
+        selected: usize,
+        feeds: Option<Vec<Feed>>,
+        error: Option<String>,
+    },
     /// The profile editor, opened with `e` on your own profile.
     EditProfile(Box<EditProfile>),
 }
@@ -483,6 +485,10 @@ pub struct App {
     pub profile: Profile,
     /// The Chat tab.
     pub chat: ChatPane,
+    /// The antennas, lists and channels shown as tabs.
+    pub feeds: Vec<FeedTab>,
+    /// The tab `x` asked to close, waiting for `y`.
+    pub confirm_close_tab: Option<Tab>,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
     pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
@@ -573,6 +579,8 @@ impl App {
             search: Search::default(),
             profile: Profile::default(),
             chat: ChatPane::default(),
+            feeds: Vec::new(),
+            confirm_close_tab: None,
             threads: Vec::new(),
             overlay: None,
             status: None,
@@ -627,6 +635,14 @@ impl App {
         self.search = Search::default();
         self.profile = Profile::default();
         self.chat = ChatPane::default();
+        // The feed tabs are the server's: another server shows its own.
+        if let Some(names) = self.settings.tabs.clone() {
+            let (tabs, _) = self.tabs_for_host(&names);
+            if !tabs.contains(&self.tab) {
+                self.tab = tabs[0];
+            }
+            self.tabs = tabs;
+        }
         if self.session.is_none() {
             let host = self.host().to_string();
             for kind in TimelineKind::ALL.into_iter().filter(|k| k.needs_login()) {
@@ -687,6 +703,7 @@ impl App {
                 self.confirm_logout = None;
                 self.confirm_delete = None;
                 self.confirm_block = None;
+                self.confirm_close_tab = None;
                 true
             }
             _ => false,
@@ -897,6 +914,7 @@ impl App {
             | Event::SearchNotes { .. }
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
+            e @ (Event::FeedNotes { .. } | Event::FeedChoices(_)) => self.feed_answer(seq, e),
             e @ (Event::ProfileEditor(_) | Event::ProfileSaved(_)) => {
                 return self.edit_profile_answer(e);
             }
@@ -1040,6 +1058,7 @@ impl App {
                 return Vec::new();
             }
             Overlay::EditProfile(_) => return self.edit_profile_key(key),
+            Overlay::AddTab { .. } => return self.add_tab_key(key),
             Overlay::Languages { selected } => {
                 let selected = *selected;
                 self.languages_key(key, selected);
@@ -1234,6 +1253,9 @@ impl App {
         if let Some(id) = self.confirm_block.take() {
             return self.answer_block(id, key);
         }
+        if let Some(tab) = self.confirm_close_tab.take() {
+            return self.answer_close_tab(tab, key);
+        }
         let in_thread = !self.threads.is_empty();
         match key.code {
             KeyCode::Char('n') => self.compose(false, false),
@@ -1254,6 +1276,8 @@ impl App {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('s') => self.open_settings(),
+            KeyCode::Char('+') => return self.open_add_tab(),
+            KeyCode::Char('x') if !in_thread => self.ask_close_tab(),
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {
                 let at = self
@@ -1333,6 +1357,12 @@ impl App {
                 return self.load_timeline(kind);
             }
             return Vec::new();
+        }
+        if let Tab::Feed(i) = tab {
+            return match self.feeds.get(usize::from(i)) {
+                Some(f) if !f.list.loaded && !f.list.loading => self.load_feed(i),
+                _ => Vec::new(),
+            };
         }
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
@@ -1428,6 +1458,19 @@ impl App {
             Tab::Search | Tab::Profile => self.step_browse(delta),
             // The tab's own keys move through it.
             Tab::Chat => Vec::new(),
+            Tab::Feed(i) => {
+                let Some(t) = self.feeds.get_mut(usize::from(i)) else {
+                    return Vec::new();
+                };
+                t.list.step(delta);
+                match (t.list.want_more(), t.feed.clone()) {
+                    (Some(until), Some(feed)) => vec![self.stamp(Job::FeedNotes {
+                        feed,
+                        until: Some(until),
+                    })],
+                    _ => Vec::new(),
+                }
+            }
         }
     }
 
@@ -1447,6 +1490,7 @@ impl App {
             Tab::Notifications => self.load_notifications(),
             Tab::Search | Tab::Profile => self.refresh_browse(),
             Tab::Chat => Vec::new(),
+            Tab::Feed(i) => self.load_feed(i),
         }
     }
 
@@ -1464,6 +1508,10 @@ impl App {
             },
             Tab::Profile => self.profile.notes.current(),
             Tab::Chat => None,
+            Tab::Feed(i) => self
+                .feeds
+                .get(usize::from(i))
+                .and_then(|f| f.list.current()),
         }
     }
 

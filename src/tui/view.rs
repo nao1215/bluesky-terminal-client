@@ -107,6 +107,18 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             }
             Tab::Search => draw_search(frame, body, &mut app.search, images, &ctx),
             Tab::Profile => draw_profile(frame, body, &mut app.profile, images, &ctx),
+            Tab::Feed(i) => {
+                if let Some(f) = app.feeds.get_mut(usize::from(i)) {
+                    draw_notes(
+                        frame,
+                        body,
+                        &mut f.list,
+                        images,
+                        "No notes yet. Press R to refresh.",
+                        &ctx,
+                    );
+                }
+            }
             Tab::Chat => {
                 let me = app.session.as_ref().map(|s| s.user_id.clone());
                 chat::draw_chat(frame, body, &mut app.chat, me.as_deref(), images, &ctx);
@@ -149,6 +161,52 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             settings::draw_settings(frame, area, &rows, *selected, edit.as_ref(), &t);
         }
         Some(Overlay::Themes { selected, .. }) => settings::draw_themes(frame, area, *selected, &t),
+        Some(Overlay::AddTab {
+            selected,
+            feeds,
+            error,
+        }) => {
+            let mut rows: Vec<String> = app
+                .tab_choices()
+                .iter()
+                .map(|c| match c {
+                    crate::tui::app::TabChoice::Builtin(tab) => app.tab_label(*tab),
+                    crate::tui::app::TabChoice::Feed(f) => format!(
+                        "{} {}  ({})",
+                        f.kind.mark(),
+                        crate::tui::text::one_line(&f.name),
+                        crate::i18n::t(match f.kind {
+                            crate::tui::app::FeedKind::Antenna => crate::i18n::n!("antenna"),
+                            crate::tui::app::FeedKind::List => crate::i18n::n!("list"),
+                            crate::tui::app::FeedKind::Channel => crate::i18n::n!("channel"),
+                        })
+                    ),
+                })
+                .collect();
+            if feeds.is_none() {
+                rows.push(crate::i18n::t("reading the antennas, lists and channels…").to_string());
+            }
+            if let Some(e) = error {
+                rows.push(e.clone());
+            }
+            if rows.is_empty() {
+                rows.push(
+                    crate::i18n::t(
+                        "every tab is shown, and the account has no antenna, list or channel",
+                    )
+                    .to_string(),
+                );
+            }
+            draw_choices(
+                frame,
+                area,
+                crate::i18n::t("Add a tab"),
+                &rows,
+                *selected,
+                None,
+                &t,
+            );
+        }
         Some(Overlay::Languages { selected }) => {
             settings::draw_languages(frame, area, *selected, app.language(), &t)
         }
@@ -264,7 +322,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
     for (i, &tab) in app.tabs.iter().enumerate() {
-        let label = format!(" {} {} ", i + 1, crate::i18n::t(tab.title()));
+        let label = format!(" {} {} ", i + 1, app.tab_label(tab));
         let style = if tab == app.tab {
             t.selected()
         } else {

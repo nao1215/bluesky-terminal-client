@@ -25,6 +25,11 @@ pub const HELP: &[Section] = &[
             ("1 2 3 …", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
             ("", n!("which tabs, and their order: the tabs setting")),
+            (
+                "+",
+                n!("add a tab: one not shown, an antenna, a list, a channel"),
+            ),
+            ("x", n!("close the tab shown: y confirms")),
             ("A", n!("accounts: switch, log out")),
             (
                 "s",
@@ -272,6 +277,13 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("esc", n!("cancel")),
             ];
         }
+        Some(Overlay::AddTab { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("add")),
+                ("esc", n!("close")),
+            ];
+        }
         Some(Overlay::Languages { .. }) => {
             return vec![
                 ("j k", n!("move")),
@@ -414,6 +426,13 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("e", n!("edit profile")),
             ("s", n!("settings")),
             ("R", n!("reload")),
+        ],
+        Tab::Feed(_) => vec![
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("space", n!("view")),
+            ("R", n!("refresh")),
+            ("x", n!("close tab")),
         ],
         Tab::Timeline(_) => vec![
             ("j k", n!("move")),

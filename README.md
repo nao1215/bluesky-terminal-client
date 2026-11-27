@@ -56,6 +56,7 @@ It needs Rust 1.90 or later.
 | `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
 | `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
 | `e` on your own Profile tab | Edits your profile, as bsky's: the name, the description, and a new avatar and banner (a path, or `ctrl+o` to choose a picture); `tab` moves between them, `ctrl+s` saves (`i/update`, sending only what changed), `esc` closes without saving. On a note there, the actions list (`.`) still reacts with `e` |
+| `+`, `x` | Adds a tab, as bsky's `+` adds a column: one of the tabs not shown, or one of your antennas, lists and channels (followed or favorited), which then reads its notes as a timeline does; `x` closes the tab shown once `y` confirms, the last one staying. Both are kept in the `tabs` setting |
 | `s` | The settings: the theme, the language, the download folder, the browser and the tabs, kept in `settings.json`, as bsky's |
 | `T` | The themes, bsky's, each previewed as the selection moves; `enter` keeps one, `esc` puts the one before back |
 | `M`, `B` | Mutes or unmutes that account; blocks it (`y` confirms) or unblocks it |
@@ -88,7 +89,7 @@ Each timeline is a tab of its own, and keeps its place, the pages it loaded and 
 {"tabs": ["home", "social", "local", "global", "notifications", "search", "profile"]}
 ```
 
-The names are `home`, `local`, `social`, `global`, `notifications`, `search`, `profile` and `chat`; a name that is not one is said when the client starts and left out, and a list naming none is the default. `msky timeline social` reads Social whatever the setting says.
+An antenna, a list or a channel is kept there as `antenna/HOST/ID/NAME`, `list/HOST/ID/NAME` or `channel/HOST/ID/NAME`, as `+` writes it, and read from `antennas/notes`, `notes/user-list-timeline` or `channels/timeline`; one of another server stays in the setting and is shown only while an account of that server is in use. The other names are `home`, `local`, `social`, `global`, `notifications`, `search`, `profile` and `chat`; a name that is not one is said when the client starts and left out, and a list naming none is the default. `msky timeline social` reads Social whatever the setting says.
 
 The settings screen (`s`) changes the same file, and keeps what it does not know: `theme` (one of bsky's themes; `terminal`, the terminal's own palette, by default), `language` (`en` or `ja`; without it the client is in the language `LC_ALL`, `LC_MESSAGES` or `LANG` asks for, else English, by bsky's mechanism: a string not translated yet shows in English), `downloadDir` and `browser` (where `d` saves and what links open with; `MSKY_DOWNLOAD_DIR` and `MSKY_BROWSER` decide them for a run when set, and the screen says so), `tabs`, and `recentReactions`, the reactions given lately, which `e` offers first. `NO_COLOR` draws in `monochrome` whatever the theme. The command line is in English.
 

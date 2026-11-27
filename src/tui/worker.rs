@@ -17,6 +17,7 @@ use crate::cli::{TimelineKind, Visibility};
 use crate::config::Session;
 use crate::error::{Error, Result};
 use crate::servers::Server;
+use crate::tui::app::{Feed, FeedKind};
 use crate::{download, miauth};
 use serde_json::json;
 
@@ -80,6 +81,11 @@ pub enum Job {
     MarkRead,
     /// The server's custom emoji.
     Emojis,
+    /// The notes of an antenna, a list or a channel: the latest, or those
+    /// older than `until`.
+    FeedNotes { feed: Feed, until: Option<String> },
+    /// The account's antennas, lists and channels, for `+` to offer.
+    FeedChoices,
     /// The account's own profile, for the editor to start from.
     LoadProfileEditor,
     /// Save the profile's changes.
@@ -216,6 +222,12 @@ pub enum Event {
     MarkedRead(Result<()>),
     /// The server's custom emoji: name and picture address.
     Emojis(Result<Vec<(String, String)>>),
+    FeedNotes {
+        feed: Feed,
+        until: Option<String>,
+        result: Result<Vec<Note>>,
+    },
+    FeedChoices(Result<Vec<Feed>>),
     ProfileEditor(Result<Box<User>>),
     ProfileSaved(Result<Box<User>>),
     ChatHistory(Result<Vec<ChatMessage>>),
@@ -301,6 +313,12 @@ impl Job {
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
             Job::Emojis => Event::Emojis(Err(e)),
+            Job::FeedNotes { feed, until } => Event::FeedNotes {
+                feed,
+                until,
+                result: Err(e),
+            },
+            Job::FeedChoices => Event::FeedChoices(Err(e)),
             Job::LoadProfileEditor => Event::ProfileEditor(Err(e)),
             Job::SaveProfile(_) => Event::ProfileSaved(Err(e)),
             Job::ChatHistory => Event::ChatHistory(Err(e)),
@@ -403,6 +421,15 @@ pub fn run(job: Job, client: &Client) -> Event {
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
         Job::Emojis => Event::Emojis(client.emojis()),
+        Job::FeedNotes { feed, until } => {
+            let (endpoint, key) = feed.kind.endpoint();
+            Event::FeedNotes {
+                result: client.feed_notes(endpoint, key, &feed.id, PAGE, until.as_deref()),
+                feed,
+                until,
+            }
+        }
+        Job::FeedChoices => Event::FeedChoices(feed_choices(client)),
         Job::LoadProfileEditor => Event::ProfileEditor(client.me().map(Box::new)),
         Job::SaveProfile(change) => {
             Event::ProfileSaved(save_profile(client, &change).map(Box::new))
@@ -544,6 +571,46 @@ fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
     };
     client.account_write(endpoint, id)?;
     client.user_by_id(id)
+}
+
+/// The account's antennas, lists, and the channels it follows and
+/// favorites, as feeds `+` can add. A kind the server does not have is
+/// left out; only all of them failing is an error.
+fn feed_choices(client: &Client) -> Result<Vec<Feed>> {
+    let host = client.host().to_ascii_lowercase();
+    let mut out: Vec<Feed> = Vec::new();
+    let mut first_error = None;
+    let mut answered = false;
+    for (kind, endpoint) in [
+        (FeedKind::Antenna, "antennas/list"),
+        (FeedKind::List, "users/lists/list"),
+        (FeedKind::Channel, "channels/followed"),
+        (FeedKind::Channel, "channels/my-favorites"),
+    ] {
+        match client.named_items(endpoint) {
+            Ok(items) => {
+                answered = true;
+                for (id, name) in items {
+                    let f = Feed {
+                        kind,
+                        host: host.clone(),
+                        id,
+                        name,
+                    };
+                    if !out.contains(&f) {
+                        out.push(f);
+                    }
+                }
+            }
+            Err(e) => {
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    match (answered, first_error) {
+        (false, Some(e)) => Err(e),
+        _ => Ok(out),
+    }
 }
 
 /// Upload the file at `path` to the account's drive, with `alt` as its

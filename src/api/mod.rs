@@ -603,6 +603,47 @@ impl Client {
     }
 
     /// `i`: the account the token is of.
+    /// The notes of an antenna, a list or a channel (`endpoint` with the
+    /// ID under `key`), newest first, older than `until` if given.
+    pub fn feed_notes(
+        &self,
+        endpoint: &str,
+        key: &str,
+        id: &str,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Note>> {
+        let mut body = json!({"limit": limit.clamp(1, MAX_PAGE)});
+        body[key] = json!(id);
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        notes(self.call(endpoint, &body)?)
+    }
+
+    /// The ID and name of each item `endpoint` lists: the account's
+    /// antennas, its lists, or the channels it follows or favorites.
+    pub fn named_items(&self, endpoint: &str) -> Result<Vec<(String, String)>> {
+        let v = self.call(endpoint, &json!({"limit": 100}))?;
+        let Value::Array(items) = v else {
+            return Err(Error::api(format!(
+                "{endpoint}: the server did not answer with a list"
+            )));
+        };
+        Ok(items
+            .iter()
+            .filter_map(|i| {
+                Some((
+                    i.get("id")?.as_str()?.to_string(),
+                    i.get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                ))
+            })
+            .collect())
+    }
+
     /// `i/update`: change the account's own profile with the fields of
     /// `body` (`name`, `description`, `avatarId`, `bannerId`), and return
     /// it as it now is. Sent once, as every write is.

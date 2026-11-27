@@ -531,7 +531,7 @@ scenarios:
                 contains: "1 Home  2 Chat"
             - send: s
             - expect_screen:
-                contains: ["Settings", "Theme", "terminal", "Language", "English", "Tabs", "home, chat"]
+                contains: ["Settings", "Theme", "terminal", "Language", "English", "Tabs", "Home, Chat"]
             - send: { key: enter }
             - expect_screen:
                 contains: ["enter apply", "esc cancel"]

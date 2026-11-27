@@ -581,6 +581,7 @@ impl App {
         let notes = self
             .timelines
             .iter()
+            .chain(self.feeds.iter().map(|f| &f.list))
             .flat_map(|l| l.items.iter())
             .chain(
                 self.notifications
@@ -621,7 +622,11 @@ impl App {
                 f(r);
             }
         };
-        for l in &mut self.timelines {
+        for l in self
+            .timelines
+            .iter_mut()
+            .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+        {
             l.items.iter_mut().for_each(apply);
         }
         self.notifications
@@ -702,7 +707,11 @@ impl App {
                     && n.renote_id.as_deref() == Some(id)
                     && Some(n.author_id()) == me.as_deref()
             };
-            for l in &mut self.timelines {
+            for l in self
+                .timelines
+                .iter_mut()
+                .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+            {
                 l.retain(|n| !mine(n));
             }
             self.info("took back the renote");
@@ -716,7 +725,11 @@ impl App {
             self.error(said(&e));
             return;
         }
-        for l in &mut self.timelines {
+        for l in self
+            .timelines
+            .iter_mut()
+            .chain(self.feeds.iter_mut().map(|f| &mut f.list))
+        {
             l.retain(|n| n.id != id);
         }
         for t in &mut self.threads {

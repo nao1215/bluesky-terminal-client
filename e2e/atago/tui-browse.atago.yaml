@@ -123,3 +123,120 @@ scenarios:
             count: 1
       - assert:
           mock: { name: api, path: /api/following/create, count: 0 }
+
+  - name: + adds an antenna as a tab, which reads its notes, and the tabs setting keeps it; x then y closes it
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/antennas/list
+            json: [{ id: ant1, name: "ニュース 📰" }]
+          - method: POST
+            path: /api/users/lists/list
+            json: [{ id: lst1, name: "友達" }]
+          - { method: POST, path: /api/channels/followed, json: [] }
+          - { method: POST, path: /api/channels/my-favorites, json: [] }
+          - method: POST
+            path: /api/antennas/notes
+            json:
+              - { id: an1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, name: "ボブ" }, text: "アンテナに来たノート 🇯🇵", reactions: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0601", "permissions": ["read:account"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "7 Chat"
+            - send: "+"
+            - expect_screen:
+                contains: ["Add a tab", "Social", "📡 ニュース 📰  (antenna)", "☰ 友達  (list)"]
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["8 📡 ニュース 📰", "アンテナに来たノート 🇯🇵", "x close tab", "tab added"]
+            - send: x
+            - expect_screen:
+                contains: "press y to close"
+            - send: y
+            - expect_screen:
+                not_contains: "8 📡"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/antennas/notes
+            body:
+              json:
+                - { path: "$.antennaId", equals: ant1 }
+      - assert:
+          file:
+            path: cfg/settings.json
+            not_contains: "antenna/"
+
+  - name: a list the tabs setting names is a tab on its server, reading notes/user-list-timeline
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/notes/user-list-timeline
+            json:
+              - { id: ln1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob }, text: "リストのノート 👨‍👩‍👧", reactions: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0602", "permissions": ["read:account"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture:
+          file: cfg/settings.json
+          content: |
+            {"tabs": ["list/127.0.0.1:${api.port}/lst1/友達", "antenna/other.example/a9/よそ", "home"]}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 ☰ 友達  2 Home", "リストのノート 👨‍👩‍👧"]
+                not_contains: "よそ"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/user-list-timeline
+            body:
+              json:
+                - { path: "$.listId", equals: lst1 }

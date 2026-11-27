@@ -186,14 +186,13 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     app.handle_key(key('1'));
     app.handle_key(code(KeyCode::BackTab));
     assert_eq!(app.tab, Tab::Chat);
-    // ← → H L + switch nothing any more.
+    // ← → H L switch nothing.
     app.handle_key(key('1'));
     for k in [
         code(KeyCode::Right),
         code(KeyCode::Left),
         key('H'),
         key('L'),
-        key('+'),
     ] {
         app.handle_key(k);
         assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
@@ -206,6 +205,8 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
 #[test]
 fn the_tabs_setting_orders_the_tabs_and_numbers_follow_it() {
     let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let mut app = logged_in(&["a"]);
+    let mut tabs_of = |n: &[String]| app.tabs_for_host(n);
     let (tabs, warn) = tabs_of(&names(&[
         "Social",
         "notifications",
@@ -224,7 +225,6 @@ fn the_tabs_setting_orders_the_tabs_and_numbers_follow_it() {
     assert!(warn.unwrap().contains("feeds is not a tab"));
     assert_eq!(tabs_of(&[]).0, DEFAULT_TABS);
     assert_eq!(tabs_of(&names(&["nope"])).0, DEFAULT_TABS);
-    let mut app = logged_in(&["a"]);
     let jobs = app.set_tabs(tabs);
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Social));
     assert_eq!(
@@ -707,6 +707,9 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('i'),
         key('s'),
         key('T'),
+        key('+'),
+        key('x'),
+        key('y'),
         key('e'),
         code(KeyCode::Tab),
         KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL),
@@ -809,6 +812,27 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
+                    Job::FeedNotes { feed, until } => Event::FeedNotes {
+                        feed,
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(page("f"))
+                        },
+                    },
+                    Job::FeedChoices => Event::FeedChoices(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok((0..size)
+                            .map(|i| Feed {
+                                kind: FeedKind::ALL[i % 3],
+                                host: "misskey.test".into(),
+                                id: format!("f{step}-{i}"),
+                                name: "名".into(),
+                            })
+                            .collect())
+                    }),
                     Job::LoadProfileEditor => Event::ProfileEditor(if fail {
                         Err(Error::api("x"))
                     } else {
@@ -2207,4 +2231,149 @@ fn e_on_your_own_profile_edits_it() {
         Some("猫 🐈‍⬛")
     );
     assert_eq!(app.status.as_ref().unwrap().text, "profile saved");
+}
+
+fn feed(kind: FeedKind, id: &str, name: &str) -> Feed {
+    Feed {
+        kind,
+        host: crate::api::authority(ORIGIN).to_string(),
+        id: id.into(),
+        name: name.into(),
+    }
+}
+
+// The tabs setting names antennas, lists and channels as kind:host:id:name;
+// those of another server are kept in it but not shown here.
+#[test]
+fn feed_tabs_come_from_the_setting_for_their_server_only() {
+    let mut app = logged_in(&["a"]);
+    let here = crate::api::authority(ORIGIN).to_string();
+    let names = vec![
+        "home".to_string(),
+        format!("list/{here}/l1/猫, 犬"),
+        "antenna/other.example/a9/よそ".to_string(),
+        format!("channel/{here}/c1/お絵描き 🎨"),
+        "list/broken".to_string(),
+    ];
+    let (tabs, warn) = app.tabs_for_host(&names);
+    assert_eq!(
+        tabs,
+        [
+            Tab::Timeline(TimelineKind::Home),
+            Tab::Feed(0),
+            Tab::Feed(1)
+        ]
+    );
+    assert!(warn.unwrap().contains("list/broken"));
+    assert_eq!(app.feeds[0].feed.as_ref().unwrap().name, "猫, 犬");
+    assert_eq!(app.tab_label(Tab::Feed(1)), "# お絵描き 🎨");
+    app.settings.tabs = Some(names);
+    app.tabs = tabs;
+    let kept = app.tabs_setting();
+    assert_eq!(
+        kept,
+        [
+            "home".to_string(),
+            format!("list/{here}/l1/猫  犬"),
+            format!("channel/{here}/c1/お絵描き 🎨"),
+            "antenna/other.example/a9/よそ".to_string(),
+        ],
+        "the comma goes, the other server's stays"
+    );
+    // A feed tab reads its endpoint, pages by untilId, and R reads again.
+    let jobs = app.handle_key(key('2'));
+    let f = app.feeds[0].feed.clone().unwrap();
+    assert_eq!(
+        jobs[0].1,
+        Job::FeedNotes {
+            feed: f.clone(),
+            until: None
+        }
+    );
+    assert_eq!(f.kind.endpoint(), ("notes/user-list-timeline", "listId"));
+    app.handle_answer(
+        jobs[0].0,
+        Event::FeedNotes {
+            feed: f.clone(),
+            until: None,
+            result: Ok(notes(&["n1", "n2"])),
+        },
+    );
+    assert_eq!(app.selected_note().unwrap().id, "n1");
+    let jobs = app.handle_key(key('j'));
+    assert_eq!(
+        jobs[0].1,
+        Job::FeedNotes {
+            feed: f.clone(),
+            until: Some("n2".into())
+        }
+    );
+    let jobs = app.handle_key(key('R'));
+    assert_eq!(
+        jobs[0].1,
+        Job::FeedNotes {
+            feed: f,
+            until: None
+        }
+    );
+}
+
+// + offers the tabs not shown and the account's feeds once read; enter
+// adds one as the last tab, shows it and keeps it; x closes the tab shown
+// once y confirms, the last one staying.
+#[test]
+fn plus_adds_a_tab_and_x_closes_one() {
+    let mut app = logged_in(&["a"]);
+    let jobs = app.handle_key(key('+'));
+    assert_eq!(jobs[0].1, Job::FeedChoices);
+    let choices = app.tab_choices();
+    assert_eq!(
+        choices,
+        [TabChoice::Builtin(Tab::Timeline(TimelineKind::Social))]
+    );
+    let ant = feed(FeedKind::Antenna, "a1", "ニュース 📰");
+    app.handle_answer(
+        jobs[0].0,
+        Event::FeedChoices(Ok(vec![ant.clone(), feed(FeedKind::List, "l1", "友達")])),
+    );
+    assert_eq!(app.tab_choices().len(), 3);
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tab, Tab::Feed(0));
+    assert_eq!(*app.tabs.last().unwrap(), Tab::Feed(0));
+    assert_eq!(
+        jobs[0].1,
+        Job::FeedNotes {
+            feed: ant.clone(),
+            until: None
+        }
+    );
+    let saved = app.take_settings_save().unwrap().tabs.unwrap();
+    assert_eq!(saved.last().unwrap(), &ant.setting());
+    // Shown already, it is not offered again.
+    let jobs = app.handle_key(key('+'));
+    app.handle_answer(jobs[0].0, Event::FeedChoices(Ok(vec![ant.clone()])));
+    assert!(!app.tab_choices().contains(&TabChoice::Feed(ant)));
+    app.handle_key(code(KeyCode::Esc));
+    // x, then anything but y: kept.
+    app.handle_key(key('x'));
+    app.handle_key(key('n'));
+    assert!(app.tabs.contains(&Tab::Feed(0)));
+    app.handle_key(key('x'));
+    app.handle_key(key('y'));
+    assert!(!app.tabs.contains(&Tab::Feed(0)));
+    assert_eq!(app.tab, Tab::Chat, "the one before it");
+    assert!(
+        app.take_settings_save()
+            .unwrap()
+            .tabs
+            .unwrap()
+            .iter()
+            .all(|t| !t.starts_with("antenna/"))
+    );
+    // The last tab stays.
+    app.tabs = vec![Tab::Chat];
+    app.handle_key(key('x'));
+    assert!(app.confirm_close_tab.is_none());
+    assert!(app.status.as_ref().unwrap().text.contains("last tab"));
 }

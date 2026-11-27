@@ -261,8 +261,9 @@ fn event_loop(
             .collect();
         // The tabs the settings name, in their order.
         let (settings, broken) = crate::config::load_settings(store.dir());
-        let (tabs, unknown) = app::tabs_of(&settings.tabs.clone().unwrap_or_default());
+        let names = settings.tabs.clone().unwrap_or_default();
         app.apply_settings(settings, depth, env, broken.clone());
+        let (tabs, unknown) = app.tabs_for_host(&names);
         for (seq, job) in app.set_tabs(tabs) {
             worker.send(seq, job);
         }
