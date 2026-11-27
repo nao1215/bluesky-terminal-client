@@ -124,3 +124,7 @@ strip = true
 inherits = "release"
 lto = false
 codegen-units = 16
+
+# The clients beside bsky, each a package of its own under crates/.
+[workspace]
+members = ["crates/*"]

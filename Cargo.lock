@@ -1087,6 +1087,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "mastodon-terminal-client"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "clap",
+ "dirs",
+ "getrandom 0.4.3",
+ "image",
+ "jiff",
+ "proptest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "unicode-segmentation",
+ "ureq",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
