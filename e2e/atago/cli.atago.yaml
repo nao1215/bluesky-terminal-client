@@ -1508,3 +1508,323 @@ scenarios:
             equals: "muted @alice.test\n"
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.graph.muteActor, count: 1 }
+
+  # author reads the account's own feed with its cursor, so a search for
+  # "from:" is not needed and nothing is left out. The mock answers every
+  # page with the same one: the second page repeats it, the post is printed
+  # once, and the cursor seen again ends the reading.
+  - name: author prints an account's posts page by page, reposts only with --reposts, and sends the filter
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json:
+              cursor: page2
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "家族👨‍👩‍👧 Alice" }
+                    record: { text: "山の写真 🇯🇵 1️⃣ ❤️\n二行目 👋🏽", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "t1", fullsize: "f1", alt: "" }
+                        - { thumb: "t2", fullsize: "f2", alt: "" }
+                        - { thumb: "t3", fullsize: "f3", alt: "" }
+                        - { thumb: "t4", fullsize: "f4", alt: "" }
+                    likeCount: 3
+                - post:
+                    uri: at://did:plc:dave/app.bsky.feed.post/r1
+                    cid: cid-r1
+                    author: { did: did:plc:dave, handle: dave.test }
+                    record: { text: "Dave's post, reposted", createdAt: "2026-09-20T09:00:00.000Z" }
+                  reason: { $type: app.bsky.feed.defs#reasonRepost, by: { did: did:plc:alice, handle: alice.test } }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:alice, handle: alice.test, displayName: "家族👨‍👩‍👧 Alice" }
+                    record: { text: "返信です", createdAt: "2026-09-20T08:00:00.000Z" }
+    steps:
+      - *session
+      - run:
+          command: bsky author @alice.test -n 10
+          env: *env
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              家族👨‍👩‍👧 Alice @alice.test · 2026-09-20 10:00
+              山の写真 🇯🇵 1️⃣ ❤️
+              二行目 👋🏽
+              [4 pictures]
+              ♡ 3  ⟳ 0  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/p1
+
+              家族👨‍👩‍👧 Alice @alice.test · 2026-09-20 08:00
+              返信です
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/p2
+      # The first page and the one its cursor named, then no more.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 2, query: { name: cursor, equals: "page2" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: actor, equals: "alice.test" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: filter, equals: "posts_with_replies" } }
+      - run:
+          command: bsky author alice.test --reposts --filter no-replies -n 2
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              家族👨‍👩‍👧 Alice @alice.test · 2026-09-20 10:00
+              山の写真 🇯🇵 1️⃣ ❤️
+              二行目 👋🏽
+              [4 pictures]
+              ♡ 3  ⟳ 0  ↩ 0
+              at://did:plc:alice/app.bsky.feed.post/p1
+
+              ⟳ reposted by @alice.test
+              @dave.test · 2026-09-20 09:00
+              Dave's post, reposted
+              ♡ 0  ⟳ 0  ↩ 0
+              at://did:plc:dave/app.bsky.feed.post/r1
+      # Two were wanted and the first page had them: one request more.
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 3, query: { name: filter, equals: "posts_no_replies" } }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: limit, equals: "2" } }
+      # The lexicon's own name is taken too; --json prints each feedViewPost.
+      - run:
+          command: bsky author alice.test --filter posts_with_media --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{"post":\{.*"uri":"at://did:plc:alice/app.bsky.feed.post/p1".*\}\n\{"post":\{.*"uri":"at://did:plc:alice/app.bsky.feed.post/p2".*\}\n$'
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: filter, equals: "posts_with_media" } }
+      - run:
+          command: bsky author alice.test --filter everything
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid value 'everything' for '--filter <FILTER>'"
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 5 }
+
+  # download saves a post's pictures as the viewer's d saves one: full size,
+  # named after the picture with the extension its bytes have, and a name
+  # already taken gets a number rather than being written over.
+  - name: download saves the four pictures of a post, and a file already there is not overwritten
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "四枚 📷" }
+                  embed:
+                    $type: app.bsky.embed.images#view
+                    images:
+                      - { thumb: "${api.url}/t/1", fullsize: "${api.url}/img/plain/did:plc:alice/bafy1@jpeg", alt: "一" }
+                      - { thumb: "${api.url}/t/2", fullsize: "${api.url}/img/plain/did:plc:alice/bafy2@jpeg", alt: "" }
+                      - { thumb: "${api.url}/t/3", fullsize: "${api.url}/img/plain/did:plc:alice/bafy3@jpeg", alt: "" }
+                      - { thumb: "${api.url}/t/4", fullsize: "${api.url}/img/plain/did:plc:alice/bafy4@jpeg", alt: "" }
+          - { method: GET, path: "/img/plain/did:plc:alice/bafy1@jpeg", body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: "/img/plain/did:plc:alice/bafy2@jpeg", body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: "/img/plain/did:plc:alice/bafy3@jpeg", body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: "/img/plain/did:plc:alice/bafy4@jpeg", body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - *session
+      - fixture:
+          file: "写真 👨‍👩‍👧/bafy1.png"
+          content: "old"
+      - run:
+          command: bsky download https://bsky.app/profile/alice.test/post/p1 -o "${workdir}/写真 👨‍👩‍👧"
+          env: *env
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            matches: '^\S.*写真 👨‍👩‍👧[/\\]bafy1 \(1\)\.png\n.*[/\\]bafy2\.png\n.*[/\\]bafy3\.png\n.*[/\\]bafy4\.png\n$'
+      - assert:
+          dir: { path: "写真 👨‍👩‍👧", count: 5, contains: [bafy1.png, bafy1 (1).png, bafy2.png, bafy3.png, bafy4.png] }
+      - assert:
+          file: { path: "写真 👨‍👩‍👧/bafy1.png", equals: "old" }
+      - assert:
+          image: { path: "写真 👨‍👩‍👧/bafy1 (1).png", width: 120, height: 90 }
+      - assert:
+          image: { path: "写真 👨‍👩‍👧/bafy4.png", width: 120, height: 90 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getPosts, query: { name: uris, equals: "at://did:plc:alice/app.bsky.feed.post/p1" } }
+      # Again, into the download folder, with --json: one object a file,
+      # and the four already there keep their names.
+      - run:
+          command: bsky download at://did:plc:alice/app.bsky.feed.post/p1 --json
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+            BSKY_DOWNLOAD_DIR: ${workdir}/dl
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{"kind":"image","path":"[^"]*dl[/\\]+bafy1\.png","post":"at://did:plc:alice/app\.bsky\.feed\.post/p1","url":"http://[^"]+/img/plain/did:plc:alice/bafy1@jpeg"\}\n(\{"kind":"image",[^\n]*bafy[234]\.png[^\n]*\}\n){3}$'
+      - assert:
+          dir: { path: dl, count: 4, contains: [bafy1.png, bafy2.png, bafy3.png, bafy4.png] }
+      - assert:
+          mock: { name: api, path: "/img/plain/did:plc:alice/bafy4@jpeg", count: 2 }
+
+  - name: download saves a post's video as one .ts file in the download folder
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/v1
+                  cid: cid-v1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "動画 🎬" }
+                  embed:
+                    $type: app.bsky.embed.video#view
+                    cid: bafyvideo
+                    playlist: "${api.url}/watch/v1/playlist.m3u8"
+                    thumbnail: "${api.url}/watch/v1/thumbnail.png"
+          - { method: GET, path: /watch/v1/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - fixture: { file: seg0.ts, from: testdata/hls/v/seg0.ts }
+      - run:
+          command: bsky download at://did:plc:alice/app.bsky.feed.post/v1 --json
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+            BSKY_DOWNLOAD_DIR: ${workdir}/downloads
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.kind", equals: "video" }
+              - { path: "$.url", matches: '/watch/v1/playlist\.m3u8$' }
+              - { path: "$.path", matches: 'downloads[/\\]v1\.ts$' }
+      - assert:
+          dir: { path: downloads, count: 1, contains: [v1.ts] }
+      # The one segment of the stand-in video, as it was sent.
+      - assert:
+          file: { path: downloads/v1.ts, equals_file: seg0.ts }
+      - assert:
+          mock: { name: api, path: /watch/v1/v/seg0.ts, count: 1 }
+
+  - name: download of a post without pictures or video is a usage error and writes nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "文字だけ 👨‍👩‍👧" }
+    steps:
+      - *session
+      - run:
+          command: bsky download at://did:plc:alice/app.bsky.feed.post/p1 -o out
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: at://did:plc:alice/app.bsky.feed.post/p1 has no pictures or video"
+          stdout:
+            empty: true
+      - assert:
+          file: { path: out, exists: false }
+      - run:
+          command: bsky download not-a-post
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: not-a-post is not a post"
+
+  # author --download saves what download would for each post it read, the
+  # posts without pictures or video passed over.
+  - name: author --download saves the pictures and videos of the posts it read
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p1
+                    cid: cid-p1
+                    author: { did: did:plc:alice, handle: alice.test }
+                    record: { text: "写真 🏔️", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.images#view
+                      images:
+                        - { thumb: "${api.url}/t/1", fullsize: "${api.url}/img/plain/did:plc:alice/bafy1@jpeg", alt: "" }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p2
+                    cid: cid-p2
+                    author: { did: did:plc:alice, handle: alice.test }
+                    record: { text: "文字だけ", createdAt: "2026-09-20T09:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v1
+                    cid: cid-v1
+                    author: { did: did:plc:alice, handle: alice.test }
+                    record: { text: "動画 🎬", createdAt: "2026-09-20T08:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v1/playlist.m3u8"
+          - { method: GET, path: "/img/plain/did:plc:alice/bafy1@jpeg", body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /watch/v1/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - run:
+          command: bsky author alice.test --download
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+            BSKY_DOWNLOAD_DIR: ${workdir}/downloads
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^.*downloads[/\\]bafy1\.png\n.*downloads[/\\]v1\.ts\n$'
+      - assert:
+          dir: { path: downloads, count: 2, contains: [bafy1.png, v1.ts] }
+      - run:
+          command: bsky author alice.test -n 1 --download picked --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.post", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.path", matches: 'picked[/\\]bafy1\.png$' }
+      - assert:
+          dir: { path: picked, count: 1, contains: [bafy1.png] }
