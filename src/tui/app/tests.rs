@@ -169,23 +169,23 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     );
     // Round the tabs, both ways, wrapping.
     app.handle_key(key('1'));
-    let order: Vec<Tab> = (0..7)
+    let order: Vec<Tab> = (0..DEFAULT_TABS.len())
         .map(|_| {
             app.handle_key(code(KeyCode::Tab));
             app.tab
         })
         .collect();
     assert_eq!(
-        order[..6],
+        order,
         DEFAULT_TABS[1..]
             .iter()
             .chain(&DEFAULT_TABS[..1])
             .copied()
-            .collect::<Vec<_>>()[..]
+            .collect::<Vec<_>>()
     );
     app.handle_key(key('1'));
     app.handle_key(code(KeyCode::BackTab));
-    assert_eq!(app.tab, Tab::Profile);
+    assert_eq!(app.tab, Tab::Chat);
     // ← → H L + switch nothing any more.
     app.handle_key(key('1'));
     for k in [
@@ -694,6 +694,8 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('2'),
         key('M'),
         key('B'),
+        key('7'),
+        key('i'),
         key('t'),
         key('i'),
         key('f'),
@@ -793,6 +795,33 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
+                    Job::ChatHistory => Event::ChatHistory(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok((0..size)
+                            .map(|i| serde_json::from_value(json!({"id": format!("c{step}-{i}"), "fromUserId": format!("u{i}"), "fromUser": {"username": "x"}, "text": "hi"})).unwrap())
+                            .collect())
+                    }),
+                    Job::ChatMessages { with, until } => Event::ChatMessages {
+                        with,
+                        until,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok((0..size)
+                                .map(|i| serde_json::from_value(json!({"id": format!("m{step}-{i}"), "fromUserId": "u", "text": "hi"})).unwrap())
+                                .collect())
+                        },
+                    },
+                    Job::ChatSend { with, text } => Event::ChatSent {
+                        with,
+                        text,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(Box::new(serde_json::from_value(json!({"id": format!("s{step}"), "fromUserId": "u-me", "text": "sent"})).unwrap()))
+                        },
+                    },
                     Job::Emojis => Event::Emojis(Ok(vec![(
                         "blobcat".into(),
                         "http://127.0.0.1:9/b.png".into(),
@@ -1756,4 +1785,117 @@ fn the_reaction_picker_searches_the_servers_emoji() {
     let jobs = app.handle_key(code(KeyCode::Enter));
     assert!(jobs.is_empty());
     assert!(app.status.as_ref().unwrap().text.contains("already"));
+}
+
+fn chat_message(v: Value) -> crate::api::types::ChatMessage {
+    serde_json::from_value(v).unwrap()
+}
+
+// The Chat tab (7) lists the conversations, one each, with whom; enter
+// opens one and reads its messages; i writes and enter sends once; what
+// could not be sent stays typed. The tab is read again every 15 s.
+#[test]
+fn the_chat_tab_lists_opens_and_sends() {
+    let mut app = writer(vec![]);
+    let jobs = app.handle_key(key('7'));
+    assert_eq!(app.tab, Tab::Chat);
+    assert_eq!(jobs[0].1, Job::ChatHistory);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ChatHistory(Ok(vec![
+            chat_message(json!({"id": "m3", "createdAt": "3", "fromUserId": "u-bob", "fromUser": {"id": "u-bob", "username": "bob"}, "toUserId": "u-me", "text": "やあ 👋"})),
+            chat_message(json!({"id": "m2", "createdAt": "2", "fromUserId": "u-me", "toUserId": "u-bob", "toUser": {"id": "u-bob", "username": "bob"}, "text": "前の"})),
+            chat_message(json!({"id": "r1", "createdAt": "1", "fromUserId": "u-cat", "toRoomId": "room1", "toRoom": {"id": "room1", "name": "雑談"}, "text": "部屋"})),
+        ])),
+    );
+    let ids: Vec<&str> = app
+        .chat
+        .convos
+        .items
+        .iter()
+        .map(|m| m.id.as_str())
+        .collect();
+    assert_eq!(ids, ["m3", "r1"], "one entry a conversation");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    let with = crate::tui::worker::ChatWith::User("u-bob".into());
+    assert_eq!(
+        jobs[0].1,
+        Job::ChatMessages {
+            with: with.clone(),
+            until: None
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::ChatMessages {
+            with: with.clone(),
+            until: None,
+            result: Ok(vec![]),
+        },
+    );
+    assert_eq!(app.chat.open.as_ref().unwrap().title, "@bob");
+    app.handle_key(key('i'));
+    type_str(&mut app, "こんにちは 🇯🇵");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        jobs[0].1,
+        Job::ChatSend {
+            with: with.clone(),
+            text: "こんにちは 🇯🇵".into()
+        }
+    );
+    assert!(app.handle_key(code(KeyCode::Enter)).is_empty(), "sent once");
+    app.handle_answer(
+        jobs[0].0,
+        Event::ChatSent {
+            with: with.clone(),
+            text: "こんにちは 🇯🇵".into(),
+            result: Err(Error::api("x")),
+        },
+    );
+    assert_eq!(
+        app.chat.open.as_ref().unwrap().input.text(),
+        "こんにちは 🇯🇵"
+    );
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ChatSent {
+            with,
+            text: "こんにちは 🇯🇵".into(),
+            result: Ok(Box::new(chat_message(
+                json!({"id": "m9", "fromUserId": "u-me", "text": "こんにちは 🇯🇵"}),
+            ))),
+        },
+    );
+    let o = app.chat.open.as_ref().unwrap();
+    assert!(o.input.text().is_empty());
+    assert_eq!(o.messages.items[0].id, "m9");
+    // Every 15 s the conversation is read again; not sooner.
+    let now = Instant::now();
+    assert!(app.poll_chat(now).is_empty());
+    assert_eq!(app.poll_chat(now + Duration::from_secs(16)).len(), 1);
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.chat.open.is_none());
+}
+
+// A server without chat, or a role that may not chat, takes the tab away.
+#[test]
+fn a_server_without_chat_takes_the_tab_away() {
+    let mut app = writer(vec![]);
+    let jobs = app.handle_key(key('7'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ChatHistory(Err(Error::api(
+            "chat/history failed: NO_SUCH_ENDPOINT: No such endpoint.",
+        ))),
+    );
+    assert!(!app.tabs.contains(&Tab::Chat));
+    assert_ne!(app.tab, Tab::Chat);
+    assert!(app.status.as_ref().unwrap().text.contains("has no chat"));
+    // A visitor's Chat tab says how to log in.
+    let (mut v, _) = App::new(None, ORIGIN);
+    assert!(v.handle_key(key('7')).is_empty());
+    assert!(v.chat.convos.error.as_ref().unwrap().contains("log in"));
 }

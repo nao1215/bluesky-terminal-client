@@ -141,6 +141,16 @@ pub const HELP: &[Section] = &[
         ],
     },
     Section {
+        title: "Chat",
+        keys: &[
+            ("enter", "open the conversation"),
+            ("i enter", "write a message; enter sends it"),
+            ("k j", "read further back / forward"),
+            ("esc", "back to the conversations"),
+            ("", "read again every 15 s while shown"),
+        ],
+    },
+    Section {
         title: "Accounts",
         keys: &[
             ("A", "the accounts, the one in use marked"),
@@ -287,6 +297,11 @@ fn view_hints(app: &App) -> Vec<Hint> {
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
+        Tab::Chat => match &app.chat.open {
+            Some(o) if o.typing => return vec![("enter", "send"), ("esc", "stop writing")],
+            Some(_) => vec![("i", "write"), ("j k", "scroll"), ("esc", "back")],
+            None => vec![("j k", "move"), ("enter", "open"), ("R", "refresh")],
+        },
         Tab::Search if app.search.editing => {
             return vec![
                 ("enter", "search"),

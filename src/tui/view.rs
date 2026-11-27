@@ -22,6 +22,7 @@ use crate::tui::text::{cells, cluster_width, drawable, format_time, graphemes, t
 use crate::tui::theme::Theme;
 
 mod browse;
+mod chat;
 mod compose;
 #[cfg(test)]
 mod tests;
@@ -104,6 +105,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             }
             Tab::Search => draw_search(frame, body, &mut app.search, images, &ctx),
             Tab::Profile => draw_profile(frame, body, &mut app.profile, images, &ctx),
+            Tab::Chat => {
+                let me = app.session.as_ref().map(|s| s.user_id.clone());
+                chat::draw_chat(frame, body, &mut app.chat, me.as_deref(), images, &ctx);
+            }
         }
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
@@ -253,7 +258,6 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             t.dim()
         };
         spans.push(Span::styled(label, style));
-        spans.push(Span::raw(" "));
     }
     // Who the client reads as, at the right where it fits whole: the
     // account in use, or the server read as a visitor.

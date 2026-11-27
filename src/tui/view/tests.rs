@@ -113,8 +113,9 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     let screen = render_text(&mut app, 100, 12);
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
-        lines[0]
-            .starts_with(" 1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile"),
+        lines[0].starts_with(
+            " 1 Home  2 Local  3 Global  4 Notifications  5 Search  6 Profile  7 Chat"
+        ),
         "{screen}"
     );
     assert!(lines[0].ends_with("@me@misskey.test"), "{screen}");

@@ -323,6 +323,150 @@ pub fn guarded(ctx: &Ctx, out: &mut dyn Write, what: Guard, limit: usize) -> Res
     Ok(())
 }
 
+/// A chat message as `--json` prints it: who sent it and to whom (or to
+/// which room), in the account shape the other commands print.
+fn chat_json(m: &crate::api::types::ChatMessage, origin: &str) -> Value {
+    json!({
+        "id": m.id,
+        "createdAt": m.created_at,
+        "from": m.from_user.as_ref().map(|u| format::account_json(u, origin)),
+        "to": m.to_user.as_ref().map(|u| format::account_json(u, origin)),
+        "room": m.to_room.as_ref().map(|r| json!({"id": r.id, "name": r.name})),
+        "text": m.text,
+    })
+}
+
+/// A chat message as text: who, when, and what it says.
+fn chat_text(m: &crate::api::types::ChatMessage) -> String {
+    let who = m.from_user.as_ref().map_or_else(
+        || m.from_user_id.clone(),
+        |u| match u.host.as_deref().filter(|h| !h.is_empty()) {
+            Some(h) => format!("@{}@{h}", u.username),
+            None => format!("@{}", u.username),
+        },
+    );
+    let mut out = format!(
+        "{} · {}\n",
+        crate::text::one_line(&who),
+        format::time(&m.created_at)
+    );
+    if let Some(t) = &m.text {
+        for line in crate::text::drawable(t).lines() {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if let Some(f) = &m.file {
+        out.push_str(&format!("[{}]\n", crate::text::one_line(&f.name)));
+    }
+    out
+}
+
+/// `msky chat` (bsky's): the conversations; with ACTOR the messages with
+/// them, oldest first; with TEXT too, send it (`-` reads it from stdin).
+pub fn chat(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    actor: Option<&str>,
+    message: Option<String>,
+    limit: usize,
+    stdin: &mut dyn std::io::Read,
+) -> Result<()> {
+    let client = ctx.account_client()?;
+    let explained = |e: Error| {
+        if api::chat_unavailable(&e) {
+            let host = client.host().to_string();
+            e.with_hint(format!("{host} has no chat for this account (a version before chat, or a role that may not chat)"))
+        } else {
+            ctx.explained(e)
+        }
+    };
+    let Some(actor) = actor else {
+        let mut all = client.chat_history(false, limit).map_err(explained)?;
+        if let Ok(rooms) = client.chat_history(true, limit) {
+            all.extend(rooms);
+        }
+        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all.truncate(limit);
+        for m in &all {
+            if ctx.json {
+                json_line(out, &chat_json(m, client.origin()))?;
+            } else {
+                text(out, &chat_text(m))?;
+            }
+        }
+        return Ok(());
+    };
+    let who = parse_user(actor)?;
+    let host = who
+        .host
+        .as_deref()
+        .filter(|h| !h.eq_ignore_ascii_case(client.host()));
+    let u = client
+        .user(&who.username, host)
+        .map_err(|e| ctx.explained(e))?;
+    if let Some(m) = message {
+        let body = if m == "-" {
+            let mut s = String::new();
+            stdin
+                .read_to_string(&mut s)
+                .map_err(|e| Error::io(format!("cannot read the message from stdin: {e}")))?;
+            s
+        } else {
+            m
+        };
+        let body = body.trim();
+        if body.is_empty() {
+            return Err(Error::usage("the message is empty"));
+        }
+        let client = ctx.writer(&["write:chat"], "send messages")?;
+        let sent = client
+            .chat_send(Some(&u.id), None, body)
+            .map_err(explained)?;
+        if ctx.json {
+            return json_line(out, &chat_json(&sent, client.origin()));
+        }
+        return text(
+            out,
+            &format!(
+                "sent to {}\n",
+                crate::text::one_line(&acct_of(&u, client.host()))
+            ),
+        );
+    }
+    let mut all = pages(
+        limit,
+        false,
+        |_| true,
+        |n, until| client.chat_timeline(Some(&u.id), None, n, until),
+    )
+    .map_err(explained)?;
+    all.reverse();
+    for (i, m) in all.iter().enumerate() {
+        if ctx.json {
+            json_line(out, &chat_json(m, client.origin()))?;
+        } else {
+            if i > 0 {
+                text(out, "\n")?;
+            }
+            text(out, &chat_text(m))?;
+        }
+    }
+    Ok(())
+}
+
+impl Paged for crate::api::types::ChatMessage {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// `@name@host` of `u`, the host of an account of the server read filled in.
+fn acct_of(u: &User, host: &str) -> String {
+    let h = u.host.as_deref().filter(|h| !h.is_empty()).unwrap_or(host);
+    format!("@{}@{h}", u.username)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,5 +686,94 @@ mod tests {
             serde_json::from_str::<Value>(out.trim()).unwrap()["renoteId"],
             "n"
         );
+    }
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::*;
+    use crate::api::stub_tests::{reply, serve};
+    use crate::config::{AccountStore, Session};
+    use std::sync::Arc;
+
+    // chat lists the conversations; with an account, its messages, oldest
+    // first; with text, sends it once to the account.
+    #[test]
+    fn chat_lists_reads_and_sends() {
+        let (url, calls) = serve(Arc::new(|path, body, _| match path {
+            "/api/chat/history" if body.contains("\"room\":false") => reply(
+                200,
+                r#"[{"id":"m2","createdAt":"2026-11-26T10:00:00.000Z","fromUserId":"u-bob","fromUser":{"username":"bob"},"text":"やあ 👋"}]"#,
+            ),
+            "/api/chat/history" => reply(200, "[]"),
+            "/api/users/show" => reply(200, r#"{"id":"u-bob","username":"bob"}"#),
+            "/api/chat/messages/user-timeline" if !body.contains("untilId") => reply(
+                200,
+                r#"[{"id":"m2","createdAt":"2026-11-26T10:00:00.000Z","fromUserId":"u-bob","fromUser":{"username":"bob"},"text":"後"},{"id":"m1","createdAt":"2026-11-26T09:00:00.000Z","fromUserId":"u-me","fromUser":{"username":"me"},"text":"先"}]"#,
+            ),
+            "/api/chat/messages/user-timeline" => reply(200, "[]"),
+            "/api/chat/messages/create-to-user" => reply(
+                200,
+                r#"{"id":"m3","fromUserId":"u-me","text":"こんにちは"}"#,
+            ),
+            _ => reply(404, r#"{"error":{"code":"NO_SUCH_ENDPOINT"}}"#),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        AccountStore::open(dir.path())
+            .save(&Session {
+                service: url.clone(),
+                user_id: "u-me".into(),
+                username: "me".into(),
+                token: "fake-token-for-tests".into(),
+                permissions: crate::miauth::PERMISSIONS
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect(),
+            })
+            .unwrap();
+        let c = Ctx {
+            origin: url.clone(),
+            json: false,
+            host_given: true,
+            accounts: Ok(AccountStore::open(dir.path())),
+            env_token: None,
+        };
+        let run = |a: Option<&str>, m: Option<&str>| {
+            let mut out = Vec::new();
+            chat(
+                &c,
+                &mut out,
+                a,
+                m.map(str::to_string),
+                10,
+                &mut std::io::empty(),
+            )
+            .unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        assert_eq!(
+            run(None, None),
+            "@bob · 2026-11-26 10:00\nやあ 👋\n".replace(
+                "2026-11-26 10:00",
+                &format::time("2026-11-26T10:00:00.000Z")
+            )
+        );
+        let msgs = run(Some("bob"), None);
+        assert!(
+            msgs.find("先").unwrap() < msgs.find("後").unwrap(),
+            "{msgs}"
+        );
+        assert_eq!(
+            run(Some("bob"), Some("こんにちは")),
+            format!("sent to @bob@{}\n", api::authority(&url))
+        );
+        let log = calls.lock().unwrap();
+        let (_, body) = log
+            .iter()
+            .find(|(p, _)| p == "/api/chat/messages/create-to-user")
+            .unwrap();
+        let v: Value = serde_json::from_str(body).unwrap();
+        assert_eq!(v["toUserId"], "u-bob");
+        assert_eq!(v["text"], "こんにちは");
     }
 }

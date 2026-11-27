@@ -17,12 +17,14 @@ use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{Event, Job, Thread};
 
 mod browse;
+mod chat;
 mod write;
 
 #[cfg(test)]
 mod tests;
 
 pub use browse::{Profile, Search, SearchMode};
+pub use chat::{ChatPane, partner};
 pub use write::Compose;
 
 /// The tabs. Each timeline is a tab of its own; which tabs there are and
@@ -34,17 +36,19 @@ pub enum Tab {
     Notifications,
     Search,
     Profile,
+    Chat,
 }
 
 /// The tabs without a `tabs` setting: Social, home and local mixed, is
 /// left out, and a setting can put it in.
-pub const DEFAULT_TABS: [Tab; 6] = [
+pub const DEFAULT_TABS: [Tab; 7] = [
     Tab::Timeline(TimelineKind::Home),
     Tab::Timeline(TimelineKind::Local),
     Tab::Timeline(TimelineKind::Global),
     Tab::Notifications,
     Tab::Search,
     Tab::Profile,
+    Tab::Chat,
 ];
 
 impl Tab {
@@ -57,6 +61,7 @@ impl Tab {
             Tab::Notifications => "Notifications",
             Tab::Search => "Search",
             Tab::Profile => "Profile",
+            Tab::Chat => "Chat",
         }
     }
 
@@ -70,6 +75,7 @@ impl Tab {
             "notifications" => Tab::Notifications,
             "search" => Tab::Search,
             "profile" => Tab::Profile,
+            "chat" => Tab::Chat,
             _ => return None,
         })
     }
@@ -90,7 +96,7 @@ pub fn tabs_of(names: &[String]) -> (Vec<Tab>, Option<String>) {
     }
     let warning = (!unknown.is_empty()).then(|| {
         format!(
-            "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile)",
+            "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile, chat)",
             unknown.join(", ")
         )
     });
@@ -457,6 +463,8 @@ pub struct App {
     pub notifications: List<Notification>,
     pub search: Search,
     pub profile: Profile,
+    /// The Chat tab.
+    pub chat: ChatPane,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
     pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
@@ -531,6 +539,7 @@ impl App {
             notifications: List::default(),
             search: Search::default(),
             profile: Profile::default(),
+            chat: ChatPane::default(),
             threads: Vec::new(),
             overlay: None,
             status: None,
@@ -576,6 +585,7 @@ impl App {
         self.renoted.clear();
         self.search = Search::default();
         self.profile = Profile::default();
+        self.chat = ChatPane::default();
         if self.session.is_none() {
             let host = self.host().to_string();
             for kind in TimelineKind::ALL.into_iter().filter(|k| k.needs_login()) {
@@ -844,6 +854,9 @@ impl App {
             | Event::SearchNotes { .. }
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
+            e @ (Event::ChatHistory(_) | Event::ChatMessages { .. } | Event::ChatSent { .. }) => {
+                self.chat_answer(seq, e)
+            }
             Event::Emojis(Ok(list)) => self.emojis = list.into_iter().collect(),
             // Custom emoji are then shown by name, as before.
             Event::Emojis(Err(_)) => {}
@@ -906,6 +919,12 @@ impl App {
         }
         if self.tab == Tab::Search && self.search.editing && self.threads.is_empty() {
             return self.search_key(key);
+        }
+        if self.tab == Tab::Chat
+            && self.threads.is_empty()
+            && let Some(jobs) = self.chat_key(key)
+        {
+            return jobs;
         }
         self.main_key(key)
     }
@@ -1226,6 +1245,9 @@ impl App {
         self.profile.came_from = None;
         // Arriving at an empty Search tab means wanting to type, as in bsky.
         self.search.editing = tab == Tab::Search && self.search.input.is_empty();
+        if tab == Tab::Chat {
+            return self.show_chat();
+        }
         if tab == Tab::Profile && self.profile.who.is_none() {
             return self.open_profile(crate::tui::worker::Who::Me);
         }
@@ -1308,6 +1330,8 @@ impl App {
                 }
             }
             Tab::Search | Tab::Profile => self.step_browse(delta),
+            // The tab's own keys move through it.
+            Tab::Chat => Vec::new(),
         }
     }
 
@@ -1326,6 +1350,7 @@ impl App {
             Tab::Timeline(kind) => self.load_timeline(kind),
             Tab::Notifications => self.load_notifications(),
             Tab::Search | Tab::Profile => self.refresh_browse(),
+            Tab::Chat => Vec::new(),
         }
     }
 
@@ -1342,6 +1367,7 @@ impl App {
                 SearchMode::Accounts => None,
             },
             Tab::Profile => self.profile.notes.current(),
+            Tab::Chat => None,
         }
     }
 

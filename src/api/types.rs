@@ -125,6 +125,32 @@ pub struct Relation {
     pub blockee: Option<User>,
 }
 
+/// A chat room, as a message to it names it.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChatRoom {
+    pub id: String,
+    pub name: String,
+}
+
+/// A chat message (`ChatMessage`): from whom, to whom or to which room,
+/// and what it says.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChatMessage {
+    pub id: String,
+    pub created_at: String,
+    pub from_user_id: String,
+    pub from_user: Option<User>,
+    pub to_user_id: Option<String>,
+    pub to_user: Option<User>,
+    pub to_room_id: Option<String>,
+    pub to_room: Option<ChatRoom>,
+    pub text: Option<String>,
+    pub file: Option<DriveFile>,
+    pub is_read: Option<bool>,
+}
+
 /// An entry of `notes/reactions`: who reacted, with what, when.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]

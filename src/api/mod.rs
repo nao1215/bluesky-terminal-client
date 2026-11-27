@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Kind, Result};
-use types::{DriveFile, Note, Notification, Reaction, Relation, User};
+use types::{ChatMessage, DriveFile, Note, Notification, Reaction, Relation, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
 pub const DEFAULT_HOST: &str = "misskey.io";
@@ -322,6 +322,64 @@ impl Client {
     pub fn unreact(&self, id: &str) -> Result<()> {
         self.write("notes/reactions/delete", &json!({"noteId": id}))
             .map(drop)
+    }
+
+    /// `chat/history`: the latest message of each conversation with an
+    /// account, and with `room` of each room.
+    pub fn chat_history(&self, room: bool, limit: usize) -> Result<Vec<ChatMessage>> {
+        chat_messages(
+            "chat/history",
+            self.call(
+                "chat/history",
+                &json!({"limit": limit.clamp(1, MAX_PAGE), "room": room}),
+            )?,
+        )
+    }
+
+    /// The messages with account `user_id` (`chat/messages/user-timeline`)
+    /// or in room `room_id` (`chat/messages/room-timeline`), newest first,
+    /// older than `until` when given.
+    pub fn chat_timeline(
+        &self,
+        user_id: Option<&str>,
+        room_id: Option<&str>,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<ChatMessage>> {
+        let (endpoint, mut body) = match (user_id, room_id) {
+            (_, Some(r)) => ("chat/messages/room-timeline", json!({"roomId": r})),
+            (Some(u), None) => ("chat/messages/user-timeline", json!({"userId": u})),
+            (None, None) => return Ok(Vec::new()),
+        };
+        body["limit"] = json!(limit.clamp(1, MAX_PAGE));
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        chat_messages(endpoint, self.call(endpoint, &body)?)
+    }
+
+    /// Send `text` to account `user_id` (`chat/messages/create-to-user`) or
+    /// room `room_id` (`chat/messages/create-to-room`); the message made.
+    pub fn chat_send(
+        &self,
+        user_id: Option<&str>,
+        room_id: Option<&str>,
+        text: &str,
+    ) -> Result<ChatMessage> {
+        let (endpoint, body) = match (user_id, room_id) {
+            (_, Some(r)) => (
+                "chat/messages/create-to-room",
+                json!({"toRoomId": r, "text": text}),
+            ),
+            (Some(u), None) => (
+                "chat/messages/create-to-user",
+                json!({"toUserId": u, "text": text}),
+            ),
+            (None, None) => return Err(Error::usage("a message goes to an account or a room")),
+        };
+        let v = self.write(endpoint, &body)?;
+        serde_json::from_value(v)
+            .map_err(|e| Error::api(format!("{endpoint}: unexpected answer: {e}")))
     }
 
     /// `emojis`: the server's custom emoji, each its name and its
@@ -706,6 +764,31 @@ fn notes(v: Value) -> Result<Vec<Note>> {
         .into_iter()
         .filter_map(|v| serde_json::from_value(v).ok())
         .collect())
+}
+
+/// The messages of an answer that is a list of them.
+fn chat_messages(endpoint: &str, v: Value) -> Result<Vec<ChatMessage>> {
+    let Value::Array(items) = v else {
+        return Err(Error::api(format!(
+            "{endpoint}: the server did not answer with a list"
+        )));
+    };
+    Ok(items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect())
+}
+
+/// Whether `e`, from a chat call, says the server has no chat or keeps it
+/// from this account: an endpoint it does not have (a version before
+/// chat), or a role that may not chat.
+pub fn chat_unavailable(e: &Error) -> bool {
+    let m = e.message();
+    m.contains("NO_SUCH_ENDPOINT")
+        || m.contains("HTTP 404")
+        || m.contains("CHAT_UNAVAILABLE")
+        || m.contains("PERMISSION_DENIED")
+        || m.contains("ROLE_PERMISSION_DENIED")
 }
 
 fn transport(endpoint: &str, e: &ureq::Error) -> Error {

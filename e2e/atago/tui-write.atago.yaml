@@ -206,3 +206,76 @@ scenarios:
                 - { path: "$.noteId", equals: mine1 }
       - assert:
           mock: { name: api, path: /api/notifications/mark-all-as-read, count: 1 }
+
+  - name: the Chat tab lists the conversations, opens one and sends a message
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json: []
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/chat/history
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob }, toUserId: u-me, text: "やあ 👋", isRead: false }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob }, toUserId: u-me, text: "やあ 👋" }
+          - method: POST
+            path: /api/chat/messages/create-to-user
+            json: { id: m3, createdAt: "2026-11-26T10:01:00.000Z", fromUserId: u-me, fromUser: { id: u-me, username: me }, toUserId: u-bob, text: "こんにちは 🇯🇵" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0301",
+             "permissions": ["read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "7 Chat"
+            - send: "7"
+            - expect_screen:
+                contains: ["@bob ●", "bob: やあ 👋", "enter open"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["@bob", "esc back", "やあ 👋", "i to write"]
+            - send: i
+            - send: "こんにちは 🇯🇵"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["me · 2026-11-26 10:01", "こんにちは 🇯🇵"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "i to write"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "enter open"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/messages/create-to-user
+            count: 1
+            body:
+              json:
+                - { path: "$.toUserId", equals: u-bob }
+                - { path: "$.text", equals: "こんにちは 🇯🇵" }

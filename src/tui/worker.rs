@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::api::Client;
-use crate::api::types::{DriveFile, Note, Notification, User};
+use crate::api::types::{ChatMessage, DriveFile, Note, Notification, User};
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::Session;
 use crate::error::{Error, Result};
@@ -74,6 +74,16 @@ pub enum Job {
     MarkRead,
     /// The server's custom emoji.
     Emojis,
+    /// The latest message of each conversation, with accounts and rooms.
+    ChatHistory,
+    /// The messages of conversation `with`, newest first: the latest, or
+    /// those older than `until`.
+    ChatMessages {
+        with: ChatWith,
+        until: Option<String>,
+    },
+    /// Send `text` in conversation `with`.
+    ChatSend { with: ChatWith, text: String },
     /// An account and the first page of its notes.
     Profile { who: Who },
     /// A page of account `user_id`'s notes older than `until`.
@@ -102,6 +112,24 @@ pub enum Job {
     /// Wait for the access asked for with MiAuth `session` on the server at
     /// `origin`, and make the login of it.
     Login { origin: String, session: String },
+}
+
+/// Whom a chat conversation is with.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChatWith {
+    /// An account, by ID.
+    User(String),
+    /// A room, by ID.
+    Room(String),
+}
+
+impl ChatWith {
+    fn ids(&self) -> (Option<&str>, Option<&str>) {
+        match self {
+            ChatWith::User(u) => (Some(u), None),
+            ChatWith::Room(r) => (None, Some(r)),
+        }
+    }
 }
 
 /// Whose profile is asked for.
@@ -162,6 +190,17 @@ pub enum Event {
     MarkedRead(Result<()>),
     /// The server's custom emoji: name and picture address.
     Emojis(Result<Vec<(String, String)>>),
+    ChatHistory(Result<Vec<ChatMessage>>),
+    ChatMessages {
+        with: ChatWith,
+        until: Option<String>,
+        result: Result<Vec<ChatMessage>>,
+    },
+    ChatSent {
+        with: ChatWith,
+        text: String,
+        result: Result<Box<ChatMessage>>,
+    },
     /// An account and the first page of its notes, answered under the
     /// number of the job that asked.
     Profile(Result<Box<(User, Vec<Note>)>>),
@@ -234,6 +273,17 @@ impl Job {
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
             Job::Emojis => Event::Emojis(Err(e)),
+            Job::ChatHistory => Event::ChatHistory(Err(e)),
+            Job::ChatMessages { with, until } => Event::ChatMessages {
+                with,
+                until,
+                result: Err(e),
+            },
+            Job::ChatSend { with, text } => Event::ChatSent {
+                with,
+                text,
+                result: Err(e),
+            },
             Job::Profile { .. } => Event::Profile(Err(e)),
             Job::UserNotes { user_id, until } => Event::UserNotes {
                 user_id,
@@ -323,6 +373,23 @@ pub fn run(job: Job, client: &Client) -> Event {
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
         Job::Emojis => Event::Emojis(client.emojis()),
+        Job::ChatHistory => Event::ChatHistory(chat_history(client)),
+        Job::ChatMessages { with, until } => {
+            let (u, r) = with.ids();
+            Event::ChatMessages {
+                result: client.chat_timeline(u, r, PAGE, until.as_deref()),
+                with,
+                until,
+            }
+        }
+        Job::ChatSend { with, text } => {
+            let (u, r) = with.ids();
+            Event::ChatSent {
+                result: client.chat_send(u, r, &text).map(Box::new),
+                with,
+                text,
+            }
+        }
         Job::Profile { who } => Event::Profile(profile(client, &who).map(Box::new)),
         Job::UserNotes { user_id, until } => Event::UserNotes {
             result: client.user_notes(&user_id, &ALL_NOTES, PAGE, Some(&until)),
@@ -441,6 +508,18 @@ fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
     };
     client.account_write(endpoint, id)?;
     client.user_by_id(id)
+}
+
+/// The conversations with accounts and with rooms, the newest first.
+fn chat_history(client: &Client) -> Result<Vec<ChatMessage>> {
+    let mut all = client.chat_history(false, PAGE)?;
+    // Rooms are a later addition: a server without them answers the
+    // accounts' alone.
+    if let Ok(rooms) = client.chat_history(true, PAGE) {
+        all.extend(rooms);
+    }
+    all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(all)
 }
 
 /// A note to post, as the composer made it.

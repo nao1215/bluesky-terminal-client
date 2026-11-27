@@ -345,6 +345,11 @@ fn event_loop(
         if app.expire_status(std::time::Instant::now()) {
             dirty = true;
         }
+        // The Chat tab reads the server again now and then while shown.
+        for (seq, job) in app.poll_chat(std::time::Instant::now()) {
+            worker.send(seq, job);
+            dirty = true;
+        }
     }
     Ok(())
 }

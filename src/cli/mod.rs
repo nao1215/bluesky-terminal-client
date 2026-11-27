@@ -109,6 +109,14 @@ pub enum Command {
         #[arg(short = 'n', long, default_value_t = 50)]
         limit: usize,
     },
+    /// Chat: the conversations; with ACTOR the messages with them; with
+    /// TEXT too, send it (`-` reads it from stdin).
+    Chat {
+        actor: Option<String>,
+        text: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Notes that match QUERY, newest first.
     Search {
         query: String,
@@ -558,6 +566,9 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         Command::Block { actor } => more::guard(ctx, out, &actor, more::Guard::Block, true),
         Command::Unblock { actor } => more::guard(ctx, out, &actor, more::Guard::Block, false),
         Command::Blocks { limit } => more::guarded(ctx, out, more::Guard::Block, limit),
+        Command::Chat { actor, text, limit } => {
+            more::chat(ctx, out, actor.as_deref(), text, limit, &mut io::stdin())
+        }
         Command::Search { query, limit } => search(ctx, out, &query, limit),
         Command::Download { note, output } => {
             download_note(ctx, out, &note, &download::download_dir(output)?)
@@ -1758,7 +1769,7 @@ mod tests {
             "the check carries no token"
         );
         assert!(
-            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks\n")),
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks,read:chat,write:chat\n")),
             "{err}"
         );
         assert!(!err.contains(FAKE) && !out.contains(FAKE));
