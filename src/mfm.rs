@@ -495,6 +495,16 @@ fn special<'a>(s: &'a str, i: usize, bold: bool, depth: usize) -> Drawn<'a> {
             Box::new(move |r: &mut Vec<Run>| render(label, bold, depth + 1, r)),
         ));
     }
+    // An address is drawn as written: the brackets it takes in may hold
+    // what reads as MFM elsewhere (`https://a.test/([x](https://b.test))`),
+    // as in mfm-js, and as its silenced form, in `<plain>`, reads.
+    if let Some(link) = bare(b, i) {
+        let url = &s[i..link.end];
+        return Some((
+            link.end,
+            Box::new(move |r: &mut Vec<Run>| push(r, url, bold)),
+        ));
+    }
     None
 }
 
@@ -754,6 +764,10 @@ mod tests {
     #[case("$[x2 https://a.test/[1]] 後")]
     #[case("**太字 <https://a.test/**> まだ**")]
     #[case("<small>小 <https://a.test/</small>> 🇯🇵</small>")]
+    #[case(
+        "https://example.com/wiki/Foo_(bar)_[baz] https://examp\u{1}\u{5}le.com/(https://e[label](https://example(((x))))"
+    )]
+    #[case("見て https://a.test/([x](https://b.test)) 👨\u{200d}👩\u{200d}👧")]
     fn markup_closes_where_it_did_before_silencing(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }
