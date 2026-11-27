@@ -18,6 +18,33 @@ pub struct User {
     pub host: Option<String>,
     /// The display name, which may be unset.
     pub name: Option<String>,
+    /// What the account says about itself (`UserDetailed` only).
+    pub description: Option<String>,
+    pub followers_count: Option<u64>,
+    pub following_count: Option<u64>,
+    pub notes_count: Option<u64>,
+}
+
+/// `Notification`: what happened, who did it, and the note it is about.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Notification {
+    pub id: String,
+    pub created_at: String,
+    /// `follow`, `mention`, `reply`, `renote`, `quote`, `reaction`, ...
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// Who did it; none for what the server itself says (an achievement).
+    pub user: Option<User>,
+    /// The note it is about: the reply, the mention, the note reacted to.
+    pub note: Option<Note>,
+    /// The reaction given, for `reaction`.
+    pub reaction: Option<String>,
+    /// The achievement earned, for `achievementEarned`.
+    pub achievement: Option<String>,
+    /// What an app wrote, for `app`.
+    pub header: Option<String>,
+    pub body: Option<String>,
 }
 
 /// `DriveFile`: a file attached to a note.

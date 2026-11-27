@@ -1,7 +1,8 @@
 //! A small blocking client for the Misskey API calls msky makes.
 //!
-//! Every call is `POST https://<host>/api/<endpoint>` with a JSON body, and
-//! none of them is signed in: msky reads what the server shows to visitors.
+//! Every call is `POST https://<host>/api/<endpoint>` with a JSON body. A
+//! client made with the token `msky login` saved sends it as the body's `i`,
+//! to that server only; one without reads what the server shows to visitors.
 //! A call the server turns away for being asked too often (HTTP 429,
 //! `RATE_LIMIT_EXCEEDED`), or that a busy gateway drops (502, 503, 504), is
 //! tried again after the wait the server asks for, a few times; anything
@@ -10,7 +11,7 @@
 pub mod types;
 
 #[cfg(test)]
-mod stub_tests;
+pub(crate) mod stub_tests;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Kind, Result};
-use types::{Note, User};
+use types::{Note, Notification, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
 pub const DEFAULT_HOST: &str = "misskey.io";
@@ -108,12 +109,14 @@ struct ErrorDetail {
 /// Waits before a call is tried again; the tests wait without sleeping.
 type Wait = Arc<dyn Fn(Duration, &str) + Send + Sync>;
 
-/// A client of one Misskey server.
+/// A client of one Misskey server. It has no `Debug`: it holds the token.
 #[derive(Clone)]
 pub struct Client {
     agent: ureq::Agent,
     origin: String,
     wait: Wait,
+    /// The access token of the account logged in on this server.
+    token: Option<String>,
 }
 
 impl Client {
@@ -128,7 +131,20 @@ impl Client {
             agent: agent(),
             origin: origin.to_string(),
             wait,
+            token: None,
         }
+    }
+
+    /// This client, sending `token` with every call.
+    #[must_use]
+    pub fn with_token(mut self, token: Option<String>) -> Self {
+        self.token = token.filter(|t| !t.is_empty());
+        self
+    }
+
+    /// Whether calls are made as an account.
+    pub fn logged_in(&self) -> bool {
+        self.token.is_some()
     }
 
     /// The server's origin.
@@ -143,8 +159,24 @@ impl Client {
 
     /// Call `endpoint` with `body`; the answer as the server wrote it.
     pub fn call(&self, endpoint: &str, body: &Value) -> Result<Value> {
+        match self.send(endpoint, body)? {
+            Answer::Took(v) => Ok(v),
+            Answer::Refused(r) => Err(self.refusal(endpoint, r.status, r.detail)),
+        }
+    }
+
+    /// Call `endpoint` with `body`, telling a refusal (the server answered,
+    /// and said no) from a call that failed on the way.
+    fn send(&self, endpoint: &str, body: &Value) -> Result<Answer> {
         let url = format!("{}/api/{endpoint}", self.origin);
-        let sent = body.to_string();
+        let sent = match (&self.token, body) {
+            (Some(t), Value::Object(fields)) => {
+                let mut fields = fields.clone();
+                fields.insert("i".into(), json!(t));
+                Value::Object(fields).to_string()
+            }
+            _ => body.to_string(),
+        };
         let mut attempt = 0;
         loop {
             let mut resp = self
@@ -172,6 +204,7 @@ impl Client {
                     &text
                 };
                 return serde_json::from_str(text)
+                    .map(Answer::Took)
                     .map_err(|e| Error::api(format!("{endpoint}: unexpected answer: {e}")));
             }
             let err: ErrorBody = serde_json::from_str(&text).unwrap_or_default();
@@ -186,18 +219,18 @@ impl Client {
                 attempt += 1;
                 continue;
             }
-            return Err(self.refusal(endpoint, status, err.error));
+            return Ok(Answer::Refused(Refusal {
+                status,
+                detail: err.error,
+            }));
         }
     }
 
     /// The error for a call the server answered with `status` and `detail`.
     fn refusal(&self, endpoint: &str, status: u16, detail: ErrorDetail) -> Error {
-        let shown = match (detail.code.is_empty(), detail.message.is_empty()) {
-            (false, false) => format!("{}: {}", detail.code, detail.message),
-            (false, true) => detail.code.clone(),
-            (true, false) => detail.message.clone(),
-            (true, true) => format!("HTTP {status}"),
-        };
+        let detail = Refusal { status, detail };
+        let shown = detail.said();
+        let detail = detail.detail;
         let err = Error::api(format!("{endpoint} failed: {shown}"));
         let host = self.host();
         match detail.code.as_str() {
@@ -211,7 +244,16 @@ impl Client {
                 "{host} does not let visitors search notes; try another --host"
             )),
             "SIGNIN_REQUIRED" | "CREDENTIAL_REQUIRED" => err.with_hint(format!(
-                "{host} shows this only to accounts that are logged in, and msky cannot log in yet"
+                "{host} shows this only to accounts that are logged in; run `msky login --host {host}`"
+            )),
+            "AUTHENTICATION_FAILED" => err.with_hint(format!(
+                "{host} no longer takes the token msky saved; run `msky login --host {host}` again"
+            )),
+            "PERMISSION_DENIED" => err.with_hint(format!(
+                "the token msky saved for {host} was not given that permission; run `msky login --host {host}` again"
+            )),
+            "LTL_DISABLED" | "GTL_DISABLED" | "STL_DISABLED" => err.with_hint(format!(
+                "{host} does not show this timeline to you; try another one, or log in with `msky login --host {host}`"
             )),
             _ if status == 429 => err.with_hint(format!(
                 "{host} limits how often it is asked; wait a while and try again"
@@ -260,11 +302,89 @@ impl Client {
         notes(self.call("notes/search", &body)?)
     }
 
+    /// `i`: the account the token is of.
+    pub fn me(&self) -> Result<User> {
+        let v = self.call("i", &json!({}))?;
+        serde_json::from_value(v).map_err(|e| Error::api(format!("i: unexpected answer: {e}")))
+    }
+
+    /// A timeline (`notes/timeline`, `notes/local-timeline`, ...): a page of
+    /// notes, newest first, older than `until` when given.
+    pub fn timeline(
+        &self,
+        endpoint: &str,
+        renotes: bool,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Note>> {
+        let mut body = json!({"limit": limit.clamp(1, MAX_PAGE), "withRenotes": renotes});
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        notes(self.call(endpoint, &body)?)
+    }
+
+    /// `i/notifications`: a page of the account's notifications, newest
+    /// first, older than `until` when given. They are left unread: reading
+    /// them here changes nothing on the server.
+    pub fn notifications(&self, limit: usize, until: Option<&str>) -> Result<Vec<Notification>> {
+        let mut body = json!({"limit": limit.clamp(1, MAX_PAGE), "markAsRead": false});
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        let Value::Array(items) = self.call("i/notifications", &body)? else {
+            return Err(Error::api(
+                "the server did not answer with a list of notifications",
+            ));
+        };
+        Ok(items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect())
+    }
+
+    /// `miauth/<session>/check`: whether the access asked for with
+    /// `session` was given, and the token when it was.
+    /// A refusal is returned as one: a server that is told no is a denial.
+    pub fn miauth_check(&self, session: &str) -> Result<std::result::Result<Value, Refusal>> {
+        Ok(
+            match self.send(&format!("miauth/{session}/check"), &json!({}))? {
+                Answer::Took(v) => Ok(v),
+                Answer::Refused(r) => Err(r),
+            },
+        )
+    }
+
     /// `notes/show`: one note.
     pub fn note(&self, id: &str) -> Result<Note> {
         let v = self.call("notes/show", &json!({"noteId": id}))?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("notes/show: unexpected answer: {e}")))
+    }
+}
+
+/// What a server answered a call with.
+enum Answer {
+    Took(Value),
+    Refused(Refusal),
+}
+
+/// A call the server answered with an error status.
+#[derive(Debug)]
+pub struct Refusal {
+    pub status: u16,
+    detail: ErrorDetail,
+}
+
+impl Refusal {
+    /// The server's code and message, or the status when it wrote neither.
+    pub fn said(&self) -> String {
+        match (self.detail.code.is_empty(), self.detail.message.is_empty()) {
+            (false, false) => format!("{}: {}", self.detail.code, self.detail.message),
+            (false, true) => self.detail.code.clone(),
+            (true, false) => self.detail.message.clone(),
+            (true, true) => format!("HTTP {}", self.status),
+        }
     }
 }
 

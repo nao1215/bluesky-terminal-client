@@ -4,7 +4,7 @@
 
 use serde_json::{Value, json};
 
-use crate::api::types::{DriveFile, Note, User};
+use crate::api::types::{DriveFile, Note, Notification, User};
 pub use crate::clock::local_time as time;
 use crate::text::{drawable, one_line};
 
@@ -133,11 +133,137 @@ fn acct(u: &User) -> String {
     }
 }
 
-/// A note as `--json` prints it. `host` of an account of the server asked
-/// is that server's host, where Misskey writes null, so a line read on its
-/// own still says where the account is.
+/// An account as a note's `user` is printed with `--json`. `host` of an
+/// account of the server asked is that server's host, where Misskey writes
+/// null, so a line read on its own still says where the account is.
+fn user_json(u: &User, origin: &str) -> Value {
+    json!({
+        "id": u.id,
+        "username": u.username,
+        "host": u.host.as_deref().unwrap_or(crate::api::authority(origin)),
+        "name": u.name,
+    })
+}
+
+/// The address of account `u` on the server at `origin`.
+fn account_url(u: &User, origin: &str) -> String {
+    match u.host.as_deref().filter(|h| !h.is_empty()) {
+        Some(h) => format!("{origin}/@{}@{h}", u.username),
+        None => format!("{origin}/@{}", u.username),
+    }
+}
+
+/// Your account, as `whoami` prints it: who, with the server's host, its
+/// address, its counts and what it says about itself.
+pub fn account(u: &User, origin: &str) -> String {
+    let mut with_host = u.clone();
+    if with_host.host.as_deref().is_none_or(str::is_empty) {
+        with_host.host = Some(crate::api::authority(origin).to_string());
+    }
+    let mut out = format!(
+        "{}\n{}\n{} followers  {} following  {} notes\n",
+        who(&with_host),
+        one_line(&account_url(u, origin)),
+        u.followers_count.unwrap_or(0),
+        u.following_count.unwrap_or(0),
+        u.notes_count.unwrap_or(0),
+    );
+    if let Some(d) = u.description.as_deref().filter(|d| !d.trim().is_empty()) {
+        out.push('\n');
+        for line in drawable(d).lines() {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Your account as `whoami --json` prints it: a note's `user` with its
+/// address, what it says about itself and its counts.
+pub fn account_json(u: &User, origin: &str) -> Value {
+    let mut v = user_json(u, origin);
+    v["url"] = json!(account_url(u, origin));
+    v["description"] = json!(u.description);
+    v["followersCount"] = json!(u.followers_count);
+    v["followingCount"] = json!(u.following_count);
+    v["notesCount"] = json!(u.notes_count);
+    v
+}
+
+/// What a notification says happened.
+fn happened(n: &Notification) -> String {
+    match n.kind.as_str() {
+        "follow" => "followed you".into(),
+        "mention" => "mentioned you".into(),
+        "reply" => "replied to you".into(),
+        "renote" => "renoted your note".into(),
+        "quote" => "quoted your note".into(),
+        "reaction" => format!(
+            "reacted {} to your note",
+            reaction_label(n.reaction.as_deref().unwrap_or("?"))
+        ),
+        "pollEnded" => "a poll has ended".into(),
+        "receiveFollowRequest" => "asked to follow you".into(),
+        "followRequestAccepted" => "accepted your follow request".into(),
+        "achievementEarned" => format!(
+            "achievement earned: {}",
+            one_line(n.achievement.as_deref().unwrap_or(""))
+        ),
+        "app" => one_line(
+            &[n.header.as_deref(), n.body.as_deref()]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(": "),
+        ),
+        other => one_line(other),
+    }
+}
+
+/// A notification: who did what and when, the note it is about (its
+/// warning and text), and the address to go on from: the note's, else the
+/// account's.
+pub fn notification(n: &Notification, origin: &str) -> String {
+    let did = happened(n);
+    let mut out = match &n.user {
+        Some(u) => format!("{} {did} · {}\n", who(u), time(&n.created_at)),
+        None => format!("{did} · {}\n", time(&n.created_at)),
+    };
+    if let Some(note) = &n.note {
+        let shown = note.shown();
+        if let Some(cw) = &shown.cw {
+            out.push_str(&format!("CW: {}\n", one_line(cw)));
+        }
+        if let Some(text) = &shown.text {
+            for line in drawable(text).lines() {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out.push_str(&file_lines(&shown.files));
+        out.push_str(&format!("{}\n", one_line(&note_url(origin, &shown.id))));
+    } else if let Some(u) = &n.user {
+        out.push_str(&format!("{}\n", one_line(&account_url(u, origin))));
+    }
+    out
+}
+
+/// A notification as `notifications --json` prints it: what happened, who
+/// did it (a note's `user`, or null), the reaction, and the note it is
+/// about in the shape every command prints (or null).
+pub fn notification_json(n: &Notification, origin: &str) -> Value {
+    json!({
+        "id": n.id,
+        "createdAt": n.created_at,
+        "type": n.kind,
+        "user": n.user.as_ref().map(|u| user_json(u, origin)),
+        "reaction": n.reaction,
+        "note": n.note.as_ref().map(|x| note_json(x, origin)),
+    })
+}
+
+/// A note as `--json` prints it, its `user` as [`user_json`] puts it.
 pub fn note_json(n: &Note, origin: &str) -> Value {
-    let server = crate::api::authority(origin);
     let files: Vec<Value> = n
         .files
         .iter()
@@ -157,12 +283,7 @@ pub fn note_json(n: &Note, origin: &str) -> Value {
         "createdAt": n.created_at,
         "url": note_url(origin, &n.id),
         "uri": n.uri,
-        "user": {
-            "id": n.user.id,
-            "username": n.user.username,
-            "host": n.user.host.as_deref().unwrap_or(server),
-            "name": n.user.name,
-        },
+        "user": user_json(&n.user, origin),
         "text": n.text,
         "cw": n.cw,
         "reactionCount": n.reaction_total(),
@@ -323,6 +444,121 @@ mod tests {
                 "uri",
                 "url",
                 "user"
+            ]
+        );
+    }
+
+    fn a_notification(v: Value) -> Notification {
+        serde_json::from_value(v).unwrap()
+    }
+
+    // Who did what, and the note it is about with the address to go on
+    // from; a renote shows your note, a follow the account's address.
+    #[test]
+    fn a_notification_says_who_did_what_to_which_note() {
+        let reaction = a_notification(json!({
+            "id": "n1", "createdAt": "t", "type": "reaction", "reaction": ":blobcat@.:",
+            "user": {"username": "bob", "host": "other.example", "name": "Bob 🐈‍⬛"},
+            "note": {"id": "9abc", "text": "朝ごはん 🍙\n二行目", "files": [{"type": "image/png"}]}
+        }));
+        assert_eq!(
+            notification(&reaction, ORIGIN),
+            "Bob 🐈‍⬛ @bob@other.example reacted :blobcat: to your note · t\n\
+             朝ごはん 🍙\n\
+             二行目\n\
+             [1 picture]\n\
+             https://misskey.test/notes/9abc\n"
+        );
+        let renote = a_notification(json!({
+            "id": "n2", "createdAt": "t", "type": "renote", "user": {"username": "carol"},
+            "note": {"id": "rn", "renoteId": "mine", "renote": {"id": "mine", "cw": "ネタバレ", "text": "私の"}}
+        }));
+        assert_eq!(
+            notification(&renote, ORIGIN),
+            "@carol renoted your note · t\nCW: ネタバレ\n私の\nhttps://misskey.test/notes/mine\n"
+        );
+        let follow = a_notification(json!({
+            "id": "n3", "createdAt": "t", "type": "follow", "user": {"username": "dave", "host": "x.example"}
+        }));
+        assert_eq!(
+            notification(&follow, ORIGIN),
+            "@dave@x.example followed you · t\nhttps://misskey.test/@dave@x.example\n"
+        );
+        let earned = a_notification(json!({
+            "id": "n4", "createdAt": "t", "type": "achievementEarned", "achievement": "notes1"
+        }));
+        assert_eq!(
+            notification(&earned, ORIGIN),
+            "achievement earned: notes1 · t\n"
+        );
+        let unknown = a_notification(json!({"id": "n5", "createdAt": "t", "type": "new\u{1b}[2J"}));
+        assert_eq!(notification(&unknown, ORIGIN), "new[2J · t\n");
+    }
+
+    // The JSON of a notification has one shape; its note is a note as
+    // every command prints it, and its account a note's `user`.
+    #[test]
+    fn the_json_of_a_notification_has_one_shape() {
+        let n = a_notification(json!({
+            "id": "n1", "createdAt": "2026-11-26T10:00:00.000Z", "type": "reply",
+            "user": {"id": "u2", "username": "bob", "host": null},
+            "note": {"id": "9abc", "text": "返信 🇯🇵", "replyId": "8x", "user": {"username": "bob"}}
+        }));
+        let v = notification_json(&n, ORIGIN);
+        assert_eq!(
+            v["user"],
+            json!({"id": "u2", "username": "bob", "host": "misskey.test", "name": null})
+        );
+        assert_eq!(v["note"], note_json(n.note.as_ref().unwrap(), ORIGIN));
+        assert_eq!(v["reaction"], Value::Null);
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            ["createdAt", "id", "note", "reaction", "type", "user"]
+        );
+        let bare = notification_json(&a_notification(json!({"id": "n2", "type": "app"})), ORIGIN);
+        assert_eq!(
+            (bare["user"].clone(), bare["note"].clone()),
+            (Value::Null, Value::Null)
+        );
+    }
+
+    // whoami names the account with the server's host, its address, its
+    // counts and what it says about itself, as text only.
+    #[test]
+    fn whoami_shows_the_account_with_its_host_and_counts() {
+        let u: User = serde_json::from_value(json!({
+            "id": "u1", "username": "alice", "host": null, "name": "アリス 👩‍💻",
+            "description": "こんにちは\u{1b}]52;c;eA==\u{7}\n二行目",
+            "followersCount": 12, "followingCount": 34, "notesCount": 56
+        }))
+        .unwrap();
+        assert_eq!(
+            account(&u, ORIGIN),
+            "アリス 👩‍💻 @alice@misskey.test\n\
+             https://misskey.test/@alice\n\
+             12 followers  34 following  56 notes\n\
+             \n\
+             こんにちは]52;c;eA==\n\
+             二行目\n"
+        );
+        let v = account_json(&u, ORIGIN);
+        assert_eq!(v["host"], "misskey.test");
+        assert_eq!(v["url"], "https://misskey.test/@alice");
+        assert_eq!(v["notesCount"], 56);
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            [
+                "description",
+                "followersCount",
+                "followingCount",
+                "host",
+                "id",
+                "name",
+                "notesCount",
+                "url",
+                "username"
             ]
         );
     }

@@ -1,0 +1,194 @@
+# msky timeline: home (notes/timeline), local, social (notes/hybrid-timeline)
+# and global, read a page at a time with untilId as author reads them. home
+# and social are the account's and need a login; local and global are read
+# as a visitor without one. The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky timeline
+
+secrets:
+  - e2e-fake-token-0001
+
+scenarios:
+  - name: timeline reads home with the saved token, page by page, each note once
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - id: 9c
+                createdAt: "2026-11-26T10:00:00.000Z"
+                user: { id: u-bob, username: bob, host: misskey.design, name: "ボブ 👨‍👩‍👧" }
+                text: "おはよう 🇯🇵👍🏽\n二行目 مرحبا"
+                reactions: { "👍": 2, ":blobcat@.:": 1 }
+                renoteCount: 1
+                repliesCount: 3
+              - { id: 9b, createdAt: "2026-11-26T09:00:00.000Z", user: { username: carol }, cw: "ネタバレ", text: "結末" }
+    steps:
+      - fixture: &account
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-alice", "username": "alice", "token": "e2e-fake-token-0001"}
+      - fixture: &in_use
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      # Without --host the account in use names the server; home is the
+      # default.
+      - run:
+          command: msky timeline -n 3
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              ボブ 👨‍👩‍👧 @bob@misskey.design · 2026-11-26 10:00
+              おはよう 🇯🇵👍🏽
+              二行目 مرحبا
+              👍 2  :blobcat: 1
+              ♡ 3  ⟳ 1  ↩ 3
+              ${api.url}/notes/9c
+
+              @carol · 2026-11-26 09:00
+              CW: ネタバレ
+              結末
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/notes/9b
+      # The second page is older than the last note of the first and asks
+      # for what is still wanted; it brings nothing new, which ends it.
+      # Renotes are left out unless --reposts asks for them.
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/timeline
+            count: 2
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0001 }
+                - { path: "$.untilId", equals: 9b }
+                - { path: "$.limit", equals: 1 }
+                - { path: "$.withRenotes", equals: false }
+      - run:
+          command: msky timeline home -n 1 --reposts --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 9c }
+              - { path: "$.url", equals: "${api.url}/notes/9c" }
+              - { path: "$.user.host", equals: misskey.design }
+              - { path: "$.text", equals: "おはよう 🇯🇵👍🏽\n二行目 مرحبا" }
+              - { path: "$.reactionCount", equals: 3 }
+              - { path: "$.renote", equals: null }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/timeline
+            count: 3
+            body:
+              json: { path: "$.withRenotes", equals: true }
+
+  - name: social is the hybrid timeline, and local and global are read as a visitor without a login
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/hybrid-timeline, json: [ { id: s1, user: { username: bob }, text: "ソーシャル" } ] }
+          - { method: POST, path: /api/notes/local-timeline, json: [ { id: l1, user: { username: bob }, text: "ローカル 🏠" } ] }
+          - { method: POST, path: /api/notes/global-timeline, json: [ { id: g1, user: { username: eve, host: other.example }, text: "グローバル 🌐" } ] }
+    steps:
+      - fixture: *account
+      - run:
+          command: msky timeline social -n 1 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "ソーシャル"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/hybrid-timeline
+            body:
+              json: { path: "$.i", equals: e2e-fake-token-0001 }
+      - run:
+          command: msky timeline local -n 1 --host ${api.url}
+          env: &visitor
+            MSKY_CONFIG_DIR: ${workdir}/nobody
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "ローカル 🏠"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/local-timeline
+            body:
+              not_contains: '"i"'
+      - run:
+          command: msky timeline global -n 1 --host ${api.url} --json
+          env: *visitor
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.user.host", equals: other.example }
+
+  - name: home and social without a login are usage errors before anything is asked
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+    steps:
+      - run:
+          command: msky timeline --host ${api.url}
+          env: *visitor
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `msky login --host 127.0.0.1:${api.port}`
+      - run:
+          command: msky timeline social --host ${api.url} --json
+          env: *visitor
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", equals: "not logged in on 127.0.0.1:${api.port}" }
+              - { path: "$.status", equals: 1 }
+      - run:
+          command: msky timeline yesterday --host ${api.url}
+          env: *visitor
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid value 'yesterday'"
+      - assert:
+          mock: { name: api, count: 0 }
+
+  - name: a timeline the server keeps from visitors says so
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/local-timeline
+            status: 400
+            json: { error: { message: "Local timeline has been disabled.", code: LTL_DISABLED, id: 45a6eb02-7695-4393-b023-dd3be9aaaefd } }
+    steps:
+      - run:
+          command: msky timeline local --host ${api.url}
+          env: *visitor
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: |
+              error: notes/local-timeline failed: LTL_DISABLED: Local timeline has been disabled.
+              hint: 127.0.0.1:${api.port} does not show this timeline to you; try another one, or log in with `msky login --host 127.0.0.1:${api.port}`

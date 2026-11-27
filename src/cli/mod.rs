@@ -1,21 +1,24 @@
-//! The commands: what a Misskey server shows to visitors, from scripts and
-//! pipes. Every command prints text for reading, or with `--json` one
-//! object per note per line, in the same shape for every command (see
-//! [`format::note_json`]).
+//! The commands: what a Misskey server shows to visitors, or to the account
+//! `msky login` saved for it, from scripts and pipes. Every command prints
+//! text for reading, or with `--json` one object per note per line, in the
+//! same shape for every command (see [`format::note_json`]).
 
 mod format;
 
 use std::collections::HashSet;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::Subcommand;
 use serde_json::{Value, json};
 
-use crate::api::types::Note;
+use crate::api::types::{Note, Notification};
 use crate::api::{self, Client, NoteFilter};
-use crate::download;
+use crate::config::{AccountStore, Session};
 use crate::error::{Error, Result};
+use crate::miauth::{self, Clock};
+use crate::{browser, download};
 
 /// The commands.
 #[derive(Debug, Subcommand)]
@@ -64,6 +67,77 @@ pub enum Command {
         #[arg(short = 'o', long, value_name = "DIR")]
         output: Option<PathBuf>,
     },
+    /// A timeline, newest first: home (the default), local, social or
+    /// global.
+    ///
+    /// home and social are your account's and need `msky login`; local and
+    /// global are read as a visitor when there is no login, where the
+    /// server shows them to visitors. Pages are read as `author` reads them.
+    Timeline {
+        #[arg(value_enum, default_value_t = TimelineKind::Home)]
+        kind: TimelineKind,
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+        /// Keep the renotes too.
+        #[arg(long)]
+        reposts: bool,
+    },
+    /// Your notifications, newest first. They are left unread.
+    Notifications {
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// The account logged in on the server.
+    Whoami,
+    /// Log in with MiAuth, with read-only access, and make the account the
+    /// one in use.
+    ///
+    /// msky prints an address on the server (and opens it in the browser
+    /// when it can): open it, signed in there, and allow the access. msky
+    /// never sees the password. The token is saved for the server, readable
+    /// by you alone; logging in on the same server again replaces it.
+    Login {
+        /// How long to wait for the access to be allowed.
+        #[arg(long, value_name = "SECONDS", default_value_t = miauth::DEFAULT_TIMEOUT.as_secs())]
+        timeout: u64,
+    },
+    /// Log the account in use (or the one on --host) out: its saved token
+    /// is removed.
+    Logout {
+        /// Log every account out.
+        #[arg(long)]
+        all: bool,
+    },
+}
+
+/// Which timeline `timeline` reads, by the names Misskey's tabs have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum TimelineKind {
+    /// The notes of the accounts you follow, and your own.
+    Home,
+    /// The notes of the server's accounts.
+    Local,
+    /// home and local together.
+    #[value(alias = "hybrid")]
+    Social,
+    /// Every note the server knows.
+    Global,
+}
+
+impl TimelineKind {
+    fn endpoint(self) -> &'static str {
+        match self {
+            TimelineKind::Home => "notes/timeline",
+            TimelineKind::Local => "notes/local-timeline",
+            TimelineKind::Social => "notes/hybrid-timeline",
+            TimelineKind::Global => "notes/global-timeline",
+        }
+    }
+
+    /// Whether it is an account's: the server shows it to no visitor.
+    fn needs_login(self) -> bool {
+        matches!(self, TimelineKind::Home | TimelineKind::Social)
+    }
 }
 
 /// Which notes of an account `author` lists, by the names bsky's `--filter`
@@ -129,16 +203,56 @@ impl AuthorFilter {
 
 /// What a command runs with.
 pub struct Ctx {
-    /// The server `--host` names.
+    /// The server `--host` names, else that of the account in use.
     pub origin: String,
     pub json: bool,
+    /// Whether `--host` (or `MSKY_HOST`) named the server.
+    pub host_given: bool,
+    /// The saved logins, or why there is no config directory to keep them.
+    pub accounts: Result<AccountStore>,
 }
 
 impl Ctx {
-    /// A client of `origin`, or of the server `--host` names.
-    fn client(&self, origin: Option<&str>) -> Client {
-        Client::new(origin.unwrap_or(&self.origin))
+    /// The logins, for the commands that save or remove one.
+    fn store(&self) -> Result<&AccountStore> {
+        self.accounts.as_ref().map_err(Clone::clone)
     }
+
+    /// The account saved for the server at `origin`. A token is only ever
+    /// sent to the server that gave it, scheme and port included.
+    fn session(&self, origin: &str) -> Result<Option<Session>> {
+        let Ok(store) = &self.accounts else {
+            return Ok(None);
+        };
+        Ok(store
+            .find(api::authority(origin))?
+            .filter(|s| s.service == origin))
+    }
+
+    /// A client of `origin`, or of the server `--host` names, as the account
+    /// saved for it when there is one, else as a visitor.
+    fn client(&self, origin: Option<&str>) -> Result<Client> {
+        let origin = origin.unwrap_or(&self.origin);
+        let token = self.session(origin)?.map(|s| s.token);
+        Ok(Client::new(origin).with_token(token))
+    }
+
+    /// A client of the server `--host` names, as its account; none saved is
+    /// a usage error, before anything is asked.
+    fn account_client(&self) -> Result<Client> {
+        let client = self.client(None)?;
+        if client.logged_in() {
+            Ok(client)
+        } else {
+            Err(not_logged_in(client.host()))
+        }
+    }
+}
+
+/// That no account is logged in on `host`, and how to log one in.
+fn not_logged_in(host: &str) -> Error {
+    Error::usage(format!("not logged in on {host}"))
+        .with_hint(format!("run `msky login --host {host}`"))
 }
 
 /// Run `cmd`, writing to stdout.
@@ -182,6 +296,26 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         Command::Download { note, output } => {
             download_note(ctx, out, &note, &download::download_dir(output)?)
         }
+        Command::Timeline {
+            kind,
+            limit,
+            reposts,
+        } => timeline(ctx, out, kind, limit, reposts),
+        Command::Notifications { limit } => notifications(ctx, out, limit),
+        Command::Whoami => whoami(ctx, out),
+        Command::Login { timeout } => {
+            let mut err = io::stderr();
+            login(
+                ctx,
+                out,
+                &mut err,
+                Duration::from_secs(timeout),
+                miauth::INTERVAL,
+                &mut miauth::WallClock::start(),
+                io::stderr().is_terminal(),
+            )
+        }
+        Command::Logout { all } => logout(ctx, out, all),
     }
 }
 
@@ -201,8 +335,26 @@ fn text(out: &mut dyn Write, s: &str) -> Result<()> {
     out.write_all(s.as_bytes()).map_err(write_err)
 }
 
-/// Pages from `fetch` (how many to ask for, and the ID to list older notes
-/// than) until `limit` notes that `keep` keeps have come or there are no
+/// What `pages` reads: an item with an ID, older than which the next page is
+/// asked for.
+trait Paged {
+    fn id(&self) -> &str;
+}
+
+impl Paged for Note {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+impl Paged for Notification {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Pages from `fetch` (how many to ask for, and the ID to list older items
+/// than) until `limit` items that `keep` keeps have come or there are no
 /// more. A note a later page repeats is kept once, and a page that brings
 /// nothing new or starts from an ID seen before ends the reading: a server
 /// that ignores `untilId` would otherwise be asked for the same page for
@@ -210,12 +362,12 @@ fn text(out: &mut dyn Write, s: &str) -> Result<()> {
 /// are more, so only an empty page says the end was reached. When `keep`
 /// leaves notes out, every page is a full one: a page of one could take as
 /// many requests as the account has notes left out.
-fn pages(
+fn pages<T: Paged>(
     limit: usize,
     full_pages: bool,
-    keep: impl Fn(&Note) -> bool,
-    mut fetch: impl FnMut(usize, Option<&str>) -> Result<Vec<Note>>,
-) -> Result<Vec<Note>> {
+    keep: impl Fn(&T) -> bool,
+    mut fetch: impl FnMut(usize, Option<&str>) -> Result<Vec<T>>,
+) -> Result<Vec<T>> {
     let mut notes = Vec::new();
     let mut seen = HashSet::new();
     let mut untils = HashSet::new();
@@ -227,12 +379,12 @@ fn pages(
             (limit - notes.len()).min(api::MAX_PAGE)
         };
         let page = fetch(want, until.as_deref())?;
-        let Some(last) = page.last().map(|n| n.id.clone()) else {
+        let Some(last) = page.last().map(|n| n.id().to_string()) else {
             break;
         };
         let mut new = false;
         for n in page {
-            if seen.insert(n.id.clone()) {
+            if seen.insert(n.id().to_string()) {
                 new = true;
                 if keep(&n) && notes.len() < limit {
                     notes.push(n);
@@ -354,7 +506,7 @@ fn author(
     save_in: Option<PathBuf>,
 ) -> Result<()> {
     let who = parse_user(actor)?;
-    let client = ctx.client(who.origin.as_deref());
+    let client = ctx.client(who.origin.as_deref())?;
     // An account of the server asked is named without a host.
     let host = who
         .host
@@ -440,7 +592,7 @@ fn save_files(
 
 fn show_note(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     let (origin, id) = parse_note(note)?;
-    let client = ctx.client(origin.as_deref());
+    let client = ctx.client(origin.as_deref())?;
     let n = client.note(&id)?;
     print_notes(ctx, out, client.origin(), std::slice::from_ref(&n))
 }
@@ -449,7 +601,7 @@ fn search(ctx: &Ctx, out: &mut dyn Write, query: &str, limit: usize) -> Result<(
     if query.trim().is_empty() {
         return Err(Error::usage("the search query is empty"));
     }
-    let client = ctx.client(None);
+    let client = ctx.client(None)?;
     let notes = pages(
         limit,
         false,
@@ -461,7 +613,7 @@ fn search(ctx: &Ctx, out: &mut dyn Write, query: &str, limit: usize) -> Result<(
 
 fn download_note(ctx: &Ctx, out: &mut dyn Write, note: &str, dir: &std::path::Path) -> Result<()> {
     let (origin, id) = parse_note(note)?;
-    let client = ctx.client(origin.as_deref());
+    let client = ctx.client(origin.as_deref())?;
     let n = client.note(&id)?;
     if n.attached().is_empty() {
         return Err(Error::usage(format!(
@@ -470,6 +622,182 @@ fn download_note(ctx: &Ctx, out: &mut dyn Write, note: &str, dir: &std::path::Pa
         )));
     }
     save_files(ctx, out, &api::agent(), client.origin(), &n, dir)
+}
+
+fn timeline(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    kind: TimelineKind,
+    limit: usize,
+    reposts: bool,
+) -> Result<()> {
+    let client = if kind.needs_login() {
+        ctx.account_client()?
+    } else {
+        ctx.client(None)?
+    };
+    let notes = pages(
+        limit,
+        false,
+        |_| true,
+        |n, until| client.timeline(kind.endpoint(), reposts, n, until),
+    )?;
+    print_notes(ctx, out, client.origin(), &notes)
+}
+
+fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
+    let client = ctx.account_client()?;
+    let all = pages(
+        limit,
+        false,
+        |_| true,
+        |n, until| client.notifications(n, until),
+    )?;
+    for (i, n) in all.iter().enumerate() {
+        if ctx.json {
+            json_line(out, &format::notification_json(n, client.origin()))?;
+            continue;
+        }
+        if i > 0 {
+            text(out, "\n")?;
+        }
+        text(out, &format::notification(n, client.origin()))?;
+    }
+    Ok(())
+}
+
+fn whoami(ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
+    let client = ctx.account_client()?;
+    let me = client.me()?;
+    if ctx.json {
+        return json_line(out, &format::account_json(&me, client.origin()));
+    }
+    text(out, &format::account(&me, client.origin()))
+}
+
+/// Say `s` on `err`, where it does not mix with the output. One that cannot
+/// be shown there is no reason to stop: the address is what matters, and a
+/// login can be allowed from another device all the same.
+fn say(err: &mut dyn Write, s: &str) {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "stderr is the only place for what the user is to do, and the login goes on whether it showed or not"
+    )]
+    let _: io::Result<()> = err.write_all(s.as_bytes()).and_then(|()| err.flush());
+}
+
+/// `msky login`: ask the server for read-only access with MiAuth, wait for
+/// it, and save the token for the server.
+fn login(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    timeout: Duration,
+    interval: Duration,
+    clock: &mut dyn Clock,
+    open_browser: bool,
+) -> Result<()> {
+    let store = ctx.store()?;
+    // The check is asked as a visitor: an old token is not sent along.
+    let client = Client::new(&ctx.origin);
+    let host = client.host().to_string();
+    let session = miauth::session()?;
+    let url = miauth::auth_url(client.origin(), &session);
+    say(
+        err,
+        &format!(
+            "To log in on {host}, open this address, signed in there, and allow msky to read your account:\n{url}\n"
+        ),
+    );
+    if open_browser && browser::open(&url) {
+        say(err, "(opened in the web browser)\n");
+    }
+    say(
+        err,
+        &format!(
+            "Waiting for the access to be allowed (up to {} s; Ctrl-C to give up)...\n",
+            timeout.as_secs()
+        ),
+    );
+    let access = miauth::wait_for_access(&client, &session, timeout, interval, clock)?;
+    // The account the token is of, from the check, else from the server.
+    let me = if access.user.id.is_empty() || access.user.username.is_empty() {
+        Client::new(client.origin())
+            .with_token(Some(access.token.clone()))
+            .me()?
+    } else {
+        access.user
+    };
+    let saved = Session {
+        service: client.origin().to_string(),
+        user_id: me.id.clone(),
+        username: me.username.clone(),
+        token: access.token,
+    };
+    store.save(&saved)?;
+    if ctx.json {
+        return json_line(
+            out,
+            &json!({"id": me.id, "username": me.username, "host": host}),
+        );
+    }
+    text(
+        out,
+        &format!(
+            "logged in as @{}@{host}\n",
+            crate::text::one_line(&me.username)
+        ),
+    )
+}
+
+/// `msky logout`: the account in use (or the one on `--host`), or all of
+/// them. Only the saved token goes; the access stays listed on the server,
+/// where it can be revoked.
+fn logout(ctx: &Ctx, out: &mut dyn Write, all: bool) -> Result<()> {
+    let store = ctx.store()?;
+    // (account, host) of each one logged out; an account whose file could
+    // not be read is named by its host alone.
+    let gone: Vec<(Option<Session>, String)> = if all {
+        store.remove_all()?
+    } else {
+        let host = match store.current_host() {
+            Some(h) if !ctx.host_given => h,
+            _ => api::authority(&ctx.origin).to_string(),
+        };
+        let was = store.find(&host).ok().flatten();
+        if store.remove(&host)? {
+            vec![(was, host)]
+        } else {
+            Vec::new()
+        }
+    };
+    if ctx.json {
+        let list: Vec<Value> = gone
+            .iter()
+            .map(|(s, host)| {
+                json!({
+                    "id": s.as_ref().map(|s| &s.user_id),
+                    "username": s.as_ref().map(|s| &s.username),
+                    "host": host,
+                })
+            })
+            .collect();
+        return json_line(out, &json!({ "loggedOut": list }));
+    }
+    if gone.is_empty() {
+        return text(out, "not logged in\n");
+    }
+    for (s, host) in &gone {
+        let line = match s {
+            Some(s) => format!(
+                "logged out @{}@{host}\n",
+                crate::text::one_line(&s.username)
+            ),
+            None => format!("logged out of {host}\n"),
+        };
+        text(out, &line)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -650,7 +978,7 @@ mod tests {
         let got = pages(
             2,
             true,
-            |n| n.id.ends_with('v'),
+            |n: &Note| n.id.ends_with('v'),
             |n, until| {
                 asked.push((n, until.map(str::to_string)));
                 Ok(match until {
@@ -785,8 +1113,304 @@ mod tests {
         let ctx = Ctx {
             origin: "http://127.0.0.1:9".into(),
             json: false,
+            host_given: true,
+            accounts: Err(Error::io("no config directory")),
         };
         let e = search(&ctx, &mut Vec::new(), "  ", 5).unwrap_err();
         assert_eq!(e.kind(), crate::error::Kind::Usage);
+    }
+
+    use crate::api::stub_tests::{reply, serve};
+    use std::sync::Arc;
+
+    /// A throwaway value in the place of a token; no server gave it.
+    const FAKE: &str = "fake-token-for-tests";
+
+    /// Time that goes by only when slept.
+    #[derive(Default)]
+    struct FakeClock {
+        now: Duration,
+        slept: Vec<Duration>,
+    }
+
+    impl Clock for FakeClock {
+        fn elapsed(&self) -> Duration {
+            self.now
+        }
+        fn sleep(&mut self, d: Duration) {
+            self.now += d;
+            self.slept.push(d);
+        }
+    }
+
+    fn ctx_of(origin: &str, dir: &std::path::Path, json: bool) -> Ctx {
+        Ctx {
+            origin: origin.into(),
+            json,
+            host_given: true,
+            accounts: Ok(AccountStore::open(dir)),
+        }
+    }
+
+    fn run_login(ctx: &Ctx, timeout: u64, clock: &mut FakeClock) -> (Result<()>, String, String) {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let r = login(
+            ctx,
+            &mut out,
+            &mut err,
+            Duration::from_secs(timeout),
+            Duration::from_secs(2),
+            clock,
+            false,
+        );
+        (
+            r,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
+    }
+
+    // The address asks for reading only; the check is asked every two
+    // seconds until the access is given, and the token is saved for the
+    // server, with the account the check names.
+    #[test]
+    fn login_waits_for_the_access_and_saves_the_token_for_the_server() {
+        let (url, log) = serve(Arc::new(|path, _, n| match (path, n) {
+            (p, 0 | 1) if p.ends_with("/check") => reply(200, r#"{"ok":false}"#),
+            (p, _) if p.ends_with("/check") => reply(
+                200,
+                &format!(
+                    r#"{{"ok":true,"token":"{FAKE}","user":{{"id":"u1","username":"alice","name":"アリス 🐈"}}}}"#
+                ),
+            ),
+            _ => reply(404, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx_of(&url, dir.path(), false);
+        let mut clock = FakeClock::default();
+        let (r, out, err) = run_login(&ctx, 300, &mut clock);
+        r.unwrap();
+        let host = api::authority(&url);
+        assert_eq!(out, format!("logged in as @alice@{host}\n"));
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 3);
+        let session = log[0]
+            .0
+            .strip_prefix("/api/miauth/")
+            .unwrap()
+            .strip_suffix("/check")
+            .unwrap();
+        assert!(
+            log.iter().all(|(p, body)| p == &log[0].0 && body == "{}"),
+            "the check carries no token"
+        );
+        assert!(
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions\n")),
+            "{err}"
+        );
+        assert!(!err.contains(FAKE) && !out.contains(FAKE));
+        assert_eq!(clock.slept, [Duration::from_secs(2); 2]);
+        let saved = AccountStore::open(dir.path()).find(host).unwrap().unwrap();
+        assert_eq!(
+            (
+                saved.service.as_str(),
+                saved.user_id.as_str(),
+                saved.username.as_str(),
+                saved.token.as_str()
+            ),
+            (url.as_str(), "u1", "alice", FAKE)
+        );
+        assert_eq!(
+            AccountStore::open(dir.path()).current_host().as_deref(),
+            Some(host)
+        );
+    }
+
+    // A check that names no account is followed by `i`, with the new token.
+    #[test]
+    fn login_asks_the_server_who_it_is_when_the_check_does_not_say() {
+        let (url, log) = serve(Arc::new(|path, _, _| match path {
+            "/api/i" => reply(200, r#"{"id":"u2","username":"bob"}"#),
+            _ => reply(200, &format!(r#"{{"ok":true,"token":"{FAKE}"}}"#)),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx_of(&url, dir.path(), true);
+        let (r, out, _) = run_login(&ctx, 300, &mut FakeClock::default());
+        r.unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            v,
+            json!({"id": "u2", "username": "bob", "host": api::authority(&url)})
+        );
+        let log = log.lock().unwrap();
+        assert_eq!(log[1].0, "/api/i");
+        assert_eq!(
+            serde_json::from_str::<Value>(&log[1].1).unwrap(),
+            json!({"i": FAKE})
+        );
+    }
+
+    // Nothing allowed within the time is exit 1 with what to do, and
+    // nothing is saved; a server that turns the check down is too.
+    #[rstest]
+    #[case::time_runs_out(200, r#"{"ok":false}"#, "was not given on", 4)]
+    #[case::denied(
+        403,
+        r#"{"error":{"code":"ACCESS_DENIED","message":"The user denied it."}}"#,
+        "did not give msky the access: ACCESS_DENIED: The user denied it.",
+        1
+    )]
+    fn login_that_is_not_allowed_is_a_usage_error_and_saves_nothing(
+        #[case] status: u16,
+        #[case] body: &'static str,
+        #[case] said: &str,
+        #[case] checks: usize,
+    ) {
+        let (url, log) = serve(Arc::new(move |_, _, _| reply(status, body)));
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx_of(&url, dir.path(), false);
+        let mut clock = FakeClock::default();
+        let (r, out, _) = run_login(&ctx, 5, &mut clock);
+        let e = r.unwrap_err();
+        assert_eq!(e.kind(), crate::error::Kind::Usage);
+        assert_eq!(e.kind().exit_code(), 1);
+        assert!(e.message().contains(said), "{e:?}");
+        assert!(e.hint().unwrap().contains("nothing was saved"));
+        assert!(out.is_empty());
+        assert_eq!(log.lock().unwrap().len(), checks);
+        assert!(!dir.path().join("accounts").exists());
+        if checks > 1 {
+            // 2 + 2 + 1: the last wait is cut to the time left.
+            assert_eq!(clock.slept.iter().sum::<Duration>(), Duration::from_secs(5));
+        }
+    }
+
+    fn save(dir: &std::path::Path, service: &str, name: &str) {
+        AccountStore::open(dir)
+            .save(&Session {
+                service: service.into(),
+                user_id: format!("id-{name}"),
+                username: name.into(),
+                token: format!("{FAKE}-{name}"),
+            })
+            .unwrap();
+    }
+
+    // A token is sent only to the server it was saved for: not to another
+    // host, nor to the same host on another scheme.
+    #[test]
+    fn a_token_goes_only_to_the_server_that_gave_it() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), "https://a.test", "alice");
+        let ctx = ctx_of("https://a.test", dir.path(), false);
+        assert!(ctx.client(None).unwrap().logged_in());
+        assert!(!ctx.client(Some("https://b.test")).unwrap().logged_in());
+        assert!(!ctx.client(Some("http://a.test")).unwrap().logged_in());
+        let none = Ctx {
+            accounts: Err(Error::io("no config directory")),
+            ..ctx_of("https://a.test", dir.path(), false)
+        };
+        assert!(!none.client(None).unwrap().logged_in());
+    }
+
+    // The commands of an account say so before anything is asked when
+    // there is none; local and global are read as a visitor.
+    #[test]
+    fn the_commands_of_an_account_need_one_and_the_others_do_not() {
+        let (url, log) = serve(Arc::new(|_, _, _| reply(200, "[]")));
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx_of(&url, dir.path(), false);
+        let host = api::authority(&url).to_string();
+        for e in [
+            timeline(&ctx, &mut Vec::new(), TimelineKind::Home, 5, false).unwrap_err(),
+            timeline(&ctx, &mut Vec::new(), TimelineKind::Social, 5, false).unwrap_err(),
+            notifications(&ctx, &mut Vec::new(), 5).unwrap_err(),
+            whoami(&ctx, &mut Vec::new()).unwrap_err(),
+        ] {
+            assert_eq!(e.kind(), crate::error::Kind::Usage);
+            assert_eq!(e.message(), format!("not logged in on {host}"));
+            assert_eq!(
+                e.hint(),
+                Some(format!("run `msky login --host {host}`").as_str())
+            );
+        }
+        assert!(log.lock().unwrap().is_empty());
+        timeline(&ctx, &mut Vec::new(), TimelineKind::Local, 5, true).unwrap();
+        timeline(&ctx, &mut Vec::new(), TimelineKind::Global, 5, false).unwrap();
+        let log = log.lock().unwrap();
+        assert_eq!(log[0].0, "/api/notes/local-timeline");
+        assert_eq!(
+            serde_json::from_str::<Value>(&log[0].1).unwrap(),
+            json!({"limit": 5, "withRenotes": true})
+        );
+        assert_eq!(log[1].0, "/api/notes/global-timeline");
+    }
+
+    // Notifications are paged as author pages notes: by untilId, each once.
+    #[test]
+    fn notifications_are_paged_like_notes() {
+        let (url, log) = serve(Arc::new(|_, body, _| {
+            let v: Value = serde_json::from_str(body).unwrap();
+            match v["untilId"].as_str() {
+                None => reply(
+                    200,
+                    r#"[{"id":"n3","type":"follow","user":{"username":"bob"}},{"id":"n2","type":"follow","user":{"username":"carol"}}]"#,
+                ),
+                Some("n2") => reply(
+                    200,
+                    r#"[{"id":"n2","type":"follow"},{"id":"n1","type":"follow","user":{"username":"dave"}}]"#,
+                ),
+                _ => reply(200, "[]"),
+            }
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), &url, "alice");
+        let ctx = ctx_of(&url, dir.path(), true);
+        let mut out = Vec::new();
+        notifications(&ctx, &mut out, 3).unwrap();
+        let ids: Vec<String> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| {
+                serde_json::from_str::<Value>(l).unwrap()["id"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(ids, ["n3", "n2", "n1"]);
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        let second: Value = serde_json::from_str(&log[1].1).unwrap();
+        assert_eq!(second["limit"], 1);
+        assert_eq!(second["markAsRead"], false);
+        assert_eq!(second["i"], format!("{FAKE}-alice"));
+    }
+
+    // logout takes the account in use, or the one on --host, or all of
+    // them, and says who; with nothing saved it says so.
+    #[test]
+    fn logout_says_who_was_logged_out() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), "https://a.test", "alice");
+        save(dir.path(), "https://b.test", "bob");
+        let run = |ctx: &Ctx, all: bool| {
+            let mut out = Vec::new();
+            logout(ctx, &mut out, all).unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        let in_use = Ctx {
+            host_given: false,
+            ..ctx_of("https://b.test", dir.path(), false)
+        };
+        assert_eq!(run(&in_use, false), "logged out @bob@b.test\n");
+        let other = ctx_of("https://c.test", dir.path(), true);
+        assert_eq!(run(&other, false), "{\"loggedOut\":[]}\n");
+        save(dir.path(), "https://b.test", "bob");
+        assert_eq!(
+            run(&other, true),
+            "{\"loggedOut\":[{\"host\":\"a.test\",\"id\":\"id-alice\",\"username\":\"alice\"},{\"host\":\"b.test\",\"id\":\"id-bob\",\"username\":\"bob\"}]}\n"
+        );
+        assert_eq!(run(&in_use, false), "not logged in\n");
     }
 }

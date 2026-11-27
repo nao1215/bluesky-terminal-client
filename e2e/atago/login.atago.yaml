@@ -1,0 +1,345 @@
+# msky login (MiAuth), whoami and logout. The Misskey server is an atago
+# mock reached through --host, so the suite needs no account and no
+# network. MSKY_MIAUTH_SESSION fixes the session ID msky would make at
+# random, so the mock can answer its check. The token below is a throwaway
+# value the mock hands out; it is masked in reports all the same.
+version: "1"
+
+suite:
+  name: msky login
+
+secrets:
+  - e2e-fake-token-0001
+
+scenarios:
+  - name: login shows the page to open, takes the token, and whoami and logout use it
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/miauth/e2e-session-0001/check
+            json: { ok: true, token: e2e-fake-token-0001, user: { id: u-alice, username: alice, name: "アリス 🐈‍⬛" } }
+          - method: POST
+            path: /api/i
+            json:
+              id: u-alice
+              username: alice
+              host: null
+              name: "アリス 🐈‍⬛"
+              description: "家族👨‍👩‍👧 と 🇯🇵 に住む"
+              followersCount: 12
+              followingCount: 34
+              notesCount: 56
+    steps:
+      - run:
+          command: msky login --host ${api.url}
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_MIAUTH_SESSION: e2e-session-0001
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged in as @alice@127.0.0.1:${api.port}\n"
+          # The page asks for reading only; the token is never printed.
+          stderr:
+            contains:
+              - "To log in on 127.0.0.1:${api.port}, open this address"
+              - "${api.url}/miauth/e2e-session-0001?name=msky&permission=read:account,read:notifications,read:following,read:reactions\n"
+              - "up to 300 s"
+            not_contains: [e2e-fake-token-0001, "write:"]
+      # The check is asked as a visitor, with nothing in its body.
+      - assert:
+          mock:
+            name: api
+            path: /api/miauth/e2e-session-0001/check
+            count: 1
+            body:
+              equals: "{}"
+      # The token is saved for the server, named after its host and port,
+      # and the account is the one in use.
+      - assert:
+          file:
+            path: cfg/accounts/127.0.0.1_${api.port}.json
+            json:
+              - { path: "$.service", equals: "${api.url}" }
+              - { path: "$.userId", equals: u-alice }
+              - { path: "$.username", equals: alice }
+              - { path: "$.token", equals: e2e-fake-token-0001 }
+      - assert:
+          file:
+            path: cfg/accounts.json
+            json: { path: "$.current", equals: "127.0.0.1:${api.port}" }
+      # Without --host, the server is the account in use's.
+      - run:
+          command: msky whoami
+          env: *env
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              アリス 🐈‍⬛ @alice@127.0.0.1:${api.port}
+              ${api.url}/@alice
+              12 followers  34 following  56 notes
+
+              家族👨‍👩‍👧 と 🇯🇵 に住む
+      - assert:
+          mock:
+            name: api
+            path: /api/i
+            count: 1
+            body:
+              json: { path: "$.i", equals: e2e-fake-token-0001 }
+      - run:
+          command: msky whoami --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: u-alice }
+              - { path: "$.username", equals: alice }
+              - { path: "$.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.name", equals: "アリス 🐈‍⬛" }
+              - { path: "$.url", equals: "${api.url}/@alice" }
+              - { path: "$.followersCount", equals: 12 }
+              - { path: "$.followingCount", equals: 34 }
+              - { path: "$.notesCount", equals: 56 }
+      - run:
+          command: msky logout
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out @alice@127.0.0.1:${api.port}\n"
+      - assert:
+          file:
+            path: cfg/accounts/127.0.0.1_${api.port}.json
+            exists: false
+      # Logged out, whoami says so before anything is asked.
+      - run:
+          command: msky whoami --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `msky login --host 127.0.0.1:${api.port}`
+      - assert:
+          mock: { name: api, path: /api/i, count: 2 }
+      - run:
+          command: msky logout --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"loggedOut\":[]}\n"
+
+  # The access not allowed within --timeout is exit 1 with what to do, and
+  # nothing is saved. The check is asked again every two seconds, and the
+  # last wait is cut to the time left: two checks in one second.
+  - name: a login not allowed in time says so and saves nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/miauth/e2e-session-0002/check
+            json: { ok: false }
+    steps:
+      - run:
+          command: msky login --host ${api.url} --timeout 1
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_MIAUTH_SESSION: e2e-session-0002
+      - assert:
+          exit_code: 1
+          stdout:
+            empty: true
+          stderr:
+            contains:
+              - "error: the access was not given on 127.0.0.1:${api.port} within 1 s\n"
+              - "hint: nothing was saved"
+      - assert:
+          mock: { name: api, path: /api/miauth/e2e-session-0002/check, count: 2 }
+      - assert:
+          file:
+            path: cfg/accounts
+            exists: false
+
+  - name: a server that turns the check down has denied the access, and nothing is saved
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/miauth/e2e-session-0003/check
+            status: 403
+            json: { error: { code: ACCESS_DENIED, message: "The user denied it." } }
+    steps:
+      - run:
+          command: msky login --host ${api.url} --json
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_MIAUTH_SESSION: e2e-session-0003
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", equals: "127.0.0.1:${api.port} did not give msky the access: ACCESS_DENIED: The user denied it." }
+              - { path: "$.status", equals: 1 }
+      - assert:
+          file:
+            path: cfg/accounts
+            exists: false
+      # A session ID that would change the address is refused.
+      - run:
+          command: msky login --host ${api.url}
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_MIAUTH_SESSION: "../../api/i"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "MSKY_MIAUTH_SESSION is not a session ID"
+      - assert:
+          mock: { name: api, path: /api/miauth/e2e-session-0003/check, count: 1 }
+
+  # A saved token is sent by search, author and note too, to the server it
+  # was saved for and to no other; without one they read as a visitor.
+  - name: search, author and note send the saved token to its own server only
+    mock_servers:
+      - name: home
+        routes:
+          - method: POST
+            path: /api/notes/search
+            json: []
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob }
+          - method: POST
+            path: /api/users/notes
+            json: []
+          - method: POST
+            path: /api/notes/show
+            json: { id: n1, user: { username: bob }, text: "見える 👀" }
+      - name: other
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json: { id: n2, user: { username: carol }, text: "よそ" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${home.port}.json
+          content: |
+            {"service": "${home.url}", "userId": "u-alice", "username": "alice", "token": "e2e-fake-token-0001"}
+      - run:
+          command: msky search 猫 -n 1 --host ${home.url}
+          env: &saved
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: home
+            path: /api/notes/search
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0001 }
+                - { path: "$.query", equals: 猫 }
+      - run:
+          command: msky author bob -n 1 --host ${home.url}
+          env: *saved
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: home
+            path: /api/users/notes
+            body:
+              json: { path: "$.i", equals: e2e-fake-token-0001 }
+      # No account is in use (no accounts.json), so the address names the
+      # server: the token goes with it.
+      - run:
+          command: msky note ${home.url}/notes/n1
+          env: *saved
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "見える 👀"
+      - assert:
+          mock:
+            name: home
+            path: /api/notes/show
+            body:
+              json: { path: "$.i", equals: e2e-fake-token-0001 }
+      # Another server gets no token.
+      - run:
+          command: msky note ${other.url}/notes/n2 --host ${home.url}
+          env: *saved
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: other
+            path: /api/notes/show
+            body:
+              not_contains: e2e-fake-token-0001
+
+  - name: a token the server no longer takes is an API error that says to log in again
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/i
+            status: 401
+            json: { error: { message: "Authentication failed. Please ensure your token is correct.", code: AUTHENTICATION_FAILED, id: b0a7f5f8-dc2f-4171-b91f-de88ad238e14 } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-alice", "username": "alice", "token": "e2e-fake-token-0001"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - run:
+          command: msky whoami
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: |
+              error: i failed: AUTHENTICATION_FAILED: Authentication failed. Please ensure your token is correct.
+              hint: 127.0.0.1:${api.port} no longer takes the token msky saved; run `msky login --host 127.0.0.1:${api.port}` again
+
+  - name: a broken login file says how to get out of it, and logout --all takes it away
+    steps:
+      - fixture:
+          file: cfg/accounts/misskey.io.json
+          content: '{"token": "e2e-fake-token-0001" oops'
+      - fixture:
+          file: cfg/accounts.json
+          content: '{"current": "misskey.io"}'
+      - run:
+          command: msky whoami
+          env: &broken
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 3
+          stderr:
+            contains: ["is not a valid login file (line 1, column", "hint: run `msky logout --all` to discard it and log in again"]
+            not_contains: e2e-fake-token-0001
+      - run:
+          command: msky logout --all
+          env: *broken
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out of misskey.io\n"
+      - assert:
+          file:
+            path: cfg/accounts/misskey.io.json
+            exists: false

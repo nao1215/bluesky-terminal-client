@@ -6,13 +6,13 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Mutex;
 
 /// What the stand-in answers: status, extra headers, body.
-struct Reply {
-    status: u16,
-    headers: Vec<(&'static str, String)>,
-    body: Vec<u8>,
+pub(crate) struct Reply {
+    pub status: u16,
+    pub headers: Vec<(&'static str, String)>,
+    pub body: Vec<u8>,
 }
 
-fn reply(status: u16, body: &str) -> Reply {
+pub(crate) fn reply(status: u16, body: &str) -> Reply {
     Reply {
         status,
         headers: Vec::new(),
@@ -22,12 +22,12 @@ fn reply(status: u16, body: &str) -> Reply {
 
 /// The handler gets the request's path and body and the number of the
 /// request (from 0).
-type Handler = Arc<dyn Fn(&str, &str, usize) -> Reply + Send + Sync>;
+pub(crate) type Handler = Arc<dyn Fn(&str, &str, usize) -> Reply + Send + Sync>;
 
 /// The path and the body of each request the server took.
-type Calls = Arc<Mutex<Vec<(String, String)>>>;
+pub(crate) type Calls = Arc<Mutex<Vec<(String, String)>>>;
 
-fn serve(h: Handler) -> (String, Calls) {
+pub(crate) fn serve(h: Handler) -> (String, Calls) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let log: Calls = Arc::default();
@@ -295,4 +295,90 @@ fn a_file_that_cannot_be_downloaded_leaves_nothing() {
         assert!(e.message().contains(said), "{e:?}");
         assert!(!out.exists());
     }
+}
+
+/// A throwaway value in the place of a token; no server gave it.
+const FAKE: &str = "fake-token-for-tests";
+
+// A client with a token sends it as the body's `i`, beside what the call
+// sends; one without sends no `i` at all.
+#[test]
+fn the_token_goes_in_the_body_only_when_there_is_one() {
+    let (url, log) = serve(Arc::new(|_, _, _| reply(200, "[]")));
+    let (c, _) = client(&url);
+    c.search("猫", 5, None).unwrap();
+    let c = c.with_token(Some(FAKE.into()));
+    assert!(c.logged_in());
+    c.search("猫", 5, None).unwrap();
+    let log = log.lock().unwrap();
+    let body = |i: usize| serde_json::from_str::<Value>(&log[i].1).unwrap();
+    assert_eq!(body(0), json!({"query": "猫", "limit": 5}));
+    assert_eq!(body(1), json!({"query": "猫", "limit": 5, "i": FAKE}));
+    let (c, _) = client(&url);
+    assert!(!c.with_token(Some(String::new())).logged_in());
+}
+
+// A timeline asks for what is wanted, renotes or not, older than untilId;
+// notifications are asked for left unread, so reading them changes nothing.
+#[test]
+fn what_the_timeline_and_the_notifications_send() {
+    let (url, log) = serve(Arc::new(|path, _, _| match path {
+        "/api/i" => reply(200, r#"{"id":"u1","username":"me","notesCount":3}"#),
+        _ => reply(200, r#"[{"id":"x1","type":"follow"}]"#),
+    }));
+    let (c, _) = client(&url);
+    let c = c.with_token(Some(FAKE.into()));
+    c.timeline("notes/hybrid-timeline", false, 500, Some("9z"))
+        .unwrap();
+    let got = c.notifications(0, None).unwrap();
+    assert_eq!(got[0].kind, "follow");
+    let me = c.me().unwrap();
+    assert_eq!((me.id.as_str(), me.notes_count), ("u1", Some(3)));
+    let log = log.lock().unwrap();
+    let body = |i: usize| serde_json::from_str::<Value>(&log[i].1).unwrap();
+    assert_eq!(log[0].0, "/api/notes/hybrid-timeline");
+    assert_eq!(
+        body(0),
+        json!({"limit": 100, "withRenotes": false, "untilId": "9z", "i": FAKE})
+    );
+    assert_eq!(log[1].0, "/api/i/notifications");
+    assert_eq!(body(1), json!({"limit": 1, "markAsRead": false, "i": FAKE}));
+    assert_eq!(log[2].0, "/api/i");
+    assert_eq!(body(2), json!({"i": FAKE}));
+}
+
+// A token the server no longer takes says how to get a new one, and the
+// error does not quote it.
+#[test]
+fn a_token_the_server_turns_down_says_to_log_in_again() {
+    let (url, _) = serve(Arc::new(|_, _, _| {
+        reply(
+            401,
+            r#"{"error":{"message":"Authentication failed. Please ensure your token is correct.","code":"AUTHENTICATION_FAILED","id":"b0a7f5f8-dc2f-4171-b91f-de88ad238e14"}}"#,
+        )
+    }));
+    let (c, waits) = client(&url);
+    let e = c.with_token(Some(FAKE.into())).me().unwrap_err();
+    assert_eq!(e.kind(), Kind::Api);
+    assert!(e.hint().unwrap().contains("msky login --host"), "{e:?}");
+    assert!(!format!("{e:?}").contains(FAKE));
+    assert!(waits.lock().unwrap().is_empty());
+}
+
+// A check the server answers is returned as it is; a refusal is returned
+// as one, to be told from a call that failed on the way.
+#[test]
+fn a_miauth_check_tells_a_refusal_from_an_answer() {
+    let (url, log) = serve(Arc::new(|path, _, _| match path {
+        "/api/miauth/s1/check" => reply(200, r#"{"ok":false}"#),
+        _ => reply(
+            403,
+            r#"{"error":{"code":"ACCESS_DENIED","message":"denied"}}"#,
+        ),
+    }));
+    let (c, _) = client(&url);
+    assert_eq!(c.miauth_check("s1").unwrap().unwrap(), json!({"ok": false}));
+    let r = c.miauth_check("s2").unwrap().unwrap_err();
+    assert_eq!((r.status, r.said()), (403, "ACCESS_DENIED: denied".into()));
+    assert_eq!(log.lock().unwrap()[0].1, "{}");
 }

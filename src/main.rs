@@ -8,10 +8,13 @@
 )]
 
 mod api;
+mod browser;
 mod cli;
 mod clock;
+mod config;
 mod download;
 mod error;
+mod miauth;
 mod text;
 
 use std::io::Write;
@@ -21,20 +24,16 @@ use clap::{CommandFactory, Parser};
 
 use crate::error::{Error, Kind, Result};
 
-/// Command line: the commands read a Misskey server as a visitor does.
+/// Command line: the commands read a Misskey server, as a visitor or as
+/// the account `msky login` saved for it.
 /// The `--help` text comes from the package description and `AFTER_HELP`.
 #[derive(Debug, Parser)]
 #[command(name = "msky", version, about, long_about = None, after_help = AFTER_HELP)]
 struct Cli {
-    /// Misskey server to read: a host such as misskey.io, or its URL.
-    #[arg(
-        long,
-        env = "MSKY_HOST",
-        value_name = "HOST",
-        default_value = api::DEFAULT_HOST,
-        global = true
-    )]
-    host: String,
+    /// Misskey server: a host such as misskey.io, or its URL [default: the
+    /// server of the account in use, else misskey.io]
+    #[arg(long, env = "MSKY_HOST", value_name = "HOST", global = true)]
+    host: Option<String>,
 
     /// Print JSON: one note per line, in the same shape for every command,
     /// and errors as {"error": ...} on stdout too.
@@ -46,16 +45,32 @@ struct Cli {
 }
 
 const AFTER_HELP: &str = "\
-msky reads what a Misskey server shows to visitors; it does not log in.
-A note is its ID or its address (https://misskey.io/notes/ID); an account
-is name, @name, @name@host, or its address (https://misskey.io/@name). An
-address is read on its own server, whatever --host says.
+msky reads what a Misskey server shows to visitors, or, after `msky login`,
+what it shows to your account there, with read-only access. A note is its
+ID or its address (https://misskey.io/notes/ID); an account is name, @name,
+@name@host, or its address (https://misskey.io/@name). An address is read
+on its own server, whatever --host says.
 
 Exit status: 0 success, 1 usage error, 3 local file error, 4 network or
 server error.";
 
 fn run(cli: Cli) -> Result<()> {
-    let origin = api::normalize_host(&cli.host)?;
+    let accounts = config::config_dir().map(config::AccountStore::open);
+    // A broken login file is what logout takes away, so it does not stop it.
+    let logout = matches!(cli.command, Some(cli::Command::Logout { .. }));
+    let origin = match cli.host.as_deref() {
+        Some(h) => api::normalize_host(h)?,
+        // The account in use names the server when nothing else does.
+        None => match &accounts {
+            Ok(a) => match a.current() {
+                Ok(s) => s.map(|s| s.service),
+                Err(_) if logout => None,
+                Err(e) => return Err(e),
+            },
+            Err(_) => None,
+        }
+        .map_or_else(|| api::normalize_host(api::DEFAULT_HOST), Ok)?,
+    };
     let Some(cmd) = cli.command else {
         // Nothing to do yet without a command: the full-screen client is
         // still to come, so the help says what there is.
@@ -69,6 +84,8 @@ fn run(cli: Cli) -> Result<()> {
     let ctx = cli::Ctx {
         origin,
         json: cli.json,
+        host_given: cli.host.is_some(),
+        accounts,
     };
     cli::run(cmd, &ctx)
 }
