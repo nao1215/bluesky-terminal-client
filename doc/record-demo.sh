@@ -2,23 +2,28 @@
 # Record the README's demo in a real kitty window, as bsky's
 # doc/record-demo.sh records its own:
 #
-#   doc/record-demo.sh demo       doc/img/demo.gif: msky as the account you
-#                                 logged in with `msky login`, on your own
-#                                 PC: the home timeline with its pictures, a
-#                                 picture full screen, a thread and the
-#                                 local timeline (not the notifications:
-#                                 showing them marks them read). msky reads
-#                                 its own config folder; this script never
-#                                 reads, copies or prints the token, and
-#                                 presses read-only keys only (j space v 1 2
-#                                 esc): nothing is posted, reacted to,
-#                                 followed or marked read. It refuses to run
-#                                 on CI (CI or GITHUB_ACTIONS set). Look at
-#                                 every frame before committing the GIF.
-#   doc/record-demo.sh demo-fake  doc/img/demo-fake.gif: the same against
-#                                 doc/demo-server.py, with made-up accounts
-#                                 and notes, where nothing reaches a real
-#                                 server; for anything that is not your PC.
+#   doc/record-demo.sh demo-fake  doc/img/demo.gif, the README's: msky
+#                                 against doc/demo-server.py, with made-up
+#                                 accounts and notes in English, the
+#                                 author's photos, a video and custom
+#                                 emoji, where nothing reaches a real
+#                                 server. Runs anywhere, on Xvfb too
+#                                 (DISPLAY=:99).
+#   doc/record-demo.sh demo       doc/img/demo-account.gif: msky as the
+#                                 account you logged in with `msky login`,
+#                                 on your own PC: the home timeline with its
+#                                 pictures, a picture full screen, a thread
+#                                 and the local timeline (not the
+#                                 notifications: showing them marks them
+#                                 read). msky reads its own config folder;
+#                                 this script never reads, copies or prints
+#                                 the token, and presses read-only keys only
+#                                 (j space v 1 2 esc): nothing is posted,
+#                                 reacted to, followed or marked read. It
+#                                 refuses to run on CI (CI or GITHUB_ACTIONS
+#                                 set). A real server's timelines can show
+#                                 anything: look at every frame before
+#                                 sharing the GIF, and do not commit it.
 #
 # Needs kitty, xdotool, xwininfo and ffmpeg, and an X11 display (Xwayland is fine):
 # kitty runs as an X11 window so ffmpeg can capture it, and the keys are sent
@@ -187,7 +192,7 @@ demo_fake() {
   sleep 2
   send "1"
   sleep 1.5
-  stop "$OUT/demo-fake.gif" 860 8
+  stop "$OUT/demo.gif" 860 8
   quit
 }
 
@@ -221,7 +226,7 @@ demo() {
   sleep 1
   send "1"
   sleep 1.5
-  stop "$OUT/demo.gif"
+  stop "$OUT/demo-account.gif"
   quit
 }
 
