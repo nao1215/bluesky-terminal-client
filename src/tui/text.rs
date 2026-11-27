@@ -302,6 +302,14 @@ mod tests {
         assert_eq!(wrap("ﾊﾟﾊﾟﾊﾟ", 4), ["ﾊﾟﾊﾟ", "ﾊﾟ"]);
     }
 
+    // A cluster too wide for any line keeps the zero-width space before it
+    // on its line: alone, the space would be a line that shows nothing.
+    #[test]
+    fn a_zero_width_space_stays_with_a_cluster_too_wide() {
+        assert_eq!(wrap("\u{200b}日ﾞﾞ", 2), ["\u{200b}日ﾞﾞ"]);
+        assert_eq!(wrap("a\u{200b}日ﾞ", 2), ["a\u{200b}", "日ﾞ"]);
+    }
+
     // The same text at the same width wraps as wrap does, from the cache
     // or not; another width or text is wrapped again.
     #[test]

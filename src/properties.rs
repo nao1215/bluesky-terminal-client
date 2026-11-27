@@ -86,9 +86,11 @@ fn printable(s: &str) -> String {
 }
 
 /// Whether `line` fits `width`, or is one cluster too wide for any line
-/// (`あ` with sound marks after it), which a line holds alone.
+/// (`日` with sound marks after it), which a line holds alone. A cluster
+/// that takes no cell (U+200B) may be on the line with it: moved to a line
+/// of its own, it would show as a blank line.
 fn fits(line: &str, width: usize) -> bool {
-    cells(line) <= width || line.graphemes(true).count() == 1
+    cells(line) <= width || line.graphemes(true).filter(|g| cells(g) > 0).count() == 1
 }
 
 /// A key the text field takes.
