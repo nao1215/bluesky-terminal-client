@@ -4,6 +4,11 @@
 //! and have its files listed without panicking, however large its counts or
 //! deep its renotes.
 //!
+//! msky reads every answer as a JSON value first and the note from that, so
+//! a key written twice takes its last value, as a browser reads it; the
+//! bytes alone refuse such a note (serde's derive reports the duplicate),
+//! which is why the relation goes from the bytes to the value only.
+//!
 //! The input is the JSON text of a note.
 
 #![no_main]
@@ -16,20 +21,26 @@ mod types;
 
 use types::{Note, Notification, User};
 
+/// What parses from the bytes parses the same from the value.
+fn same<T>(data: &[u8], value: &serde_json::Value) -> Option<T>
+where
+    T: serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+{
+    let from_value = serde_json::from_value::<T>(value.clone()).ok();
+    if let Ok(from_bytes) = serde_json::from_slice::<T>(data) {
+        assert_eq!(Some(&from_bytes), from_value.as_ref());
+    }
+    from_value
+}
+
 fuzz_target!(|data: &[u8]| {
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(data) else {
         return;
     };
 
-    let note = serde_json::from_slice::<Note>(data).ok();
-    assert_eq!(note, serde_json::from_value::<Note>(value.clone()).ok());
-    let user = serde_json::from_slice::<User>(data).ok();
-    assert_eq!(user, serde_json::from_value::<User>(value.clone()).ok());
-    let notification = serde_json::from_slice::<Notification>(data).ok();
-    assert_eq!(
-        notification,
-        serde_json::from_value::<Notification>(value).ok()
-    );
+    let note = same::<Note>(data, &value);
+    let _ = same::<User>(data, &value);
+    let _ = same::<Notification>(data, &value);
 
     let Some(note) = note else {
         return;
