@@ -40,30 +40,44 @@ fn be64(b: &[u8], at: usize) -> Option<u64> {
 
 /// The boxes in `buf`, each its type and its body. A box whose size runs
 /// past `buf` ends the list.
-fn boxes(buf: &[u8]) -> Vec<([u8; 4], &[u8])> {
+fn boxes(buf: &[u8]) -> Boxes<'_> {
+    boxes_checked(buf).0
+}
+
+/// Each box's type and body.
+type Boxes<'a> = Vec<([u8; 4], &'a [u8])>;
+
+/// [`boxes`], and whether a box's size ran past `buf` (or below its own
+/// header) and ended the list early. A 64-bit size can be anything, so the
+/// end of a box is added with a check: wrapped around, it would pass the
+/// bound and slice backwards.
+fn boxes_checked(buf: &[u8]) -> (Boxes<'_>, bool) {
     let mut out = Vec::new();
     let mut at = 0usize;
     while at + 8 <= buf.len() {
-        let Some(size32) = be32(buf, at) else { break };
-        let kind: [u8; 4] = match buf[at + 4..at + 8].try_into() {
-            Ok(k) => k,
-            Err(_) => break,
+        let Some(size32) = be32(buf, at) else {
+            return (out, true);
+        };
+        let Ok(kind) = <[u8; 4]>::try_from(&buf[at + 4..at + 8]) else {
+            return (out, true);
         };
         let (header, size) = match size32 {
             0 => (8, buf.len() - at),
             1 => match be64(buf, at + 8).and_then(|s| usize::try_from(s).ok()) {
                 Some(s) => (16, s),
-                None => break,
+                None => return (out, true),
             },
             s => (8, s as usize),
         };
-        if size < header || at + size > buf.len() {
-            break;
+        match at.checked_add(size) {
+            Some(end) if size >= header && end <= buf.len() => {
+                out.push((kind, &buf[at + header..end]));
+                at = end;
+            }
+            _ => return (out, true),
         }
-        out.push((kind, &buf[at + header..at + size]));
-        at += size;
     }
-    out
+    (out, false)
 }
 
 fn child<'a>(buf: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
@@ -75,7 +89,7 @@ fn child<'a>(buf: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
 
 /// The video track of the MP4 file `file`, or why it cannot be played.
 pub fn video_track(file: &[u8]) -> Result<Track, String> {
-    let top = boxes(file);
+    let (top, broken) = boxes_checked(file);
     if top.iter().any(|(k, _)| k == b"moof") {
         return Err("the video is a fragmented MP4, which msky cannot play yet".into());
     }
@@ -83,7 +97,11 @@ pub fn video_track(file: &[u8]) -> Result<Track, String> {
         .iter()
         .find(|(k, _)| k == b"moov")
         .map(|(_, b)| *b)
-        .ok_or("the file has no MP4 header (moov)")?;
+        .ok_or(if broken && !top.is_empty() {
+            "the MP4 file is broken: a box runs past the end of the file"
+        } else {
+            "the file has no MP4 header (moov)"
+        })?;
     let trak = boxes(moov)
         .into_iter()
         .filter(|(k, _)| k == b"trak")
@@ -359,6 +377,10 @@ mod tests {
             video_track(&hevc).err().unwrap(),
             "the video is hvc1, not H.264; msky decodes H.264 only (with OpenH264)"
         );
+        assert_eq!(
+            video_track(&clip()[..100]).err().unwrap(),
+            "the MP4 file is broken: a box runs past the end of the file"
+        );
         let file = clip();
         for cut in 0..file.len() {
             let _ = video_track(&file[..cut]);
@@ -373,5 +395,28 @@ mod tests {
             f[i] ^= (x >> 8) as u8;
             let _ = video_track(&f);
         }
+    }
+
+    // A 64-bit box size near the top of the range does not wrap the end of
+    // the box around to before its start: the file is refused as broken,
+    // where it panicked on a backward slice and the video stayed loading.
+    #[test]
+    fn a_box_size_that_overflows_is_refused_without_panicking() {
+        let file: &[u8] =
+            b"\0\0\0\x20f\x01\0\0\0\0\0\0\0\0\x02\0is\0\x01\0\0\x08\0\0\0\0\x01\0\0\x14\0\
+                            \0\0\0\x01\0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xee";
+        assert_eq!(file.len(), 48);
+        assert_eq!(
+            video_track(file).err().unwrap(),
+            "the MP4 file is broken: a box runs past the end of the file"
+        );
+        // Inside `moov` too, where a box's end is counted from its parent.
+        let mut nested = b"\0\0\0\x20moov".to_vec();
+        nested.extend_from_slice(b"\0\0\0\x01trak\xff\xff\xff\xff\xff\xff\xff\xf8");
+        nested.extend_from_slice(&[0; 8]);
+        assert_eq!(
+            video_track(&nested).err().unwrap(),
+            "the file has no video track"
+        );
     }
 }

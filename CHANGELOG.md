@@ -63,3 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A video in a note is drawn in the client's timelines, columns, threads and profiles by the poster the server made of it (`thumbnailUrl`), in the box a picture gets and in the note's order beside its pictures, under the `▶ 1 video` line, as bsky draws a video's thumbnail; before, it was that line alone. A video without a poster stays the line, and `space` opens the viewer as before.
 - The client's Chat tab draws custom emoji as pictures in the conversations and their messages, as a note's (the sender's own, else the server's), where they stayed as `:name:`, and names whom a conversation is with by display name and address, as bsky's does, where it showed the address alone; the list no longer repeats their name before their last message.
 - On Windows, the client's composer, chat and profile editor keep emoji and other characters outside the Basic Multilingual Plane typed into them (`👨‍👩‍👧`, `🇯🇵`, `🐈‍⬛`): the console hands each as two surrogates, which crossterm dropped, so a note typed as `こんにちは 👨‍👩‍👧` was sent with only its joiners. msky now reads those from the console itself, as bsky does.
+
+### Fixed
+
+- A video whose MP4 gives a box a 64-bit size near the largest no longer leaves the viewer loading forever: the player stopped on it, and now the viewer says the file is broken.
