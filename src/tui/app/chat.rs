@@ -98,15 +98,12 @@ impl App {
         Vec::new()
     }
 
-    /// Without chat on this server, no Chat tab; the tab shown moves to
+    /// Without chat on this server, no Chat tab: the tab shown moves to
     /// the first if it was Chat.
-    pub(super) fn hide_chat_if_none(&mut self) {
-        if !self.no_chat || !self.tabs.contains(&Tab::Chat) || self.tabs.len() <= 1 {
-            return;
-        }
-        self.tabs.retain(|t| *t != Tab::Chat);
+    fn hide_chat(&mut self) {
+        self.no_chat = true;
         if self.tab == Tab::Chat {
-            self.tab = self.tabs[0];
+            self.tab = TABS[0];
         }
     }
 
@@ -167,10 +164,6 @@ impl App {
         }
         if self.no_chat {
             self.info("this server has no chat for this account");
-            return Vec::new();
-        }
-        if !self.tabs.contains(&Tab::Chat) {
-            self.info("the Chat tab is not shown: + adds it");
             return Vec::new();
         }
         let title = match u.host.as_deref().filter(|h| !h.is_empty()) {
@@ -309,8 +302,7 @@ impl App {
                     }
                     Err(e) if crate::api::chat_unavailable(&e) => {
                         let shown = self.tab == Tab::Chat;
-                        self.no_chat = true;
-                        self.hide_chat_if_none();
+                        self.hide_chat();
                         // Asked at the start, the tab just goes; said only
                         // to one who was looking at it.
                         if shown {

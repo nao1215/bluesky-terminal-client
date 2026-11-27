@@ -74,7 +74,7 @@ fn timeline(app: &App) -> &List<Note> {
 fn a_logged_in_start_opens_on_home_and_reads_the_notifications_too() {
     let (app, jobs) = App::new(Some(session()), ORIGIN);
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
-    assert_eq!(app.tabs, DEFAULT_TABS);
+    assert_eq!(app.tabs(), TABS);
     let asked: Vec<&Job> = jobs.iter().map(|(_, j)| j).collect();
     assert_eq!(
         asked,
@@ -177,7 +177,7 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     );
     // Round the tabs, both ways, wrapping.
     app.handle_key(key('1'));
-    let order: Vec<Tab> = (0..DEFAULT_TABS.len())
+    let order: Vec<Tab> = (0..TABS.len())
         .map(|_| {
             app.handle_key(code(KeyCode::Tab));
             app.tab
@@ -185,9 +185,9 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
         .collect();
     assert_eq!(
         order,
-        DEFAULT_TABS[1..]
+        TABS[1..]
             .iter()
-            .chain(&DEFAULT_TABS[..1])
+            .chain(&TABS[..1])
             .copied()
             .collect::<Vec<_>>()
     );
@@ -208,46 +208,34 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     }
 }
 
-// The tabs setting chooses the tabs and their order, social among them;
-// what is not a tab is said, and none at all is the default.
+// The tabs are always the same seven, numbered 1 to 7; Social is not one
+// of them, and there is no eighth.
 #[test]
-fn the_tabs_setting_orders_the_tabs_and_numbers_follow_it() {
-    let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+fn the_tabs_are_fixed_and_numbered_in_order() {
     let mut app = logged_in(&["a"]);
-    let mut tabs_of = |n: &[String]| app.tabs_for_host(n);
-    let (tabs, warn) = tabs_of(&names(&[
-        "Social",
-        "notifications",
-        "home",
-        "home",
-        "feeds",
-    ]));
     assert_eq!(
-        tabs,
+        app.tabs(),
         [
-            Tab::Timeline(TimelineKind::Social),
+            Tab::Timeline(TimelineKind::Home),
+            Tab::Timeline(TimelineKind::Local),
+            Tab::Timeline(TimelineKind::Global),
             Tab::Notifications,
-            Tab::Timeline(TimelineKind::Home)
+            Tab::Search,
+            Tab::Profile,
+            Tab::Chat
         ]
     );
-    assert!(warn.unwrap().contains("feeds is not a tab"));
-    assert_eq!(tabs_of(&[]).0, DEFAULT_TABS);
-    assert_eq!(tabs_of(&names(&["nope"])).0, DEFAULT_TABS);
-    let jobs = app.set_tabs(tabs);
-    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Social));
-    assert_eq!(
-        jobs[0].1,
-        Job::Timeline {
-            kind: TimelineKind::Social,
-            until: None
-        }
-    );
-    app.handle_key(key('2'));
-    assert_eq!(app.tab, Tab::Notifications);
-    assert!(app.handle_key(key('5')).is_empty(), "no fifth tab");
-    assert_eq!(app.tab, Tab::Notifications);
-    app.handle_key(key('/'));
-    assert_eq!(app.tab, Tab::Notifications, "no Search tab to go to");
+    for (i, want) in TABS.iter().enumerate() {
+        app.handle_key(key(char::from(b'1' + i as u8)));
+        assert_eq!(app.tab, *want);
+        // Esc leaves typing in the search box for the next number key.
+        app.handle_key(code(KeyCode::Esc));
+    }
+    app.handle_key(key('1'));
+    assert!(app.handle_key(key('8')).is_empty(), "no eighth tab");
+    assert!(app.handle_key(key('x')).is_empty(), "x closes no tab");
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    assert_eq!(app.status, None);
 }
 
 // Near the end the next page is asked for once, older than the last note;
@@ -856,7 +844,7 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                     } else {
                         Ok((0..size)
                             .map(|i| Feed {
-                                kind: FeedKind::ALL[i % 3],
+                                kind: [FeedKind::Antenna, FeedKind::List, FeedKind::Channel][i % 3],
                                 host: "misskey.test".into(),
                                 id: format!("f{step}-{i}"),
                                 name: "名".into(),
@@ -1987,8 +1975,7 @@ fn the_chat_tab_lists_opens_and_sends() {
 
 // A server without chat, or a role that may not chat, takes the tab away.
 // Asked at the start, the tab goes before it is opened, without a word;
-// the setting keeps it for a server that has chat, and another account
-// asks again.
+// another account asks again.
 #[test]
 fn a_server_without_chat_hides_the_tab_from_the_start() {
     let (mut app, jobs) = App::new(Some(session()), ORIGIN);
@@ -2001,15 +1988,14 @@ fn a_server_without_chat_hides_the_tab_from_the_start() {
         seq,
         Event::ChatHistory(Err(Error::api("chat/history failed: HTTP 404"))),
     );
-    assert!(!app.tabs.contains(&Tab::Chat));
+    assert!(!app.tabs().contains(&Tab::Chat));
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     assert!(app.status.is_none(), "nothing said: the tab was not open");
-    assert!(app.tabs_setting().iter().any(|s| s == "chat"));
     app.handle_key(key('7'));
     assert_ne!(app.tab, Tab::Chat, "7 opens no Chat tab");
     app.switched_to(Some(session()), ORIGIN);
     assert!(
-        app.tabs.contains(&Tab::Chat),
+        app.tabs().contains(&Tab::Chat),
         "asked again for the next account"
     );
 }
@@ -2025,7 +2011,7 @@ fn a_server_without_chat_takes_the_tab_away() {
             "chat/history failed: NO_SUCH_ENDPOINT: No such endpoint.",
         ))),
     );
-    assert!(!app.tabs.contains(&Tab::Chat));
+    assert!(!app.tabs().contains(&Tab::Chat));
     assert_ne!(app.tab, Tab::Chat);
     assert!(app.status.as_ref().unwrap().text.contains("has no chat"));
     // A visitor's Chat tab says how to log in.
@@ -2036,11 +2022,10 @@ fn a_server_without_chat_takes_the_tab_away() {
 
 // s opens the settings; the theme row opens bsky's themes, previewed as
 // the selection moves, put back on esc and kept on enter; the language
-// row switches the client to Japanese at once; the tabs row takes names
-// in order; x puts a row back. What is kept goes to the event loop to
-// write.
+// row switches the client to Japanese at once; x puts a row back. What is
+// kept goes to the event loop to write.
 #[test]
-fn the_settings_screen_changes_and_keeps_theme_language_and_tabs() {
+fn the_settings_screen_changes_and_keeps_theme_and_language() {
     use crate::tui::theme::{ColorDepth, THEMES};
     let mut app = logged_in(&[]);
     app.apply_settings(
@@ -2093,35 +2078,28 @@ fn the_settings_screen_changes_and_keeps_theme_language_and_tabs() {
     app.handle_key(key('x'));
     assert_eq!(app.take_settings_save().unwrap().language, None);
     assert_eq!(crate::i18n::current(), crate::i18n::Lang::En);
-    // The tabs, by name; a name that is no tab is refused.
-    for _ in 0..3 {
+    // No row for the tabs, which are always the same: the last row is
+    // the browser, and j from it comes back to the theme.
+    let names: Vec<&str> = app.settings_rows().iter().map(|r| r.name).collect();
+    assert_eq!(names, ["Theme", "Language", "Download folder", "Browser"]);
+    for _ in 0..2 {
         app.handle_key(key('j'));
     }
     app.handle_key(code(KeyCode::Enter));
     assert!(matches!(
         app.overlay,
         Some(Overlay::Settings {
-            selected: 4,
+            selected: 3,
             edit: Some(_)
         })
     ));
-    app.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-    type_str(&mut app, "chat, home, nope");
-    app.handle_key(code(KeyCode::Enter));
-    assert!(app.status.as_ref().unwrap().text.contains("nope"));
-    assert!(app.take_settings_save().is_none());
-    app.handle_key(code(KeyCode::Enter));
-    app.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-    type_str(&mut app, "chat, home");
-    app.handle_key(code(KeyCode::Enter));
-    assert_eq!(app.tabs, [Tab::Chat, Tab::Timeline(TimelineKind::Home)]);
-    assert_eq!(app.tab, Tab::Chat);
-    assert_eq!(
-        app.take_settings_save().unwrap().tabs,
-        Some(vec!["chat".to_string(), "home".to_string()])
-    );
-    app.handle_key(key('x'));
-    assert_eq!(app.tabs, DEFAULT_TABS);
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('j'));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Settings { selected: 0, .. })
+    ));
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     app.handle_key(code(KeyCode::Esc));
     assert!(app.overlay.is_none());
 }
@@ -2312,59 +2290,42 @@ fn feed(kind: FeedKind, id: &str, name: &str) -> Feed {
     }
 }
 
-// The tabs setting names antennas, lists and channels as kind:host:id:name;
-// those of another server are kept in it but not shown here.
+// + offers the account's feeds once read; enter adds one as a tab after
+// the fixed ones and shows it, which reads its endpoint, pages by untilId
+// and reads again on R. Shown already, it is not offered again.
 #[test]
-fn feed_tabs_come_from_the_setting_for_their_server_only() {
+fn plus_adds_a_feed_tab() {
     let mut app = logged_in(&["a"]);
-    let here = crate::api::authority(ORIGIN).to_string();
-    let names = vec![
-        "home".to_string(),
-        format!("list/{here}/l1/猫, 犬"),
-        "antenna/other.example/a9/よそ".to_string(),
-        format!("channel/{here}/c1/お絵描き 🎨"),
-        "list/broken".to_string(),
-    ];
-    let (tabs, warn) = app.tabs_for_host(&names);
-    assert_eq!(
-        tabs,
-        [
-            Tab::Timeline(TimelineKind::Home),
-            Tab::Feed(0),
-            Tab::Feed(1)
-        ]
+    let jobs = app.handle_key(key('+'));
+    assert_eq!(jobs[0].1, Job::FeedChoices);
+    assert!(app.tab_choices().is_empty());
+    let list = feed(FeedKind::List, "l1", "猫, 犬 🐈");
+    app.handle_answer(
+        jobs[0].0,
+        Event::FeedChoices(Ok(vec![
+            feed(FeedKind::Antenna, "a1", "ニュース 📰"),
+            list.clone(),
+        ])),
     );
-    assert!(warn.unwrap().contains("list/broken"));
-    assert_eq!(app.feeds[0].feed.as_ref().unwrap().name, "猫, 犬");
-    assert_eq!(app.tab_label(Tab::Feed(1)), "# お絵描き 🎨");
-    app.settings.tabs = Some(names);
-    app.tabs = tabs;
-    let kept = app.tabs_setting();
-    assert_eq!(
-        kept,
-        [
-            "home".to_string(),
-            format!("list/{here}/l1/猫  犬"),
-            format!("channel/{here}/c1/お絵描き 🎨"),
-            "antenna/other.example/a9/よそ".to_string(),
-        ],
-        "the comma goes, the other server's stays"
-    );
-    // A feed tab reads its endpoint, pages by untilId, and R reads again.
-    let jobs = app.handle_key(key('2'));
-    let f = app.feeds[0].feed.clone().unwrap();
+    assert_eq!(app.tab_choices().len(), 2);
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(app.tab, Tab::Feed(0));
+    assert_eq!(app.tabs().len(), TABS.len() + 1);
+    assert_eq!(app.tab_label(Tab::Feed(0)), "☰ 猫, 犬 🐈");
+    assert!(app.take_settings_save().is_none(), "not kept");
     assert_eq!(
         jobs[0].1,
         Job::FeedNotes {
-            feed: f.clone(),
+            feed: list.clone(),
             until: None
         }
     );
-    assert_eq!(f.kind.endpoint(), ("notes/user-list-timeline", "listId"));
+    assert_eq!(list.kind.endpoint(), ("notes/user-list-timeline", "listId"));
     app.handle_answer(
         jobs[0].0,
         Event::FeedNotes {
-            feed: f.clone(),
+            feed: list.clone(),
             until: None,
             result: Ok(notes(&["n1", "n2"])),
         },
@@ -2374,7 +2335,7 @@ fn feed_tabs_come_from_the_setting_for_their_server_only() {
     assert_eq!(
         jobs[0].1,
         Job::FeedNotes {
-            feed: f.clone(),
+            feed: list.clone(),
             until: Some("n2".into())
         }
     );
@@ -2382,70 +2343,13 @@ fn feed_tabs_come_from_the_setting_for_their_server_only() {
     assert_eq!(
         jobs[0].1,
         Job::FeedNotes {
-            feed: f,
+            feed: list.clone(),
             until: None
         }
     );
-}
-
-// + offers the tabs not shown and the account's feeds once read; enter
-// adds one as the last tab, shows it and keeps it; x closes the tab shown
-// once y confirms, the last one staying.
-#[test]
-fn plus_adds_a_tab_and_x_closes_one() {
-    let mut app = logged_in(&["a"]);
     let jobs = app.handle_key(key('+'));
-    assert_eq!(jobs[0].1, Job::FeedChoices);
-    let choices = app.tab_choices();
-    assert_eq!(
-        choices,
-        [TabChoice::Builtin(Tab::Timeline(TimelineKind::Social))]
-    );
-    let ant = feed(FeedKind::Antenna, "a1", "ニュース 📰");
-    app.handle_answer(
-        jobs[0].0,
-        Event::FeedChoices(Ok(vec![ant.clone(), feed(FeedKind::List, "l1", "友達")])),
-    );
-    assert_eq!(app.tab_choices().len(), 3);
-    app.handle_key(key('j'));
-    let jobs = app.handle_key(code(KeyCode::Enter));
-    assert_eq!(app.tab, Tab::Feed(0));
-    assert_eq!(*app.tabs.last().unwrap(), Tab::Feed(0));
-    assert_eq!(
-        jobs[0].1,
-        Job::FeedNotes {
-            feed: ant.clone(),
-            until: None
-        }
-    );
-    let saved = app.take_settings_save().unwrap().tabs.unwrap();
-    assert_eq!(saved.last().unwrap(), &ant.setting());
-    // Shown already, it is not offered again.
-    let jobs = app.handle_key(key('+'));
-    app.handle_answer(jobs[0].0, Event::FeedChoices(Ok(vec![ant.clone()])));
-    assert!(!app.tab_choices().contains(&TabChoice::Feed(ant)));
-    app.handle_key(code(KeyCode::Esc));
-    // x, then anything but y: kept.
-    app.handle_key(key('x'));
-    app.handle_key(key('n'));
-    assert!(app.tabs.contains(&Tab::Feed(0)));
-    app.handle_key(key('x'));
-    app.handle_key(key('y'));
-    assert!(!app.tabs.contains(&Tab::Feed(0)));
-    assert_eq!(app.tab, Tab::Chat, "the one before it");
-    assert!(
-        app.take_settings_save()
-            .unwrap()
-            .tabs
-            .unwrap()
-            .iter()
-            .all(|t| !t.starts_with("antenna/"))
-    );
-    // The last tab stays.
-    app.tabs = vec![Tab::Chat];
-    app.handle_key(key('x'));
-    assert!(app.confirm_close_tab.is_none());
-    assert!(app.status.as_ref().unwrap().text.contains("last tab"));
+    app.handle_answer(jobs[0].0, Event::FeedChoices(Ok(vec![list.clone()])));
+    assert!(app.tab_choices().is_empty());
 }
 
 // ! on another's note reports its author with the note: a reason, a

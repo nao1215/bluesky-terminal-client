@@ -90,10 +90,6 @@ pub fn config_dir() -> Result<PathBuf> {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
-    /// The client's tabs, in order: `home`, `local`, `social`, `global`,
-    /// `notifications`, `search`, `profile`, `chat`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tabs: Option<Vec<String>>,
     /// The color theme, by name (bsky's themes).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -572,9 +568,10 @@ mod tests {
         )
         .unwrap();
         let (s, warn) = load_settings(dir.path());
-        assert_eq!(s.tabs, Some(vec!["home".to_string(), "social".to_string()]));
         assert_eq!(warn, None);
-        // Saved, what this version does not know stays.
+        // The tabs setting of an earlier version is not read, and not an
+        // error; saved, it stays, as everything this version does not know.
+        assert_eq!(s.other["tabs"], serde_json::json!(["home", "social"]));
         let mut s2 = s.clone();
         s2.theme = Some("dracula".into());
         save_settings(dir.path(), &s2).unwrap();

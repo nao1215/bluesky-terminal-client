@@ -32,14 +32,13 @@ mod tests;
 pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
 pub use edit_profile::EditProfile;
-pub use feeds::{Feed, FeedKind, FeedTab, TabChoice};
+pub use feeds::{Feed, FeedKind, FeedTab};
 pub use report::Report;
 pub use settings::{Environment, SettingRow};
 pub use write::Compose;
 
-/// The tabs. Each timeline is a tab of its own; which tabs there are and
-/// in what order is the `tabs` setting's, and the number keys follow that
-/// order, as bsky's tabs are 1 to 5 in the order shown.
+/// The tabs. Each timeline is a tab of its own, and the tabs are always
+/// the same ones in the same order, as bsky's are 1 to 5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Timeline(TimelineKind),
@@ -51,24 +50,9 @@ pub enum Tab {
     Feed(u8),
 }
 
-/// Every built-in tab, in the order `+` offers them.
-pub const ALL_TABS: [Tab; 8] = [
-    Tab::Timeline(TimelineKind::Home),
-    Tab::Timeline(TimelineKind::Local),
-    Tab::Timeline(TimelineKind::Social),
-    Tab::Timeline(TimelineKind::Global),
-    Tab::Notifications,
-    Tab::Search,
-    Tab::Profile,
-    Tab::Chat,
-];
-
-/// How many tabs there may be.
-pub const MAX_TABS: usize = 20;
-
-/// The tabs without a `tabs` setting: Social, home and local mixed, is
-/// left out, and a setting can put it in.
-pub const DEFAULT_TABS: [Tab; 7] = [
+/// The tabs, in the order of their numbers. Social, home and local mixed,
+/// is not one of them; `msky timeline social` reads it.
+pub const TABS: [Tab; 7] = [
     Tab::Timeline(TimelineKind::Home),
     Tab::Timeline(TimelineKind::Local),
     Tab::Timeline(TimelineKind::Global),
@@ -91,21 +75,6 @@ impl Tab {
             Tab::Chat => n!("Chat"),
             Tab::Feed(_) => n!("Feed"),
         }
-    }
-
-    /// The tab a name of the `tabs` setting stands for.
-    pub fn from_name(name: &str) -> Option<Tab> {
-        Some(match name.trim().to_ascii_lowercase().as_str() {
-            "home" => Tab::Timeline(TimelineKind::Home),
-            "local" => Tab::Timeline(TimelineKind::Local),
-            "social" | "hybrid" => Tab::Timeline(TimelineKind::Social),
-            "global" => Tab::Timeline(TimelineKind::Global),
-            "notifications" => Tab::Notifications,
-            "search" => Tab::Search,
-            "profile" => Tab::Profile,
-            "chat" => Tab::Chat,
-            _ => return None,
-        })
     }
 }
 
@@ -482,8 +451,6 @@ pub struct App {
     /// The server, `https://misskey.io`.
     pub origin: String,
     pub tab: Tab,
-    /// The tabs, in the order of their numbers.
-    pub tabs: Vec<Tab>,
     /// Every timeline, by [`TimelineKind::index`]: switching back to one
     /// finds it where it was left.
     pub timelines: [List<Note>; 4],
@@ -494,8 +461,6 @@ pub struct App {
     pub chat: ChatPane,
     /// The antennas, lists and channels shown as tabs.
     pub feeds: Vec<FeedTab>,
-    /// The tab `x` asked to close, waiting for `y`.
-    pub confirm_close_tab: Option<Tab>,
     /// Threads read ahead of `v`.
     pub read_ahead: read_ahead::ReadAhead,
     /// The notifications not read yet, as the Notifications tab counts
@@ -572,8 +537,7 @@ pub struct App {
     /// Answers to jobs numbered before this are of the account before a
     /// switch.
     account_since: u64,
-    /// The server has no chat for this account: the Chat tab is not shown,
-    /// and stays in the setting for a server that has.
+    /// The server has no chat for this account: the Chat tab is not shown.
     no_chat: bool,
 }
 
@@ -594,15 +558,13 @@ impl App {
         let mut app = Self {
             session,
             origin: origin.to_string(),
-            tab: DEFAULT_TABS[0],
-            tabs: DEFAULT_TABS.to_vec(),
+            tab: TABS[0],
             timelines: Default::default(),
             notifications: List::default(),
             search: Search::default(),
             profile: Profile::default(),
             chat: ChatPane::default(),
             feeds: Vec::new(),
-            confirm_close_tab: None,
             read_ahead: Default::default(),
             unread: None,
             unread_any: false,
@@ -666,16 +628,10 @@ impl App {
         self.chat = ChatPane::default();
         // Another server or account may have chat: it is asked again.
         self.no_chat = false;
-        if self.settings.tabs.is_none() {
-            self.tabs = DEFAULT_TABS.to_vec();
-        }
         // The feed tabs are the server's: another server shows its own.
-        if let Some(names) = self.settings.tabs.clone() {
-            let (tabs, _) = self.tabs_for_host(&names);
-            if !tabs.contains(&self.tab) {
-                self.tab = tabs[0];
-            }
-            self.tabs = tabs;
+        self.feeds.clear();
+        if matches!(self.tab, Tab::Feed(_)) {
+            self.tab = TABS[0];
         }
         if self.session.is_none() {
             let host = self.host().to_string();
@@ -700,9 +656,7 @@ impl App {
             jobs.extend(self.ask_unread(Instant::now()));
             // Asked now, so that on a server without chat its tab goes
             // before it is opened; on one with, the list is then ready.
-            if self.tabs.contains(&Tab::Chat) {
-                jobs.extend(self.load_chat());
-            }
+            jobs.extend(self.load_chat());
         }
         jobs
     }
@@ -748,7 +702,6 @@ impl App {
                 self.confirm_logout = None;
                 self.confirm_delete = None;
                 self.confirm_block = None;
-                self.confirm_close_tab = None;
                 true
             }
             _ => false,
@@ -793,7 +746,7 @@ impl App {
         self.origin = origin.to_string();
         self.account_since = self.sent + 1;
         self.overlay = None;
-        self.tab = self.tabs[0];
+        self.tab = TABS[0];
         let jobs = self.start();
         if let Some(s) = &self.session {
             let shown = format!("now @{}@{}", s.username, s.host());
@@ -1324,9 +1277,6 @@ impl App {
         if let Some(id) = self.confirm_block.take() {
             return self.answer_block(id, key);
         }
-        if let Some(tab) = self.confirm_close_tab.take() {
-            return self.answer_close_tab(tab, key);
-        }
         let in_thread = !self.threads.is_empty();
         match key.code {
             KeyCode::Char('n') => self.compose(false, false),
@@ -1348,7 +1298,6 @@ impl App {
             KeyCode::Char('s') => self.open_settings(),
             KeyCode::Char('+') => return self.open_add_tab(),
             KeyCode::Char('!') => self.open_report(),
-            KeyCode::Char('x') if !in_thread => self.ask_close_tab(),
             KeyCode::Char('T') => self.open_theme_picker(),
             KeyCode::Char('A') => {
                 let at = self
@@ -1360,11 +1309,11 @@ impl App {
             }
             KeyCode::Char(c @ '1'..='9') => {
                 let i = c as usize - '1' as usize;
-                if let Some(tab) = self.tabs.get(i).copied() {
+                if let Some(tab) = self.tabs().get(i).copied() {
                     return self.switch_tab(tab);
                 }
             }
-            KeyCode::Char('/') if self.tabs.contains(&Tab::Search) => {
+            KeyCode::Char('/') => {
                 let jobs = self.switch_tab(Tab::Search);
                 self.search.editing = true;
                 return jobs;
@@ -1477,30 +1426,23 @@ impl App {
         vec![self.stamp(Job::Emojis)]
     }
 
-    /// The tab `delta` places away in the order of the tabs, wrapping.
-    pub(super) fn next_tab(&self, delta: isize) -> Tab {
-        let n = self.tabs.len().max(1) as isize;
-        let i = self.tabs.iter().position(|t| *t == self.tab).unwrap_or(0) as isize;
-        self.tabs
-            .get((i + delta).rem_euclid(n) as usize)
-            .copied()
-            .unwrap_or(self.tab)
+    /// The tabs shown, in the order of their numbers: every one, but Chat
+    /// on a server without it, then the feed tabs added with `+`.
+    pub fn tabs(&self) -> Vec<Tab> {
+        TABS.into_iter()
+            .filter(|t| !(self.no_chat && *t == Tab::Chat))
+            .chain((0..self.feeds.len()).map(|i| Tab::Feed(i as u8)))
+            .collect()
     }
 
-    /// Use `tabs` (the `tabs` setting's), showing the first. The client
-    /// starts on Home and asks for it before the settings are read; a
-    /// setting that puts another first leaves that page unused.
-    pub fn set_tabs(&mut self, tabs: Vec<Tab>) -> Jobs {
-        if tabs.is_empty() {
-            return Vec::new();
-        }
-        self.tabs = tabs;
-        self.hide_chat_if_none();
-        let first = self.tabs[0];
-        if self.tab == first {
-            return Vec::new();
-        }
-        self.switch_tab(first)
+    /// The tab `delta` places away in the order of the tabs, wrapping.
+    pub(super) fn next_tab(&self, delta: isize) -> Tab {
+        let tabs = self.tabs();
+        let n = tabs.len().max(1) as isize;
+        let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0) as isize;
+        tabs.get((i + delta).rem_euclid(n) as usize)
+            .copied()
+            .unwrap_or(self.tab)
     }
 
     /// The timeline the tab shown is, if it is one.

@@ -259,15 +259,9 @@ fn event_loop(
             .iter()
             .map(app::Account::from)
             .collect();
-        // The tabs the settings name, in their order.
         let (settings, broken) = crate::config::load_settings(store.dir());
-        let names = settings.tabs.clone().unwrap_or_default();
         app.apply_settings(settings, depth, env, broken.clone());
-        let (tabs, unknown) = app.tabs_for_host(&names);
-        for (seq, job) in app.set_tabs(tabs) {
-            worker.send(seq, job);
-        }
-        if let Some(why) = broken.or(unknown) {
+        if let Some(why) = broken {
             app.account_error(why);
         }
     }

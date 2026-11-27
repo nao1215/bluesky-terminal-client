@@ -4,6 +4,10 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Accounts", "アカウント"),
     ("Add a tab", "タブを追加"),
     (
+        "add a tab: an antenna, a list, a channel",
+        "タブを追加: アンテナ、リスト、チャンネル",
+    ),
+    (
         "Breaks the server's rules or the law",
         "サーバーの規約や法律に反する",
     ),
@@ -43,12 +47,15 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Search", "検索"),
     ("Settings", "設定"),
     (
+        "settings: theme, language, download folder, browser",
+        "設定: テーマ、言語、保存先フォルダ、ブラウザ",
+    ),
+    (
         "Sexual content not marked as sensitive",
         "センシティブ指定のない性的な内容",
     ),
     ("Social", "ソーシャル"),
     ("Spam", "スパム"),
-    ("Tabs", "タブ"),
     ("Theme", "テーマ"),
     ("Thread", "スレッド"),
     ("Viewer", "ビューア"),
@@ -59,10 +66,6 @@ pub const TABLE: &[(&str, &str)] = &[
     (
         "add / take off a content warning",
         "注釈 (CW) を付ける / 外す",
-    ),
-    (
-        "add a tab: one not shown, an antenna, a list, a channel",
-        "タブを追加: 出ていないタブ、アンテナ、リスト、チャンネル",
     ),
     ("alt text", "代替テキスト"),
     (
@@ -105,11 +108,6 @@ pub const TABLE: &[(&str, &str)] = &[
     ("choose a server from the list", "一覧からサーバーを選ぶ"),
     ("clear to the start of the line", "行頭まで消す"),
     ("close", "閉じる"),
-    ("close tab", "タブを閉じる"),
-    (
-        "close the tab shown: y confirms",
-        "表示中のタブを閉じる (y で確定)",
-    ),
     ("close the thread", "スレッドを閉じる"),
     ("close without choosing", "選ばずに閉じる"),
     ("close without sending", "送らずに閉じる"),
@@ -143,10 +141,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "enter changes it; x goes back to the default",
         "enter で変更、x で既定に戻す",
     ),
-    (
-        "enter changes them, by name, in order; x goes back to the default",
-        "enter で名前を順に並べて変更、x で既定に戻す",
-    ),
     ("enter chooses one from the list", "enter で一覧から選ぶ"),
     (
         "enter chooses one from the list, as T does",
@@ -179,7 +173,6 @@ pub const TABLE: &[(&str, &str)] = &[
         "このタブは自分のプロフィール",
     ),
     ("keep", "決定"),
-    ("kept", "そのままにしました"),
     ("language: {}", "言語: {}"),
     ("leave the search box", "検索欄を離れる"),
     ("list", "リスト"),
@@ -275,10 +268,6 @@ pub const TABLE: &[(&str, &str)] = &[
     ("other server", "他のサーバー"),
     ("play the video again", "動画をもう一度再生"),
     (
-        "press y to close the {} tab, any other key to keep it",
-        "y で {} タブを閉じます。他のキーでそのまま",
-    ),
-    (
         "press y to report {} to the moderators of {}, any other key to go back",
         "y で {} を {} のモデレーターに通報します。他のキーで戻る",
     ),
@@ -357,14 +346,6 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("settings", "設定"),
     (
-        "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile, chat, or antenna/, list/, channel/ as + adds them)",
-        "settings.json: {} はタブではありません (home, local, social, global, notifications, search, profile, chat、または + が追加する antenna/, list/, channel/)",
-    ),
-    (
-        "settings: theme, language, download folder, browser, tabs",
-        "設定: テーマ、言語、保存先フォルダ、ブラウザ、タブ",
-    ),
-    (
         "show / hide the text behind a content warning",
         "注釈 (CW) の中身を表示 / 隠す",
     ),
@@ -372,8 +353,6 @@ pub const TABLE: &[(&str, &str)] = &[
     ("show the text behind its warning", "注釈の中身を表示"),
     ("stop writing", "入力をやめる"),
     ("tab added: {}", "タブを追加しました: {}"),
-    ("tab closed: {}", "タブを閉じました: {}"),
-    ("tabs: {}", "タブ: {}"),
     ("take back your reaction", "リアクションを取り消す"),
     ("take back your renote", "リノートを取り消す"),
     ("that is your own account", "自分のアカウントです"),
@@ -382,12 +361,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "アカウント一覧 (使用中に印)",
     ),
     ("the default; enter changes it", "既定値。enter で変更"),
-    (
-        "the default; enter changes them, by name, in order",
-        "既定値。enter で名前を順に並べて変更",
-    ),
     ("the folder above", "一つ上のフォルダ"),
-    ("the last tab stays", "最後のタブは閉じられません"),
     ("the reasons", "理由の一覧"),
     (
         "the search box has focus when you arrive",
@@ -423,10 +397,6 @@ pub const TABLE: &[(&str, &str)] = &[
     ("view the pictures and files", "画像とファイルを表示"),
     ("visibility", "公開範囲"),
     ("warning", "注釈"),
-    (
-        "which tabs, and their order: the tabs setting",
-        "どのタブをどの順で出すか: tabs 設定",
-    ),
     (
         "who may see it: public, home, followers",
         "公開範囲: パブリック、ホーム、フォロワー",

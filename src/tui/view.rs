@@ -177,9 +177,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             let mut rows: Vec<String> = app
                 .tab_choices()
                 .iter()
-                .map(|c| match c {
-                    crate::tui::app::TabChoice::Builtin(tab) => app.tab_label(*tab),
-                    crate::tui::app::TabChoice::Feed(f) => format!(
+                .map(|f| {
+                    format!(
                         "{} {}  ({})",
                         f.kind.mark(),
                         crate::tui::text::one_line(&f.name),
@@ -188,7 +187,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
                             crate::tui::app::FeedKind::List => crate::i18n::n!("list"),
                             crate::tui::app::FeedKind::Channel => crate::i18n::n!("channel"),
                         })
-                    ),
+                    )
                 })
                 .collect();
             if feeds.is_none() {
@@ -368,7 +367,7 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
-    for (i, &tab) in app.tabs.iter().enumerate() {
+    for (i, &tab) in app.tabs().iter().enumerate() {
         let label = match (tab, app.unread_label()) {
             (Tab::Notifications, Some(count)) => {
                 format!(" {} {} {count} ", i + 1, app.tab_label(tab))

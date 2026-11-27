@@ -22,18 +22,13 @@ pub const HELP: &[Section] = &[
     Section {
         title: n!("General"),
         keys: &[
-            ("1 2 3 …", n!("the tabs, in the order shown")),
+            ("1 2 3 4 5 6 7", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
-            ("", n!("which tabs, and their order: the tabs setting")),
-            (
-                "+",
-                n!("add a tab: one not shown, an antenna, a list, a channel"),
-            ),
-            ("x", n!("close the tab shown: y confirms")),
+            ("+", n!("add a tab: an antenna, a list, a channel")),
             ("A", n!("accounts: switch, log out")),
             (
                 "s",
-                n!("settings: theme, language, download folder, browser, tabs"),
+                n!("settings: theme, language, download folder, browser"),
             ),
             ("T", n!("theme: each previewed as you move, enter keeps it")),
             ("?", n!("this help")),
@@ -463,7 +458,6 @@ fn view_hints(app: &App) -> Vec<Hint> {
             (".", n!("actions")),
             ("space", n!("view")),
             ("R", n!("refresh")),
-            ("x", n!("close tab")),
         ],
         Tab::Timeline(_) => vec![
             ("j k", n!("move")),

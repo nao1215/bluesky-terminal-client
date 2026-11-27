@@ -192,7 +192,7 @@ scenarios:
       - assert:
           mock: { name: api, path: /api/chat/messages/create-to-user, count: 0 }
 
-  - name: + adds an antenna as a tab, which reads its notes, and the tabs setting keeps it; x then y closes it
+  - name: + adds an antenna as a tab after the fixed ones, which reads its notes; x closes no tab
     mock_servers:
       - name: api
         routes:
@@ -236,17 +236,16 @@ scenarios:
                 contains: "7 Chat"
             - send: "+"
             - expect_screen:
-                contains: ["Add a tab", "Social", "📡 ニュース 📰  (antenna)", "☰ 友達  (list)"]
-            - send: j
+                contains: ["Add a tab", "📡 ニュース 📰  (antenna)", "☰ 友達  (list)"]
+                not_contains: "Social"
             - send: { key: enter }
             - expect_screen:
-                contains: ["8 📡 ニュース 📰", "アンテナに来たノート 🇯🇵", "x close tab", "tab added"]
+                contains: ["8 📡 ニュース 📰", "アンテナに来たノート 🇯🇵", "tab added"]
             - send: x
             - expect_screen:
-                contains: "press y to close"
-            - send: y
-            - expect_screen:
-                not_contains: "8 📡"
+                contains: "8 📡 ニュース 📰"
+                not_contains: "close"
+                stable_for: 300ms
             - send: q
       - assert:
           exit_code: 0
@@ -257,12 +256,8 @@ scenarios:
             body:
               json:
                 - { path: "$.antennaId", equals: ant1 }
-      - assert:
-          file:
-            path: cfg/settings.json
-            not_contains: "antenna/"
 
-  - name: a list the tabs setting names is a tab on its server, reading notes/user-list-timeline
+  - name: a list an old tabs setting names is not a tab, and the setting is not an error
     mock_servers:
       - name: api
         routes:
@@ -297,15 +292,11 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["1 ☰ 友達   2 Home", "リストのノート 👨‍👩‍👧"]
-                not_contains: "よそ"
+                contains: "1 Home   2 Local   3 Global"
+                not_contains: ["友達", "よそ", "Error"]
+                stable_for: 300ms
             - send: q
       - assert:
           exit_code: 0
       - assert:
-          mock:
-            name: api
-            path: /api/notes/user-list-timeline
-            body:
-              json:
-                - { path: "$.listId", equals: lst1 }
+          mock: { name: api, path: /api/notes/user-list-timeline, count: 0 }

@@ -288,7 +288,7 @@ fn the_help_lists_the_keys() {
     for want in [
         "Keys",
         "General",
-        "1 2 3 …",
+        "1 2 3 4 5 6 7",
         "Notes",
         "w",
         "Viewer",

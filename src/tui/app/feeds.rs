@@ -1,11 +1,12 @@
-//! Antennas, lists and channels as tabs of their own, as bsky's columns
-//! of feeds: `+` offers the tabs not shown and the account's antennas,
-//! lists and channels, `x` closes the tab shown (`y` confirms). The `tabs`
-//! setting keeps each as `kind/host/id/name`; one of another server is
-//! kept there but shown only on its server.
+//! Antennas, lists and channels as tabs of their own: `+` offers the
+//! account's antennas, lists and channels, and the one chosen is a tab
+//! after the others until the client quits or the account changes.
 
 use super::*;
-use crate::i18n::{n, tf};
+use crate::i18n::tf;
+
+/// How many feed tabs there may be.
+const MAX_FEED_TABS: usize = 13;
 
 /// What a feed tab reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,21 +17,6 @@ pub enum FeedKind {
 }
 
 impl FeedKind {
-    pub const ALL: [FeedKind; 3] = [FeedKind::Antenna, FeedKind::List, FeedKind::Channel];
-
-    /// The name the `tabs` setting gives the kind.
-    pub fn name(self) -> &'static str {
-        match self {
-            FeedKind::Antenna => "antenna",
-            FeedKind::List => "list",
-            FeedKind::Channel => "channel",
-        }
-    }
-
-    fn from_name(s: &str) -> Option<FeedKind> {
-        FeedKind::ALL.into_iter().find(|k| k.name() == s)
-    }
-
     /// The endpoint the notes come from and the key the ID is sent as.
     pub fn endpoint(self) -> (&'static str, &'static str) {
         match self {
@@ -59,48 +45,11 @@ pub struct Feed {
     pub name: String,
 }
 
-impl Feed {
-    /// As the `tabs` setting keeps it: `kind/host/id/name`.
-    pub fn setting(&self) -> String {
-        // A comma would end the name where the settings screen lists the
-        // tabs.
-        let name = self.name.replace(',', " ");
-        format!("{}/{}/{}/{name}", self.kind.name(), self.host, self.id)
-    }
-
-    /// One the `tabs` setting names, if `s` is one.
-    pub fn parse(s: &str) -> Option<Feed> {
-        let mut parts = s.trim().splitn(4, '/');
-        let kind = FeedKind::from_name(parts.next()?)?;
-        let host = parts.next().filter(|h| !h.is_empty())?.to_ascii_lowercase();
-        let id = parts.next().filter(|i| !i.is_empty())?.to_string();
-        let name = parts.next().unwrap_or_default().to_string();
-        Some(Feed {
-            kind,
-            host,
-            id,
-            name,
-        })
-    }
-
-    /// Whether `s`, a name in the `tabs` setting, looks like a feed's.
-    pub fn named(s: &str) -> bool {
-        s.split('/').next().and_then(FeedKind::from_name).is_some()
-    }
-}
-
 /// A feed tab: what it reads, and the notes read.
 #[derive(Debug, Clone, Default)]
 pub struct FeedTab {
     pub feed: Option<Feed>,
     pub list: List<Note>,
-}
-
-/// What `+` offers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TabChoice {
-    Builtin(Tab),
-    Feed(Feed),
 }
 
 impl App {
@@ -168,30 +117,19 @@ impl App {
         }
     }
 
-    /// What `+` offers: the tabs not shown, then the account's feeds not
-    /// shown, as they came.
-    pub fn tab_choices(&self) -> Vec<TabChoice> {
-        let mut v: Vec<TabChoice> = ALL_TABS
-            .iter()
-            .filter(|t| !self.tabs.contains(t))
-            .map(|t| TabChoice::Builtin(*t))
-            .collect();
-        if let Some(Overlay::AddTab {
+    /// What `+` offers: the account's feeds not shown, as they came.
+    pub fn tab_choices(&self) -> Vec<Feed> {
+        let Some(Overlay::AddTab {
             feeds: Some(feeds), ..
         }) = &self.overlay
-        {
-            v.extend(
-                feeds
-                    .iter()
-                    .filter(|f| {
-                        self.feed_index(f)
-                            .is_none_or(|i| !self.tabs.contains(&Tab::Feed(i as u8)))
-                    })
-                    .cloned()
-                    .map(TabChoice::Feed),
-            );
-        }
-        v
+        else {
+            return Vec::new();
+        };
+        feeds
+            .iter()
+            .filter(|f| self.feed_index(f).is_none())
+            .cloned()
+            .collect()
     }
 
     /// `+`: the tabs that can be added, the account's feeds read.
@@ -230,61 +168,23 @@ impl App {
         Vec::new()
     }
 
-    /// Add `choice` as the last tab, show it and keep the tabs.
-    fn add_tab(&mut self, choice: TabChoice) -> Jobs {
-        let tab = match choice {
-            TabChoice::Builtin(t) => t,
-            TabChoice::Feed(feed) => {
-                let i = match self.feed_index(&feed) {
-                    Some(i) => i,
-                    None => {
-                        self.feeds.push(FeedTab {
-                            feed: Some(feed),
-                            list: List::default(),
-                        });
-                        self.feeds.len() - 1
-                    }
-                };
-                Tab::Feed(i as u8)
-            }
-        };
-        if self.tabs.len() >= MAX_TABS {
-            self.error(tf("at most {} tabs", &[&MAX_TABS.to_string()]));
+    /// Add `feed` as the last tab and show it.
+    fn add_tab(&mut self, feed: Feed) -> Jobs {
+        if self.feeds.len() >= MAX_FEED_TABS {
+            self.error(tf(
+                "at most {} tabs",
+                &[&(TABS.len() + MAX_FEED_TABS).to_string()],
+            ));
             return Vec::new();
         }
-        self.tabs.push(tab);
+        self.feeds.push(FeedTab {
+            feed: Some(feed),
+            list: List::default(),
+        });
+        let tab = Tab::Feed((self.feeds.len() - 1) as u8);
         let label = self.tab_label(tab);
-        self.keep_tabs(tf("tab added: {}", &[&label]));
+        self.info(tf("tab added: {}", &[&label]));
         self.switch_tab(tab)
-    }
-
-    /// `x`: close the tab shown, once `y` confirms; the last one stays.
-    pub(super) fn ask_close_tab(&mut self) {
-        if self.tabs.len() <= 1 {
-            self.error(n!("the last tab stays"));
-            return;
-        }
-        let label = self.tab_label(self.tab);
-        self.info(tf(
-            "press y to close the {} tab, any other key to keep it",
-            &[&label],
-        ));
-        self.confirm_close_tab = Some(self.tab);
-    }
-
-    /// The key after `x`.
-    pub(super) fn answer_close_tab(&mut self, tab: Tab, key: KeyEvent) -> Jobs {
-        self.confirm_close_tab = None;
-        if key.code != KeyCode::Char('y') || !self.tabs.contains(&tab) || self.tabs.len() <= 1 {
-            self.info(n!("kept"));
-            return Vec::new();
-        }
-        let at = self.tabs.iter().position(|t| *t == tab).unwrap_or(0);
-        self.tabs.retain(|t| *t != tab);
-        let label = self.tab_label(tab);
-        self.keep_tabs(tf("tab closed: {}", &[&label]));
-        let next = self.tabs[at.min(self.tabs.len() - 1)];
-        self.switch_tab(next)
     }
 
     /// The label tab `tab` is shown with.
@@ -296,102 +196,5 @@ impl App {
             },
             t => crate::i18n::t(t.title()).to_string(),
         }
-    }
-
-    /// The `tabs` setting for the tabs now: the feed tabs of other
-    /// servers, which this one does not show, are kept where they were.
-    pub(super) fn tabs_setting(&self) -> Vec<String> {
-        let mut out: Vec<String> = self
-            .tabs
-            .iter()
-            .map(|t| match t {
-                Tab::Feed(i) => self
-                    .feeds
-                    .get(usize::from(*i))
-                    .and_then(|f| f.feed.as_ref())
-                    .map(Feed::setting)
-                    .unwrap_or_default(),
-                t => t.setting_name().to_string(),
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-        // Hidden here for want of chat, it stays for a server that has.
-        if self.no_chat && !out.iter().any(|s| s == "chat") {
-            out.push("chat".to_string());
-        }
-        let host = self.host().to_string();
-        for s in self.settings.tabs.iter().flatten() {
-            if let Some(f) = Feed::parse(s)
-                && f.host != host
-                && !out.contains(s)
-            {
-                out.push(s.clone());
-            }
-        }
-        out
-    }
-
-    /// Keep the tabs as they are now in the settings.
-    pub(super) fn keep_tabs(&mut self, note: String) {
-        self.settings.tabs = Some(self.tabs_setting());
-        self.save_settings(note);
-    }
-
-    /// The tabs the setting names, for this server: built in, and the feed
-    /// tabs of this server, in the order named. A name that is neither is
-    /// said; a list naming no tab at all gives the default ones.
-    pub fn tabs_for_host(&mut self, names: &[String]) -> (Vec<Tab>, Option<String>) {
-        let host = self.host().to_ascii_lowercase();
-        let mut feeds: Vec<FeedTab> = Vec::new();
-        let mut tabs: Vec<Tab> = Vec::new();
-        let mut unknown = Vec::new();
-        for n in names {
-            let tab = if Feed::named(n) {
-                match Feed::parse(n) {
-                    Some(f) if f.host == host => {
-                        let i = match feeds.iter().position(|t| t.feed.as_ref() == Some(&f)) {
-                            Some(i) => i,
-                            None => {
-                                feeds.push(FeedTab {
-                                    feed: Some(f),
-                                    list: List::default(),
-                                });
-                                feeds.len() - 1
-                            }
-                        };
-                        Some(Tab::Feed(i as u8))
-                    }
-                    // Another server's: kept in the setting, not shown here.
-                    Some(_) => None,
-                    None => {
-                        unknown.push(n.clone());
-                        None
-                    }
-                }
-            } else {
-                let t = Tab::from_name(n);
-                if t.is_none() {
-                    unknown.push(n.clone());
-                }
-                t
-            };
-            if let Some(t) = tab
-                && !tabs.contains(&t)
-                && tabs.len() < MAX_TABS
-            {
-                tabs.push(t);
-            }
-        }
-        if tabs.is_empty() {
-            tabs = DEFAULT_TABS.to_vec();
-        }
-        let warning = (!unknown.is_empty()).then(|| {
-            tf(
-                "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile, chat, or antenna/, list/, channel/ as + adds them)",
-                &[&unknown.join(", ")],
-            )
-        });
-        self.feeds = feeds;
-        (tabs, warning)
     }
 }

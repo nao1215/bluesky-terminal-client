@@ -150,7 +150,7 @@ scenarios:
                 contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
             - send: "?"
             - expect_screen:
-                contains: ["Keys", "add a tab: one not shown"]
+                contains: ["Keys", "add a tab: an antenna, a list"]
             - send: { key: pagedown }
             - expect_screen:
                 contains: "show / hide the text behind a content"
@@ -563,7 +563,7 @@ scenarios:
       - assert:
           exit_code: 0
 
-  - name: s opens the settings, T picks a theme and the language turns the client Japanese, kept in settings.json
+  - name: s opens the settings, T picks a theme and the language turns the client Japanese, kept in settings.json; an old tabs setting is ignored and kept
     mock_servers:
       - name: api
         routes:
@@ -598,10 +598,12 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "1 Home   2 Chat"
+                contains: "1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
+                not_contains: ["Error", "not a tab"]
             - send: s
             - expect_screen:
-                contains: ["Settings", "Theme", "terminal", "Language", "English", "Tabs", "Home, Chat"]
+                contains: ["Settings", "Theme", "terminal", "Language", "English", "Browser"]
+                not_contains: ["Tabs", "Home, Chat"]
             - send: { key: enter }
             - expect_screen:
                 contains: ["enter apply", "esc cancel"]
@@ -616,7 +618,7 @@ scenarios:
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: ["1 ホーム   2 チャット", "設定", "言語", "日本語"]
+                contains: ["1 ホーム   2 ローカル", "設定", "言語", "日本語"]
             - send: { key: esc }
             - expect_screen:
                 not_contains: "言語"
@@ -629,7 +631,7 @@ scenarios:
             json:
               - { path: "$.language", equals: ja }
               - { path: "$.theme", equals: ayu-dark }
-              - { path: "$.tabs[1]", equals: chat }
+              - { path: "$.tabs", equals: ["home", "chat"] }
               - { path: "$.later.kept", equals: true }
 
   - name: the client is in the language the locale asks for

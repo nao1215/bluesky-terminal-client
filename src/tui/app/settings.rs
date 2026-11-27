@@ -1,5 +1,5 @@
 //! The settings, as bsky's: the screen `s` opens (the theme, the
-//! language, the download folder, the browser and the tabs), the theme
+//! language, the download folder and the browser), the theme
 //! list `T` opens, previewed as the selection moves, and the language
 //! list. What is chosen is kept in `settings.json`, beside what this
 //! version does not know.
@@ -28,8 +28,7 @@ pub const ROW_THEME: usize = 0;
 pub const ROW_LANGUAGE: usize = 1;
 pub const ROW_DOWNLOAD: usize = 2;
 pub const ROW_BROWSER: usize = 3;
-pub const ROW_TABS: usize = 4;
-pub const ROWS: usize = 5;
+pub const ROWS: usize = 4;
 
 /// The environment variables that, set, decide a setting for the run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -61,24 +60,6 @@ pub fn language(settings: &Settings, env: &Environment) -> Lang {
         .and_then(Lang::from_code)
         .or_else(|| env.locale.as_deref().and_then(Lang::from_code))
         .unwrap_or(Lang::En)
-}
-
-impl Tab {
-    /// The name the `tabs` setting gives the tab.
-    pub fn setting_name(self) -> &'static str {
-        match self {
-            Tab::Timeline(TimelineKind::Home) => "home",
-            Tab::Timeline(TimelineKind::Local) => "local",
-            Tab::Timeline(TimelineKind::Social) => "social",
-            Tab::Timeline(TimelineKind::Global) => "global",
-            Tab::Notifications => "notifications",
-            Tab::Search => "search",
-            Tab::Profile => "profile",
-            Tab::Chat => "chat",
-            // Kept as `kind/host/id/name`, which `tabs_setting` writes.
-            Tab::Feed(_) => "feed",
-        }
-    }
 }
 
 impl App {
@@ -297,26 +278,7 @@ impl App {
             &self.settings.browser,
             t(n!("the system's")).to_string(),
         );
-        let tabs = SettingRow {
-            name: n!("Tabs"),
-            value: self
-                .tabs
-                .iter()
-                .map(|t| self.tab_label(*t))
-                .collect::<Vec<_>>()
-                .join(", "),
-            note: if self.settings.tabs.is_some() {
-                t(n!(
-                    "enter changes them, by name, in order; x goes back to the default"
-                ))
-                .into()
-            } else {
-                t(n!("the default; enter changes them, by name, in order")).into()
-            },
-            editable: true,
-            resettable: self.settings.tabs.is_some(),
-        };
-        vec![theme, language, download, browser, tabs]
+        vec![theme, language, download, browser]
     }
 
     /// A key on the settings screen.
@@ -387,17 +349,18 @@ impl App {
                                 .unwrap_or(0),
                         });
                     }
-                    _ => {
-                        let now = match selected {
-                            ROW_DOWNLOAD => self.settings.download_dir.clone(),
-                            ROW_BROWSER => self.settings.browser.clone(),
-                            _ => Some(self.tabs_setting().join(", ")),
+                    ROW_DOWNLOAD | ROW_BROWSER => {
+                        let now = if selected == ROW_DOWNLOAD {
+                            self.settings.download_dir.clone()
+                        } else {
+                            self.settings.browser.clone()
                         };
                         self.overlay = Some(Overlay::Settings {
                             selected,
                             edit: Some(TextInput::single(&now.unwrap_or_default())),
                         });
                     }
+                    _ => {}
                 }
             }
             _ => {}
@@ -417,27 +380,6 @@ impl App {
                 self.settings.browser = set;
                 self.save_settings(tf("browser: {}", &[&value]));
             }
-            ROW_TABS => {
-                let names: Vec<String> = value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|n| !n.is_empty())
-                    .map(str::to_string)
-                    .collect();
-                let before = self.feeds.clone();
-                let (tabs, unknown) = self.tabs_for_host(&names);
-                if let Some(why) = unknown {
-                    self.feeds = before;
-                    self.error(why);
-                    return Vec::new();
-                }
-                self.tabs = tabs.clone();
-                self.hide_chat_if_none();
-                let jobs = self.set_tabs(tabs);
-                let shown = self.tabs_setting().join(", ");
-                self.keep_tabs(tf("tabs: {}", &[&shown]));
-                return jobs;
-            }
             _ => {}
         }
         Vec::new()
@@ -445,7 +387,6 @@ impl App {
 
     /// `x`: the row's setting back to the default.
     fn reset_setting(&mut self, row: usize) -> Jobs {
-        let mut jobs = Vec::new();
         match row {
             ROW_LANGUAGE => {
                 self.settings.language = None;
@@ -453,15 +394,11 @@ impl App {
             }
             ROW_DOWNLOAD => self.settings.download_dir = None,
             ROW_BROWSER => self.settings.browser = None,
-            ROW_TABS => {
-                self.settings.tabs = None;
-                jobs = self.set_tabs(DEFAULT_TABS.to_vec());
-            }
-            _ => return jobs,
+            _ => return Vec::new(),
         }
         let name = t(self.settings_rows()[row].name).to_string();
         self.save_settings(tf("{}: back to the default", &[&name]));
-        jobs
+        Vec::new()
     }
 
     /// A key on the theme list: j k preview, enter keeps, esc puts back.
