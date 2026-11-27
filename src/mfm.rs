@@ -474,7 +474,13 @@ fn special<'a>(s: &'a str, i: usize, bold: bool, depth: usize) -> Drawn<'a> {
         return Some((
             close + 1,
             Box::new(
-                move |r: &mut Vec<Run>| match inner.split_once(' ').filter(|_| ruby) {
+                // A ruby is split at its first space, unless a link runs
+                // over it: the link is read first, as the links are found.
+                move |r: &mut Vec<Run>| match inner.split_once(' ').filter(|(base, _)| {
+                    ruby && !links(inner)
+                        .iter()
+                        .any(|l| l.start <= base.len() && base.len() < l.end)
+                }) {
                     Some((base, reading)) => {
                         render(base, bold, depth + 1, r);
                         push(r, "(", bold);
@@ -867,6 +873,8 @@ mod tests {
     #[case("$[fg.color=f00 赤い$[bg.color=0f0 緑の上]文字]", "赤い緑の上文字")]
     #[case("$[spin $[x3 $[tada 🎉]]]!", "🎉!")]
     #[case("$[ruby 漢字 かんじ]を読む", "漢字(かんじ)を読む")]
+    // A link over the first space is read first: the ruby is not split.
+    #[case("$[ruby x[31m [label](https://e.example/c)]", "x31m [label")]
     #[case("<center>まんなか</center>", "まんなか")]
     #[case("<small>小さく<i>斜め</i></small>", "小さく斜め")]
     #[case("<center><center>二重</center></center>", "二重")]

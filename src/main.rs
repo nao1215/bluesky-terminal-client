@@ -18,6 +18,8 @@ mod i18n;
 mod metadata;
 mod mfm;
 mod miauth;
+#[cfg(test)]
+mod properties;
 mod servers;
 mod terminal;
 mod text;
