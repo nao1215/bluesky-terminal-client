@@ -237,3 +237,224 @@ fn a_stripped_video_still_plays() {
         assert_eq!(frames(&after).as_deref(), Some(want.as_str()), "{name}");
     }
 }
+
+// --- Crafted files: the arithmetic of each container's walk ----------------
+
+/// A JPEG segment: its marker, its length (which counts itself) and `body`.
+fn segment(marker: u8, body: &[u8]) -> Vec<u8> {
+    let mut v = vec![0xFF, marker];
+    v.extend_from_slice(&u16::try_from(body.len() + 2).unwrap().to_be_bytes());
+    v.extend_from_slice(body);
+    v
+}
+
+fn stripped(name: &str, data: &[u8]) -> Option<Vec<u8>> {
+    strip(name, data).ok().map(Cow::into_owned)
+}
+
+// Fill bytes before a marker are passed over, and the marker after them
+// read as such.
+#[test]
+fn fill_bytes_before_a_jpeg_marker_are_passed_over() {
+    let mut data = vec![0xFF, 0xD8, 0xFF];
+    data.extend(segment(0xFE, b"ab"));
+    data.extend([0xFF, 0xD9]);
+    assert_eq!(stripped("a.jpg", &data), Some(vec![0xFF, 0xD8, 0xFF, 0xD9]));
+}
+
+// The markers without a length (a restart, TEM) are kept as two bytes, and
+// the end of the picture ends the file: what trails it goes.
+#[test]
+fn jpeg_markers_without_a_length_are_kept_and_the_end_ends_it() {
+    let mut data = vec![0xFF, 0xD8];
+    data.extend(segment(0xE0, b"JF"));
+    data.extend([0xFF, 0xD0, 0xFF, 0x01, 0xFF, 0xD9]);
+    let want = data.clone();
+    data.extend_from_slice(b"junk");
+    assert_eq!(stripped("a.jpg", &data), Some(want));
+}
+
+// A segment of no body is a segment; one running past the end is refused.
+#[test]
+fn an_empty_jpeg_segment_is_kept_and_a_cut_one_refused() {
+    let mut data = vec![0xFF, 0xD8];
+    data.extend(segment(0xE0, b""));
+    data.extend([0xFF, 0xD9]);
+    assert_eq!(stripped("a.jpg", &data), Some(data.clone()));
+    let mut cut = vec![0xFF, 0xD8];
+    cut.extend(segment(0xE0, b"abcd"));
+    cut.truncate(cut.len() - 2);
+    assert_eq!(stripped("cut.jpg", &cut), None);
+}
+
+/// A WebP of `chunks`, each padded to an even length, with its RIFF size.
+fn riff(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+    let mut v = b"RIFF\0\0\0\0WEBP".to_vec();
+    for (kind, body) in chunks {
+        v.extend_from_slice(*kind);
+        v.extend_from_slice(&u32::try_from(body.len()).unwrap().to_le_bytes());
+        v.extend_from_slice(body);
+        if body.len() % 2 == 1 {
+            v.push(0);
+        }
+    }
+    let size = u32::try_from(v.len() - 8).unwrap();
+    v[4..8].copy_from_slice(&size.to_le_bytes());
+    v
+}
+
+// A chunk of odd length keeps its padding byte, the last one too, and the
+// RIFF size is the size of what is left.
+#[test]
+fn webp_chunks_of_odd_length_keep_their_padding() {
+    let data = riff(&[
+        (b"VP8L", b"abc"),
+        (b"EXIF", b"SecretCam"),
+        (b"ALPH", b"defgh"),
+    ]);
+    let want = riff(&[(b"VP8L", b"abc"), (b"ALPH", b"defgh")]);
+    assert_eq!(stripped("a.webp", &data), Some(want));
+}
+
+// The last chunk may lack its padding byte: the file is read to its end.
+#[test]
+fn the_last_webp_chunk_may_lack_its_padding_byte() {
+    let mut data = riff(&[(b"VP8L", b"abcd"), (b"ALPH", b"efg")]);
+    data.pop();
+    let size = u32::try_from(data.len() - 8).unwrap();
+    data[4..8].copy_from_slice(&size.to_le_bytes());
+    assert_eq!(stripped("a.webp", &data), Some(data.clone()));
+}
+
+#[test]
+fn a_gif_shorter_than_its_header_is_refused() {
+    assert_eq!(stripped("a.gif", b"GIF89a\x01\x00"), None);
+}
+
+// A GIF without a global colour table, a picture with a local one of four
+// colours, the loop extension kept and the comment gone.
+#[test]
+fn a_gif_keeps_its_loop_and_pictures_and_loses_its_comment() {
+    let header = b"GIF89a\x01\x00\x01\x00\x00\x00\x00".to_vec();
+    let looping = [&[0x21, 0xFF, 0x0B][..], b"NETSCAPE2.0", &[3, 1, 0, 0, 0]].concat();
+    let comment = [&[0x21, 0xFE, 0x07][..], b"private", &[0x00]].concat();
+    let mut picture = vec![0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0x81];
+    picture.extend_from_slice(&[0x10; 12]);
+    picture.extend_from_slice(&[0x02, 0x02, 0x44, 0x01, 0x00]);
+    let data = [&header[..], &looping, &comment, &picture, &[0x3B]].concat();
+    let want = [&header[..], &looping, &picture, &[0x3B]].concat();
+    assert_eq!(stripped("a.gif", &data), Some(want));
+}
+
+/// An MP4 box of `kind` around `body`.
+fn mp4_box(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+    let mut v = u32::try_from(body.len() + 8)
+        .unwrap()
+        .to_be_bytes()
+        .to_vec();
+    v.extend_from_slice(kind);
+    v.extend_from_slice(body);
+    v
+}
+
+/// A `free` box with `size` as it was written and `body_len` zeros.
+fn blanked(size: &[u8], body_len: usize) -> Vec<u8> {
+    [size, b"free", &vec![0; body_len]].concat()
+}
+
+// A box is as long as all four bytes of its size say.
+#[test]
+fn an_mp4_box_over_64_kib_is_blanked_whole() {
+    let mut data = mp4_box(b"udta", &vec![b'X'; 0x1_0008]);
+    mp4(&mut data);
+    assert_eq!(data, blanked(&[0, 1, 0, 0x10], 0x1_0008));
+}
+
+// A box of size 0 runs to the end of the file.
+#[test]
+fn an_mp4_box_to_the_end_of_the_file_is_blanked() {
+    let ftyp = mp4_box(b"ftyp", b"isom\0\0\0\0");
+    let mut data = [&ftyp[..], &[0, 0, 0, 0], b"udta", b"Taro Secret here"].concat();
+    mp4(&mut data);
+    assert_eq!(data, [&ftyp[..], &blanked(&[0, 0, 0, 0], 16)].concat());
+}
+
+// A box of size 1 has its size in the eight bytes after its kind.
+#[test]
+fn an_mp4_box_with_a_64_bit_size_is_blanked() {
+    let ftyp = mp4_box(b"ftyp", b"isom\0\0\0\0");
+    let size = 24u64.to_be_bytes();
+    let mut data = [&ftyp[..], &[0, 0, 0, 1], b"udta", &size, b"SecretCa"].concat();
+    mp4(&mut data);
+    let free = [&[0, 0, 0, 1][..], b"free", &size, &[0; 8]].concat();
+    assert_eq!(data, [ftyp, free].concat());
+}
+
+// An empty box (only its header) is a box: the walk goes on past it.
+#[test]
+fn an_empty_mp4_box_does_not_stop_the_walk() {
+    let empty = mp4_box(b"free", b"");
+    let mut data = [&empty[..], &mp4_box(b"udta", b"SecretCam")].concat();
+    mp4(&mut data);
+    assert_eq!(data, [empty, blanked(&[0, 0, 0, 17], 9)].concat());
+}
+
+// A handler's name is blanked, the 24 bytes before it kept; another box as
+// long is left as it is.
+#[test]
+fn an_mp4_handler_loses_only_its_name() {
+    let media = mp4_box(b"mdat", &[0x55; 32]);
+    let handler = [&[0x11; 24][..], b"SecretCam\0"].concat();
+    let mut data = [&media[..], &mp4_box(b"hdlr", &handler)].concat();
+    mp4(&mut data);
+    let name_gone = [&[0x11; 24][..], &[0; 10]].concat();
+    assert_eq!(data, [media, mp4_box(b"hdlr", &name_gone)].concat());
+}
+
+/// An EBML element: `id` (its length marker in it) and `body`, its size in
+/// one byte or eight.
+fn ebml(id: &[u8], body: &[u8]) -> Vec<u8> {
+    let mut v = id.to_vec();
+    if body.len() < 127 {
+        v.push(0x80 | u8::try_from(body.len()).unwrap());
+    } else {
+        v.push(0x01);
+        v.extend_from_slice(&(body.len() as u64).to_be_bytes()[1..]);
+    }
+    v.extend_from_slice(body);
+    v
+}
+
+const EBML_HEADER: &[u8] = &[0x1A, 0x45, 0xDF, 0xA3, 0x80];
+const SEGMENT: &[u8] = &[0x18, 0x53, 0x80, 0x67];
+const INFO: &[u8] = &[0x15, 0x49, 0xA9, 0x66];
+const TITLE: &[u8] = &[0x7B, 0xA9];
+const TIMESTAMP_SCALE: &[u8] = &[0x2A, 0xD7, 0xB1];
+
+// A segment of unknown size (all ones, in eight bytes as a live recording
+// writes it) runs to the end of the file, and its title goes.
+#[test]
+fn a_webm_segment_of_unknown_size_is_walked_to_the_end() {
+    let scale = ebml(TIMESTAMP_SCALE, &[0x0F, 0x42, 0x40]);
+    let unknown = [0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+    let file = |title: &[u8]| {
+        let info = ebml(INFO, &[title, &scale].concat());
+        [EBML_HEADER, SEGMENT, &unknown, &info].concat()
+    };
+    let void = [&[0xEC, 0x87][..], &[0; 7]].concat();
+    assert_eq!(
+        stripped("a.webm", &file(&ebml(TITLE, b"Secret"))),
+        Some(file(&void))
+    );
+}
+
+// An element of 128 bytes in all is the longest a Void with a one-byte
+// size stands for.
+#[test]
+fn a_webm_title_of_128_bytes_becomes_a_void_with_a_one_byte_size() {
+    let title = ebml(TITLE, &[b'x'; 125]);
+    assert_eq!(title.len(), 128);
+    let file = |title: &[u8]| [EBML_HEADER, &ebml(SEGMENT, &ebml(INFO, title))].concat();
+    let void = [&[0xEC, 0xFE][..], &[0; 126]].concat();
+    assert_eq!(stripped("a.webm", &file(&title)), Some(file(&void)));
+}
