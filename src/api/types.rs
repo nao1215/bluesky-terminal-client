@@ -256,9 +256,12 @@ impl Note {
         }
     }
 
-    /// How many reactions it has, of every kind.
+    /// How many reactions it has, of every kind. The counts are the
+    /// server's, so their sum stops at the largest rather than wrapping.
     pub fn reaction_total(&self) -> u64 {
-        self.reactions.values().sum()
+        self.reactions
+            .values()
+            .fold(0, |total, n| total.saturating_add(*n))
     }
 }
 
@@ -324,5 +327,18 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(n.reaction_total(), 6);
+    }
+
+    // Counts a server sends that add past u64 stop at the largest, where
+    // the sum panicked in a debug build and wrapped to a small number in a
+    // release one.
+    #[test]
+    fn the_reaction_total_stops_at_the_largest_count() {
+        let n: Note = serde_json::from_slice(
+            br#"{"id": "c", "reactions": {"a": 18446744073709551615, "b": 5}, "renoteCount": 0, "files": [{"prorerties": {"width": 0, "height": 4294967295}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(n.reaction_total(), u64::MAX);
+        assert_eq!(n.shown().reaction_total(), u64::MAX);
     }
 }
