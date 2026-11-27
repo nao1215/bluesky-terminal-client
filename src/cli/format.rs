@@ -28,7 +28,7 @@ fn who(u: &User) -> String {
 
 /// A reaction as it reads: a custom emoji of the server asked, `:name@.:`,
 /// as `:name:`; one of another server keeps its host.
-fn reaction_label(key: &str) -> String {
+pub fn reaction_label(key: &str) -> String {
     match key.strip_suffix("@.:") {
         Some(name) => one_line(&format!("{name}:")),
         None => one_line(key),

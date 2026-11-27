@@ -481,6 +481,8 @@ pub struct App {
     pub renoted: HashSet<String>,
     /// The note `D` asked about, waiting for its `y`.
     pub confirm_delete: Option<String>,
+    /// The account `B` asked about, waiting for its `y`.
+    pub confirm_block: Option<String>,
     /// Whether the notifications loaded were marked read.
     read_sent: bool,
     /// The folder the file browser last showed, where it opens next.
@@ -534,6 +536,7 @@ impl App {
             in_flight: HashSet::new(),
             renoted: HashSet::new(),
             confirm_delete: None,
+            confirm_block: None,
             read_sent: false,
             browse_from: None,
             confirm_logout: None,
@@ -618,6 +621,7 @@ impl App {
                 // The question went with its prompt.
                 self.confirm_logout = None;
                 self.confirm_delete = None;
+                self.confirm_block = None;
                 true
             }
             _ => false,
@@ -1138,6 +1142,9 @@ impl App {
         if let Some(id) = self.confirm_delete.take() {
             return self.answer_delete(id, key);
         }
+        if let Some(id) = self.confirm_block.take() {
+            return self.answer_block(id, key);
+        }
         let in_thread = !self.threads.is_empty();
         match key.code {
             KeyCode::Char('n') => self.compose(false, false),
@@ -1180,6 +1187,8 @@ impl App {
                 return self.run_search();
             }
             KeyCode::Char('f') => return self.toggle_follow(),
+            KeyCode::Char('M') => return self.toggle_mute(),
+            KeyCode::Char('B') => return self.toggle_block(),
             KeyCode::Enter => return self.open_selected_profile(),
             KeyCode::Esc if !in_thread && self.tab == Tab::Profile => return self.profile_back(),
             KeyCode::Tab => return self.switch_tab(self.next_tab(1)),

@@ -212,6 +212,65 @@ impl App {
         })]
     }
 
+    /// M: mute the account shown or found, or unmute it.
+    pub(super) fn toggle_mute(&mut self) -> Jobs {
+        let Some(u) = self.follow_target() else {
+            return Vec::new();
+        };
+        if Some(u.id.as_str()) == self.my_user_id() {
+            return Vec::new();
+        }
+        let (id, on) = (u.id.clone(), !u.is_muted);
+        if !self.may("write:mutes", "mute accounts") || !self.claim(format!("follow:{id}")) {
+            return Vec::new();
+        }
+        vec![self.stamp(Job::Guard {
+            user_id: id,
+            block: false,
+            on,
+        })]
+    }
+
+    /// B: block the account after a y, or unblock it at once.
+    pub(super) fn toggle_block(&mut self) -> Jobs {
+        let Some(u) = self.follow_target() else {
+            return Vec::new();
+        };
+        if Some(u.id.as_str()) == self.my_user_id() {
+            return Vec::new();
+        }
+        let id = u.id.clone();
+        if u.is_blocking {
+            if !self.may("write:blocks", "block accounts") || !self.claim(format!("follow:{id}")) {
+                return Vec::new();
+            }
+            return vec![self.stamp(Job::Guard {
+                user_id: id,
+                block: true,
+                on: false,
+            })];
+        }
+        self.info("press y to block the account, any other key to leave it");
+        self.confirm_block = Some(id);
+        Vec::new()
+    }
+
+    /// The key after B's question: y blocks.
+    pub(super) fn answer_block(&mut self, id: String, key: KeyEvent) -> Jobs {
+        if key.code != KeyCode::Char('y') {
+            self.info("not blocked");
+            return Vec::new();
+        }
+        if !self.may("write:blocks", "block accounts") || !self.claim(format!("follow:{id}")) {
+            return Vec::new();
+        }
+        vec![self.stamp(Job::Guard {
+            user_id: id,
+            block: true,
+            on: true,
+        })]
+    }
+
     /// The account as the server has it after a follow.
     pub(super) fn followed(&mut self, id: &str, result: crate::error::Result<Box<User>>) {
         self.in_flight.remove(&format!("follow:{id}"));
@@ -226,7 +285,11 @@ impl App {
             Some(h) => format!("@{}@{h}", u.username),
             None => format!("@{}", u.username),
         };
-        self.info(if u.is_following {
+        self.info(if u.is_blocking {
+            format!("blocked {name}")
+        } else if u.is_muted {
+            format!("muted {name}")
+        } else if u.is_following {
             format!("following {name}")
         } else if u.has_pending_follow_request_from_you {
             format!("asked to follow {name}; pending until it is accepted")

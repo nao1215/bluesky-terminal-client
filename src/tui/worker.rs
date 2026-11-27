@@ -84,6 +84,12 @@ pub enum Job {
     },
     /// A page of the accounts that match `query`, from the `offset`th on.
     SearchUsers { query: String, offset: usize },
+    /// Mute (`block` false) or block account `user_id`, or take it back.
+    Guard {
+        user_id: String,
+        block: bool,
+        on: bool,
+    },
     /// Follow account `user_id` (`on`), or unfollow it, or take back a
     /// request to follow it (`requested`).
     Follow {
@@ -239,7 +245,7 @@ impl Job {
                 offset,
                 result: Err(e),
             },
-            Job::Follow { user_id, .. } => Event::Followed {
+            Job::Follow { user_id, .. } | Job::Guard { user_id, .. } => Event::Followed {
                 user_id,
                 result: Err(e),
             },
@@ -327,6 +333,10 @@ pub fn run(job: Job, client: &Client) -> Event {
             query,
             offset,
         },
+        Job::Guard { user_id, block, on } => Event::Followed {
+            result: guard(client, &user_id, block, on).map(Box::new),
+            user_id,
+        },
         Job::Follow {
             user_id,
             on,
@@ -412,6 +422,18 @@ fn follow(client: &Client, id: &str, on: bool, requested: bool) -> Result<User> 
         (false, true) => client.cancel_follow_request(id)?,
         (false, false) => client.unfollow(id)?,
     }
+    client.user_by_id(id)
+}
+
+/// Mute or block, or take it back, then read the account again.
+fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
+    let endpoint = match (block, on) {
+        (false, true) => "mute/create",
+        (false, false) => "mute/delete",
+        (true, true) => "blocking/create",
+        (true, false) => "blocking/delete",
+    };
+    client.account_write(endpoint, id)?;
     client.user_by_id(id)
 }
 

@@ -4,6 +4,7 @@
 //! same shape for every command (see [`format::note_json`]).
 
 mod format;
+mod more;
 mod post;
 
 pub use post::{PostArgs, Visibility};
@@ -52,6 +53,62 @@ pub enum Command {
     },
     /// One note: its ID or its address (misskey.io/notes/ID).
     Note { note: String },
+    /// A note and its thread: what it answers, the note, and its replies.
+    Thread { note: String },
+    /// An account: name, counts and description; yours without ACTOR.
+    Profile { actor: Option<String> },
+    /// Who reacted to a note, and with what, newest first (bsky's `likes`).
+    #[command(alias = "likes")]
+    Reactions {
+        note: String,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// The renotes of a note, newest first (bsky's `reposts`).
+    #[command(alias = "reposts")]
+    Renotes {
+        note: String,
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// React to a note: ❤ (Misskey's like), or --reaction; one given
+    /// before is replaced.
+    #[command(alias = "react")]
+    Like {
+        note: String,
+        /// The reaction: a Unicode emoji, or :name: for a custom one.
+        #[arg(long)]
+        reaction: Option<String>,
+    },
+    /// Take back your reaction to a note.
+    #[command(alias = "unreact")]
+    Unlike { note: String },
+    /// Renote a note, as bsky's repost.
+    #[command(alias = "renote")]
+    Repost { note: String },
+    /// Take back your renotes of a note.
+    #[command(alias = "unrenote")]
+    Unrepost { note: String },
+    /// Delete one of your own notes.
+    Delete { note: String },
+    /// Mute an account.
+    Mute { actor: String },
+    /// Unmute an account.
+    Unmute { actor: String },
+    /// The accounts you muted.
+    Mutes {
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Block an account.
+    Block { actor: String },
+    /// Unblock an account.
+    Unblock { actor: String },
+    /// The accounts you blocked.
+    Blocks {
+        #[arg(short = 'n', long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Notes that match QUERY, newest first.
     Search {
         query: String,
@@ -486,6 +543,21 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
             author(ctx, out, &actor, limit, filter, reposts, save_in)
         }
         Command::Note { note } => show_note(ctx, out, &note),
+        Command::Thread { note } => more::thread(ctx, out, &note),
+        Command::Profile { actor } => more::profile(ctx, out, actor.as_deref()),
+        Command::Reactions { note, limit } => more::reactions(ctx, out, &note, limit),
+        Command::Renotes { note, limit } => more::renotes(ctx, out, &note, limit),
+        Command::Like { note, reaction } => more::like(ctx, out, &note, reaction.as_deref()),
+        Command::Unlike { note } => more::unlike(ctx, out, &note),
+        Command::Repost { note } => more::repost(ctx, out, &note, true),
+        Command::Unrepost { note } => more::repost(ctx, out, &note, false),
+        Command::Delete { note } => more::delete(ctx, out, &note),
+        Command::Mute { actor } => more::guard(ctx, out, &actor, more::Guard::Mute, true),
+        Command::Unmute { actor } => more::guard(ctx, out, &actor, more::Guard::Mute, false),
+        Command::Mutes { limit } => more::guarded(ctx, out, more::Guard::Mute, limit),
+        Command::Block { actor } => more::guard(ctx, out, &actor, more::Guard::Block, true),
+        Command::Unblock { actor } => more::guard(ctx, out, &actor, more::Guard::Block, false),
+        Command::Blocks { limit } => more::guarded(ctx, out, more::Guard::Block, limit),
         Command::Search { query, limit } => search(ctx, out, &query, limit),
         Command::Download { note, output } => {
             download_note(ctx, out, &note, &download::download_dir(output)?)
@@ -1686,7 +1758,7 @@ mod tests {
             "the check carries no token"
         );
         assert!(
-            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications\n")),
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks\n")),
             "{err}"
         );
         assert!(!err.contains(FAKE) && !out.contains(FAKE));

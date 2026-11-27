@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Kind, Result};
-use types::{DriveFile, Note, Notification, Relation, User};
+use types::{DriveFile, Note, Notification, Reaction, Relation, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
 pub const DEFAULT_HOST: &str = "misskey.io";
@@ -322,6 +322,39 @@ impl Client {
     pub fn unreact(&self, id: &str) -> Result<()> {
         self.write("notes/reactions/delete", &json!({"noteId": id}))
             .map(drop)
+    }
+
+    /// `notes/reactions`: a page of who reacted to note `id`, with what,
+    /// newest first, older than `until` when given.
+    pub fn reactions(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Reaction>> {
+        let mut body = json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)});
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        let Value::Array(items) = self.call("notes/reactions", &body)? else {
+            return Err(Error::api(
+                "notes/reactions: the server did not answer with a list",
+            ));
+        };
+        Ok(items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect())
+    }
+
+    /// `notes/renotes`: a page of the renotes of note `id`, newest first.
+    pub fn renotes(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Note>> {
+        let mut body = json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)});
+        if let Some(u) = until {
+            body["untilId"] = json!(u);
+        }
+        notes(self.call("notes/renotes", &body)?)
+    }
+
+    /// A write about account `user_id`: `mute/create`, `mute/delete`,
+    /// `blocking/create`, `blocking/delete`.
+    pub fn account_write(&self, endpoint: &str, user_id: &str) -> Result<()> {
+        self.write(endpoint, &json!({"userId": user_id})).map(drop)
     }
 
     /// `notes/unrenote`: take back every renote of note `id` the account

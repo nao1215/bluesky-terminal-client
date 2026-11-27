@@ -29,6 +29,10 @@ pub struct User {
     pub is_following: bool,
     /// Whether it follows the account asking.
     pub is_followed: bool,
+    /// Whether the account asking muted it.
+    pub is_muted: bool,
+    /// Whether the account asking blocked it.
+    pub is_blocking: bool,
     /// Whether it approves its followers.
     pub is_locked: bool,
     /// Whether the account asking has asked to follow it, not yet approved.
@@ -115,6 +119,21 @@ pub struct Relation {
     pub created_at: Option<String>,
     pub followee: Option<User>,
     pub follower: Option<User>,
+    /// The account muted, in `mute/list`.
+    pub mutee: Option<User>,
+    /// The account blocked, in `blocking/list`.
+    pub blockee: Option<User>,
+}
+
+/// An entry of `notes/reactions`: who reacted, with what, when.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Reaction {
+    pub id: String,
+    pub created_at: String,
+    pub user: User,
+    #[serde(rename = "type")]
+    pub reaction: String,
 }
 
 /// `Note`.

@@ -84,6 +84,8 @@ pub const HELP: &[Section] = &[
         keys: &[
             ("", "its tab is your own profile"),
             ("f", "follow / unfollow the account shown"),
+            ("M", "mute / unmute the account shown"),
+            ("B", "block / unblock the account: y confirms"),
             (
                 "",
                 "an account that approves followers, or of another server, is asked",

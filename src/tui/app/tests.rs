@@ -689,6 +689,8 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('5'),
         key('6'),
         key('2'),
+        key('M'),
+        key('B'),
         key('t'),
         key('i'),
         key('f'),
@@ -833,7 +835,7 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                                 .collect())
                         },
                     },
-                    Job::Follow { user_id, .. } => {
+                    Job::Follow { user_id, .. } | Job::Guard { user_id, .. } => {
                         Event::Followed {
                             user_id: user_id.clone(),
                             result: if fail {
@@ -1608,4 +1610,84 @@ fn f_follows_and_unfollows_the_account_shown() {
         )))),
     );
     assert!(app.handle_key(key('f')).is_empty());
+}
+
+// M mutes the account shown and unmutes it; B asks, and y blocks; a
+// blocked account is unblocked at once.
+#[test]
+fn m_mutes_and_b_blocks_after_y() {
+    let mut app = writer(vec![]);
+    let jobs = app.open_profile(crate::tui::worker::Who::Id("u-bob".into()));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-bob", "username": "bob"})),
+            vec![],
+        )))),
+    );
+    let jobs = app.handle_key(key('M'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Guard {
+            user_id: "u-bob".into(),
+            block: false,
+            on: true
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Followed {
+            user_id: "u-bob".into(),
+            result: Ok(Box::new(user(
+                json!({"id": "u-bob", "username": "bob", "isMuted": true}),
+            ))),
+        },
+    );
+    assert!(app.status.as_ref().unwrap().text.starts_with("muted @bob"));
+    assert_eq!(
+        app.handle_key(key('M'))[0].1,
+        Job::Guard {
+            user_id: "u-bob".into(),
+            block: false,
+            on: false
+        }
+    );
+    app.in_flight.clear();
+    assert!(app.handle_key(key('B')).is_empty());
+    assert!(app.handle_key(key('n')).is_empty());
+    assert_eq!(app.status.as_ref().unwrap().text, "not blocked");
+    app.handle_key(key('B'));
+    let jobs = app.handle_key(key('y'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Guard {
+            user_id: "u-bob".into(),
+            block: true,
+            on: true
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Followed {
+            user_id: "u-bob".into(),
+            result: Ok(Box::new(user(
+                json!({"id": "u-bob", "username": "bob", "isBlocking": true}),
+            ))),
+        },
+    );
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .starts_with("blocked @bob")
+    );
+    assert_eq!(
+        app.handle_key(key('B'))[0].1,
+        Job::Guard {
+            user_id: "u-bob".into(),
+            block: true,
+            on: false
+        }
+    );
 }

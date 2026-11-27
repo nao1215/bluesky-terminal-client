@@ -20,8 +20,9 @@ pub const APP_NAME: &str = "msky";
 /// followed are what those show. `post` and the client write notes (and
 /// delete your own, and renote), and upload their files to the drive;
 /// `follow` and `unfollow` change whom you follow; the client reacts to
-/// notes and marks the notifications read. Nothing else is asked: msky
-/// changes no setting and deletes no account.
+/// notes and marks the notifications read; `mute`, `block` and their
+/// lists read and change whom you mute and block. Nothing else is asked:
+/// msky changes no setting and deletes no account.
 pub const PERMISSIONS: &[&str] = &[
     "read:account",
     "read:notifications",
@@ -32,6 +33,10 @@ pub const PERMISSIONS: &[&str] = &[
     "write:following",
     "write:reactions",
     "write:notifications",
+    "read:mutes",
+    "write:mutes",
+    "read:blocks",
+    "write:blocks",
 ];
 
 /// How long `msky login` waits for the access by default.
@@ -254,7 +259,7 @@ mod tests {
         let url = auth_url("https://misskey.io", "abc");
         assert_eq!(
             url,
-            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications"
+            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks"
         );
         let writes: Vec<&str> = PERMISSIONS
             .iter()
@@ -268,7 +273,9 @@ mod tests {
                 "write:drive",
                 "write:following",
                 "write:reactions",
-                "write:notifications"
+                "write:notifications",
+                "write:mutes",
+                "write:blocks"
             ]
         );
     }

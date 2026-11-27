@@ -55,6 +55,7 @@ It needs Rust 1.90 or later.
 | `/` `i`, `t` | Type in the search box (it has focus when you arrive at an empty Search tab), and switch between searching notes and accounts |
 | `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
 | `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
+| `M`, `B` | Mutes or unmutes that account; blocks it (`y` confirms) or unblocks it |
 | `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
 | `v` | The thread: what the note answers, the note, and two levels of replies; `esc` closes it |
 | `space` | The note's files full screen (`←` `→` between them, `d` saves the one shown, `o` opens it in the browser); without pictures, the note in the browser |
@@ -87,7 +88,7 @@ The Profile tab shows the account's name and address, how you and it follow each
 
 The composer (`n`, `r`, `Q`) takes bsky's keys: `ctrl+s` sends, `ctrl+o` opens a file browser to attach up to four pictures or one video (`space` marks several, `enter` chooses), `tab` moves to a file's alt text, `ctrl+x` removes a file, `esc` closes without sending. Misskey's own are `ctrl+w`, which adds or takes off a content warning, and `ctrl+p`, which steps through who may see the note (public, home, followers); a reply starts as visible as the note it answers. The length is checked against the server's own limit (its `meta`) when the note is sent. A write is sent once, and a key pressed again while one is on its way is refused. The notifications are marked read when their tab shows them.
 
-Reacting, deleting and marking notifications read need `write:reactions` and `write:notifications`, which `msky login` asks for from this version: a login made before says to log in again (`A` then `a`, or `msky login`) when one of them is pressed, and the notifications are left unread.
+Reacting, marking notifications read, muting and blocking need `write:reactions`, `write:notifications`, `read:mutes`, `write:mutes`, `read:blocks` and `write:blocks`, which `msky login` asks for from this version: a login made before says to log in again (`A` then `a`, or `msky login`) when one of them is pressed, and the notifications are left unread.
 
 ## Use
 
@@ -103,6 +104,16 @@ msky asks the server `--host` or `MSKY_HOST` names (`--host misskey.design`, `--
 | `msky notifications` | Your notifications, newest first |
 | `msky whoami` | The account logged in on the server |
 | `msky post TEXT` | Posts a note (see Posting) |
+| `msky thread NOTE` | What the note answers, the note, and its replies |
+| `msky profile [ACTOR]` | An account: its name, counts and description; yours without ACTOR |
+| `msky reactions NOTE` (`likes`) | Who reacted to the note, and with what |
+| `msky renotes NOTE` (`reposts`) | The renotes of the note |
+| `msky like NOTE` (`react`) | Reacts ❤ to the note, or `--reaction` (an emoji, or `:name:`); a reaction given before is replaced |
+| `msky unlike NOTE` (`unreact`) | Takes back your reaction |
+| `msky repost NOTE` (`renote`), `msky unrepost NOTE` | Renotes the note, or takes back your renotes of it |
+| `msky delete NOTE` | Deletes one of your own notes |
+| `msky mute ACTOR`, `unmute`, `mutes` | Mutes or unmutes an account; the accounts you muted |
+| `msky block ACTOR`, `unblock`, `blocks` | Blocks or unblocks an account; the accounts you blocked |
 | `msky follow ACTOR` | Follows the account |
 | `msky unfollow ACTOR` | Unfollows the account, or takes back a request to follow it |
 | `msky follows [ACTOR]` | The accounts ACTOR (you by default) follows; `--pending`: your requests not yet accepted |
@@ -134,7 +145,7 @@ Any other value is a usage error (exit 1). `--reposts` keeps the account's renot
 
 `msky login` logs in on the server with [MiAuth](https://misskey-hub.net/en/docs/for-developers/api/token/miauth/). It prints an address on the server, `https://misskey.io/miauth/<session>?name=msky&permission=...`, on stderr, and opens it in the web browser when stderr is a terminal (with `MSKY_BROWSER` when set, else `xdg-open`, `open`, or the Windows URL handler). Open it where you are signed in to the server and allow the access; msky asks the server every two seconds whether it was allowed, and saves the token it gets. msky never sees your password.
 
-msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post` and the client's notes (and to delete your own and renote), `write:following` for `follow` and `unfollow`, and `write:reactions` and `write:notifications` for the client's reactions and the notifications' read mark, and for nothing else: it changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
+msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post` and the client's notes (and to delete your own and renote), `write:following` for `follow` and `unfollow`, `write:reactions` and `write:notifications` for reactions and the notifications' read mark, and `read:mutes`, `write:mutes`, `read:blocks` and `write:blocks` for muting and blocking, and for nothing else: it changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
 
 The token is saved per server, as bsky saves its sessions: in `accounts/<host>.json` in the config directory (`MSKY_CONFIG_DIR`, else `msky` in the platform's config folder: `~/.config/msky` on Linux, `~/Library/Application Support/msky` on macOS, `%APPDATA%\msky` on Windows), readable and writable by you alone on Unix (mode 0600). `accounts.json` beside it names the server of the account in use, the one logged in last; it holds no secret. Logging in on the same server again replaces its account.
 
