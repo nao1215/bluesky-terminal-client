@@ -849,7 +849,7 @@ mod tests {
             "{upload}"
         );
         assert!(
-            upload.contains("name=\"name\"\r\n\r\n猫 \"1\".png\r\n"),
+            upload.contains(&format!("name=\"name\"\r\n\r\n{name}\r\n")),
             "{upload}"
         );
         assert!(
