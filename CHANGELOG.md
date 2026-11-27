@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-27
+
 ### Added
 
 - `bsky author <ACTOR>` lists an account's posts newest first, read from its own feed page by page until `-n` posts or the end, so nothing is left out as a search for `from:` can. `--filter` picks posts with replies (the default), without replies, with media, with a video, or the account's threads; reposts are printed only with `--reposts`; `--json` prints one feedViewPost a line, as `bsky timeline` does.
