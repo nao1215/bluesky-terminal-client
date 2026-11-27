@@ -98,11 +98,29 @@ pub fn send_post(
                 .iter()
                 .map(|a| media::prepare(&a.path))
                 .collect::<Result<Vec<_>>>()?;
+            // The pictures go up side by side, each once: one after another
+            // they were a round trip each before the post itself. The post
+            // keeps them in the order they were attached, and the first
+            // failure in that order is the one reported.
+            let blobs: Vec<Result<serde_json::Value>> = std::thread::scope(|s| {
+                let sent: Vec<_> = prepared
+                    .iter()
+                    .map(|p| s.spawn(|| client.upload_blob(&p.bytes, p.mime)))
+                    .collect();
+                sent.into_iter()
+                    .map(|h| {
+                        h.join().unwrap_or_else(|_| {
+                            Err(Error::api(
+                                "com.atproto.repo.uploadBlob: the request thread failed",
+                            ))
+                        })
+                    })
+                    .collect()
+            });
             let mut uploaded = Vec::with_capacity(media.len());
-            for (a, p) in media.iter().zip(prepared) {
-                let blob = client.upload_blob(&p.bytes, p.mime)?;
+            for ((a, p), blob) in media.iter().zip(prepared).zip(blobs) {
                 uploaded.push(PostImage {
-                    blob,
+                    blob: blob?,
                     alt: a.alt.trim().to_string(),
                     width: p.width,
                     height: p.height,

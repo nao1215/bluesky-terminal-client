@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- A post with pictures uploads them side by side, and the accounts it mentions are looked up side by side, in the client and in `bsky post`. With every answer 100 ms away, a post with four pictures is sent in 0.21 s instead of 0.51 s, and one with three mentions in 0.21 s instead of 0.41 s. Each picture is still sent once and the post keeps them in the order they were attached.
+
 ### Fixed
 
 - On kitty, the text after a character with VS16 (U+FE0F), such as the classical building or the red heart, in a post or a name is drawn where it belongs again: it was written one cell to the right, so after a tab change some of it stayed on screen and showed twice when the tab came back.
