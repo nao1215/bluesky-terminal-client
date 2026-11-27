@@ -562,12 +562,14 @@ fn closing_bracket_at(b: &[u8], from: usize, depth: usize) -> Option<usize> {
 }
 
 /// The end of what at `j` is read whole inside markup, so that nothing in
-/// it closes the markup: a link of any form, or `<plain>`. Silencing turns
+/// it closes the markup: a link of any form, or what holds no link (code,
+/// `<plain>`, math), as [`links`] reads past them. Silencing turns
 /// one form of link into another, and a `]`, `**` or `</tag>` read inside
 /// one would close the markup somewhere else after it.
 fn atom_end(b: &[u8], j: usize) -> Option<usize> {
-    if b[j..].starts_with(b"<plain>") {
-        return find(b, j + 7, b"</plain>").map(|close| close + 8);
+    let line_start = j == 0 || b[j - 1] == b'\n';
+    if let Some(end) = skipped(b, j, line_start) {
+        return Some(end);
     }
     labeled(b, j)
         .or_else(|| angle(b, j))
@@ -775,6 +777,8 @@ mod tests {
     )]
     #[case("見て https://a.test/([x](https://b.test)) 👨\u{200d}👩\u{200d}👧")]
     #[case("$[f $$[shttp://lnm]nom]-")]
+    #[case("`[iht`$[flip $` <pl<plain>```\nhttps://in.")]
+    #[case("$[x2 `]` 漢字] https://a.test")]
     #[case("$[x2 $[price https://a.test] 🇯🇵]")]
     fn markup_closes_where_it_did_before_silencing(#[case] text: &str) {
         silencing_keeps_the_text(text);
@@ -822,6 +826,7 @@ mod tests {
     #[case(":blobcat: :custom_emoji_name:", ":blobcat: :custom_emoji_name:")]
     #[case("見て <https://a.test/x(y> 👍🏽", "見て https://a.test/x(y 👍🏽")]
     #[case("$[x2 $[ab:c] 後]", "$[ab:c 後]")]
+    #[case("$[x2 `]` 後]", "`]` 後")]
     #[case("<https://a.test/x >", "<https://a.test/x >")]
     #[case("`<https://a.test>`", "`<https://a.test>`")]
     #[case(
