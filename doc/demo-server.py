@@ -52,7 +52,7 @@ def photo(fid, name, w, h, comment="", sensitive=False):
 
 
 def video(fid, name, poster, w, h, comment=""):
-    return {"id": fid, "name": name, "type": "video/mp4", "size": 700000,
+    return {"id": fid, "name": name, "type": "video/mp4", "size": 830000,
             "url": img(name), "thumbnailUrl": img(poster), "comment": comment,
             "isSensitive": False, "properties": {"width": w, "height": h}}
 
@@ -70,7 +70,7 @@ def note(nid, u, text, when, reactions=None, renotes=0, replies=0, files=None, c
 def timeline():
     show = note("n1", KEN, "My dungeon crawler is playable 🎮 The Brass Warden goes down in four turns\nShield Rush! 🛡️",
                 "2026-11-27T09:41:00.000Z", {"🔥": 31, "❤️": 18, "👏🏽": 6}, 9, 2,
-                [video("v1", "dungeon.mp4", "dungeon.jpg", 720, 406, "a party of four fights an armored guardian in a brick dungeon")])
+                [video("v1", "dungeon.mp4", "dungeon.jpg", 720, 406, "a party fights an armored guardian in a dungeon, then talks in town")])
     aquarium = note("n2", ALICE, "Aquarium day 🐟 The tarpon are huge up close.\nAnd a sea lion pup was born this summer!",
                     "2026-11-27T09:20:00.000Z", {"🐟": 14, ":todo@.:": 9, "✨": 5}, 4, 1,
                     [photo("f1", "fish.jpg", 800, 600, "big silver fish in a blue tank"),
