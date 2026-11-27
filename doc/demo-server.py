@@ -143,6 +143,20 @@ def notes_of(uid):
     return seen
 
 
+def feed(path):
+    """The notes of the antenna, the list or the channel."""
+    t = {n["id"]: n for n in timeline()}
+    if path == "/api/antennas/notes":
+        extra = [note("an2", ALICE, "The jellyfish room is the calmest place in town 🪼", "2026-11-27T06:50:00.000Z",
+                      {"🪼": 7}, 1, 0),
+                 note("an3", KEN, "Feeding time at the sea lion pool :todo: :todo:", "2026-11-27T06:20:00.000Z",
+                      {":todo@.:": 12, "😂": 4}, 2, 1, [photo("f10", "sealions.jpg", 800, 600, "sea lions on a rock")])]
+        return [t["n2"], t["n7"], *extra]
+    if path == "/api/notes/user-list-timeline":
+        return [t["n3"], t["n4"], t["n6"]] + timeline()[7:]
+    return [t["n5"], note("ch2", BOB, "Planting garlic for next year 🧄", "2026-11-27T05:40:00.000Z", {"🌱": 5})]
+
+
 def find(nid):
     for n in timeline() + local():
         if n["id"] == nid:
@@ -218,6 +232,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/emojis":
             return self.send(200, {"emojis": [{"name": e, "url": img(f"emoji-{e}.png"), "aliases": [],
                                                "category": "demo"} for e in EMOJIS]})
+        if path == "/api/antennas/list":
+            return self.send(200, [{"id": "an1", "name": "Aquariums"}])
+        if path == "/api/users/lists/list":
+            return self.send(200, [{"id": "ls1", "name": "Friends"}])
+        if path == "/api/channels/followed":
+            return self.send(200, [{"id": "ch1", "name": "Gardening"}])
+        if path == "/api/channels/my-favorites":
+            return self.send(200, [])
+        if path in ("/api/antennas/notes", "/api/notes/user-list-timeline", "/api/channels/timeline"):
+            return self.send(200, [] if until else feed(path))
         if path == "/api/notifications/mark-all-as-read":
             return self.send(204, b"")
         if path in ("/api/chat/history", "/api/notes/reactions", "/api/notes/renotes"):

@@ -9,6 +9,10 @@
 #                                 emoji, where nothing reaches a real
 #                                 server. Runs anywhere, on Xvfb too
 #                                 (DISPLAY=:99).
+#   doc/record-demo.sh columns    doc/img/columns.gif: an antenna and the
+#                                 notifications added as columns beside
+#                                 home, and scrolled, against the same
+#                                 stand-in server.
 #   doc/record-demo.sh demo       doc/img/demo-account.gif: msky as the
 #                                 account you logged in with `msky login`,
 #                                 on your own PC: the home timeline with its
@@ -196,6 +200,35 @@ demo_fake() {
   quit
 }
 
+demo_columns() {
+  serve
+  start 1400 700
+  ready "♡"
+  record
+  sleep 1.5
+  # + offers the antennas, lists and channels: Aquariums goes beside home.
+  send "+"
+  sleep 1.5
+  send "j"
+  sleep 0.8
+  send "\r"
+  sleep 2.5
+  keys j 3 0.9
+  sleep 1
+  # Then the notifications.
+  send "+"
+  sleep 1.5
+  keys j 4 0.6
+  send "\r"
+  sleep 2.5
+  # Back to the home column, and down it.
+  keys "\033[D" 2 0.8
+  keys j 4 0.9
+  sleep 1.5
+  stop "$OUT/columns.gif" 1120 8
+  quit
+}
+
 # Your own account, on your own PC only.
 demo() {
   # msky's own config folder and picture cache; the server list is not
@@ -233,5 +266,6 @@ demo() {
 case "${1:-demo}" in
   demo) demo ;;
   demo-fake) demo_fake ;;
+  columns) demo_columns ;;
   *) echo "usage: $0 [demo|demo-fake]" >&2; exit 2 ;;
 esac
