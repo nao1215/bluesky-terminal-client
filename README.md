@@ -9,7 +9,7 @@ A [Misskey](https://misskey-hub.net) client for the terminal. Pictures and video
 
 ![the timeline, a note's video and pictures, a thread, a profile and the notifications](doc/img/demo.gif)
 
-msky has the same keys as [bsky](https://github.com/nao1215/bluesky-terminal-client), its Bluesky sibling. It is written for Misskey itself; forks such as Sharkey may work, but they are not tested.
+It is written for Misskey itself; forks such as Sharkey may work, but they are not tested.
 
 ## Install
 
@@ -85,6 +85,30 @@ msky search Misskey --json | jq -r .url
 | `MSKY_BROWSER` | Program that opens addresses |
 | `LANG` | Language, unless one is chosen in the settings |
 | `NO_COLOR` | No color |
+
+## Other terminal clients
+
+From their READMEs, November 2026.
+
+| | msky | [misskey-cli](https://github.com/mikuta0407/misskey-cli) | [Misskey-TUI](https://github.com/yulog/misskey-tui) |
+|---|---|---|---|
+| Written in | Rust | Go | Go |
+| Interface | Full screen, and commands | Commands | Full screen |
+| Pictures and videos | Drawn in the terminal | Marked as attached | Not shown |
+| Timelines | Home, local, global, social (commands) | Home, local, global, streaming | Home, local, social, global |
+| Several columns | Yes | Not applicable | No |
+| Several servers | Yes | Yes | No |
+| Notifications | Yes | No | No |
+| Chat | Yes | No | No |
+| Posting | Text, pictures, video, reply, quote, content warning | Text, reply, renote, delete | Text, reply, renote |
+| Follow, mute and block | Yes | No | No |
+| Search | Notes and accounts | No | No |
+| JSON output | Every command | No | Not applicable |
+| Login | MiAuth in the browser | Access token in a TOML file | Access token in a JSON file |
+
+## Related projects
+
+- [bsky](https://github.com/nao1215/bluesky-terminal-client): the same client for Bluesky, with the same keys.
 
 ## Contributing
 
