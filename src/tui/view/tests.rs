@@ -411,7 +411,9 @@ fn the_viewer_plays_a_video_and_says_where_it_is() {
     let mut screen = String::new();
     while start.elapsed() < std::time::Duration::from_secs(10) {
         images.poll();
-        screen = rows(&mut app, &mut images, 120, 20).join("\n");
+        // Wide: Windows says why the connection failed at more length, and
+        // the hint comes after it.
+        screen = rows(&mut app, &mut images, 240, 20).join("\n");
         if screen.contains("⚠") {
             break;
         }

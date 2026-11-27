@@ -803,7 +803,13 @@ mod tests {
         let (url, calls) = server((200, PREVIEW));
         let dir = tempfile::tempdir().unwrap();
         login(dir.path(), &url, crate::miauth::PERMISSIONS);
-        let pic = dir.path().join("猫 \"1\".png");
+        // Quotes in the name on Unix; Windows refuses them in a file name.
+        let name = if cfg!(windows) {
+            "猫 1.png"
+        } else {
+            "猫 \"1\".png"
+        };
+        let pic = dir.path().join(name);
         // A real PNG: one that only starts like one is refused, as what it
         // carries cannot be known.
         std::fs::copy(
