@@ -182,7 +182,7 @@ jobs:
 
   # Every SHA-256 of the release is computed here, once. Every archive gets a
   # signed build provenance attestation, which
-  # `gh attestation verify <archive> --repo nao1215/bluesky-terminal-client`
+  # `gh attestation verify <archive> --repo nao1215/sns-terminal-clients`
   # checks against this workflow and the tag it ran for, and checksums.txt is
   # signed with cosign (keyless: the certificate names this workflow and tag).
   # The signature is made before the release exists, so a failure here leaves
