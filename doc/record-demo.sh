@@ -60,7 +60,7 @@ serve() {
   mkdir -p "$CFG/accounts"
   printf '{"service": "http://127.0.0.1:%s", "userId": "u-river", "username": "river", "token": "demo"}\n' "$PORT" > "$CFG/accounts/127.0.0.1_$PORT.json"
   printf '{"current": "127.0.0.1:%s"}\n' "$PORT" > "$CFG/accounts.json"
-  DEMO_ENV="MSKY_CONFIG_DIR=$CFG MSKY_CACHE_DIR=off MSKY_SERVERS_URL=off MSKY_DOWNLOAD_DIR=$WORK/dl TZ=Asia/Tokyo"
+  DEMO_ENV="MSKY_CONFIG_DIR=$CFG MSKY_CACHE_DIR=off MSKY_SERVERS_URL=off MSKY_DOWNLOAD_DIR=$WORK/dl TZ=Asia/Tokyo LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE="
 }
 
 # Start msky in a kitty window of WIDTH x HEIGHT pixels.
@@ -125,7 +125,7 @@ keys() { # KEY COUNT DELAY
 
 record() {
   ffmpeg -nostdin -loglevel error -y -f x11grab -draw_mouse 0 -window_id "$W" \
-    -framerate 15 -i :0 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p "$WORK/rec.mp4" &
+    -framerate 15 -i "${DISPLAY:-:0}" -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p "$WORK/rec.mp4" &
   FPID=$!
   sleep 1
 }
@@ -146,17 +146,25 @@ demo_fake() {
   ready "♡"
   record
   sleep 1.5
-  # The owl, full screen, and back.
+  # The dolphin video, played in the client, and back.
+  send " "
+  sleep 3.5
+  send "\033"
+  sleep 1.5
+  # The aquarium's four photos, full screen, and back.
+  send "j"
+  sleep 1
   send " "
   ready "d download"
-  sleep 2.5
+  sleep 2
   send "\033"
   sleep 1.5
   # Down to the content warning, opened.
-  keys j 2 1
+  send "j"
+  sleep 1
   send "w"
   sleep 2
-  # The renote, the note it renotes, and the thread of a note with replies.
+  # The renote of the food samples, and the thread of the grapes.
   keys j 2 1
   send "v"
   ready "Thread"
@@ -164,16 +172,22 @@ demo_fake() {
   sleep 1
   send "\033"
   sleep 1.2
-  # The local timeline, and the notifications.
-  send "2"
-  ready "ローカル"
+  # Down to Mika's note and her profile, and back.
+  keys j 2 0.8
+  send "\r"
+  ready "水族館と海"
+  sleep 1.5
+  keys j 2 0.8
   sleep 1
+  send "\033"
+  sleep 1.2
+  # The notifications, and home again.
   send "4"
   ready "reacted"
   sleep 2
   send "1"
   sleep 1.5
-  stop "$OUT/demo-fake.gif"
+  stop "$OUT/demo-fake.gif" 860 8
   quit
 }
 

@@ -7,7 +7,8 @@ doc/demo-server.py does for Bluesky.
 
 Serves on 127.0.0.1 at a free port, writes the port to PORTFILE, and answers
 the API calls msky's client makes with fixed data. Every name here is made
-up; the pictures are those of doc/demo.
+up; the pictures are those of doc/demo: photos and a video by msky's
+author, and custom emoji cut from them.
 """
 
 import json
@@ -36,64 +37,110 @@ def user(username, name, avatar=None, host=None):
 ME = user("river", "River", "carol.jpg")
 ALICE = user("alice", "Alice Chen", "alice.jpg")
 BOB = user("bob", "ボブ 田中", "bob.jpg")
-MIKA = user("mika", "みか 🐈", "carol.jpg", host="mi.example")
+MIKA = user("mika", "みか :iruka:", "carol.jpg", host="mi.example")
 KEN = user("ken", "Ken", None)
+MIKA["emojis"] = {"iruka": img("emoji-iruka.png")}
+
+# The server's custom emoji, cut from the demo's own photos.
+EMOJIS = ["iruka", "todo", "budou", "ebi", "salmon"]
 
 
 def photo(fid, name, w, h, comment="", sensitive=False):
-    return {"id": fid, "name": name, "type": "image/jpeg", "size": 40000,
+    return {"id": fid, "name": name, "type": "image/jpeg", "size": 90000,
             "url": img(name), "thumbnailUrl": img(name), "comment": comment,
             "isSensitive": sensitive, "properties": {"width": w, "height": h}}
+
+
+def video(fid, name, poster, w, h, comment=""):
+    return {"id": fid, "name": name, "type": "video/mp4", "size": 885000,
+            "url": img(name), "thumbnailUrl": img(poster), "comment": comment,
+            "isSensitive": False, "properties": {"width": w, "height": h}}
 
 
 def note(nid, u, text, when, reactions=None, renotes=0, replies=0, files=None, cw=None, **extra):
     n = {"id": nid, "createdAt": when, "userId": u["id"], "user": u, "text": text, "cw": cw,
          "reactions": reactions or {}, "renoteCount": renotes, "repliesCount": replies,
          "files": files or []}
+    if u.get("emojis"):
+        n["emojis"] = u["emojis"]
     n.update(extra)
     return n
 
 
 def timeline():
-    owl = note("n1", ALICE, "森で見つけたフクロウ 🦉 じっとこっちを見てた\nThe owl watched us the whole time.",
-               "2026-11-27T09:41:00.000Z", {"❤️": 24, ":blobcat@.:": 8, "👍🏽": 5}, 6, 2,
-               [photo("f1", "owl.jpg", 800, 420, "a brown owl on a branch")])
-    lunch = note("n2", BOB, "今日のお昼 🍔 ポテトもつけた", "2026-11-27T09:12:00.000Z",
-                 {"🍔": 12, "🤤": 7}, 1, 1, [photo("f2", "burger.jpg", 800, 600, "a burger and fries")])
-    spoiler = note("n3", MIKA, "犯人は最初に出てきた執事でした 👨‍👩‍👧", "2026-11-27T08:55:00.000Z",
+    show = note("n1", MIKA, "イルカショー、ジャンプが高すぎる :iruka: :iruka:\n水しぶきがここまで来た 💦",
+                "2026-11-27T09:41:00.000Z", {":iruka@.:": 31, "❤️": 18, "👏🏽": 6}, 9, 2,
+                [video("v1", "dolphin.mp4", "dolphin.jpg", 640, 480, "a dolphin jumps at an aquarium show")])
+    aquarium = note("n2", ALICE, "水族館に来た 🐟 ターポンの群れ、近くで見ると大きい\nThe tarpon are huge up close.",
+                    "2026-11-27T09:20:00.000Z", {"🐟": 14, ":todo@.:": 9, "✨": 5}, 4, 1,
+                    [photo("f1", "fish.jpg", 800, 600, "big silver fish in a blue tank"),
+                     photo("f2", "sealions.jpg", 800, 600, "sea lions on a rock"),
+                     photo("f3", "pup.jpg", 800, 1066, "a poster: a sea lion pup was born"),
+                     photo("f4", "turtles.jpg", 800, 600, "turtles in a pool")])
+    spoiler = note("n3", KEN, "犯人は最初に出てきた執事でした 👨‍👩‍👧", "2026-11-27T09:05:00.000Z",
                    {"😱": 9}, 0, 4, cw="映画のネタバレ 🎬")
-    desk = note("n4o", KEN, "New desk setup, finally. 日本語の本も並べた 📚", "2026-11-27T07:30:00.000Z",
-                {"✨": 15}, 3, 0, [photo("f4", "desk.jpg", 800, 534, "a desk with a laptop and books")])
-    renote = {"id": "n4", "createdAt": "2026-11-27T08:20:00.000Z", "userId": ALICE["id"], "user": ALICE,
-              "text": None, "cw": None, "files": [], "reactions": {}, "renoteId": "n4o", "renote": desk}
-    reading = note("n5", ME, "週末は読書 📖 おすすめある？", "2026-11-27T07:02:00.000Z",
-                   {"👀": 3}, 0, 3, [photo("f5", "reading.jpg", 800, 450, "an open book")])
-    quote = note("n6", BOB, "これいいな 🇯🇵 🇺🇸", "2026-11-27T06:40:00.000Z", {"👍": 2},
-                 renoteId="n5", renote=reading)
+    sample = note("n4o", BOB, "食品サンプルなのにお腹が空く :salmon: :ebi:", "2026-11-27T08:30:00.000Z",
+                  {":ebi@.:": 12, "🤤": 7}, 3, 0,
+                  [photo("f5", "salmon.jpg", 800, 600, "a salmon bowl, a food sample"),
+                   photo("f6", "shrimp.jpg", 800, 600, "sweet shrimp sashimi, a food sample")])
+    renote = {"id": "n4", "createdAt": "2026-11-27T08:50:00.000Z", "userId": ALICE["id"], "user": ALICE,
+              "text": None, "cw": None, "files": [], "reactions": {}, "renoteId": "n4o", "renote": sample}
+    grapes = note("n5", ME, "庭のぶどうが色づいてきた :budou: 今年は甘いかな", "2026-11-27T08:02:00.000Z",
+                  {":budou@.:": 11, "👀": 3}, 0, 3,
+                  [photo("f7", "grapes.jpg", 800, 612, "grapes on a vine against the sky"),
+                   photo("f8", "grapes2.jpg", 800, 1066, "picked grapes on a stone table")])
+    quote = note("n6", BOB, "いいな、来年分けて 🇯🇵 🍇", "2026-11-27T07:40:00.000Z", {"👍": 2},
+                 renoteId="n5", renote=grapes)
+    building = note("n7", MIKA, "帰りに寄った海辺の水族館。建物がレトロでいい", "2026-11-27T07:10:00.000Z",
+                    {"🏛️": 4, ":iruka@.:": 2}, 1, 0, [photo("f9", "aquarium.jpg", 800, 600, "an old aquarium building by the sea")])
     plain = [note(f"p{i}", [ALICE, BOB, KEN][i % 3],
                   ["おはようございます ☀️", "Coffee first ☕", "雨が降ってきた ☔ 傘ない",
                    "Shipping a release today 🚀", "猫が膝から降りない 🐈‍⬛"][i % 5],
                   f"2026-11-27T0{5 - i // 3}:{50 - i * 4:02d}:00.000Z", {"👍": i + 1}, 0, 0)
              for i in range(9)]
-    return [owl, lunch, spoiler, renote, reading, quote] + plain
+    return [show, aquarium, spoiler, renote, grapes, quote, building] + plain
 
 
 def local():
     return [note(f"l{i}", [ALICE, BOB, ME][i % 3], t, f"2026-11-27T09:{50 - i * 3:02d}:00.000Z", {"👍": i})
-            for i, t in enumerate(["ローカルのみなさんこんにちは 👋", "Misskey のカスタム絵文字 :blobcat: はそのまま",
+            for i, t in enumerate(["ローカルのみなさんこんにちは 👋", "カスタム絵文字 :todo: も絵で出る",
                                    "Local timeline, made-up notes only", "家族旅行の写真はまた今度 👨‍👩‍👧"])]
 
 
 def notifications():
     return [
-        {"id": "x1", "createdAt": "2026-11-27T09:45:00.000Z", "type": "reaction", "reaction": ":blobcat@.:",
+        {"id": "x1", "createdAt": "2026-11-27T09:45:00.000Z", "type": "reaction", "reaction": ":budou@.:",
          "user": ALICE, "note": timeline()[4]},
         {"id": "x2", "createdAt": "2026-11-27T09:30:00.000Z", "type": "reply", "user": BOB,
-         "note": note("r1", BOB, "ミステリーなら『十角館』かな", "2026-11-27T09:30:00.000Z")},
+         "note": note("r1", BOB, "ジャムにしても良さそう", "2026-11-27T09:30:00.000Z")},
         {"id": "x3", "createdAt": "2026-11-27T09:00:00.000Z", "type": "follow", "user": MIKA},
         {"id": "x4", "createdAt": "2026-11-27T08:40:00.000Z", "type": "renote", "user": KEN,
          "note": {"id": "rn9", "renoteId": "n5", "renote": timeline()[4], "user": KEN}},
     ]
+
+
+def profile(u):
+    """users/show: the account with its counts and what it says."""
+    about = {
+        "mika": "水族館と海の生き物が好き :iruka: 週末はだいたい日本海側にいます",
+        "alice": "Photos, coffee and fish. 写真とコーヒー",
+        "bob": "食べたものを載せます 🍔",
+        "river": "読書と庭いじり :budou:",
+    }
+    p = dict(u)
+    p.update({"description": about.get(u["username"], ""), "followersCount": 1280 if u is MIKA else 210,
+              "followingCount": 312, "notesCount": 4096 if u is MIKA else 830,
+              "isFollowing": u is not ME, "isFollowed": u is MIKA})
+    return p
+
+
+def notes_of(uid):
+    seen = []
+    for n in timeline() + local():
+        for m in (n, n.get("renote")):
+            if m and m.get("user", {}).get("id") == uid and m.get("text") is not None and m not in seen:
+                seen.append(m)
+    return seen
 
 
 def find(nid):
@@ -107,11 +154,16 @@ def find(nid):
 
 def children(nid):
     if nid == "n5":
-        return [note("c1", BOB, "ミステリーなら『十角館』かな", "2026-11-27T09:30:00.000Z", replies=1),
-                note("c2", ALICE, "Try “Project Hail Mary” 🚀", "2026-11-27T09:35:00.000Z")]
+        return [note("c1", BOB, "ジャムにしても良さそう", "2026-11-27T09:30:00.000Z", replies=1),
+                note("c2", ALICE, "Grape season 🍇 so jealous", "2026-11-27T09:35:00.000Z")]
     if nid == "c1":
-        return [note("c1a", ME, "ありがとう、読んでみる 🙏", "2026-11-27T09:38:00.000Z")]
+        return [note("c1a", ME, "いいね、半分はジャムにする 🙏", "2026-11-27T09:38:00.000Z")]
+    if nid == "n1":
+        return [note("c3", ALICE, "動画いいね :iruka:", "2026-11-27T09:44:00.000Z")]
     return []
+
+
+USERS = {u["username"]: u for u in (ME, ALICE, BOB, MIKA, KEN)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -133,7 +185,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/img/"):
             p = PICTURES / Path(self.path[5:]).name
             if p.is_file():
-                return self.send(200, p.read_bytes(), "image/jpeg")
+                kind = {".png": "image/png", ".mp4": "video/mp4"}.get(p.suffix, "image/jpeg")
+                return self.send(200, p.read_bytes(), kind)
         self.send(404, {"error": {"code": "NOT_FOUND"}})
 
     def do_POST(self):
@@ -155,9 +208,23 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/notes/conversation":
             return self.send(200, [])
         if path == "/api/i":
-            return self.send(200, ME)
+            return self.send(200, profile(ME))
+        if path == "/api/users/show":
+            u = USERS.get(body.get("username") or "") or next(
+                (u for u in USERS.values() if u["id"] == body.get("userId")), None)
+            return self.send(200, profile(u)) if u else self.send(400, {"error": {"code": "NO_SUCH_USER"}})
+        if path == "/api/users/notes":
+            return self.send(200, [] if until else notes_of(body.get("userId")))
+        if path == "/api/emojis":
+            return self.send(200, {"emojis": [{"name": e, "url": img(f"emoji-{e}.png"), "aliases": [],
+                                               "category": "demo"} for e in EMOJIS]})
+        if path == "/api/notifications/mark-all-as-read":
+            return self.send(204, b"")
+        if path in ("/api/chat/history", "/api/notes/reactions", "/api/notes/renotes"):
+            return self.send(200, [])
         if path == "/api/meta":
             return self.send(200, {"name": "Demo", "maxNoteTextLength": 3000})
+        sys.stderr.write(f"demo-server: no answer for {path}\n")
         self.send(404, {"error": {"code": "NOT_FOUND"}})
 
 
