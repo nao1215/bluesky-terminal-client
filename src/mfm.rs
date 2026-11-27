@@ -528,16 +528,25 @@ fn function(b: &[u8], i: usize) -> Option<(usize, usize)> {
     (b.get(j) == Some(&b' ')).then_some((name_end, j + 1))
 }
 
-/// The `]` that closes a function whose content starts at `from`: a `$[`
-/// in it opens another, which its own `]` closes, and a `]` in a link or
-/// in `<plain>` is theirs ([`atom_end`]).
+/// The `]` that closes a function whose content starts at `from`: a
+/// function in it is taken whole, its own `]` with it, and a `]` in a link
+/// or in `<plain>` is theirs ([`atom_end`]). A `$[` that starts no function
+/// (`$[100]`) is text, as in mfm-js, so its `]` can close the one outside.
 fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
-    let mut open = 0usize;
+    closing_bracket_at(b, from, 0)
+}
+
+fn closing_bracket_at(b: &[u8], from: usize, depth: usize) -> Option<usize> {
     let mut j = from;
     while j < b.len() {
-        if b[j..].starts_with(b"$[") {
-            open += 1;
-            j += 2;
+        if depth < NEST_LIMIT
+            && b[j..].starts_with(b"$[")
+            && let Some((_, content)) = function(b, j)
+        {
+            // A function in it that never closes leaves no `]` after it
+            // for this one either: stopping here keeps unclosed nesting
+            // from being scanned again at every level.
+            j = closing_bracket_at(b, content, depth + 1)? + 1;
             continue;
         }
         if let Some(end) = atom_end(b, j) {
@@ -545,10 +554,7 @@ fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
             continue;
         }
         if b[j] == b']' {
-            if open == 0 {
-                return Some(j);
-            }
-            open -= 1;
+            return Some(j);
         }
         j += 1;
     }
@@ -768,6 +774,8 @@ mod tests {
         "https://example.com/wiki/Foo_(bar)_[baz] https://examp\u{1}\u{5}le.com/(https://e[label](https://example(((x))))"
     )]
     #[case("見て https://a.test/([x](https://b.test)) 👨\u{200d}👩\u{200d}👧")]
+    #[case("$[f $$[shttp://lnm]nom]-")]
+    #[case("$[x2 $[price https://a.test] 🇯🇵]")]
     fn markup_closes_where_it_did_before_silencing(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }
@@ -813,6 +821,7 @@ mod tests {
     #[case("$[x2 [label](https://example.com/a)]", "label")]
     #[case(":blobcat: :custom_emoji_name:", ":blobcat: :custom_emoji_name:")]
     #[case("見て <https://a.test/x(y> 👍🏽", "見て https://a.test/x(y 👍🏽")]
+    #[case("$[x2 $[ab:c] 後]", "$[ab:c 後]")]
     #[case("<https://a.test/x >", "<https://a.test/x >")]
     #[case("`<https://a.test>`", "`<https://a.test>`")]
     #[case(

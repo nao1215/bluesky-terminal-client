@@ -73,3 +73,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A function, `**bold**` or a tag in a note now closes after an address in it rather than at a `]`, `**` or `</tag>` inside the address, as Misskey reads it, and `msky post --no-card` keeps such a note reading as it did.
 - `msky post --no-card` no longer leaves a preview under a link after a `<plain>` that never closes: the `</plain>` it adds closed it, and the `<plain>` is now written `<plain><</plain>plain>`, which reads the same.
 - An address whose brackets hold what reads as MFM elsewhere (`https://a.test/([x](https://b.test))`) is shown as written in the client, as Misskey reads it, where the label inside it was drawn as a link.
+- A `$[` that starts no function (`$[x2 $[ab:c] 後]`) is text in the client, as Misskey reads it, so the `]` after it closes the function around it.
