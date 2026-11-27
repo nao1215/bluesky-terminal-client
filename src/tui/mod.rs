@@ -262,6 +262,12 @@ fn event_loop(
         if dirty {
             if let Some(delete) = images.viewer_closed(app.viewer_open()) {
                 write_now(delete).map_err(io_err)?;
+                // The cells kitty's pictures were placed in no longer say
+                // what ratatui last wrote there: drawn on the diff alone,
+                // the next frames left text of the screen before the
+                // viewer beside the pictures (a line's end, an emoji gone
+                // from it). The whole screen is drawn again instead.
+                term.clear().map_err(io_err)?;
             }
             term.draw(|f| view::draw(f, app, &mut images))
                 .map_err(io_err)?;
