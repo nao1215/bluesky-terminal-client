@@ -17,10 +17,11 @@ pub const APP_NAME: &str = "msky";
 
 /// What msky asks to do. The home and social timelines and the
 /// notifications need an account to read; the reactions and the accounts
-/// followed are what those show. `post` writes notes and uploads their
-/// files to the drive, and `follow` and `unfollow` change whom you follow.
-/// Nothing else is asked: msky deletes nothing, reacts to nothing, and
-/// changes no setting.
+/// followed are what those show. `post` and the client write notes (and
+/// delete your own, and renote), and upload their files to the drive;
+/// `follow` and `unfollow` change whom you follow; the client reacts to
+/// notes and marks the notifications read. Nothing else is asked: msky
+/// changes no setting and deletes no account.
 pub const PERMISSIONS: &[&str] = &[
     "read:account",
     "read:notifications",
@@ -29,6 +30,8 @@ pub const PERMISSIONS: &[&str] = &[
     "write:notes",
     "write:drive",
     "write:following",
+    "write:reactions",
+    "write:notifications",
 ];
 
 /// How long `msky login` waits for the access by default.
@@ -243,21 +246,31 @@ mod tests {
         }
     }
 
-    // The page asks for reading, and for writing notes, drive files and
-    // follows only: nothing that deletes an account or changes a setting.
+    // The page asks for reading, and for writing notes, drive files,
+    // follows, reactions and the notifications' read mark only: nothing
+    // that deletes an account or changes a setting.
     #[test]
     fn the_page_asks_for_what_the_commands_need_and_no_more() {
         let url = auth_url("https://misskey.io", "abc");
         assert_eq!(
             url,
-            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following"
+            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications"
         );
         let writes: Vec<&str> = PERMISSIONS
             .iter()
             .copied()
             .filter(|p| !p.starts_with("read:"))
             .collect();
-        assert_eq!(writes, ["write:notes", "write:drive", "write:following"]);
+        assert_eq!(
+            writes,
+            [
+                "write:notes",
+                "write:drive",
+                "write:following",
+                "write:reactions",
+                "write:notifications"
+            ]
+        );
     }
 
     #[rstest]

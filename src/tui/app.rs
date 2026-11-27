@@ -16,8 +16,12 @@ use crate::tui::keys;
 use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{Event, Job, Thread};
 
+mod write;
+
 #[cfg(test)]
 mod tests;
+
+pub use write::{Compose, REACTIONS};
 
 /// The tabs. They keep the numbers bsky gives its tabs: Timeline is 1 and
 /// Notifications 4; bsky's Chat (2), Search (3) and Profile (5) are for a
@@ -83,7 +87,7 @@ impl Keyed for ThreadRow {
 const MORE_AHEAD: usize = 15;
 
 /// A scrollable list with a selection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct List<T> {
     pub items: Vec<T>,
     pub selected: usize,
@@ -216,7 +220,37 @@ impl<T> List<T> {
         self.items.get(self.selected)
     }
 
-    fn step(&mut self, delta: isize) {
+    /// A list of `items`, loaded, the one at `selected` selected.
+    pub(crate) fn of(items: Vec<T>, selected: usize) -> Self {
+        Self {
+            items,
+            selected,
+            loaded: true,
+            ..Self::default()
+        }
+    }
+
+    /// Keep the items `keep` says to. The selection and the scroll stay on
+    /// the item they were on, or the next one when it went, as bsky's.
+    fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
+        let (mut selected, mut offset, mut at) = (0, 0, 0);
+        let (was_selected, was_offset) = (self.selected, self.offset);
+        self.items.retain(|item| {
+            let kept = keep(item);
+            if kept && at < was_selected {
+                selected += 1;
+            }
+            if kept && at < was_offset {
+                offset += 1;
+            }
+            at += 1;
+            kept
+        });
+        self.selected = selected.min(self.items.len().saturating_sub(1));
+        self.offset = offset.min(self.selected);
+    }
+
+    pub(crate) fn step(&mut self, delta: isize) {
         if self.items.is_empty() {
             return;
         }
@@ -339,6 +373,10 @@ pub enum Overlay {
     Actions { selected: usize },
     /// The login form.
     Login(Box<LoginForm>),
+    /// The composer, opened with `n`, `r` or `Q`.
+    Compose(Box<Compose>),
+    /// The reactions `e` offers.
+    Reactions { selected: usize },
 }
 
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
@@ -392,6 +430,18 @@ pub struct App {
     account_logout: Option<String>,
     /// The login just made, for the event loop to save and use.
     logged_in: Option<Session>,
+    /// Writes waiting for the server, keyed `react:<id>`, `renote:<id>`,
+    /// `delete:<id>`: a second press is refused until the first is
+    /// answered, or two presses would make two.
+    pub in_flight: HashSet<String>,
+    /// The notes renoted from here, which `b` takes back.
+    pub renoted: HashSet<String>,
+    /// The note `D` asked about, waiting for its `y`.
+    pub confirm_delete: Option<String>,
+    /// Whether the notifications loaded were marked read.
+    read_sent: bool,
+    /// The folder the file browser last showed, where it opens next.
+    pub browse_from: Option<std::path::PathBuf>,
     /// The account `x` asked about, waiting for its `y`.
     pub confirm_logout: Option<String>,
     /// Text `c` put up for the terminal's clipboard, for the event loop.
@@ -436,6 +486,11 @@ impl App {
             account_switch: None,
             account_logout: None,
             logged_in: None,
+            in_flight: HashSet::new(),
+            renoted: HashSet::new(),
+            confirm_delete: None,
+            read_sent: false,
+            browse_from: None,
             confirm_logout: None,
             to_copy: None,
             sent: 0,
@@ -458,6 +513,7 @@ impl App {
         self.notifications = List::default();
         self.threads.clear();
         self.opened.clear();
+        self.renoted.clear();
         if self.session.is_none() {
             let host = self.host().to_string();
             for kind in TimelineKind::ALL.into_iter().filter(|k| k.needs_login()) {
@@ -511,6 +567,7 @@ impl App {
                 self.status = None;
                 // The question went with its prompt.
                 self.confirm_logout = None;
+                self.confirm_delete = None;
                 true
             }
             _ => false,
@@ -609,6 +666,7 @@ impl App {
             return Vec::new();
         }
         let (seq, job) = self.stamp(Job::Notifications { until: None });
+        self.read_sent = false;
         self.notifications.begin();
         self.notifications.asked = seq;
         vec![(seq, job)]
@@ -660,6 +718,7 @@ impl App {
                     Ok(items) => self.notifications.set(items),
                     Err(e) => self.notifications.failed(said(&e)),
                 }
+                return self.mark_read();
             }
             Event::Notifications {
                 until: Some(from),
@@ -706,6 +765,17 @@ impl App {
                 }
             },
             Event::Downloaded(Err(e)) => self.error(said(&e)),
+            Event::Posted(result) => self.posted(result),
+            Event::Reacted {
+                id,
+                reaction,
+                had,
+                result,
+            } => self.reacted(&id, reaction, had, result),
+            Event::Renoted { id, on, result } => self.renoted(&id, on, result),
+            Event::Deleted { id, result } => self.deleted(&id, result),
+            Event::MarkedRead(Ok(())) => {}
+            Event::MarkedRead(Err(e)) => self.error(said(&e)),
             Event::Opened(Ok(())) => {}
             // The address of a login is on screen to open by hand.
             Event::Opened(Err(_)) if matches!(&self.overlay, Some(Overlay::Login(f)) if f.waiting.is_some()) =>
@@ -821,6 +891,31 @@ impl App {
                 return self.accounts_key(key, selected);
             }
             Overlay::Login(_) => return self.login_key(key),
+            Overlay::Compose(_) => return self.compose_key(key),
+            Overlay::Reactions { selected } => {
+                let n = REACTIONS.len();
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
+                    KeyCode::Char('j' | 'l') | KeyCode::Down | KeyCode::Right => {
+                        *selected = (*selected + 1) % n
+                    }
+                    KeyCode::Char('k' | 'h') | KeyCode::Up | KeyCode::Left => {
+                        *selected = (*selected + n - 1) % n
+                    }
+                    KeyCode::Enter => {
+                        let i = *selected;
+                        self.overlay = None;
+                        return self.react_with(i);
+                    }
+                    // A digit picks the reaction at that place, 0 the tenth.
+                    KeyCode::Char(c @ '0'..='9') => {
+                        let i = (c as usize - '0' as usize + 9) % 10;
+                        self.overlay = None;
+                        return self.react_with(i);
+                    }
+                    _ => {}
+                }
+            }
             Overlay::Actions { selected } => {
                 let selected = *selected;
                 let entries = keys::actions(self);
@@ -996,8 +1091,24 @@ impl App {
     }
 
     fn main_key(&mut self, key: KeyEvent) -> Jobs {
+        // The question D asked takes the next key, whatever it is, as in
+        // bsky: y deletes, anything else calls it off.
+        if let Some(id) = self.confirm_delete.take() {
+            return self.answer_delete(id, key);
+        }
         let in_thread = !self.threads.is_empty();
         match key.code {
+            KeyCode::Char('n') => self.compose(false, false),
+            KeyCode::Char('r') => self.compose(true, false),
+            KeyCode::Char('Q') => self.compose(false, true),
+            KeyCode::Char('l') => return self.like(),
+            KeyCode::Char('e') => {
+                if self.shown_note().is_some() {
+                    self.overlay = Some(Overlay::Reactions { selected: 0 });
+                }
+            }
+            KeyCode::Char('b') => return self.toggle_renote(),
+            KeyCode::Char('D') => self.ask_delete(),
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help { scroll: 0 }),
             KeyCode::Char('A') => {
@@ -1058,7 +1169,7 @@ impl App {
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
-        Vec::new()
+        self.mark_read()
     }
 
     /// Show timeline `kind` on the Timeline tab, loading it the first time.

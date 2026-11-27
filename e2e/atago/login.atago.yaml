@@ -45,7 +45,7 @@ scenarios:
           stderr:
             contains:
               - "To log in on 127.0.0.1:${api.port}, open this address"
-              - "${api.url}/miauth/e2e-session-0001?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following\n"
+              - "${api.url}/miauth/e2e-session-0001?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications\n"
               - "up to 300 s"
             not_contains: [e2e-fake-token-0001]
       # The check is asked as a visitor, with nothing in its body.

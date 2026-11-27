@@ -13,11 +13,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::api::Client;
 use crate::api::types::{DriveFile, Note, Notification};
-use crate::cli::TimelineKind;
+use crate::cli::{TimelineKind, Visibility};
 use crate::config::Session;
 use crate::error::{Error, Result};
 use crate::servers::Server;
 use crate::{download, miauth};
+use serde_json::json;
 
 /// Notes, or notifications, asked for a page at a time.
 pub const PAGE: usize = 30;
@@ -49,6 +50,28 @@ pub enum Job {
     OpenLink { url: String },
     /// The servers to log in to.
     Servers,
+    /// Post a note: its files are uploaded first, each with its alt text.
+    Post {
+        text: String,
+        cw: Option<String>,
+        visibility: Visibility,
+        reply: Option<String>,
+        renote: Option<String>,
+        files: Vec<(PathBuf, String)>,
+    },
+    /// React to note `id` with `reaction`, or take the reaction back
+    /// (`None`); `had` is the one given before, taken back first.
+    React {
+        id: String,
+        reaction: Option<String>,
+        had: Option<String>,
+    },
+    /// Renote note `id` (`on`), or take back your renotes of it.
+    Renote { id: String, on: bool },
+    /// Delete your own note `id`.
+    Delete { id: String },
+    /// Mark every notification read.
+    MarkRead,
     /// Wait for the access asked for with MiAuth `session` on the server at
     /// `origin`, and make the login of it.
     Login { origin: String, session: String },
@@ -83,6 +106,24 @@ pub enum Event {
     /// Where the files were saved.
     Downloaded(Result<Vec<PathBuf>>),
     Opened(Result<()>),
+    /// The note posted.
+    Posted(Result<Box<Note>>),
+    Reacted {
+        id: String,
+        reaction: Option<String>,
+        had: Option<String>,
+        result: Result<()>,
+    },
+    Renoted {
+        id: String,
+        on: bool,
+        result: Result<()>,
+    },
+    Deleted {
+        id: String,
+        result: Result<()>,
+    },
+    MarkedRead(Result<()>),
     /// The servers to log in to, and why the Hub's list could not be read
     /// when the built-in one is given instead.
     Servers {
@@ -117,6 +158,20 @@ impl Job {
                 list: crate::servers::builtin(),
                 failed: Some(e),
             },
+            Job::Post { .. } => Event::Posted(Err(e)),
+            Job::React { id, reaction, had } => Event::Reacted {
+                id,
+                reaction,
+                had,
+                result: Err(e),
+            },
+            Job::Renote { id, on } => Event::Renoted {
+                id,
+                on,
+                result: Err(e),
+            },
+            Job::Delete { id } => Event::Deleted { id, result: Err(e) },
+            Job::MarkRead => Event::MarkedRead(Err(e)),
             Job::Login { session, .. } => Event::LoggedIn {
                 session,
                 result: Err(e),
@@ -142,6 +197,49 @@ pub fn run(job: Job, client: &Client) -> Event {
             id,
         },
         Job::Download { files } => Event::Downloaded(save(&files)),
+        Job::Post {
+            text,
+            cw,
+            visibility,
+            reply,
+            renote,
+            files,
+        } => Event::Posted(
+            post(
+                client,
+                &Draft {
+                    text,
+                    cw,
+                    visibility,
+                    reply,
+                    renote,
+                    files,
+                },
+            )
+            .map(Box::new),
+        ),
+        Job::React { id, reaction, had } => Event::Reacted {
+            result: react(client, &id, reaction.as_deref(), had.as_deref()),
+            id,
+            reaction,
+            had,
+        },
+        Job::Renote { id, on } => Event::Renoted {
+            result: if on {
+                client
+                    .create_note(&json!({"renoteId": id, "visibility": "public"}))
+                    .map(drop)
+            } else {
+                client.unrenote(&id)
+            },
+            id,
+            on,
+        },
+        Job::Delete { id } => Event::Deleted {
+            result: client.delete_note(&id),
+            id,
+        },
+        Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
         Job::Servers => {
             let (list, failed) = crate::servers::list();
             Event::Servers { list, failed }
@@ -189,6 +287,82 @@ fn thread(client: &Client, id: &str) -> Result<Thread> {
         note,
         replies,
     })
+}
+
+/// A note to post, as the composer made it.
+struct Draft {
+    text: String,
+    cw: Option<String>,
+    visibility: Visibility,
+    reply: Option<String>,
+    renote: Option<String>,
+    files: Vec<(PathBuf, String)>,
+}
+
+/// The largest file the composer uploads, as `msky download` saves.
+const MAX_UPLOAD_BYTES: u64 = crate::download::MAX_DOWNLOAD_BYTES;
+
+/// Post `d`: the text checked against the server's own limit (its
+/// `meta`), the files uploaded, then the note made. A write is sent once.
+fn post(client: &Client, d: &Draft) -> Result<Note> {
+    let max = client.max_note_chars();
+    let n = d.text.chars().count();
+    if n > max {
+        return Err(Error::usage(format!(
+            "the note is {n} characters; {} takes {max}",
+            client.host()
+        )));
+    }
+    let mut ids = Vec::new();
+    for (path, alt) in &d.files {
+        let len = std::fs::metadata(path)
+            .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?
+            .len();
+        if len > MAX_UPLOAD_BYTES {
+            return Err(Error::usage(format!(
+                "{} is larger than {} MB",
+                path.display(),
+                MAX_UPLOAD_BYTES / 1024 / 1024
+            )));
+        }
+        let data = std::fs::read(path)
+            .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into());
+        let alt = (!alt.trim().is_empty()).then_some(alt.as_str());
+        ids.push(client.upload(&name, &data, alt)?.id);
+    }
+    let mut body = json!({"visibility": d.visibility.name()});
+    if !d.text.is_empty() {
+        body["text"] = json!(d.text);
+    }
+    if let Some(cw) = &d.cw {
+        body["cw"] = json!(cw);
+    }
+    if let Some(r) = &d.reply {
+        body["replyId"] = json!(r);
+    }
+    if let Some(r) = &d.renote {
+        body["renoteId"] = json!(r);
+    }
+    if !ids.is_empty() {
+        body["fileIds"] = json!(ids);
+    }
+    client.create_note(&body)
+}
+
+/// Take back the reaction `had`, then give `reaction`: Misskey takes one
+/// reaction from an account per note.
+fn react(client: &Client, id: &str, reaction: Option<&str>, had: Option<&str>) -> Result<()> {
+    if had.is_some() {
+        client.unreact(id)?;
+    }
+    match reaction {
+        Some(r) => client.react(id, r),
+        None => Ok(()),
+    }
 }
 
 /// Wait for the access asked for with `session` on `origin`, as `msky
@@ -394,5 +568,108 @@ mod tests {
             panic!("{ev:?}")
         };
         assert_eq!(e.message(), "internal error: boom");
+    }
+
+    // A post checks the server's own limit, uploads each file with its alt
+    // text, then makes the note with them, once.
+    #[test]
+    fn a_post_uploads_its_files_and_makes_the_note() {
+        let (url, log) = serve(Arc::new(|path, _, n| match path {
+            "/api/meta" => reply(200, r#"{"maxNoteTextLength": 5}"#),
+            "/api/drive/files/create" => reply(200, &format!(r#"{{"id":"f{n}"}}"#)),
+            "/api/notes/create" => reply(200, r#"{"createdNote":{"id":"new"}}"#),
+            _ => reply(404, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let pic = dir.path().join("猫🐈.png");
+        std::fs::write(&pic, b"\x89PNG").unwrap();
+        let client = Client::new(&url).with_token(Some("fake-token-for-tests".into()));
+        let d = Draft {
+            text: "こんにちは".into(),
+            cw: Some("注意".into()),
+            visibility: Visibility::Home,
+            reply: Some("r1".into()),
+            renote: None,
+            files: vec![(pic, "黒猫".into())],
+        };
+        assert_eq!(post(&client, &d).unwrap().id, "new");
+        {
+            let log = log.lock().unwrap();
+            let paths: Vec<&str> = log.iter().map(|(p, _)| p.as_str()).collect();
+            assert_eq!(
+                paths,
+                ["/api/meta", "/api/drive/files/create", "/api/notes/create"]
+            );
+            assert!(
+                log[1].1.contains("黒猫"),
+                "the alt text goes as the comment"
+            );
+            let v: Value = serde_json::from_str(&log[2].1).unwrap();
+            assert_eq!(v["text"], "こんにちは");
+            assert_eq!(v["cw"], "注意");
+            assert_eq!(v["visibility"], "home");
+            assert_eq!(v["replyId"], "r1");
+            assert_eq!(v["fileIds"], serde_json::json!(["f1"]));
+        }
+        // Over the server's limit, nothing is uploaded or made.
+        let long = Draft {
+            text: "あいうえおか".into(),
+            ..d
+        };
+        let e = post(&client, &long).unwrap_err();
+        assert_eq!(
+            e.message(),
+            format!("the note is 6 characters; {} takes 5", client.host())
+        );
+        assert_eq!(log.lock().unwrap().len(), 4);
+    }
+
+    // A reaction replacing another takes the old one back first; a renote
+    // taken back is notes/unrenote.
+    #[test]
+    fn a_reaction_replaces_the_one_given_and_a_renote_is_taken_back() {
+        let (url, log) = serve(Arc::new(|_, _, _| reply(204, "")));
+        let w = Worker::spawn(Client::new(&url).with_token(Some("fake-token-for-tests".into())))
+            .unwrap();
+        w.send(
+            1,
+            Job::React {
+                id: "a".into(),
+                reaction: Some("👍🏽".into()),
+                had: Some("❤".into()),
+            },
+        );
+        assert!(matches!(wait(&w).1, Event::Reacted { result: Ok(()), .. }));
+        w.send(
+            2,
+            Job::Renote {
+                id: "a".into(),
+                on: false,
+            },
+        );
+        assert!(matches!(
+            wait(&w).1,
+            Event::Renoted {
+                on: false,
+                result: Ok(()),
+                ..
+            }
+        ));
+        w.send(3, Job::MarkRead);
+        assert!(matches!(wait(&w).1, Event::MarkedRead(Ok(()))));
+        let log = log.lock().unwrap();
+        let paths: Vec<&str> = log.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "/api/notes/reactions/delete",
+                "/api/notes/reactions/create",
+                "/api/notes/unrenote",
+                "/api/notifications/mark-all-as-read"
+            ]
+        );
+        let v: Value = serde_json::from_str(&log[1].1).unwrap();
+        assert_eq!(v["reaction"], "👍🏽");
+        assert_eq!(v["noteId"], "a");
     }
 }

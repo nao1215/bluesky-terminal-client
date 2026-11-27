@@ -51,6 +51,13 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Notes",
         keys: &[
+            ("n", "new note"),
+            ("r", "reply to the selected note"),
+            ("Q", "quote the selected note in a new note"),
+            ("l", "react ❤ / take back your reaction"),
+            ("e", "choose a reaction"),
+            ("b", "renote / take back your renote"),
+            ("D", "delete your own note: y confirms"),
             ("v", "open the thread with its replies"),
             ("space", "view the pictures and files"),
             ("w", "show / hide the text behind a content warning"),
@@ -72,7 +79,34 @@ pub const HELP: &[Section] = &[
         title: "Notifications",
         keys: &[
             ("v space", "the thread or the files of the note it is about"),
+            ("r l b", "reply, react, renote the note it is about"),
+            ("", "they are marked read when the tab is shown"),
             ("R", "load new notifications"),
+        ],
+    },
+    Section {
+        title: "Composer",
+        keys: &[
+            ("ctrl+s", "send the note"),
+            ("ctrl+o", "attach pictures or a video"),
+            ("tab", "next field: the warning, a file's alt text"),
+            ("ctrl+w", "add / take off a content warning"),
+            ("ctrl+p", "who may see it: public, home, followers"),
+            ("ctrl+x", "remove the attachment"),
+            ("ctrl+u", "clear to the start of the line"),
+            ("esc", "close without sending"),
+        ],
+    },
+    Section {
+        title: "File browser",
+        keys: &[
+            ("j k", "move; pictures are previewed"),
+            ("enter l", "open the folder / choose the file"),
+            ("space", "mark files to choose together with enter"),
+            ("h backspace", "the folder above"),
+            (".", "show or hide hidden files"),
+            ("~", "your home folder"),
+            ("esc", "close without choosing"),
         ],
     },
     Section {
@@ -146,6 +180,32 @@ pub fn hints(app: &App) -> Vec<Hint> {
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
         Some(Overlay::Help { .. }) => return vec![("j k", "scroll"), ("esc", "close")],
+        Some(Overlay::Compose(c)) if c.browser.is_some() => {
+            return vec![
+                ("enter", "open / choose"),
+                ("space", "mark"),
+                ("h", "up"),
+                (".", "hidden"),
+                ("esc", "cancel"),
+            ];
+        }
+        Some(Overlay::Compose(c)) => {
+            let mut v = vec![
+                ("ctrl+s", "send"),
+                ("ctrl+o", "attach"),
+                ("ctrl+w", "warning"),
+                ("ctrl+p", "visibility"),
+            ];
+            if !c.media.is_empty() {
+                v.push(("tab", "alt text"));
+                v.push(("ctrl+x", "remove file"));
+            }
+            v.push(("esc", "cancel"));
+            return v;
+        }
+        Some(Overlay::Reactions { .. }) => {
+            return vec![("← →", "choose"), ("enter", "react"), ("esc", "close")];
+        }
         Some(Overlay::Login(f)) if f.waiting.is_some() => {
             return vec![("o", "open the page again"), ("esc", "call it off")];
         }
@@ -202,6 +262,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("← →", "timeline"),
             (".", "actions"),
             ("space", "view"),
+            ("n", "note"),
             ("R", "refresh"),
         ],
         Tab::Notifications => vec![
@@ -229,6 +290,33 @@ pub fn actions(app: &App) -> Vec<Hint> {
     };
     let mut v: Vec<Hint> = Vec::new();
     let files = !n.attached().is_empty();
+    v.push(("r", "reply to it"));
+    v.push((
+        "l",
+        if n.my_reaction.is_some() {
+            "take back your reaction"
+        } else {
+            "react ❤"
+        },
+    ));
+    v.push(("e", "choose a reaction"));
+    v.push((
+        "b",
+        if app.renoted.contains(&n.id)
+            || app.selected_note().is_some_and(|s| {
+                s.is_pure_renote()
+                    && app
+                        .session
+                        .as_ref()
+                        .is_some_and(|me| me.user_id == s.author_id())
+            })
+        {
+            "take back your renote"
+        } else {
+            "renote it"
+        },
+    ));
+    v.push(("Q", "quote it in a new note"));
     if app.pictures && files {
         v.push(("space", "view its pictures and files"));
     }
@@ -248,6 +336,16 @@ pub fn actions(app: &App) -> Vec<Hint> {
     }
     v.push(("o", "open it in the web browser"));
     v.push(("c", "copy its address"));
+    let mine = app.selected_note().is_some_and(|s| {
+        !s.is_pure_renote()
+            && app
+                .session
+                .as_ref()
+                .is_some_and(|me| me.user_id == s.author_id())
+    });
+    if mine {
+        v.push(("D", "delete your note"));
+    }
     v
 }
 

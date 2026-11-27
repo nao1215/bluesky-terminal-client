@@ -429,8 +429,13 @@ fn the_actions_list_names_the_keys_and_runs_the_one_chosen() {
     app.timelines[0].set(vec![with_files()]);
     app.handle_key(key('.'));
     let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
-    assert_eq!(names, ["space", "v", "d", "o", "c"]);
-    app.handle_key(key('j'));
+    assert_eq!(
+        names,
+        ["r", "l", "e", "b", "Q", "space", "v", "d", "o", "c"]
+    );
+    for _ in 0..6 {
+        app.handle_key(key('j'));
+    }
     let jobs = app.handle_key(code(KeyCode::Enter));
     assert_eq!(jobs[0].1, Job::Thread { id: "f".into() });
     assert_eq!(app.overlay, None);
@@ -587,6 +592,16 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         code(KeyCode::PageDown),
         code(KeyCode::Right),
         code(KeyCode::Left),
+        key('n'),
+        key('r'),
+        key('Q'),
+        key('l'),
+        key('e'),
+        key('b'),
+        key('D'),
+        KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
     ];
     let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
     let mut rand = move |n: usize| {
@@ -657,6 +672,27 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         list: crate::servers::builtin(),
                         failed: None,
                     },
+                    Job::Post { .. } => Event::Posted(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok(Box::new(note(json!({"id": format!("new{step}")}))))
+                    }),
+                    Job::React { id, reaction, had } => Event::Reacted {
+                        id,
+                        reaction,
+                        had,
+                        result: if fail { Err(Error::api("x")) } else { Ok(()) },
+                    },
+                    Job::Renote { id, on } => Event::Renoted {
+                        id,
+                        on,
+                        result: if fail { Err(Error::api("x")) } else { Ok(()) },
+                    },
+                    Job::Delete { id } => Event::Deleted {
+                        id,
+                        result: if fail { Err(Error::api("x")) } else { Ok(()) },
+                    },
+                    Job::MarkRead => Event::MarkedRead(Ok(())),
                     Job::Login { session, .. } => Event::LoggedIn {
                         session,
                         result: if fail {
@@ -684,6 +720,13 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                 assert!(sel < len.max(1), "run {run} step {step}: {sel} of {len}");
             }
             assert_eq!(app.pending, out.len(), "run {run} step {step}");
+            if out.is_empty() {
+                assert!(
+                    app.in_flight.is_empty(),
+                    "run {run} step {step}: {:?}",
+                    app.in_flight
+                );
+            }
             if app.quit {
                 break;
             }
@@ -847,4 +890,379 @@ fn a_login_can_be_called_off_and_a_bad_host_is_refused() {
     app.handle_key(code(KeyCode::Esc));
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.overlay, None);
+}
+
+fn ctrl(c: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+}
+
+fn type_str(app: &mut App, s: &str) {
+    for c in s.chars() {
+        app.handle_key(key(c));
+    }
+}
+
+fn compose(app: &App) -> &Compose {
+    match &app.overlay {
+        Some(Overlay::Compose(c)) => c,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A logged-in app with the permissions `msky login` asks for now.
+fn writer(notes: Vec<Note>) -> App {
+    let mut app = logged_in(&[]);
+    app.session.as_mut().unwrap().permissions = crate::miauth::PERMISSIONS
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    app.timelines[0].set(notes);
+    app
+}
+
+// n opens the composer; the text, a content warning (ctrl+w), the
+// visibility (ctrl+p) and the files go to the post job, sent once; the
+// note made goes on top of home, and the composer closes.
+#[test]
+fn n_composes_and_ctrl_s_posts_once() {
+    let mut app = writer(notes(&["a"]));
+    app.handle_key(key('n'));
+    type_str(&mut app, "こんにちは 👨‍👩‍👧 🇯🇵");
+    app.handle_key(ctrl('w'));
+    assert!(compose(&app).cw_focused());
+    type_str(&mut app, "ネタバレ");
+    app.handle_key(ctrl('p'));
+    app.handle_key(ctrl('p'));
+    let jobs = app.handle_key(ctrl('s'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Post {
+            text: "こんにちは 👨‍👩‍👧 🇯🇵".into(),
+            cw: Some("ネタバレ".into()),
+            visibility: crate::cli::Visibility::Followers,
+            reply: None,
+            renote: None,
+            files: vec![],
+        }
+    );
+    assert!(compose(&app).sending);
+    assert!(app.handle_key(ctrl('s')).is_empty(), "sent once");
+    app.handle_answer(
+        jobs[0].0,
+        Event::Posted(Ok(Box::new(note(
+            json!({"id": "mine", "text": "こんにちは"}),
+        )))),
+    );
+    assert_eq!(app.overlay, None);
+    assert_eq!(timeline(&app).items[0].id, "mine");
+    assert_eq!(
+        timeline(&app).current().unwrap().id,
+        "a",
+        "the selection stays"
+    );
+}
+
+// What can be told is wrong is said before anything is sent, and the
+// composer stays with its text; a post the server refuses keeps it too.
+#[test]
+fn a_note_that_cannot_be_sent_says_why_and_keeps_the_text() {
+    let mut app = writer(notes(&["a"]));
+    app.handle_key(key('n'));
+    assert!(app.handle_key(ctrl('s')).is_empty());
+    assert_eq!(app.status.as_ref().unwrap().text, "the note is empty");
+    type_str(&mut app, "x");
+    app.handle_key(ctrl('w'));
+    assert!(app.handle_key(ctrl('s')).is_empty());
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .starts_with("the content warning is empty")
+    );
+    app.handle_key(ctrl('w'));
+    let jobs = app.handle_key(ctrl('s'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Posted(Err(Error::usage(
+            "the note is 3001 characters; misskey.test takes 3000",
+        ))),
+    );
+    assert!(!compose(&app).sending);
+    assert_eq!(compose(&app).input.text(), "x");
+    assert!(app.status.as_ref().unwrap().error);
+}
+
+// r replies to the note shown, Q quotes it, each named in the composer;
+// a reply to a home note is home too.
+#[test]
+fn r_replies_and_q_quotes_the_note_shown() {
+    let mut app = writer(vec![renote_of(
+        json!({"id": "orig", "user": {"username": "bob", "host": "x.test"}, "text": "$[x2 元の]ノート\n二行目", "visibility": "home"}),
+    )]);
+    app.handle_key(key('r'));
+    let c = compose(&app);
+    assert_eq!(c.reply.as_ref().unwrap().id, "orig");
+    assert_eq!(c.reply.as_ref().unwrap().who, "@bob@x.test");
+    assert_eq!(c.reply.as_ref().unwrap().excerpt, "元のノート");
+    assert_eq!(c.visibility, crate::cli::Visibility::Home);
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_key(key('Q'));
+    type_str(&mut app, "見て");
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::Post { renote, reply, .. } = &jobs[0].1 else {
+        panic!()
+    };
+    assert_eq!((renote.as_deref(), reply.as_deref()), (Some("orig"), None));
+}
+
+// l reacts ❤ and takes it back; e chooses another, which replaces the one
+// given; the counts follow what the server took. A second press while
+// one is out is refused.
+#[test]
+fn l_reacts_and_e_chooses_a_reaction() {
+    let mut app = writer(vec![note(json!({"id": "a", "reactions": {"👍": 2}}))]);
+    let jobs = app.handle_key(key('l'));
+    assert_eq!(
+        jobs[0].1,
+        Job::React {
+            id: "a".into(),
+            reaction: Some("❤".into()),
+            had: None
+        }
+    );
+    assert!(app.handle_key(key('l')).is_empty(), "one at a time");
+    app.handle_answer(
+        jobs[0].0,
+        Event::Reacted {
+            id: "a".into(),
+            reaction: Some("❤".into()),
+            had: None,
+            result: Ok(()),
+        },
+    );
+    let n = &timeline(&app).items[0];
+    assert_eq!(n.my_reaction.as_deref(), Some("❤"));
+    assert_eq!(n.reactions.get("❤"), Some(&1));
+    app.handle_key(key('e'));
+    let jobs = app.handle_key(key('1'));
+    assert_eq!(
+        jobs[0].1,
+        Job::React {
+            id: "a".into(),
+            reaction: Some("👍".into()),
+            had: Some("❤".into())
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Reacted {
+            id: "a".into(),
+            reaction: Some("👍".into()),
+            had: Some("❤".into()),
+            result: Ok(()),
+        },
+    );
+    let n = &timeline(&app).items[0];
+    assert_eq!(n.reactions.get("👍"), Some(&3));
+    assert_eq!(n.reactions.get("❤"), None);
+    let jobs = app.handle_key(key('l'));
+    assert_eq!(
+        jobs[0].1,
+        Job::React {
+            id: "a".into(),
+            reaction: None,
+            had: Some("👍".into())
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Reacted {
+            id: "a".into(),
+            reaction: None,
+            had: Some("👍".into()),
+            result: Err(Error::api("x")),
+        },
+    );
+    assert_eq!(
+        timeline(&app).items[0].my_reaction.as_deref(),
+        Some("👍"),
+        "a refusal changes nothing"
+    );
+    assert!(app.in_flight.is_empty());
+}
+
+// b renotes the note shown and takes it back; your own renote selected
+// takes it back and goes from the list.
+#[test]
+fn b_renotes_and_takes_it_back() {
+    let mine = note(
+        json!({"id": "rn", "userId": "u-me", "user": {"id": "u-me", "username": "me"},
+                           "renoteId": "o", "renote": {"id": "o", "renoteCount": 1}}),
+    );
+    let mut app = writer(vec![note(json!({"id": "x", "renoteCount": 0})), mine]);
+    let jobs = app.handle_key(key('b'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Renote {
+            id: "x".into(),
+            on: true
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Renoted {
+            id: "x".into(),
+            on: true,
+            result: Ok(()),
+        },
+    );
+    assert_eq!(timeline(&app).items[0].renote_count, 1);
+    let jobs = app.handle_key(key('b'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Renote {
+            id: "x".into(),
+            on: false
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Renoted {
+            id: "x".into(),
+            on: false,
+            result: Ok(()),
+        },
+    );
+    app.handle_key(key('j'));
+    let jobs = app.handle_key(key('b'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Renote {
+            id: "o".into(),
+            on: false
+        }
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::Renoted {
+            id: "o".into(),
+            on: false,
+            result: Ok(()),
+        },
+    );
+    let ids: Vec<&str> = timeline(&app).items.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(ids, ["x"]);
+}
+
+// D asks, and y deletes your own note; any other key keeps it; another's
+// note is not offered.
+#[test]
+fn d_deletes_your_own_note_after_y() {
+    let mut app = writer(vec![
+        note(json!({"id": "m", "userId": "u-me", "user": {"id": "u-me", "username": "me"}})),
+        note(json!({"id": "o", "userId": "u-bob", "user": {"id": "u-bob", "username": "bob"}})),
+    ]);
+    app.handle_key(key('D'));
+    assert!(app.handle_key(key('n')).is_empty());
+    assert_eq!(app.overlay, None, "the n answered the question");
+    assert_eq!(app.status.as_ref().unwrap().text, "not deleted");
+    app.handle_key(key('D'));
+    let jobs = app.handle_key(key('y'));
+    assert_eq!(jobs[0].1, Job::Delete { id: "m".into() });
+    app.handle_answer(
+        jobs[0].0,
+        Event::Deleted {
+            id: "m".into(),
+            result: Ok(()),
+        },
+    );
+    assert_eq!(timeline(&app).items.len(), 1);
+    app.handle_key(key('D'));
+    assert!(app.confirm_delete.is_none());
+    assert!(app.handle_key(key('y')).is_empty());
+}
+
+// The notifications are marked read once their tab shows them, with a
+// login that may; one made before msky asked for it is left alone.
+#[test]
+fn the_notifications_are_marked_read_once_shown() {
+    let (mut app, jobs) = App::new(
+        Some(Session {
+            permissions: crate::miauth::PERMISSIONS
+                .iter()
+                .map(|p| p.to_string())
+                .collect(),
+            ..session()
+        }),
+        ORIGIN,
+    );
+    let seq = seq_of(&jobs, &Job::Notifications { until: None });
+    let items: Vec<Notification> =
+        serde_json::from_value(json!([{"id": "n1", "type": "follow"}])).unwrap();
+    assert!(
+        app.handle_answer(
+            seq,
+            Event::Notifications {
+                until: None,
+                result: Ok(items.clone())
+            }
+        )
+        .is_empty(),
+        "not shown yet"
+    );
+    let jobs = app.handle_key(key('4'));
+    assert_eq!(jobs[0].1, Job::MarkRead);
+    assert!(app.handle_key(key('1')).is_empty());
+    assert!(app.handle_key(key('4')).is_empty(), "once a load");
+    let mut old = logged_in(&[]);
+    old.session.as_mut().unwrap().permissions = vec!["read:account".into()];
+    old.notifications.set(items);
+    assert!(old.handle_key(key('4')).is_empty());
+    // A write with such a login says what to do.
+    old.handle_key(key('1'));
+    old.timelines[0].set(notes(&["a"]));
+    assert!(old.handle_key(key('l')).is_empty());
+    assert!(
+        old.status
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("lacks write:reactions")
+    );
+}
+
+// ctrl+o opens the browser; files chosen are attached with an alt text
+// each, and go with the post.
+#[test]
+fn files_chosen_in_the_browser_go_with_the_post() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("猫🐈.png"), b"x").unwrap();
+    std::fs::write(dir.path().join("b.jpg"), b"x").unwrap();
+    let mut app = writer(notes(&["a"]));
+    app.browse_from = Some(dir.path().to_path_buf());
+    app.handle_key(key('n'));
+    app.handle_key(ctrl('o'));
+    app.handle_key(key(' '));
+    app.handle_key(code(KeyCode::Enter));
+    assert_eq!(compose(&app).media.len(), 2);
+    app.handle_key(code(KeyCode::Tab));
+    type_str(&mut app, "黒猫");
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::Post { files, .. } = &jobs[0].1 else {
+        panic!()
+    };
+    let got: Vec<(String, &str)> = files
+        .iter()
+        .map(|(p, a)| {
+            (
+                p.file_name().unwrap().to_string_lossy().into_owned(),
+                a.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [("b.jpg".to_string(), "黒猫"), ("猫🐈.png".to_string(), "")]
+    );
 }

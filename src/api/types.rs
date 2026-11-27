@@ -142,6 +142,10 @@ pub struct Note {
     pub poll: Option<Value>,
     /// Where a note from another server was first posted.
     pub uri: Option<String>,
+    /// The reaction the account asking gave it, if any.
+    pub my_reaction: Option<String>,
+    /// Who may see it: `public`, `home`, `followers`, `specified`.
+    pub visibility: Option<String>,
     /// Its address on the server it came from, for one of another server.
     pub url: Option<String>,
 }

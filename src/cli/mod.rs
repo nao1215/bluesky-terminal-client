@@ -1692,7 +1692,7 @@ mod tests {
             "the check carries no token"
         );
         assert!(
-            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following\n")),
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications\n")),
             "{err}"
         );
         assert!(!err.contains(FAKE) && !out.contains(FAKE));

@@ -21,8 +21,11 @@ use crate::tui::keys;
 use crate::tui::text::{cells, cluster_width, drawable, format_time, graphemes, truncate, wrap};
 use crate::tui::theme::Theme;
 
+mod compose;
 #[cfg(test)]
 mod tests;
+
+use compose::{draw_browser, draw_compose, draw_reactions};
 
 /// Width of the selection marker column.
 const MARK_W: u16 = 2;
@@ -131,6 +134,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             draw_account_list(frame, area, &app.accounts, *selected, me.as_deref(), &t);
         }
         Some(Overlay::Login(f)) => draw_login(frame, area, f, &t),
+        Some(Overlay::Reactions { selected }) => draw_reactions(frame, area, *selected, &t),
+        Some(Overlay::Compose(_)) => {}
         Some(Overlay::Viewer { files, index }) => {
             let body = Rect {
                 height: area.height.saturating_sub(hint_h + 1),
@@ -139,6 +144,12 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             draw_viewer(frame, body, files, *index, images, &t);
         }
         None => {}
+    }
+    if let Some(Overlay::Compose(c)) = &mut app.overlay {
+        draw_compose(frame, area, c, images, &t);
+        if let Some(b) = &mut c.browser {
+            draw_browser(frame, area, b, images, &t);
+        }
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {
         draw_error(frame, area, &s.text, &t);

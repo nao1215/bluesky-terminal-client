@@ -129,7 +129,7 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     );
     assert!(
         lines[10].starts_with(
-            " ? help  j k move  ← → timeline  . actions  space open in browser  R refresh  q quit"
+            " ? help  j k move  ← → timeline  . actions  space open in browser  n note  R refresh  q quit"
         ),
         "{screen}"
     );
@@ -279,7 +279,7 @@ fn a_terminal_too_small_says_the_size_it_needs() {
 fn the_help_lists_the_keys() {
     let mut app = with_notes(vec![]);
     app.handle_key(key('?'));
-    let screen = render(&mut app, 100, 60);
+    let screen = render(&mut app, 100, 120);
     for want in [
         "Keys",
         "Global",
@@ -294,7 +294,7 @@ fn the_help_lists_the_keys() {
         assert!(screen.contains(want), "{want}: {screen}");
     }
     // Without pictures there is no viewer, and space opens the browser.
-    let text = render_text(&mut app, 100, 60);
+    let text = render_text(&mut app, 100, 120);
     assert!(!text.contains(" Viewer"), "{text}");
     assert!(text.contains("open the note in the browser"), "{text}");
 }
@@ -543,4 +543,60 @@ fn mfm_is_drawn_as_plain_text_with_bold_kept() {
     use ratatui::style::Modifier;
     assert!(buf[(x_of("太"), y)].modifier.contains(Modifier::BOLD));
     assert!(!buf[(x_of("ま"), y)].modifier.contains(Modifier::BOLD));
+}
+
+fn ctrl(c: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+}
+
+/// `with_notes` as an account that may write.
+fn writer(notes: Vec<Value>) -> App {
+    let mut app = with_notes(notes);
+    app.session.as_mut().unwrap().permissions = crate::miauth::PERMISSIONS
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    app
+}
+
+// The composer says what it answers, shows the warning and the text as
+// typed, emoji and CJK whole, and the visibility and length under them.
+#[test]
+fn the_composer_shows_the_reply_the_warning_and_the_visibility() {
+    let mut app = writer(vec![json!({"id": "a", "createdAt": "t",
+        "user": {"username": "bob", "host": "x.test"}, "text": "$[x2 質問]です"})]);
+    app.handle_key(key('r'));
+    for c in "答え👨‍👩‍👧🇯🇵".chars() {
+        app.handle_key(key(c));
+    }
+    app.handle_key(ctrl('w'));
+    for c in "注意".chars() {
+        app.handle_key(key(c));
+    }
+    app.handle_key(ctrl('p'));
+    let screen = render(&mut app, 90, 30);
+    assert!(screen.contains("Reply to @bob@x.test"), "{screen}");
+    assert!(screen.contains("↩ @bob@x.test: 質問です"), "{screen}");
+    assert!(screen.contains("CW: 注意"), "{screen}");
+    assert!(screen.contains("答え👨‍👩‍👧🇯🇵"), "{screen}");
+    // Counted in code points, as the server counts them.
+    assert!(screen.contains("9 characters  ·  home"), "{screen}");
+    assert!(
+        screen
+            .contains("ctrl+s send  ctrl+o attach  ctrl+w warning  ctrl+p visibility  esc cancel"),
+        "{screen}"
+    );
+}
+
+// e shows the reactions in a row, the chosen one marked.
+#[test]
+fn the_reaction_picker_shows_the_reactions() {
+    let mut app = writer(vec![
+        json!({"id": "a", "createdAt": "t", "user": {"username": "bob"}}),
+    ]);
+    app.handle_key(key('e'));
+    let screen = render(&mut app, 80, 20);
+    assert!(screen.contains("React"), "{screen}");
+    assert!(screen.contains("👍  ❤  😆  🤔"), "{screen}");
+    assert!(screen.contains("← → choose  enter react"), "{screen}");
 }

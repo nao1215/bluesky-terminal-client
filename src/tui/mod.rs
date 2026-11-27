@@ -9,7 +9,9 @@
 pub mod app;
 pub mod clipboard;
 pub mod events;
+pub mod files;
 pub mod images;
+pub mod input;
 pub mod keys;
 pub mod scale;
 pub mod text;
@@ -291,7 +293,7 @@ fn event_loop(
                         worker.send(seq, job);
                     }
                 }
-                TermEvent::Resize(..) => {}
+                TermEvent::Paste(text) => app.handle_paste(&text),
                 _ => {}
             }
             if let Some(store) = accounts {

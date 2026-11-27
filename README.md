@@ -59,6 +59,10 @@ It needs Rust 1.90 or later.
 | `w` | Shows or hides the text behind a content warning, which is folded until then |
 | `d` | Saves every file of the note, as `msky download` names them |
 | `o`, `c` | Opens the note in the browser, copies its address (OSC 52) |
+| `n`, `r`, `Q` | A new note, a reply to the note shown, a quote of it (see below) |
+| `l`, `e` | Reacts ❤ (bsky's like), or takes your reaction back; `e` chooses one of Misskey's default reactions (`←` `→` or `1`-`9` `0`, `enter`) |
+| `b` | Renotes the note shown, or takes your renote of it back |
+| `D` | Deletes your own note: `y` confirms, any other key keeps it |
 | `R` `F5` | Loads the view again |
 | `A` | The accounts: `enter` uses one (and its server), `x` then `y` logs one out, `a` logs another in |
 | `?`, `q` | The keys, quit |
@@ -68,6 +72,10 @@ A renote is shown as the note it renotes under `⟳ renoted by`, a quote with a 
 Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: home and social say how to log in, and `→` shows the local and global timelines, where the server shows them to visitors.
 
 The client reads one server at a time: switching accounts in `A` switches to that account's server.
+
+The composer (`n`, `r`, `Q`) takes bsky's keys: `ctrl+s` sends, `ctrl+o` opens a file browser to attach up to four pictures or one video (`space` marks several, `enter` chooses), `tab` moves to a file's alt text, `ctrl+x` removes a file, `esc` closes without sending. Misskey's own are `ctrl+w`, which adds or takes off a content warning, and `ctrl+p`, which steps through who may see the note (public, home, followers); a reply starts as visible as the note it answers. The length is checked against the server's own limit (its `meta`) when the note is sent. A write is sent once, and a key pressed again while one is on its way is refused. The notifications are marked read when their tab shows them.
+
+Reacting, deleting and marking notifications read need `write:reactions` and `write:notifications`, which `msky login` asks for from this version: a login made before says to log in again (`A` then `a`, or `msky login`) when one of them is pressed, and the notifications are left unread.
 
 ## Use
 
@@ -114,7 +122,7 @@ Any other value is a usage error (exit 1). `--reposts` keeps the account's renot
 
 `msky login` logs in on the server with [MiAuth](https://misskey-hub.net/en/docs/for-developers/api/token/miauth/). It prints an address on the server, `https://misskey.io/miauth/<session>?name=msky&permission=...`, on stderr, and opens it in the web browser when stderr is a terminal (with `MSKY_BROWSER` when set, else `xdg-open`, `open`, or the Windows URL handler). Open it where you are signed in to the server and allow the access; msky asks the server every two seconds whether it was allowed, and saves the token it gets. msky never sees your password.
 
-msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post`, and `write:following` for `follow` and `unfollow`, and for nothing else: it deletes nothing, reacts to nothing, and changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
+msky asks for `read:account`, `read:notifications`, `read:following` and `read:reactions` to read, `write:notes` and `write:drive` for `post` and the client's notes (and to delete your own and renote), `write:following` for `follow` and `unfollow`, and `write:reactions` and `write:notifications` for the client's reactions and the notifications' read mark, and for nothing else: it changes no setting. The permissions given are saved with the token. A login saved by an earlier msky, which asked to read only, cannot post or follow: `post`, `follow` and `unfollow` say so before anything is sent (exit 1) and ask you to run `msky login` again. Access not allowed within `--timeout` seconds (300 by default), or denied, is a usage error (exit 1) and nothing is saved. Logged in, `msky login` prints `logged in as @name@host` (`--json`: `{"id", "username", "host"}`).
 
 The token is saved per server, as bsky saves its sessions: in `accounts/<host>.json` in the config directory (`MSKY_CONFIG_DIR`, else `msky` in the platform's config folder: `~/.config/msky` on Linux, `~/Library/Application Support/msky` on macOS, `%APPDATA%\msky` on Windows), readable and writable by you alone on Unix (mode 0600). `accounts.json` beside it names the server of the account in use, the one logged in last; it holds no secret. Logging in on the same server again replaces its account.
 

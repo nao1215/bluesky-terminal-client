@@ -308,6 +308,40 @@ impl Client {
             .ok_or_else(|| Error::api("notes/create: the answer has no note in it"))
     }
 
+    /// `notes/reactions/create`: react to note `id` with `reaction` (a
+    /// Unicode emoji, or `:name:` for a custom one).
+    pub fn react(&self, id: &str, reaction: &str) -> Result<()> {
+        self.write(
+            "notes/reactions/create",
+            &json!({"noteId": id, "reaction": reaction}),
+        )
+        .map(drop)
+    }
+
+    /// `notes/reactions/delete`: take back the reaction given to note `id`.
+    pub fn unreact(&self, id: &str) -> Result<()> {
+        self.write("notes/reactions/delete", &json!({"noteId": id}))
+            .map(drop)
+    }
+
+    /// `notes/unrenote`: take back every renote of note `id` the account
+    /// made.
+    pub fn unrenote(&self, id: &str) -> Result<()> {
+        self.write("notes/unrenote", &json!({"noteId": id}))
+            .map(drop)
+    }
+
+    /// `notes/delete`: delete note `id`, one of the account's own.
+    pub fn delete_note(&self, id: &str) -> Result<()> {
+        self.write("notes/delete", &json!({"noteId": id})).map(drop)
+    }
+
+    /// `notifications/mark-all-as-read`: mark every notification read.
+    pub fn mark_all_read(&self) -> Result<()> {
+        self.write("notifications/mark-all-as-read", &json!({}))
+            .map(drop)
+    }
+
     /// `following/create`: follow the account `user_id`.
     pub fn follow(&self, user_id: &str) -> Result<()> {
         self.write("following/create", &json!({"userId": user_id}))

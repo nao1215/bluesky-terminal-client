@@ -39,7 +39,8 @@ pub enum Visibility {
 }
 
 impl Visibility {
-    fn name(self) -> &'static str {
+    /// Its name, as Misskey's API takes it.
+    pub fn name(self) -> &'static str {
         match self {
             Visibility::Public => "public",
             Visibility::Home => "home",

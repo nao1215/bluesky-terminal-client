@@ -11,9 +11,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-#[cfg(test)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
@@ -65,7 +63,6 @@ const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 
 /// The key of a picture on the user's disk. Only [`Images::draw_file`] reads
 /// the file; a URL from the server that looks like this is never opened.
-#[cfg(test)]
 fn file_key(path: &Path) -> String {
     format!("file://{}", path.display())
 }
@@ -485,7 +482,6 @@ impl Images {
     }
 
     /// Draw the picture at `path` on the user's disk fitted inside `area`.
-    #[cfg(test)]
     pub fn draw_file(&mut self, frame: &mut Frame, area: Rect, path: &Path) {
         let key = file_key(path);
         self.local.insert(key.clone(), path.to_path_buf());
