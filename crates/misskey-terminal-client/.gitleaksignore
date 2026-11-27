@@ -1,0 +1,3 @@
+# A test case of a download's file name, "../../etc/passwd" read as
+# "etcpasswd-2.png", which the generic API key rule takes for a key.
+38d992ffad74a96f7fd1a4c0c3c35052887426d8:src/download.rs:generic-api-key:306

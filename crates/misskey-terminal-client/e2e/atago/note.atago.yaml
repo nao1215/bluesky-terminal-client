@@ -1,0 +1,136 @@
+# msky note, and what every command shares: the server to ask (--host,
+# MSKY_HOST, or the one a note's address names), text that others wrote
+# printed as text only, and how failures read.
+version: "1"
+
+suite:
+  name: msky note and the server
+
+scenarios:
+  - name: note prints one note, asked of the server its address names
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: 9abc
+              createdAt: "2026-09-20T10:00:00.000Z"
+              user: { username: alice, name: "Alice" }
+              text: "引用するよ 🇯🇵"
+              renoteId: q1
+              renote: { id: q1, user: { username: bob, host: other.example }, text: "元" }
+              repliesCount: 2
+    steps:
+      - run:
+          command: msky note ${api.url}/notes/9abc?ref=x --host 127.0.0.1:9
+          env: &env
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              Alice @alice · 2026-09-20 10:00
+              引用するよ 🇯🇵
+              [quotes @bob@other.example]
+              ♡ 0  ⟳ 0  ↩ 2
+              ${api.url}/notes/9abc
+      - run:
+          command: msky note 9abc --json
+          env:
+            MSKY_HOST: ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 9abc }
+              - { path: "$.renoteId", equals: q1 }
+              - { path: "$.renote.text", equals: "元" }
+              - { path: "$.renote.user.host", equals: other.example }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/show
+            count: 2
+            body:
+              json: { path: "$.noteId", equals: 9abc }
+
+  # Text others wrote is printed as text: an escape sequence in a note or a
+  # name would otherwise reach the terminal as a command (OSC 52 sets the
+  # clipboard, OSC 0 the window title, CSI 2J clears the screen).
+  - name: note leaves out the control characters others wrote
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json:
+              id: x1
+              createdAt: "2026-09-20T10:00:00.000Z"
+              user: { username: eve, name: "Eve\e]0;title\a\n👨‍👩‍👧" }
+              text: "hi\e]52;c;cHduZWQ=\a\e[2J 🇯🇵"
+    steps:
+      - run:
+          command: msky note x1 --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              Eve]0;title 👨‍👩‍👧 @eve · 2026-09-20 10:00
+              hi]52;c;cHduZWQ=[2J 🇯🇵
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/notes/x1
+
+  - name: a note the server does not have, a bad host, and no server at all
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            status: 400
+            json: { error: { message: "No such note.", code: NO_SUCH_NOTE, id: 24fcbfc6-2e37-42b6-8388-c29b3861a08d } }
+    steps:
+      - run:
+          command: msky note nope --host ${api.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "error: notes/show failed: NO_SUCH_NOTE: No such note.\n"
+      - run:
+          command: msky note nope --host https://misskey.io/notes
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: invalid host "https://misskey.io/notes"
+              hint: pass a host such as misskey.io, or an http:// or https:// URL with no path
+      - run:
+          command: msky note nope --host http://127.0.0.1:9
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: ["error: notes/show: cannot reach the server", "hint: check the network connection and --host"]
+      - run:
+          command: msky note --json
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", equals: "the following required arguments were not provided: <NOTE>" }
+              - { path: "$.status", equals: 1 }
+
+  # Without a command msky opens the client, as bsky does, which needs a
+  # terminal: through a pipe it is exit 2 and says so.
+  - name: msky without a command needs an interactive terminal
+    steps:
+      - run:
+          command: msky
+      - assert:
+          exit_code: 2
+          stdout:
+            empty: true
+          stderr:
+            equals: |
+              error: msky needs an interactive terminal
+              hint: run msky directly in a terminal, not through a pipe or redirect

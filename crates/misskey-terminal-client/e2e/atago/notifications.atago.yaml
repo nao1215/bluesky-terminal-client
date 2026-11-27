@@ -1,0 +1,135 @@
+# msky notifications: i/notifications with the saved token, a page at a
+# time with untilId as author reads notes, each once. They are asked for
+# with markAsRead false, so reading them changes nothing on the server.
+# The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky notifications
+
+secrets:
+  - e2e-fake-token-0001
+
+scenarios:
+  - name: notifications say who did what to which note, and leave them unread
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/i/notifications
+            json:
+              - id: n4
+                createdAt: "2026-11-26T10:00:00.000Z"
+                type: reaction
+                reaction: ":blobcat@.:"
+                user: { id: u-bob, username: bob, host: misskey.design, name: "ボブ 🐈‍⬛" }
+                note: { id: 9a, user: { username: alice }, text: "朝ごはん 🍙", files: [ { type: image/png } ] }
+              - id: n3
+                createdAt: "2026-11-26T09:00:00.000Z"
+                type: reply
+                user: { id: u-carol, username: carol, name: "キャロル🇰🇷" }
+                note: { id: 9b, user: { username: carol }, text: "いいね 👍🏽\n二行目", replyId: 9a }
+              - id: n2
+                createdAt: "2026-11-26T08:00:00.000Z"
+                type: follow
+                user: { id: u-dave, username: dave, host: other.example }
+              - id: n1
+                createdAt: "2026-11-26T07:00:00.000Z"
+                type: achievementEarned
+                achievement: notes1
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-alice", "username": "alice", "token": "e2e-fake-token-0001"}
+      - run:
+          command: msky notifications -n 4 --host ${api.url}
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              ボブ 🐈‍⬛ @bob@misskey.design reacted :blobcat: to your note · 2026-11-26 10:00
+              朝ごはん 🍙
+              [1 picture]
+              ${api.url}/notes/9a
+
+              キャロル🇰🇷 @carol replied to you · 2026-11-26 09:00
+              いいね 👍🏽
+              二行目
+              ${api.url}/notes/9b
+
+              @dave@other.example followed you · 2026-11-26 08:00
+              ${api.url}/@dave@other.example
+
+              achievement earned: notes1 · 2026-11-26 07:00
+      - assert:
+          mock:
+            name: api
+            path: /api/i/notifications
+            count: 1
+            body:
+              json:
+                - { path: "$.i", equals: e2e-fake-token-0001 }
+                - { path: "$.limit", equals: 4 }
+                - { path: "$.markAsRead", equals: false }
+      # A second page is older than the last of the first; one that brings
+      # nothing new ends the reading, each notification printed once.
+      - run:
+          command: msky notifications -n 10 --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^(\{[^\n]*\}\n){4}$'
+      - assert:
+          mock:
+            name: api
+            path: /api/i/notifications
+            count: 3
+            body:
+              json:
+                - { path: "$.untilId", equals: n1 }
+                - { path: "$.limit", equals: 6 }
+                - { path: "$.markAsRead", equals: false }
+      - run:
+          command: msky notifications -n 1 --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: n4 }
+              - { path: "$.type", equals: reaction }
+              - { path: "$.reaction", equals: ":blobcat@.:" }
+              - { path: "$.user.username", equals: bob }
+              - { path: "$.user.host", equals: misskey.design }
+              - { path: "$.note.id", equals: 9a }
+              - { path: "$.note.url", equals: "${api.url}/notes/9a" }
+              - { path: "$.note.user.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.note.files[0].type", equals: image/png }
+
+  - name: notifications without a login are a usage error before anything is asked
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/i/notifications, json: [] }
+    steps:
+      - run:
+          command: msky notifications --host ${api.url}
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 1
+          stdout:
+            empty: true
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `msky login --host 127.0.0.1:${api.port}`
+      - assert:
+          mock: { name: api, count: 0 }

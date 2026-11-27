@@ -1,0 +1,53 @@
+# Fuzz targets for the code msky runs on untrusted input (cargo-fuzz,
+# libFuzzer). msky is a binary-only crate and keeps no library target, so each
+# target includes the self-contained source files it tests with `#[path]`
+# instead of depending on the main package. See CONTRIBUTING.md.
+[package]
+name = "misskey-terminal-client-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# The same features as the main package, for src/metadata.rs.
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Its own workspace, so that it never becomes part of the main package's.
+[workspace]
+members = ["."]
+
+# Every [[bin]] is a target, and the nightly workflow reads the name from the
+# line straight after [[bin]], so keep `name` first.
+[[bin]]
+name = "mfm_links"
+path = "fuzz_targets/mfm_links.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "metadata_strip"
+path = "fuzz_targets/metadata_strip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mp4_track"
+path = "fuzz_targets/mp4_track.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "note_json"
+path = "fuzz_targets/note_json.rs"
+test = false
+doc = false
+bench = false

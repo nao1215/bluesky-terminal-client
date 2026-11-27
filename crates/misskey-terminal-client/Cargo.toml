@@ -1,0 +1,93 @@
+[package]
+name = "misskey-terminal-client"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.90"
+authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
+description = "Unofficial Misskey client for the terminal: a full-screen client that draws pictures inline (kitty graphics, sixel, iTerm2), and commands that read timelines, notifications and notes, save their files, post notes and follow accounts."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nao1215/misskey-terminal-client"
+keywords = ["misskey", "fediverse", "tui", "terminal", "sixel"]
+categories = ["command-line-utilities"]
+exclude = [
+    ".cargo/",
+    ".github/",
+    ".gitignore",
+    ".gitleaksignore",
+    ".octocov.yml",
+    "about.hbs",
+    "about.toml",
+    "bench/",
+    "deny.toml",
+    "doc/",
+    "e2e/",
+    "fuzz/",
+    "justfile",
+    "scripts/",
+]
+
+# `cargo binstall misskey-terminal-client` fetches the release archive instead
+# of building it.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/msky-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[[bin]]
+name = "msky"
+path = "src/main.rs"
+
+[dependencies]
+jiff = "1"
+clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.29"
+dirs = "7"
+fast_image_resize = { version = "6.1.0", default-features = false, features = ["image"] }
+getrandom = "0.4"
+openh264 = "0.9"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+ratatui = "0.30"
+ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+# ratatui-core 0.1.2 adds 1 to the width of U+FF9E/U+FF9F, and 0.2.3 counts them too, so a half-width kana takes 3 cells; drop the cap once ratatui stops adding its own width (as bsky does).
+unicode-width = ">=0.2, <0.2.3"
+ureq = "3"
+
+# Reads the console input before crossterm does; see src/tui/events.rs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
+
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }
+rstest = "0.29"
+tempfile = "3"
+
+# An error is returned, shown, or kept with the reason it can be ignored: a
+# panic leaves a half-written download behind, and a swallowed error hides
+# what the user needs to know. clippy.toml lets tests unwrap.
+# let_underscore_untyped stays off: it flags every `let _ =`, and the ones
+# that matter (a Result, a lock, a future) have lints of their own.
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+let_underscore_must_use = "warn"
+unused_result_ok = "warn"
+map_err_ignore = "warn"
+allow_attributes_without_reason = "warn"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

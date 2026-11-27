@@ -1,0 +1,194 @@
+# msky accounts, servers, follows and followers against atago mocks. The
+# server list is a mock too (MSKY_SERVERS_URL): nothing reaches Misskey Hub.
+# The tokens are throwaway values.
+version: "1"
+
+suite:
+  name: msky accounts and follows
+
+secrets:
+  - e2e-fake-token-0201
+  - e2e-fake-token-0202
+
+scenarios:
+  - name: accounts lists the logins as bsky's does, and --use changes the one in use
+    steps:
+      - run:
+          command: msky accounts
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "not logged in\n"
+      - fixture:
+          file: cfg/accounts/a.test.json
+          content: |
+            {"service": "https://a.test", "userId": "u-a", "username": "ann", "token": "e2e-fake-token-0201"}
+      - fixture:
+          file: cfg/accounts/b.test.json
+          content: |
+            {"service": "https://b.test", "userId": "u-b", "username": "ben", "token": "e2e-fake-token-0202"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "a.test"}
+      - run:
+          command: msky accounts
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              * @ann@a.test  u-a
+                @ben@b.test  u-b
+      - run:
+          command: msky accounts --use b.test --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              {"current":false,"host":"a.test","id":"u-a","service":"https://a.test","username":"ann"}
+              {"current":true,"host":"b.test","id":"u-b","service":"https://b.test","username":"ben"}
+      - assert:
+          file: { path: cfg/accounts.json, contains: '"current": "b.test"' }
+      - run:
+          command: msky accounts --use c.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: no account is logged in on c.test
+              hint: logged in on: a.test, b.test
+
+  - name: servers lists Misskey Hub's servers that run Misskey, the most accounts first
+    mock_servers:
+      - name: hub
+        routes:
+          - method: GET
+            path: /instances.json
+            json:
+              instancesInfos:
+                - { url: small.test, name: "小さい", langs: [ja], nodeinfo: { software: { name: misskey }, usage: { users: { total: 10 } }, openRegistrations: true } }
+                - { url: big.test, name: "大きい 🐈", langs: [ja, en], nodeinfo: { software: { name: misskey }, usage: { users: { total: 9000 } }, openRegistrations: false } }
+                - { url: fork.test, name: fork, nodeinfo: { software: { name: sharkey }, usage: { users: { total: 99999 } } } }
+    steps:
+      - run:
+          command: msky servers
+          env: { MSKY_SERVERS_URL: "${hub.url}/instances.json" }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              big.test  大きい 🐈  9000 accounts  (closed to new accounts)
+              small.test  小さい  10 accounts
+      - run:
+          command: msky servers -n 1 --json
+          env: { MSKY_SERVERS_URL: "${hub.url}/instances.json" }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              {"host":"big.test","langs":["ja","en"],"name":"大きい 🐈","openRegistrations":false,"users":9000}
+
+  - name: servers falls back to the ones msky knows when the list cannot be read
+    mock_servers:
+      - name: hub
+        routes:
+          - { method: GET, path: /instances.json, status: 503, body: busy }
+    steps:
+      - run:
+          command: msky servers -n 2
+          env: { MSKY_SERVERS_URL: "${hub.url}/instances.json" }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              misskey.io  Misskey.io
+              misskey-square.net  みすきーすくえあ！
+          stderr:
+            contains: "HTTP 503; showing the servers msky knows"
+
+  - name: follows and followers list the accounts page by page, and --pending the requests
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/users/show
+            json: { id: u-alice, username: alice }
+          - method: POST
+            path: /api/users/following
+            json:
+              - { id: r1, followee: { id: u-bob, username: bob, host: mstdn.test, name: "ボブ 👨‍👩‍👧", isFollowing: true } }
+          - method: POST
+            path: /api/users/followers
+            json:
+              - { id: r2, follower: { id: u-cat, username: cat } }
+          - method: POST
+            path: /api/following/requests/sent
+            json:
+              - { id: q1, follower: { id: u-me, username: me }, followee: { id: u-dan, username: dan, host: remote.test } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0201"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - run:
+          command: msky follows @alice
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              ボブ 👨‍👩‍👧 @bob@mstdn.test  (following)  ${api.url}/@bob@mstdn.test
+      # The second page is older than the last entry, and repeats it, which
+      # ends the list.
+      - assert:
+          mock:
+            name: api
+            path: /api/users/following
+            count: 2
+            body:
+              json:
+                - { path: "$.userId", equals: u-alice }
+                - { path: "$.untilId", equals: r1 }
+                - { path: "$.limit", equals: 49 }
+      - run:
+          command: msky followers --json -n 1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              {"description":null,"followersCount":null,"followingCount":null,"host":"127.0.0.1:${api.port}","id":"u-cat","name":null,"notesCount":null,"url":"${api.url}/@cat","username":"cat"}
+      - assert:
+          mock:
+            name: api
+            path: /api/users/followers
+            body:
+              json:
+                - { path: "$.userId", equals: u-me }
+                - { path: "$.i", equals: e2e-fake-token-0201 }
+      - run:
+          command: msky follows --pending
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @dan@remote.test  ${api.url}/@dan@remote.test
+      - run:
+          command: msky follows bob --pending
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: --pending lists your own requests, of the account logged in
+              hint: leave ACTOR out
