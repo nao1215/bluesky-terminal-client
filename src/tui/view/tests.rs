@@ -113,7 +113,8 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     let screen = render_text(&mut app, 100, 12);
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
-        lines[0].starts_with(" 1 Timeline: Home   3 Search   4 Notifications   5 Profile"),
+        lines[0]
+            .starts_with(" 1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile"),
         "{screen}"
     );
     assert!(lines[0].ends_with("@me@misskey.test"), "{screen}");
@@ -129,7 +130,7 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     );
     assert!(
         lines[10].starts_with(
-            " ? help  j k move  ← → timeline  . actions  space open in browser  n note  R refresh  q quit"
+            " ? help  j k move  tab next tab  . actions  space open in browser  n note  R refresh  q quit"
         ),
         "{screen}"
     );
@@ -159,7 +160,10 @@ fn a_visitor_is_told_how_to_log_in_on_home() {
         screen.contains("run `msky login --host misskey.test`"),
         "{screen}"
     );
-    assert!(screen.contains("→ shows the local timeline"), "{screen}");
+    assert!(
+        screen.contains("the Local and Global tabs show"),
+        "{screen}"
+    );
 }
 
 // A warned note shows its warning and how long the text behind it is;
@@ -283,8 +287,7 @@ fn the_help_lists_the_keys() {
     for want in [
         "Keys",
         "Global",
-        "Timeline",
-        "← → H L",
+        "1 2 3 …",
         "Notes",
         "w",
         "Viewer",
@@ -381,10 +384,9 @@ fn the_viewer_names_a_file_it_cannot_draw() {
     assert!(screen.contains(" d download  o open  esc back"), "{screen}");
 }
 
-// The account list marks the one in use, and the timeline picker the one
-// shown.
+// The account list marks the one in use.
 #[test]
-fn the_account_list_and_the_timeline_picker() {
+fn the_account_list_marks_the_one_in_use() {
     let mut app = with_notes(vec![]);
     app.accounts = vec![
         crate::tui::app::Account {
@@ -403,11 +405,6 @@ fn the_account_list_and_the_timeline_picker() {
         screen.contains("enter use  x log out  a log in another"),
         "{screen}"
     );
-    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    app.handle_key(key('+'));
-    let screen = render(&mut app, 80, 20);
-    assert!(screen.contains("▶ Home  (shown)"), "{screen}");
-    assert!(screen.contains("Global"), "{screen}");
 }
 
 // An error is shown in a box over everything, and the next key closes it.
@@ -607,7 +604,7 @@ fn the_reaction_picker_shows_the_reactions() {
 #[test]
 fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
     let mut app = with_notes(vec![]);
-    let jobs = app.handle_key(key('5'));
+    let jobs = app.handle_key(key('6'));
     app.handle_answer(
         jobs[0].0,
         Event::Profile(Ok(Box::new((
@@ -624,7 +621,7 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
     );
     assert!(screen.contains("Rust と Go が好き"), "{screen}");
     assert!(screen.contains("自分のノート"), "{screen}");
-    app.handle_key(key('3'));
+    app.handle_key(key('5'));
     for c in "rust".chars() {
         app.handle_key(key(c));
     }

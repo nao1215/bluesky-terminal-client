@@ -250,6 +250,15 @@ fn event_loop(
             .iter()
             .map(app::Account::from)
             .collect();
+        // The tabs the settings name, in their order.
+        let (settings, broken) = crate::config::load_settings(store.dir());
+        let (tabs, unknown) = app::tabs_of(&settings.tabs.unwrap_or_default());
+        for (seq, job) in app.set_tabs(tabs) {
+            worker.send(seq, job);
+        }
+        if let Some(why) = broken.or(unknown) {
+            app.account_error(why);
+        }
     }
     // Without an account at all the client opens on the login form, as
     // bsky's does; esc reads the server as a visitor.

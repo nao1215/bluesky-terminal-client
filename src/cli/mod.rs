@@ -247,12 +247,6 @@ impl TimelineKind {
         }
     }
 
-    /// The timeline `delta` places away in [`TimelineKind::ALL`], wrapping.
-    pub fn next(self, delta: isize) -> TimelineKind {
-        let n = Self::ALL.len() as isize;
-        Self::ALL[(self.index() as isize + delta).rem_euclid(n) as usize]
-    }
-
     pub fn endpoint(self) -> &'static str {
         match self {
             TimelineKind::Home => "notes/timeline",

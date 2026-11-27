@@ -1,4 +1,4 @@
-# The Search tab (3) and the Profile tab (5), driven in a pty with bsky's
+# The Search tab (5) and the Profile tab (6), driven in a pty with bsky's
 # keys against an atago mock: notes and accounts searched (/ and t), an
 # author's profile opened with enter and left with esc, its notes paged,
 # and the account followed with f. The token is a throwaway value.
@@ -60,8 +60,8 @@ scenarios:
           timeout: 25s
           session:
             - expect_screen:
-                contains: ["タイムラインのノート", "3 Search", "5 Profile"]
-            - send: "3"
+                contains: ["タイムラインのノート", "5 Search", "6 Profile"]
+            - send: "5"
             - expect_screen:
                 contains: ["Search notes:", "enter search", "ctrl+t notes / accounts"]
             - send: "rust"

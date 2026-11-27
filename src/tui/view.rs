@@ -88,8 +88,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         draw_thread(frame, body, th, images, &ctx);
     } else {
         match app.tab {
-            Tab::Timeline => {
-                let kind = app.kind;
+            Tab::Timeline(kind) => {
                 draw_notes(
                     frame,
                     body,
@@ -117,21 +116,6 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         Some(Overlay::Actions { selected }) => {
             let rows: Vec<String> = actions.iter().map(|(k, d)| format!("{k:<6} {d}")).collect();
             draw_choices(frame, area, "Actions", &rows, *selected, None, &t);
-        }
-        Some(Overlay::Timelines { selected }) => {
-            let rows: Vec<String> = TimelineKind::ALL
-                .iter()
-                .map(|k| timeline_title(*k).to_string())
-                .collect();
-            draw_choices(
-                frame,
-                area,
-                "Timelines",
-                &rows,
-                *selected,
-                Some(app.kind.index()),
-                &t,
-            );
         }
         Some(Overlay::Accounts { selected }) => {
             let me = app.session.as_ref().map(|s| s.host().to_string());
@@ -165,16 +149,6 @@ struct Ctx<'a> {
     /// The notes whose warning `w` opened.
     opened: &'a std::collections::HashSet<String>,
     t: Theme,
-}
-
-/// The name of a timeline, as Misskey's tabs have it.
-fn timeline_title(kind: TimelineKind) -> &'static str {
-    match kind {
-        TimelineKind::Home => "Home",
-        TimelineKind::Local => "Local",
-        TimelineKind::Social => "Social",
-        TimelineKind::Global => "Global",
-    }
 }
 
 fn empty_timeline(kind: TimelineKind) -> &'static str {
@@ -243,16 +217,8 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
-    for tab in Tab::ALL {
-        let label = match tab {
-            Tab::Timeline => format!(
-                " {} {}: {} ",
-                tab.key(),
-                tab.title(),
-                timeline_title(app.kind)
-            ),
-            _ => format!(" {} {} ", tab.key(), tab.title()),
-        };
+    for (i, &tab) in app.tabs.iter().enumerate() {
+        let label = format!(" {} {} ", i + 1, tab.title());
         let style = if tab == app.tab {
             t.selected()
         } else {

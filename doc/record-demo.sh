@@ -10,7 +10,7 @@
 #                                 showing them marks them read). msky reads
 #                                 its own config folder; this script never
 #                                 reads, copies or prints the token, and
-#                                 presses read-only keys only (j space v L H
+#                                 presses read-only keys only (j space v 1 2
 #                                 esc): nothing is posted, reacted to,
 #                                 followed or marked read. It refuses to run
 #                                 on CI (CI or GITHUB_ACTIONS set). Look at
@@ -165,8 +165,8 @@ demo_fake() {
   send "\033"
   sleep 1.2
   # The local timeline, and the notifications.
-  send "L"
-  ready "Local"
+  send "2"
+  ready "ローカル"
   sleep 1
   send "4"
   ready "reacted"
@@ -200,13 +200,12 @@ demo() {
   sleep 1
   send "\033"
   sleep 1.5
-  # The local timeline.
-  send "L"
-  ready "Local"
-  sleep 1.5
+  # The Local tab, and back to Home.
+  send "2"
+  sleep 3
   keys j 3 1.2
   sleep 1
-  send "H"
+  send "1"
   sleep 1.5
   stop "$OUT/demo.gif"
   quit

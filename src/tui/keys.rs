@@ -21,11 +21,9 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Global",
         keys: &[
-            (
-                "1 3 4 5",
-                "the Timeline, Search, Notifications and Profile tabs",
-            ),
+            ("1 2 3 …", "the tabs, in the order shown"),
             ("tab shift+tab", "next / previous tab"),
+            ("", "which tabs, and their order: the tabs setting"),
             ("A", "accounts: switch, log out"),
             ("?", "this help"),
             ("q ctrl+c", "quit"),
@@ -39,16 +37,6 @@ pub const HELP: &[Section] = &[
             ("pgdn pgup", "move five items"),
             ("", "more loads by itself near the end"),
             ("R F5", "refresh the current view"),
-        ],
-    },
-    Section {
-        title: "Timeline",
-        keys: &[
-            (
-                "← → H L",
-                "the previous / next timeline: home, local, social, global",
-            ),
-            ("+", "choose the timeline"),
         ],
     },
     Section {
@@ -94,7 +82,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: "Profile",
         keys: &[
-            ("5", "your own profile"),
+            ("", "its tab is your own profile"),
             ("f", "follow / unfollow the account shown"),
             (
                 "",
@@ -251,9 +239,6 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Some(Overlay::Actions { .. }) => {
             return vec![("j k", "move"), ("enter", "do it"), ("esc", "close")];
         }
-        Some(Overlay::Timelines { .. }) => {
-            return vec![("j k", "move"), ("enter", "show"), ("esc", "close")];
-        }
         Some(Overlay::Accounts { .. }) => {
             return vec![
                 ("j k", "move"),
@@ -313,9 +298,9 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("f", "follow"),
         ],
         Tab::Profile => vec![("j k", "move"), (".", "actions"), ("R", "reload")],
-        Tab::Timeline => vec![
+        Tab::Timeline(_) => vec![
             ("j k", "move"),
-            ("← →", "timeline"),
+            ("tab", "next tab"),
             (".", "actions"),
             ("space", "view"),
             ("n", "note"),

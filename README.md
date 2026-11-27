@@ -51,12 +51,11 @@ It needs Rust 1.90 or later.
 
 | Key | What it does |
 |---|---|
-| `1` `3` `4` `5`, `tab` `shift+tab` | The Timeline, Search, Notifications and Profile tabs (bsky's numbers; its Chat tab is for a later version) |
+| `1` `2` `3` …, `tab` `shift+tab` | The tabs, numbered in the order shown: by default 1 Home, 2 Local, 3 Global, 4 Notifications, 5 Search, 6 Profile (see the `tabs` setting below); `tab` and `shift+tab` go round them, as in bsky |
 | `/` `i`, `t` | Type in the search box (it has focus when you arrive at an empty Search tab), and switch between searching notes and accounts |
 | `enter` | The profile of the selected note's author, account found, or notification's sender; `esc` goes back to where it was opened from |
 | `f` | Follows or unfollows the account shown on the Profile tab or found by a search, or takes back a request not yet accepted |
 | `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
-| `←` `→` `H` `L`, `+` | The previous / next timeline (home, local, social, global), or choose one from a list; bsky moves between its columns with these |
 | `v` | The thread: what the note answers, the note, and two levels of replies; `esc` closes it |
 | `space` | The note's files full screen (`←` `→` between them, `d` saves the one shown, `o` opens it in the browser); without pictures, the note in the browser |
 | `w` | Shows or hides the text behind a content warning, which is folded until then |
@@ -72,9 +71,17 @@ It needs Rust 1.90 or later.
 
 A renote is shown as the note it renotes under `⟳ renoted by`, a quote with a `❝` line for the note it quotes, a reply under a dim line for the note it answers. A file the uploader marked sensitive is drawn as any other, with a `⚠ sensitive` mark. MFM is drawn as plain text: `$[x2 大きい]` shows `大きい`, `$[ruby 漢字 かんじ]` shows `漢字(かんじ)`, `<center>` and `<small>` show what they hold, `**bold**` is bold, and `?[label](address)` shows its label. A custom emoji is shown by its name, `:blobcat:`. Without a picture protocol (or through a pipe of a multiplexer that answers none) the client runs as text and names the files instead; `MSKY_GRAPHICS=kitty|sixel|iterm2` names the protocol when the terminal does not answer. Pictures are kept in `MSKY_CACHE_DIR` (`off` for none), else `msky/images` in the platform's cache folder.
 
-Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: home and social say how to log in, and `→` shows the local and global timelines, where the server shows them to visitors.
+Without an account the client opens on the login form, as bsky's does: choose a server from [Misskey Hub](https://misskey-hub.net/servers/)'s list (the one `msky servers` prints), or press `/` and type any server's host, and allow msky in the browser that opens; the login is saved as `msky login` saves it. `esc` reads the server as a visitor instead: the Home, Notifications and Profile tabs say how to log in, and the Local and Global tabs show the server where it shows them to visitors.
 
 The client reads one server at a time: switching accounts in `A` switches to that account's server.
+
+Each timeline is a tab of its own, and keeps its place, the pages it loaded and its next page while another tab is shown; a tab is loaded the first time it is shown, and `R` loads again the one shown only. Social, Misskey's home and local mixed, is not a tab by default. `settings.json` in the config directory chooses the tabs and their order, and the numbers follow it:
+
+```json
+{"tabs": ["home", "social", "local", "global", "notifications", "search", "profile"]}
+```
+
+The names are `home`, `local`, `social`, `global`, `notifications`, `search` and `profile`; a name that is not one is said when the client starts and left out, and a list naming none is the default. `msky timeline social` reads Social whatever the setting says.
 
 The Profile tab shows the account's name and address, how you and it follow each other, its counts and what it says about itself (as plain text), over its notes, paged as the timelines are. The Search tab searches notes (`notes/search`, paged by `untilId`) or accounts (`users/search`, paged by offset).
 

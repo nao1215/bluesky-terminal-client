@@ -101,7 +101,7 @@ scenarios:
           session:
             - expect_screen:
                 contains:
-                  - "1 Timeline: Home"
+                  - "1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile"
                   - "4 Notifications"
                   - "@me@127.0.0.1:${api.port}"
                   - "アリス 👩🏽‍💻 @alice · 2026-11-26 10:00"
@@ -113,7 +113,7 @@ scenarios:
                   - "⚠ CW: ネタバレ"
                   - "w shows it (5 characters)"
                   - "❝ @erin@x.test: 引用元のノート"
-                  - "? help  j k move  ← → timeline"
+                  - "? help  j k move  tab next tab"
                 not_contains: "犯人は執事"
             # The avatar and the picture, the sensitive one drawn as any
             # other, the picture at its own 4:3 shape.
@@ -141,9 +141,9 @@ scenarios:
             - send: { key: esc }
             - expect_screen:
                 not_contains: "山の写真"
-            - send: { key: right }
+            - send: "2"
             - expect_screen:
-                contains: ["1 Timeline: Local", "ローカルのノート"]
+                contains: "ローカルのノート"
             - send: "4"
             - expect_screen:
                 contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
@@ -249,9 +249,9 @@ scenarios:
                 contains:
                   - "127.0.0.1:${api.port} (visitor)"
                   - "no account is logged in on 127.0.0.1:${api.port}"
-            - send: { key: right }
+            - send: "2"
             - expect_screen:
-                contains: ["1 Timeline: Local", "訪問者にも見えるノート"]
+                contains: "訪問者にも見えるノート"
             - send: q
       - assert:
           exit_code: 0

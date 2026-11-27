@@ -85,6 +85,46 @@ pub fn config_dir() -> Result<PathBuf> {
     })
 }
 
+/// What `settings.json` in the config directory sets. Every field is
+/// optional, and a key msky does not know is left alone.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    /// The client's tabs, in order: `home`, `local`, `social`, `global`,
+    /// `notifications`, `search`, `profile`.
+    pub tabs: Option<Vec<String>>,
+}
+
+const SETTINGS_FILE: &str = "settings.json";
+
+/// The settings in `dir`, and why the file could not be read when it was
+/// there and could not (the defaults are used then).
+pub fn load_settings(dir: &Path) -> (Settings, Option<String>) {
+    let path = dir.join(SETTINGS_FILE);
+    let data = match fs::read(&path) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Settings::default(), None),
+        Err(e) => {
+            return (
+                Settings::default(),
+                Some(format!("cannot read {}: {e}", path.display())),
+            );
+        }
+    };
+    match serde_json::from_slice(without_bom(&data)) {
+        Ok(s) => (s, None),
+        Err(e) => (
+            Settings::default(),
+            Some(format!(
+                "{} is not valid settings (line {}, column {}); the defaults are used",
+                path.display(),
+                e.line(),
+                e.column()
+            )),
+        ),
+    }
+}
+
 /// Which server's account is in use, kept in `accounts.json`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Current {
@@ -111,6 +151,11 @@ impl AccountStore {
 
     fn accounts_dir(&self) -> PathBuf {
         self.dir.join(ACCOUNTS_DIR)
+    }
+
+    /// The config directory the accounts are kept in.
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// The file of the account on `host`.
@@ -484,6 +529,24 @@ mod tests {
             let mode = fs::metadata(&p).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600, "{}", p.display());
         }
+    }
+
+    #[test]
+    fn settings_are_read_and_a_broken_file_says_where() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(load_settings(dir.path()), (Settings::default(), None));
+        fs::write(
+            dir.path().join(SETTINGS_FILE),
+            "\u{feff}{\"tabs\": [\"home\", \"social\"], \"later\": 1}",
+        )
+        .unwrap();
+        let (s, warn) = load_settings(dir.path());
+        assert_eq!(s.tabs, Some(vec!["home".to_string(), "social".to_string()]));
+        assert_eq!(warn, None);
+        fs::write(dir.path().join(SETTINGS_FILE), "{\"tabs\": oops").unwrap();
+        let (s, warn) = load_settings(dir.path());
+        assert_eq!(s, Settings::default());
+        assert!(warn.unwrap().contains("is not valid settings (line 1"));
     }
 
     #[test]

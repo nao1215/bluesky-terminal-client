@@ -292,11 +292,11 @@ impl App {
             // Tabs switch even while typing, so the box never traps you.
             KeyCode::Tab => {
                 self.search.editing = false;
-                return self.switch_tab(self.tab.next(1));
+                return self.switch_tab(self.next_tab(1));
             }
             KeyCode::BackTab => {
                 self.search.editing = false;
-                return self.switch_tab(self.tab.next(-1));
+                return self.switch_tab(self.next_tab(-1));
             }
             KeyCode::Char('t') if ctrl => self.toggle_search_mode(),
             KeyCode::Enter => {

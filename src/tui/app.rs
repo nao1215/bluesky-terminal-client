@@ -25,43 +25,79 @@ mod tests;
 pub use browse::{Profile, Search, SearchMode};
 pub use write::{Compose, REACTIONS};
 
-/// The tabs, with the numbers bsky gives its tabs: Timeline 1, Search 3,
-/// Notifications 4, Profile 5. bsky's Chat (2) is for a later version.
+/// The tabs. Each timeline is a tab of its own; which tabs there are and
+/// in what order is the `tabs` setting's, and the number keys follow that
+/// order, as bsky's tabs are 1 to 5 in the order shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
-    Timeline,
-    Search,
+    Timeline(TimelineKind),
     Notifications,
+    Search,
     Profile,
 }
 
-impl Tab {
-    pub const ALL: [Tab; 4] = [Tab::Timeline, Tab::Search, Tab::Notifications, Tab::Profile];
+/// The tabs without a `tabs` setting: Social, home and local mixed, is
+/// left out, and a setting can put it in.
+pub const DEFAULT_TABS: [Tab; 6] = [
+    Tab::Timeline(TimelineKind::Home),
+    Tab::Timeline(TimelineKind::Local),
+    Tab::Timeline(TimelineKind::Global),
+    Tab::Notifications,
+    Tab::Search,
+    Tab::Profile,
+];
 
+impl Tab {
     pub fn title(self) -> &'static str {
         match self {
-            Tab::Timeline => "Timeline",
-            Tab::Search => "Search",
+            Tab::Timeline(TimelineKind::Home) => "Home",
+            Tab::Timeline(TimelineKind::Local) => "Local",
+            Tab::Timeline(TimelineKind::Social) => "Social",
+            Tab::Timeline(TimelineKind::Global) => "Global",
             Tab::Notifications => "Notifications",
+            Tab::Search => "Search",
             Tab::Profile => "Profile",
         }
     }
 
-    /// The key that shows it, as in bsky.
-    pub fn key(self) -> char {
-        match self {
-            Tab::Timeline => '1',
-            Tab::Search => '3',
-            Tab::Notifications => '4',
-            Tab::Profile => '5',
+    /// The tab a name of the `tabs` setting stands for.
+    pub fn from_name(name: &str) -> Option<Tab> {
+        Some(match name.trim().to_ascii_lowercase().as_str() {
+            "home" => Tab::Timeline(TimelineKind::Home),
+            "local" => Tab::Timeline(TimelineKind::Local),
+            "social" | "hybrid" => Tab::Timeline(TimelineKind::Social),
+            "global" => Tab::Timeline(TimelineKind::Global),
+            "notifications" => Tab::Notifications,
+            "search" => Tab::Search,
+            "profile" => Tab::Profile,
+            _ => return None,
+        })
+    }
+}
+
+/// The tabs `names` (the `tabs` setting) name, in order, each once; the
+/// default ones when it names none. What is not a tab's name is said, and
+/// left out.
+pub fn tabs_of(names: &[String]) -> (Vec<Tab>, Option<String>) {
+    let mut tabs: Vec<Tab> = Vec::new();
+    let mut unknown = Vec::new();
+    for n in names {
+        match Tab::from_name(n) {
+            Some(t) if !tabs.contains(&t) => tabs.push(t),
+            Some(_) => {}
+            None => unknown.push(n.clone()),
         }
     }
-
-    fn next(self, delta: isize) -> Tab {
-        let i = Self::ALL.iter().position(|t| *t == self).unwrap_or(0) as isize;
-        let n = Self::ALL.len() as isize;
-        Self::ALL[(i + delta).rem_euclid(n) as usize]
+    let warning = (!unknown.is_empty()).then(|| {
+        format!(
+            "settings.json: {} is not a tab (home, local, social, global, notifications, search, profile)",
+            unknown.join(", ")
+        )
+    });
+    if tabs.is_empty() {
+        tabs = DEFAULT_TABS.to_vec();
     }
+    (tabs, warning)
 }
 
 /// Items that are the same item when their keys are equal: a further page
@@ -374,8 +410,6 @@ pub enum Overlay {
     Viewer { files: Vec<Attached>, index: usize },
     /// The accounts logged in, opened with `A`.
     Accounts { selected: usize },
-    /// The timelines, opened with `+`.
-    Timelines { selected: usize },
     /// What the keys of this view do to the selected note, as in bsky.
     Actions { selected: usize },
     /// The login form.
@@ -409,8 +443,8 @@ pub struct App {
     /// The server, `https://misskey.io`.
     pub origin: String,
     pub tab: Tab,
-    /// The timeline the Timeline tab shows.
-    pub kind: TimelineKind,
+    /// The tabs, in the order of their numbers.
+    pub tabs: Vec<Tab>,
     /// Every timeline, by [`TimelineKind::index`]: switching back to one
     /// finds it where it was left.
     pub timelines: [List<Note>; 4],
@@ -465,7 +499,7 @@ pub struct App {
 /// What a timeline that needs an account says when there is none.
 fn needs_login(host: &str, kind: TimelineKind) -> String {
     format!(
-        "{} is your account's timeline, and no account is logged in on {host}: press A then a to log in (or run `msky login --host {host}`), or → for local and global",
+        "{} is your account's timeline, and no account is logged in on {host}: press A then a to log in (or run `msky login --host {host}`); the Local and Global tabs show the server to visitors",
         kind.name()
     )
 }
@@ -479,8 +513,8 @@ impl App {
         let mut app = Self {
             session,
             origin: origin.to_string(),
-            tab: Tab::Timeline,
-            kind: TimelineKind::Home,
+            tab: DEFAULT_TABS[0],
+            tabs: DEFAULT_TABS.to_vec(),
             timelines: Default::default(),
             notifications: List::default(),
             search: Search::default(),
@@ -536,10 +570,13 @@ impl App {
                 "no account is logged in on {host}: press A then a to log in (or run `msky login --host {host}`)"
             ));
             self.info(format!(
-                "not logged in on {host}: → shows the local timeline as a visitor"
+                "not logged in on {host}: the Local and Global tabs show the server to visitors"
             ));
         }
-        let mut jobs = self.load_timeline(self.kind);
+        let mut jobs = match self.tab {
+            Tab::Timeline(kind) => self.load_timeline(kind),
+            _ => Vec::new(),
+        };
         if self.session.is_some() {
             jobs.extend(self.load_notifications());
         }
@@ -625,8 +662,7 @@ impl App {
         self.origin = origin.to_string();
         self.account_since = self.sent + 1;
         self.overlay = None;
-        self.kind = TimelineKind::Home;
-        self.tab = Tab::Timeline;
+        self.tab = self.tabs[0];
         let jobs = self.start();
         if let Some(s) = &self.session {
             let shown = format!("now @{}@{}", s.username, s.host());
@@ -892,21 +928,6 @@ impl App {
                 KeyCode::Left | KeyCode::Char('h' | 'k') => *index = index.saturating_sub(1),
                 _ => {}
             },
-            Overlay::Timelines { selected } => match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => self.overlay = None,
-                KeyCode::Char('j') | KeyCode::Down => {
-                    *selected = (*selected + 1) % TimelineKind::ALL.len()
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    *selected = (*selected + TimelineKind::ALL.len() - 1) % TimelineKind::ALL.len()
-                }
-                KeyCode::Enter => {
-                    let kind = TimelineKind::ALL[*selected];
-                    self.overlay = None;
-                    return self.show_timeline(kind);
-                }
-                _ => {}
-            },
             Overlay::Accounts { selected } => {
                 let selected = *selected;
                 return self.accounts_key(key, selected);
@@ -1140,11 +1161,13 @@ impl App {
                     .unwrap_or(0);
                 self.overlay = Some(Overlay::Accounts { selected: at });
             }
-            KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
-            KeyCode::Char('3') => return self.switch_tab(Tab::Search),
-            KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
-            KeyCode::Char('5') => return self.switch_tab(Tab::Profile),
-            KeyCode::Char('/') => {
+            KeyCode::Char(c @ '1'..='9') => {
+                let i = c as usize - '1' as usize;
+                if let Some(tab) = self.tabs.get(i).copied() {
+                    return self.switch_tab(tab);
+                }
+            }
+            KeyCode::Char('/') if self.tabs.contains(&Tab::Search) => {
                 let jobs = self.switch_tab(Tab::Search);
                 self.search.editing = true;
                 return jobs;
@@ -1159,27 +1182,14 @@ impl App {
             KeyCode::Char('f') => return self.toggle_follow(),
             KeyCode::Enter => return self.open_selected_profile(),
             KeyCode::Esc if !in_thread && self.tab == Tab::Profile => return self.profile_back(),
-            KeyCode::Tab => return self.switch_tab(self.tab.next(1)),
-            KeyCode::BackTab => return self.switch_tab(self.tab.next(-1)),
+            KeyCode::Tab => return self.switch_tab(self.next_tab(1)),
+            KeyCode::BackTab => return self.switch_tab(self.next_tab(-1)),
             KeyCode::Char('j') | KeyCode::Down => return self.step(1),
             KeyCode::Char('k') | KeyCode::Up => return self.step(-1),
             KeyCode::PageDown => return self.step(5),
             KeyCode::PageUp => return self.step(-5),
             KeyCode::Char('g') | KeyCode::Home => return self.step(isize::MIN / 2),
             KeyCode::Char('G') | KeyCode::End => return self.step(isize::MAX / 2),
-            // bsky moves between its columns with these; msky has one
-            // timeline at a time, and they move between the timelines.
-            KeyCode::Left | KeyCode::Char('H') if self.tab == Tab::Timeline && !in_thread => {
-                return self.show_timeline(self.kind.next(-1));
-            }
-            KeyCode::Right | KeyCode::Char('L') if self.tab == Tab::Timeline && !in_thread => {
-                return self.show_timeline(self.kind.next(1));
-            }
-            KeyCode::Char('+') if self.tab == Tab::Timeline && !in_thread => {
-                self.overlay = Some(Overlay::Timelines {
-                    selected: self.kind.index(),
-                });
-            }
             KeyCode::Esc if in_thread => {
                 self.threads.pop();
             }
@@ -1210,22 +1220,51 @@ impl App {
         if tab == Tab::Profile && self.profile.who.is_none() {
             return self.open_profile(crate::tui::worker::Who::Me);
         }
+        if let Tab::Timeline(kind) = tab {
+            let list = &self.timelines[kind.index()];
+            if !list.loaded && !list.loading {
+                return self.load_timeline(kind);
+            }
+            return Vec::new();
+        }
         if tab == Tab::Notifications && !self.notifications.loaded && !self.notifications.loading {
             return self.load_notifications();
         }
         self.mark_read()
     }
 
-    /// Show timeline `kind` on the Timeline tab, loading it the first time.
-    fn show_timeline(&mut self, kind: TimelineKind) -> Jobs {
-        self.tab = Tab::Timeline;
-        self.threads.clear();
-        self.kind = kind;
-        let list = &self.timelines[kind.index()];
-        if !list.loaded && !list.loading {
-            return self.load_timeline(kind);
+    /// The tab `delta` places away in the order of the tabs, wrapping.
+    pub(super) fn next_tab(&self, delta: isize) -> Tab {
+        let n = self.tabs.len().max(1) as isize;
+        let i = self.tabs.iter().position(|t| *t == self.tab).unwrap_or(0) as isize;
+        self.tabs
+            .get((i + delta).rem_euclid(n) as usize)
+            .copied()
+            .unwrap_or(self.tab)
+    }
+
+    /// Use `tabs` (the `tabs` setting's), showing the first. The client
+    /// starts on Home and asks for it before the settings are read; a
+    /// setting that puts another first leaves that page unused.
+    pub fn set_tabs(&mut self, tabs: Vec<Tab>) -> Jobs {
+        if tabs.is_empty() {
+            return Vec::new();
         }
-        Vec::new()
+        self.tabs = tabs;
+        let first = self.tabs[0];
+        if self.tab == first {
+            return Vec::new();
+        }
+        self.switch_tab(first)
+    }
+
+    /// The timeline the tab shown is, if it is one.
+    #[cfg(test)]
+    pub fn kind(&self) -> Option<TimelineKind> {
+        match self.tab {
+            Tab::Timeline(k) => Some(k),
+            _ => None,
+        }
     }
 
     /// Move the selection, and ask for the next page when it nears the end.
@@ -1235,8 +1274,7 @@ impl App {
             return Vec::new();
         }
         match self.tab {
-            Tab::Timeline => {
-                let kind = self.kind;
+            Tab::Timeline(kind) => {
                 let list = &mut self.timelines[kind.index()];
                 list.step(delta);
                 match list.want_more() {
@@ -1270,7 +1308,7 @@ impl App {
             return vec![(seq, job)];
         }
         match self.tab {
-            Tab::Timeline => self.load_timeline(self.kind),
+            Tab::Timeline(kind) => self.load_timeline(kind),
             Tab::Notifications => self.load_notifications(),
             Tab::Search | Tab::Profile => self.refresh_browse(),
         }
@@ -1282,7 +1320,7 @@ impl App {
             return th.list.current().map(|r| &r.note);
         }
         match self.tab {
-            Tab::Timeline => self.timelines[self.kind.index()].current(),
+            Tab::Timeline(kind) => self.timelines[kind.index()].current(),
             Tab::Notifications => self.notifications.current().and_then(|n| n.note.as_ref()),
             Tab::Search => match self.search.mode {
                 SearchMode::Notes => self.search.notes.current(),

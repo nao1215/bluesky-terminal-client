@@ -63,39 +63,46 @@ fn logged_in(ids: &[&str]) -> App {
     app
 }
 
+/// The timeline of the tab shown, else Home's.
 fn timeline(app: &App) -> &List<Note> {
-    &app.timelines[app.kind.index()]
+    &app.timelines[app.kind().unwrap_or(TimelineKind::Home).index()]
 }
 
-// The client opens on the home timeline, as Misskey's does, and asks for
-// the notifications in the background.
+// The client opens on the Home tab, as Misskey's does, and asks for the
+// notifications in the background.
 #[test]
 fn a_logged_in_start_opens_on_home_and_reads_the_notifications_too() {
     let (app, jobs) = App::new(Some(session()), ORIGIN);
-    assert_eq!(app.kind, TimelineKind::Home);
-    assert_eq!(app.tab, Tab::Timeline);
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    assert_eq!(app.tabs, DEFAULT_TABS);
     let asked: Vec<&Job> = jobs.iter().map(|(_, j)| j).collect();
     assert_eq!(asked, [&home(None), &Job::Notifications { until: None }]);
     assert_eq!(app.pending, 2);
     assert!(timeline(&app).loading);
 }
 
-// Without an account home says how to log in, nothing is asked for it,
-// and → shows the local timeline as a visitor; social and the
-// notifications say the same as home, without asking either.
+// Without an account Home says how to log in and asks nothing; the Local
+// tab (2) is read as a visitor; Notifications and Profile say how to log
+// in too.
 #[test]
 fn a_visitor_is_told_how_to_log_in_and_reads_local_and_global() {
     let (mut app, jobs) = App::new(None, ORIGIN);
     assert!(jobs.is_empty(), "{jobs:?}");
-    assert_eq!(app.kind, TimelineKind::Home);
+    assert_eq!(app.kind(), Some(TimelineKind::Home));
     let why = timeline(&app).error.clone().unwrap();
     assert!(
         why.contains("run `msky login --host misskey.test`"),
         "{why}"
     );
-    assert!(app.status.as_ref().unwrap().text.contains("→"));
-    let jobs = app.handle_key(code(KeyCode::Right));
-    assert_eq!(app.kind, TimelineKind::Local);
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Local and Global tabs")
+    );
+    let jobs = app.handle_key(key('2'));
+    assert_eq!(app.kind(), Some(TimelineKind::Local));
     assert_eq!(
         jobs.iter().map(|(_, j)| j.clone()).collect::<Vec<_>>(),
         [Job::Timeline {
@@ -103,10 +110,10 @@ fn a_visitor_is_told_how_to_log_in_and_reads_local_and_global() {
             until: None
         }]
     );
-    let jobs = app.handle_key(code(KeyCode::Right));
-    assert_eq!(app.kind, TimelineKind::Social);
-    assert!(jobs.is_empty());
-    assert!(timeline(&app).error.is_some());
+    let jobs = app.handle_key(key('3'));
+    assert_eq!(app.kind(), Some(TimelineKind::Global));
+    assert_eq!(jobs.len(), 1);
+    assert!(app.handle_key(key('1')).is_empty());
     assert_eq!(app.handle_key(key('R')), []);
     assert!(app.handle_key(key('4')).is_empty());
     assert!(
@@ -116,26 +123,27 @@ fn a_visitor_is_told_how_to_log_in_and_reads_local_and_global() {
             .unwrap()
             .contains("msky login")
     );
-    // L and H step too, wrapping from global back to home.
-    app.handle_key(key('1'));
-    app.handle_key(key('L'));
-    assert_eq!(app.kind, TimelineKind::Global);
-    app.handle_key(key('L'));
-    assert_eq!(app.kind, TimelineKind::Home);
-    app.handle_key(key('H'));
-    assert_eq!(app.kind, TimelineKind::Global);
+    assert!(app.handle_key(key('6')).is_empty());
+    assert!(app.profile.error.as_ref().unwrap().contains("log in"));
 }
 
-// Each timeline keeps its notes and its place: going to another and back
-// asks for nothing again.
+// Each timeline is a tab that keeps its notes, its place and its paging:
+// going to another and back asks for nothing again, R reloads the tab
+// shown only, and tab and shift+tab go round the tabs in their order.
 #[test]
-fn a_timeline_switched_back_to_is_where_it_was_left() {
+fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     let mut app = logged_in(&["c", "b", "a"]);
     app.handle_key(key('j'));
-    let jobs = app.handle_key(key('L'));
-    let seq = jobs[0].0;
+    let jobs = app.handle_key(key('2'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Timeline {
+            kind: TimelineKind::Local,
+            until: None
+        }
+    );
     app.handle_answer(
-        seq,
+        jobs[0].0,
         Event::Timeline {
             kind: TimelineKind::Local,
             until: None,
@@ -143,17 +151,95 @@ fn a_timeline_switched_back_to_is_where_it_was_left() {
         },
     );
     assert_eq!(timeline(&app).items.len(), 1);
-    assert!(app.handle_key(key('H')).is_empty());
+    assert!(app.handle_key(key('1')).is_empty());
     assert_eq!(timeline(&app).selected, 1);
-    // + picks one from a list.
-    app.handle_key(key('+'));
-    assert_eq!(app.overlay, Some(Overlay::Timelines { selected: 0 }));
-    app.handle_key(key('j'));
-    app.handle_key(key('j'));
-    let jobs = app.handle_key(code(KeyCode::Enter));
-    assert_eq!(app.kind, TimelineKind::Social);
-    assert_eq!(app.overlay, None);
+    assert!(app.handle_key(key('2')).is_empty(), "loaded once");
+    let jobs = app.handle_key(key('R'));
     assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        jobs[0].1,
+        Job::Timeline {
+            kind: TimelineKind::Local,
+            until: None
+        }
+    );
+    assert!(
+        app.timelines[TimelineKind::Home.index()].loaded,
+        "Home is left as it is"
+    );
+    // Round the tabs, both ways, wrapping.
+    app.handle_key(key('1'));
+    let order: Vec<Tab> = (0..7)
+        .map(|_| {
+            app.handle_key(code(KeyCode::Tab));
+            app.tab
+        })
+        .collect();
+    assert_eq!(
+        order[..6],
+        DEFAULT_TABS[1..]
+            .iter()
+            .chain(&DEFAULT_TABS[..1])
+            .copied()
+            .collect::<Vec<_>>()[..]
+    );
+    app.handle_key(key('1'));
+    app.handle_key(code(KeyCode::BackTab));
+    assert_eq!(app.tab, Tab::Profile);
+    // ← → H L + switch nothing any more.
+    app.handle_key(key('1'));
+    for k in [
+        code(KeyCode::Right),
+        code(KeyCode::Left),
+        key('H'),
+        key('L'),
+        key('+'),
+    ] {
+        app.handle_key(k);
+        assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+        assert_eq!(app.overlay, None);
+    }
+}
+
+// The tabs setting chooses the tabs and their order, social among them;
+// what is not a tab is said, and none at all is the default.
+#[test]
+fn the_tabs_setting_orders_the_tabs_and_numbers_follow_it() {
+    let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let (tabs, warn) = tabs_of(&names(&[
+        "Social",
+        "notifications",
+        "home",
+        "home",
+        "feeds",
+    ]));
+    assert_eq!(
+        tabs,
+        [
+            Tab::Timeline(TimelineKind::Social),
+            Tab::Notifications,
+            Tab::Timeline(TimelineKind::Home)
+        ]
+    );
+    assert!(warn.unwrap().contains("feeds is not a tab"));
+    assert_eq!(tabs_of(&[]).0, DEFAULT_TABS);
+    assert_eq!(tabs_of(&names(&["nope"])).0, DEFAULT_TABS);
+    let mut app = logged_in(&["a"]);
+    let jobs = app.set_tabs(tabs);
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Social));
+    assert_eq!(
+        jobs[0].1,
+        Job::Timeline {
+            kind: TimelineKind::Social,
+            until: None
+        }
+    );
+    app.handle_key(key('2'));
+    assert_eq!(app.tab, Tab::Notifications);
+    assert!(app.handle_key(key('5')).is_empty(), "no fifth tab");
+    assert_eq!(app.tab, Tab::Notifications);
+    app.handle_key(key('/'));
+    assert_eq!(app.tab, Tab::Notifications, "no Search tab to go to");
 }
 
 // Near the end the next page is asked for once, older than the last note;
@@ -601,6 +687,8 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('D'),
         key('3'),
         key('5'),
+        key('6'),
+        key('2'),
         key('t'),
         key('i'),
         key('f'),
@@ -1342,7 +1430,7 @@ fn user(v: Value) -> crate::api::types::User {
 #[test]
 fn the_search_tab_searches_notes_and_accounts_and_pages_them() {
     let mut app = logged_in(&[]);
-    app.handle_key(key('3'));
+    app.handle_key(key('5'));
     assert_eq!(app.tab, Tab::Search);
     assert!(app.search.editing);
     type_str(&mut app, "猫 🐈");
@@ -1449,8 +1537,8 @@ fn enter_opens_the_authors_profile_and_esc_goes_back() {
         }
     );
     app.handle_key(code(KeyCode::Esc));
-    assert_eq!(app.tab, Tab::Timeline);
-    let jobs = app.handle_key(key('5'));
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    let jobs = app.handle_key(key('6'));
     assert_eq!(
         jobs[0].1,
         Job::Profile {
@@ -1459,7 +1547,7 @@ fn enter_opens_the_authors_profile_and_esc_goes_back() {
     );
     // A visitor's 5 says how to log in, and asks nothing.
     let (mut visitor, _) = App::new(None, ORIGIN);
-    assert!(visitor.handle_key(key('5')).is_empty());
+    assert!(visitor.handle_key(key('6')).is_empty());
     assert!(visitor.profile.error.as_ref().unwrap().contains("log in"));
 }
 
