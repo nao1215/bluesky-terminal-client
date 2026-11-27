@@ -5,7 +5,7 @@
 //! that may not chat, takes the tab away and says why.
 
 use super::*;
-use crate::api::types::ChatMessage;
+use crate::api::types::{ChatMessage, User};
 use crate::tui::input::TextInput;
 use crate::tui::worker::ChatWith;
 
@@ -24,6 +24,9 @@ pub struct OpenChat {
     pub with: ChatWith,
     /// Who or what it is with, as the list names it.
     pub title: String,
+    /// The account it is with, whose name the title shows as bsky's does;
+    /// `None` for a room.
+    pub user: Option<User>,
     /// The messages, newest first, as the server pages them.
     pub messages: List<ChatMessage>,
     pub input: TextInput,
@@ -62,11 +65,7 @@ pub fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
         return (ChatWith::Room(r.to_string()), format!("# {r}"));
     }
     let from_me = Some(m.from_user_id.as_str()) == me;
-    let other = if from_me {
-        m.to_user.as_ref()
-    } else {
-        m.from_user.as_ref()
-    };
+    let other = partner_user(m, me);
     let id = if from_me {
         m.to_user_id.clone().unwrap_or_default()
     } else {
@@ -80,6 +79,19 @@ pub fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
         },
     );
     (ChatWith::User(id), title)
+}
+
+/// The account message `m` is a conversation with, seen from `me`, when
+/// it is with an account and the server sent it.
+pub fn partner_user<'a>(m: &'a ChatMessage, me: Option<&str>) -> Option<&'a User> {
+    if m.to_room.is_some() || m.to_room_id.is_some() {
+        return None;
+    }
+    if Some(m.from_user_id.as_str()) == me {
+        m.to_user.as_ref()
+    } else {
+        m.from_user.as_ref()
+    }
 }
 
 impl App {
@@ -170,11 +182,12 @@ impl App {
             Some(h) => format!("@{}@{h}", u.username),
             None => format!("@{}", u.username),
         };
-        let with = ChatWith::User(u.id);
+        let with = ChatWith::User(u.id.clone());
         self.tab = Tab::Chat;
         self.chat.open = Some(OpenChat {
             with: with.clone(),
             title,
+            user: Some(u),
             messages: List::default(),
             input: TextInput::single(""),
             typing: false,
@@ -257,9 +270,11 @@ impl App {
             KeyCode::Enter => {
                 let m = self.chat.convos.current()?;
                 let (with, title) = partner(m, me.as_deref());
+                let user = partner_user(m, me.as_deref()).cloned();
                 self.chat.open = Some(OpenChat {
                     with: with.clone(),
                     title,
+                    user,
                     messages: List::default(),
                     input: TextInput::single(""),
                     typing: false,

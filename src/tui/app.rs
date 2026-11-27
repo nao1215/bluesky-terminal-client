@@ -30,7 +30,7 @@ mod write;
 mod tests;
 
 pub use browse::{Profile, Search, SearchMode};
-pub use chat::{ChatPane, partner};
+pub use chat::{ChatPane, partner, partner_user};
 pub use edit_profile::EditProfile;
 pub use report::Report;
 pub use settings::{Environment, SettingRow};

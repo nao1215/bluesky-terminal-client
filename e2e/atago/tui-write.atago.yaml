@@ -252,7 +252,8 @@ scenarios:
                 contains: "7 Chat (1)"
             - send: "7"
             - expect_screen:
-                contains: ["@bob ●", "bob: やあ 👋", "enter open"]
+                contains: ["bob @bob ●", "やあ 👋", "enter open"]
+                not_contains: "bob: やあ"
             - send: { key: enter }
             - expect_screen:
                 contains: ["@bob", "やあ 👋", "i write a message"]
@@ -280,6 +281,81 @@ scenarios:
               json:
                 - { path: "$.toUserId", equals: u-bob }
                 - { path: "$.text", equals: "こんにちは 🇯🇵" }
+
+  # The conversations and their messages draw custom emoji as a note does:
+  # the sender's own (user.emojis), else the server's (/api/emojis) for one
+  # of its accounts; the list names whom a conversation is with by display
+  # name and address, as bsky's does. Reading the chat writes nothing.
+  - name: the Chat tab draws the custom emoji of names and messages as pictures
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/emojis
+            json: { emojis: [ { name: budou, url: "${api.url}/emoji/budou.png", category: null, aliases: [] } ] }
+          - method: POST
+            path: /api/chat/history
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-mika, fromUser: { id: u-mika, username: mika, host: mi.example, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, toUserId: u-me, text: "やあ :iruka: 👨‍👩‍👧" }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m3, createdAt: "2026-11-26T10:01:00.000Z", fromUserId: u-me, fromUser: { id: u-me, username: me }, toUserId: u-mika, text: "ぶどう :budou: 🇯🇵" }
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-mika, fromUser: { id: u-mika, username: mika, host: mi.example, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, toUserId: u-me, text: "やあ :iruka: 👨‍👩‍👧" }
+          - { method: GET, path: /emoji/iruka.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /emoji/budou.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0301",
+             "permissions": ["read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "7 Chat"
+            - send: "7"
+            - expect_screen:
+                contains: ["みか", "@mika@mi.example", "やあ", "👨‍👩‍👧", "enter open"]
+                not_contains: ":iruka:"
+            - expect_screen:
+                images: { count: 1 }
+                stable_for: 500ms
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["@mika@mi.example", "ぶどう", "🇯🇵", "i write a message"]
+                not_contains: [":iruka:", ":budou:"]
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 500ms
+            - send: { key: esc }
+            - expect_screen:
+                contains: "enter open"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /emoji/iruka.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /emoji/budou.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /api/chat/messages/create-to-user, count: 0 }
 
   - name: e on your own profile edits the name and uploads a new avatar, sending only what changed
     mock_servers:

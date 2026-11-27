@@ -884,6 +884,64 @@ fn unread_notifications_and_chats_are_marked() {
     assert!(screen.contains("you: どうも"), "{screen}");
 }
 
+// The Chat tab names whom a conversation is with by display name and
+// address, as bsky's list of conversations does, and draws the custom
+// emoji of the names and the messages as a note's: the sender's own
+// (user.emojis), else the server's for one of its accounts; without
+// pictures their names stay.
+#[test]
+fn chat_names_and_custom_emoji_are_drawn_as_a_notes_are() {
+    let mut app = with_notes(vec![]);
+    app.emojis = [("budou".to_string(), format!("{NOWHERE}/budou.png"))]
+        .into_iter()
+        .collect();
+    let mika = json!({"id": "u-mika", "username": "mika", "host": "mi.example",
+        "name": "みか :iruka:", "emojis": {"iruka": format!("{NOWHERE}/iruka.png")}});
+    let theirs = json!({"id": "c1", "createdAt": "t", "fromUserId": "u-mika", "fromUser": mika,
+        "toUserId": "u-me", "text": "やあ :iruka: 👨‍👩‍👧"});
+    let mine = json!({"id": "c2", "createdAt": "t", "fromUserId": "u-me",
+        "fromUser": {"id": "u-me", "username": "me"}, "toUserId": "u-mika", "toUser": mika,
+        "text": "ぶどう :budou: 🇯🇵"});
+    app.chat.convos.loaded = true;
+    app.chat.convos.items = vec![serde_json::from_value(theirs.clone()).unwrap()];
+    drop(app.handle_key(key('7')));
+    let screen = render(&mut app, 100, 12);
+    assert!(screen.contains("みか"), "{screen}");
+    assert!(screen.contains("@mika@mi.example"), "{screen}");
+    assert!(screen.contains("やあ"), "{screen}");
+    assert!(!screen.contains(":iruka:"), "{screen}");
+    let text = render_text(&mut app, 100, 12);
+    assert!(text.contains("みか :iruka: @mika@mi.example"), "{text}");
+    assert!(text.contains("やあ :iruka: 👨‍👩‍👧"), "{text}");
+    // The list says whom the conversation is with once.
+    assert!(!text.contains("@mika@mi.example:"), "{text}");
+
+    app.pictures = true;
+    drop(app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+    let open = app.chat.open.as_mut().unwrap();
+    open.messages.loaded = true;
+    open.messages.items = vec![
+        serde_json::from_value(mine).unwrap(),
+        serde_json::from_value(theirs).unwrap(),
+    ];
+    let screen = render(&mut app, 100, 14);
+    assert!(screen.contains("@mika@mi.example"), "{screen}");
+    assert!(screen.contains("ぶどう"), "{screen}");
+    assert!(
+        !screen.contains(":iruka:") && !screen.contains(":budou:"),
+        "{screen}"
+    );
+    assert!(
+        !screen.contains('\u{E000}') && !screen.contains('\u{E001}'),
+        "{screen}"
+    );
+    let text = render_text(&mut app, 100, 14);
+    assert!(text.contains("みか :iruka: @mika@mi.example"), "{text}");
+    assert!(text.contains("みか :iruka: · t"), "{text}");
+    assert!(text.contains("やあ :iruka: 👨‍👩‍👧"), "{text}");
+    assert!(text.contains("ぶどう :budou: 🇯🇵"), "{text}");
+}
+
 // A custom emoji the server has is drawn as its picture where pictures
 // are shown, in the text and in the counts; without pictures, and for one
 // it does not have, its name stays.
