@@ -8,11 +8,17 @@ use crate::tui::app::{Profile, Search, SearchMode};
 const ACCOUNT_H: u16 = 3;
 
 /// An account's two lines: who, and the start of what it says.
-fn account_lines(u: &User, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
+fn account_lines(
+    u: &User,
+    width: u16,
+    pictures: bool,
+    urls: &mut Vec<String>,
+    ctx: &Ctx,
+) -> Vec<Line<'static>> {
     let t = &ctx.t;
     let width = usize::from(width.max(1));
     let mut head = vec![
-        Span::styled(display_name(u), Style::new().bold()),
+        Span::styled(name_cells(u, pictures, ctx, urls), Style::new().bold()),
         Span::styled(format!(" {}", acct(u)), t.dim()),
     ];
     if u.is_following {
@@ -95,14 +101,15 @@ fn draw_accounts(
             };
             images.draw(frame, r, url);
         }
-        frame.render_widget(
-            Paragraph::new(account_lines(u, content.width, ctx)),
-            Rect {
-                y,
-                height: 2,
-                ..content
-            },
-        );
+        let mut urls = Vec::new();
+        let lines = account_lines(u, content.width, images.shows(), &mut urls, ctx);
+        let text = Rect {
+            y,
+            height: 2,
+            ..content
+        };
+        frame.render_widget(Paragraph::new(lines), text);
+        draw_emoji_cells(frame, text, &urls, images);
         y += ACCOUNT_H;
     }
 }
@@ -161,11 +168,18 @@ pub(super) fn draw_search(
 /// The account's header lines, as bsky's: the name, the address, the
 /// counts, how you are related (or, on your own, the buttons for the keys
 /// that edit it), and what it says about itself as MFM draws it.
-fn header_lines(u: &User, width: u16, me: bool, ctx: &Ctx) -> Vec<Line<'static>> {
+fn header_lines(
+    u: &User,
+    width: u16,
+    me: bool,
+    pictures: bool,
+    urls: &mut Vec<String>,
+    ctx: &Ctx,
+) -> Vec<Line<'static>> {
     let t = &ctx.t;
     let width_us = usize::from(width.max(1));
     let mut lines = vec![truncate_line(
-        Line::styled(display_name(u), Style::new().bold()),
+        Line::styled(name_cells(u, pictures, ctx, urls), Style::new().bold()),
         width_us,
     )];
     let mut who = vec![Span::styled(acct(u), t.dim())];
@@ -239,7 +253,18 @@ fn header_lines(u: &User, width: u16, me: bool, ctx: &Ctx) -> Vec<Line<'static>>
         lines.push(truncate_line(Line::from(rel), width_us));
     }
     if let Some(d) = u.description.as_deref().filter(|d| !d.trim().is_empty()) {
-        lines.extend(mfm_lines(d, width_us).into_iter().take(4));
+        let mut picture = |e: &str| pictures.then(|| user_emoji(u, e, ctx)).flatten();
+        let mut found = Vec::new();
+        let desc = mfm_lines_urls(d, width_us, &mut picture, &mut found);
+        // Only the pictures of the lines shown are drawn.
+        let shown: Vec<Line<'static>> = desc.into_iter().take(4).collect();
+        let cells_shown: usize = shown
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.matches('\u{E000}').count())
+            .sum();
+        urls.extend(found.into_iter().take(cells_shown));
+        lines.extend(shown);
     }
     lines
 }
@@ -271,7 +296,8 @@ pub(super) fn draw_profile(
     };
     let text_w = area.width.saturating_sub(text_x);
     let me = p.own(ctx.me);
-    let lines = header_lines(&u, text_w, me, ctx);
+    let mut urls = Vec::new();
+    let lines = header_lines(&u, text_w, me, images.shows(), &mut urls, ctx);
     let h = (lines.len() as u16).max(big.1) + 1;
     let [head, list] = Layout::vertical([Constraint::Length(h), Constraint::Min(1)]).areas(area);
     if images.shows()
@@ -285,14 +311,13 @@ pub(super) fn draw_profile(
         };
         images.draw(frame, a.intersection(head), url);
     }
-    frame.render_widget(
-        Paragraph::new(lines),
-        Rect {
-            x: head.x + text_x.min(head.width),
-            y: head.y,
-            width: text_w,
-            height: head.height.saturating_sub(1),
-        },
-    );
+    let text = Rect {
+        x: head.x + text_x.min(head.width),
+        y: head.y,
+        width: text_w,
+        height: head.height.saturating_sub(1),
+    };
+    frame.render_widget(Paragraph::new(lines), text);
+    draw_emoji_cells(frame, text, &urls, images);
     draw_notes(frame, list, &mut p.notes, images, n!("No notes yet."), ctx);
 }

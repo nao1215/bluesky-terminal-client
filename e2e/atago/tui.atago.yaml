@@ -500,6 +500,69 @@ scenarios:
       - assert:
           mock: { name: api, path: /emoji/blobcat.png, count: 1 }
 
+  # A custom emoji in a display name (from the account's own emojis), in
+  # a quoted note's line and in the note a notification is about is drawn
+  # as its picture, as in a note's text; leaving the tab leaves nothing of
+  # the reaction counts drawn beside their pictures.
+  - name: custom emoji in names, quotes and notifications are pictures, and the counts beside them go with the tab
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: q1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-mika, user: { id: u-mika, username: mika, host: x.test, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, text: "見て", renoteId: o1, renote: { id: o1, createdAt: "2026-11-26T09:00:00.000Z", user: { username: bob }, text: "ぶどう :budou: 🍇" }, reactions: { "🏛️": 4, ":budou@.:": 2 } }
+          - method: POST
+            path: /api/i/notifications
+            json:
+              - { id: nt1, createdAt: "2026-11-26T10:05:00.000Z", type: reaction, reaction: ":budou@.:", user: { id: u-mika, username: mika, host: x.test, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, note: { id: m1, createdAt: "2026-11-26T08:00:00.000Z", user: { username: me }, text: "今日の :budou:" } }
+          - { method: POST, path: /api/chat/history, json: [] }
+          - method: POST
+            path: /api/emojis
+            json: { emojis: [ { name: budou, url: "${api.url}/emoji/budou.png", category: null, aliases: [] } ] }
+          - { method: GET, path: /emoji/iruka.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /emoji/budou.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0101", "permissions": ["read:account", "read:notifications"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["みか", "@mika@x.test", "❝ @bob: ぶどう", "🍇", "🏛️ 4"]
+                not_contains: [":iruka:", ":budou:"]
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 500ms
+            - send: "4"
+            - expect_screen:
+                contains: ["@mika@x.test reacted", "to your note", "今日の"]
+                not_contains: [":iruka:", ":budou:", "見て", "🏛️"]
+                stable_for: 500ms
+            - send: "1"
+            - expect_screen:
+                contains: ["見て", "🏛️ 4"]
+                not_contains: ["44", "22", "reacted"]
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+
   - name: s opens the settings, T picks a theme and the language turns the client Japanese, kept in settings.json
     mock_servers:
       - name: api

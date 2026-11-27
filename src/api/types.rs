@@ -20,6 +20,9 @@ pub struct User {
     pub name: Option<String>,
     /// The address of its avatar picture.
     pub avatar_url: Option<String>,
+    /// The custom emoji its name uses, with their pictures' addresses:
+    /// another server's, which the server read would not know.
+    pub emojis: BTreeMap<String, String>,
     /// What the account says about itself (`UserDetailed` only).
     pub description: Option<String>,
     pub followers_count: Option<u64>,

@@ -252,6 +252,33 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {
         draw_error(frame, area, &s.text, &t);
     }
+    keep_wide_cells_whole(frame.buffer_mut());
+}
+
+/// Have every character two cells wide written as one, its second cell
+/// left alone. ratatui writes the cell after a character with VS16 (`🏛️`,
+/// `❤️`) on its own, right after it, without moving the cursor there; the
+/// terminal has moved two cells on, so that cell and every one written
+/// after it on the line landed one cell to the right of where ratatui
+/// thought: on kitty the counts after such a reaction stayed on screen
+/// after the tab changed, and showed twice when it came back. A forced
+/// width writes the character and skips its second cell, as ratatui does
+/// for every other wide character.
+fn keep_wide_cells_whole(buf: &mut ratatui::buffer::Buffer) {
+    use ratatui::buffer::CellDiffOption;
+    for cell in buf.content.iter_mut() {
+        if cell.diff_option != CellDiffOption::None || !cell.symbol().contains('\u{FE0F}') {
+            continue;
+        }
+        let w = cell.symbol().width();
+        if let Some(w) = u16::try_from(w)
+            .ok()
+            .filter(|w| *w > 1)
+            .and_then(std::num::NonZeroU16::new)
+        {
+            cell.diff_option = CellDiffOption::ForcedWidth(w);
+        }
+    }
 }
 
 /// What every note is drawn with.
@@ -565,6 +592,45 @@ fn display_name(u: &User) -> String {
     name.unwrap_or_else(|| crate::tui::text::one_line(&drawable(&u.username)))
 }
 
+/// The picture of custom emoji `name` in the name of `u`: one its own
+/// server sent with it, else the server read's own for one of its
+/// accounts.
+fn user_emoji(u: &User, name: &str, ctx: &Ctx) -> Option<String> {
+    if let Some(url) = u.emojis.get(name) {
+        return Some(url.clone());
+    }
+    if u.host.as_deref().is_none_or(str::is_empty) {
+        return ctx.emojis.get(name).cloned();
+    }
+    None
+}
+
+/// [`display_name`] with the custom emoji it has pictures for laid out as
+/// [`EMOJI_CELLS`] when `pictures`, as a note's text has them.
+fn name_cells(u: &User, pictures: bool, ctx: &Ctx, urls: &mut Vec<String>) -> String {
+    let name = display_name(u);
+    if !pictures {
+        return name;
+    }
+    with_emoji_cells(&name, &mut |e| user_emoji(u, e, ctx), urls)
+}
+
+/// [`first_line`] with the custom emoji of `n` laid out as
+/// [`EMOJI_CELLS`] when `pictures`.
+fn first_line_cells(
+    n: &Note,
+    opened: bool,
+    pictures: bool,
+    ctx: &Ctx,
+    urls: &mut Vec<String>,
+) -> String {
+    let line = first_line(n, opened);
+    if !pictures {
+        return line;
+    }
+    with_emoji_cells(&line, &mut |e| emoji_of(n, e, ctx), urls)
+}
+
 /// The first line of what `n` says, its warning in place of a text it
 /// hides.
 fn first_line(n: &Note, opened: bool) -> String {
@@ -870,13 +936,20 @@ impl NoteLines {
         let t = &ctx.t;
         let width = usize::from(width.max(1));
         let shown = n.shown();
+        let pictures = cell.is_some();
+        // The pictures of custom emoji, in the order they are on screen:
+        // the lines above, the header, the text, the quote, the counts.
+        let mut emoji: Vec<String> = Vec::new();
         let mut context = Vec::new();
         if n.is_pure_renote() {
             context.push(Line::styled(
                 truncate(
                     &i18n::tf(
                         "⟳ renoted by {} {}",
-                        &[&display_name(&n.user), &acct(&n.user)],
+                        &[
+                            &name_cells(&n.user, pictures, ctx, &mut emoji),
+                            &acct(&n.user),
+                        ],
                     ),
                     width,
                 ),
@@ -889,9 +962,15 @@ impl NoteLines {
                 truncate(
                     &format!(
                         "┆ {} {}: {}",
-                        display_name(&parent.user),
+                        name_cells(&parent.user, pictures, ctx, &mut emoji),
                         acct(&parent.user),
-                        first_line(parent, opened || parent.cw.is_none())
+                        first_line_cells(
+                            parent,
+                            opened || parent.cw.is_none(),
+                            pictures,
+                            ctx,
+                            &mut emoji
+                        )
                     ),
                     width,
                 ),
@@ -899,7 +978,10 @@ impl NoteLines {
             ));
         }
         let mut header = vec![
-            Span::styled(display_name(&shown.user), Style::new().bold()),
+            Span::styled(
+                name_cells(&shown.user, pictures, ctx, &mut emoji),
+                Style::new().bold(),
+            ),
             Span::styled(format!(" {}", acct(&shown.user)), t.dim()),
             Span::styled(format!(" · {}", format_time(&shown.created_at)), t.dim()),
         ];
@@ -909,7 +991,6 @@ impl NoteLines {
         let header = truncate_line(Line::from(header), width);
 
         let mut body: Vec<Line<'static>> = Vec::new();
-        let mut emoji: Vec<String> = Vec::new();
         let text_shown = shown.cw.is_none() || ctx.opened.contains(&shown.id);
         if let Some(cw) = &shown.cw {
             let cw = if cw.trim().is_empty() {
@@ -951,7 +1032,7 @@ impl NoteLines {
                 Some(q) => format!(
                     "❝ {}: {}",
                     acct(&q.user),
-                    first_line(q, ctx.opened.contains(&q.id))
+                    first_line_cells(q, ctx.opened.contains(&q.id), pictures, ctx, &mut emoji)
                 ),
                 None => format!("❝ {}", i18n::t("(the quoted note is not shown)")),
             };
@@ -1359,7 +1440,16 @@ fn happened(n: &Notification) -> String {
     what.to_string()
 }
 
-fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
+/// A notification's two lines; with `pictures`, the custom emoji in them
+/// are laid out as [`EMOJI_CELLS`], their pictures pushed to `urls` in
+/// the order they are on screen.
+fn notification_lines(
+    n: &Notification,
+    width: u16,
+    pictures: bool,
+    urls: &mut Vec<String>,
+    ctx: &Ctx,
+) -> Vec<Line<'static>> {
     let t = &ctx.t;
     let width = usize::from(width.max(1));
     let mut head = Vec::new();
@@ -1367,11 +1457,24 @@ fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'stat
         head.push(Span::styled("● ", t.accent()));
     }
     if let Some(u) = &n.user {
-        head.push(Span::styled(display_name(u), Style::new().bold()));
+        head.push(Span::styled(
+            name_cells(u, pictures, ctx, urls),
+            Style::new().bold(),
+        ));
         head.push(Span::styled(format!(" {}", acct(u)), t.dim()));
         head.push(Span::raw(" "));
     }
-    head.push(Span::raw(happened(n)));
+    let what = happened(n);
+    // A reaction with a custom emoji is drawn as its picture, as on the note.
+    let what = match (&n.note, pictures, n.kind.as_str()) {
+        (Some(note), true, "reaction") => with_emoji_cells(
+            &what,
+            &mut |e| reaction_picture(note, &format!(":{e}:"), ctx),
+            urls,
+        ),
+        _ => what,
+    };
+    head.push(Span::raw(what));
     head.push(Span::styled(
         format!(" · {}", format_time(&n.created_at)),
         t.dim(),
@@ -1379,7 +1482,13 @@ fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'stat
     let second = match &n.note {
         Some(note) => {
             let s = note.shown();
-            let line = first_line(s, s.cw.is_none() || ctx.opened.contains(&s.id));
+            let line = first_line_cells(
+                s,
+                s.cw.is_none() || ctx.opened.contains(&s.id),
+                pictures,
+                ctx,
+                urls,
+            );
             // A reply or a mention is the note itself; a reaction or a
             // renote is about your own, drawn dim.
             if matches!(n.kind.as_str(), "reply" | "mention" | "quote") {
@@ -1441,14 +1550,15 @@ fn draw_notifications(
             };
             images.draw(frame, r, url);
         }
-        frame.render_widget(
-            Paragraph::new(notification_lines(item, content.width, ctx)),
-            Rect {
-                y,
-                height: 2,
-                ..content
-            },
-        );
+        let mut urls = Vec::new();
+        let lines = notification_lines(item, content.width, images.shows(), &mut urls, ctx);
+        let text = Rect {
+            y,
+            height: 2,
+            ..content
+        };
+        frame.render_widget(Paragraph::new(lines), text);
+        draw_emoji_cells(frame, text, &urls, images);
         y += H;
     }
     let shown = usize::from(area.height / H);
