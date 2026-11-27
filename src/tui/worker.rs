@@ -7,7 +7,7 @@
 //! they run side by side on a few threads, and a thread opened meanwhile
 //! does not wait behind a slow page.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -80,6 +80,10 @@ pub enum Job {
     MarkRead,
     /// The server's custom emoji.
     Emojis,
+    /// The account's own profile, for the editor to start from.
+    LoadProfileEditor,
+    /// Save the profile's changes.
+    SaveProfile(Box<ProfileChange>),
     /// The latest message of each conversation, with accounts and rooms.
     ChatHistory,
     /// The messages of conversation `with`, newest first: the latest, or
@@ -118,6 +122,22 @@ pub enum Job {
     /// Wait for the access asked for with MiAuth `session` on the server at
     /// `origin`, and make the login of it.
     Login { origin: String, session: String },
+}
+
+/// What the profile editor changes: a field left as it came is `None`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProfileChange {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    /// A picture to upload for the avatar, and for the banner.
+    pub avatar: Option<PathBuf>,
+    pub banner: Option<PathBuf>,
+}
+
+impl ProfileChange {
+    pub fn is_empty(&self) -> bool {
+        *self == ProfileChange::default()
+    }
 }
 
 /// Whom a chat conversation is with.
@@ -196,6 +216,8 @@ pub enum Event {
     MarkedRead(Result<()>),
     /// The server's custom emoji: name and picture address.
     Emojis(Result<Vec<(String, String)>>),
+    ProfileEditor(Result<Box<User>>),
+    ProfileSaved(Result<Box<User>>),
     ChatHistory(Result<Vec<ChatMessage>>),
     ChatMessages {
         with: ChatWith,
@@ -279,6 +301,8 @@ impl Job {
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
             Job::Emojis => Event::Emojis(Err(e)),
+            Job::LoadProfileEditor => Event::ProfileEditor(Err(e)),
+            Job::SaveProfile(_) => Event::ProfileSaved(Err(e)),
             Job::ChatHistory => Event::ChatHistory(Err(e)),
             Job::ChatMessages { with, until } => Event::ChatMessages {
                 with,
@@ -379,6 +403,10 @@ pub fn run(job: Job, client: &Client) -> Event {
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
         Job::Emojis => Event::Emojis(client.emojis()),
+        Job::LoadProfileEditor => Event::ProfileEditor(client.me().map(Box::new)),
+        Job::SaveProfile(change) => {
+            Event::ProfileSaved(save_profile(client, &change).map(Box::new))
+        }
         Job::ChatHistory => Event::ChatHistory(chat_history(client)),
         Job::ChatMessages { with, until } => {
             let (u, r) = with.ids();
@@ -518,6 +546,47 @@ fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
     client.user_by_id(id)
 }
 
+/// Upload the file at `path` to the account's drive, with `alt` as its
+/// alt text, and return its ID.
+fn upload(client: &Client, path: &Path, alt: Option<&str>) -> Result<String> {
+    let len = std::fs::metadata(path)
+        .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?
+        .len();
+    if len > MAX_UPLOAD_BYTES {
+        return Err(Error::usage(format!(
+            "{} is larger than {} MB",
+            path.display(),
+            MAX_UPLOAD_BYTES / 1024 / 1024
+        )));
+    }
+    let data = std::fs::read(path)
+        .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    Ok(client.upload(&name, &data, alt)?.id)
+}
+
+/// Upload the pictures the editor chose, then change the profile with
+/// `i/update`, sending only what changed.
+fn save_profile(client: &Client, change: &ProfileChange) -> Result<User> {
+    let mut body = json!({});
+    if let Some(n) = &change.name {
+        body["name"] = json!(n);
+    }
+    if let Some(d) = &change.description {
+        body["description"] = json!(d);
+    }
+    if let Some(p) = &change.avatar {
+        body["avatarId"] = json!(upload(client, p, None)?);
+    }
+    if let Some(p) = &change.banner {
+        body["bannerId"] = json!(upload(client, p, None)?);
+    }
+    client.update_me(&body)
+}
+
 /// The conversations with accounts and with rooms, the newest first.
 fn chat_history(client: &Client) -> Result<Vec<ChatMessage>> {
     let mut all = client.chat_history(false, PAGE)?;
@@ -556,24 +625,8 @@ fn post(client: &Client, d: &Draft) -> Result<Note> {
     }
     let mut ids = Vec::new();
     for (path, alt) in &d.files {
-        let len = std::fs::metadata(path)
-            .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?
-            .len();
-        if len > MAX_UPLOAD_BYTES {
-            return Err(Error::usage(format!(
-                "{} is larger than {} MB",
-                path.display(),
-                MAX_UPLOAD_BYTES / 1024 / 1024
-            )));
-        }
-        let data = std::fs::read(path)
-            .map_err(|e| Error::io(format!("cannot read {}: {e}", path.display())))?;
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "file".into());
         let alt = (!alt.trim().is_empty()).then_some(alt.as_str());
-        ids.push(client.upload(&name, &data, alt)?.id);
+        ids.push(upload(client, path, alt)?);
     }
     let mut body = json!({"visibility": d.visibility.name()});
     if !d.text.is_empty() {
@@ -728,6 +781,42 @@ mod tests {
             assert!(start.elapsed() < Duration::from_secs(10), "no answer");
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    // Saving the profile uploads the pictures chosen, then sends only what
+    // changed to i/update, the pictures by their new IDs.
+    #[test]
+    fn saving_the_profile_uploads_the_pictures_and_sends_what_changed() {
+        let (url, log) = serve(Arc::new(|path, _body, n| match path {
+            "/api/drive/files/create" => reply(
+                200,
+                &format!(r#"{{"id":"f{n}","name":"a.png","type":"image/png"}}"#),
+            ),
+            "/api/i/update" => reply(200, r#"{"id":"u-me","username":"me","name":"ねこ 🐈‍⬛"}"#),
+            _ => reply(404, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("a.png");
+        std::fs::write(&png, b"\x89PNG\r\n\x1a\nfake").unwrap();
+        let client = Client::new(&url).with_token(Some("fake-token-for-tests".into()));
+        let change = ProfileChange {
+            name: Some("ねこ 🐈‍⬛".into()),
+            description: None,
+            avatar: None,
+            banner: Some(png),
+        };
+        let u = save_profile(&client, &change).unwrap();
+        assert_eq!(u.name.as_deref(), Some("ねこ 🐈‍⬛"));
+        let log = log.lock().unwrap();
+        let paths: Vec<&str> = log.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(paths, ["/api/drive/files/create", "/api/i/update"]);
+        let v: Value = serde_json::from_str(&log[1].1).unwrap();
+        assert_eq!(v["name"], "ねこ 🐈‍⬛");
+        assert_eq!(v["bannerId"], "f0");
+        assert!(
+            v.get("description").is_none() && v.get("avatarId").is_none(),
+            "{v}"
+        );
     }
 
     // A thread is its note, what it answers (the first note first) and two

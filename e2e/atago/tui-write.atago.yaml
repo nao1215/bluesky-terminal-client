@@ -279,3 +279,85 @@ scenarios:
               json:
                 - { path: "$.toUserId", equals: u-bob }
                 - { path: "$.text", equals: "こんにちは 🇯🇵" }
+
+  - name: e on your own profile edits the name and uploads a new avatar, sending only what changed
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/i
+            json: { id: u-me, username: me, name: "猫", description: "説明 🇯🇵" }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-me, username: me, name: "猫", description: "説明 🇯🇵" }
+          - { method: POST, path: /api/users/notes, json: [] }
+          - method: POST
+            path: /api/drive/files/create
+            json: { id: f-avatar, name: avatar.png, type: image/png }
+          - method: POST
+            path: /api/i/update
+            json: { id: u-me, username: me, name: "猫 🐈‍⬛", description: "説明 🇯🇵" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0501",
+             "permissions": ["read:account", "write:account", "write:drive"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture:
+          file: avatar.png
+          content: "\x89PNG fake"
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "6 Profile"
+            - send: "6"
+            - expect_screen:
+                contains: ["e edit profile", "猫"]
+            - send: e
+            - expect_screen:
+                contains: ["Edit profile", "Name", "説明 🇯🇵", "ctrl+s save"]
+            - send: " 🐈‍⬛"
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: "${workdir}/avatar.png"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile saved"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/drive/files/create
+            count: 1
+      - assert:
+          mock:
+            name: api
+            path: /api/i/update
+            count: 1
+            body:
+              json:
+                - { path: "$.name", equals: "猫 🐈‍⬛" }
+                - { path: "$.avatarId", equals: f-avatar }
+      - assert:
+          mock:
+            name: api
+            path: /api/i/update
+            body:
+              not_contains: description

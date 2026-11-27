@@ -92,6 +92,10 @@ pub const HELP: &[Section] = &[
         title: n!("Profile"),
         keys: &[
             ("", n!("its tab is your own profile")),
+            (
+                "e",
+                n!("edit your profile: name, description, avatar, banner"),
+            ),
             ("f", n!("follow / unfollow the account shown")),
             ("M", n!("mute / unmute the account shown")),
             ("B", n!("block / unblock the account: y confirms")),
@@ -229,6 +233,22 @@ fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
 
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
+        Some(Overlay::EditProfile(e)) if e.browser.is_some() => {
+            return vec![
+                ("enter", n!("open / choose")),
+                ("h", n!("up")),
+                (".", n!("hidden")),
+                ("esc", n!("close without choosing")),
+            ];
+        }
+        Some(Overlay::EditProfile(_)) => {
+            return vec![
+                ("tab", n!("next field")),
+                ("ctrl+o", n!("choose a picture")),
+                ("ctrl+s", n!("save")),
+                ("esc", n!("cancel")),
+            ];
+        }
         Some(Overlay::Help { .. }) => return vec![("j k", n!("scroll")), ("esc", n!("close"))],
         Some(Overlay::Settings { edit: Some(_), .. }) => {
             return vec![("enter", n!("keep")), ("esc", n!("cancel"))];
@@ -391,6 +411,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
         Tab::Profile => vec![
             ("j k", n!("move")),
             (".", n!("actions")),
+            ("e", n!("edit profile")),
             ("s", n!("settings")),
             ("R", n!("reload")),
         ],

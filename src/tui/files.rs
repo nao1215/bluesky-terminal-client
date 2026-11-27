@@ -59,6 +59,19 @@ impl crate::tui::app::Keyed for Entry {
     }
 }
 
+/// `path` with a leading `~` as the home folder, as a shell reads it.
+pub fn expand_home(path: &str) -> PathBuf {
+    match path.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => {
+            match dirs::home_dir() {
+                Some(home) => home.join(rest.trim_start_matches(['/', '\\'])),
+                None => PathBuf::from(path),
+            }
+        }
+        _ => PathBuf::from(path),
+    }
+}
+
 /// What the browser asks of whoever opened it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {

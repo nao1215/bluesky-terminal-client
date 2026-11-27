@@ -39,6 +39,8 @@ pub const PERMISSIONS: &[&str] = &[
     "write:blocks",
     "read:chat",
     "write:chat",
+    "write:account",
+    "write:report-abuse",
 ];
 
 /// How long `msky login` waits for the access by default.
@@ -261,7 +263,7 @@ mod tests {
         let url = auth_url("https://misskey.io", "abc");
         assert_eq!(
             url,
-            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks,read:chat,write:chat"
+            "https://misskey.io/miauth/abc?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks,read:chat,write:chat,write:account,write:report-abuse"
         );
         let writes: Vec<&str> = PERMISSIONS
             .iter()
@@ -278,7 +280,9 @@ mod tests {
                 "write:notifications",
                 "write:mutes",
                 "write:blocks",
-                "write:chat"
+                "write:chat",
+                "write:account",
+                "write:report-abuse"
             ]
         );
     }

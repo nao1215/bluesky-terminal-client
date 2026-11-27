@@ -162,7 +162,7 @@ fn media_problem(media: &[Attached]) -> Option<String> {
 
 /// Where the file browser opens: the folder it last showed, else the
 /// current directory, else the home directory.
-fn browse_start(last: &Option<PathBuf>) -> PathBuf {
+pub(super) fn browse_start(last: &Option<PathBuf>) -> PathBuf {
     last.clone()
         .or_else(|| std::env::current_dir().ok())
         .or_else(dirs::home_dir)

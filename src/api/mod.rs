@@ -603,6 +603,15 @@ impl Client {
     }
 
     /// `i`: the account the token is of.
+    /// `i/update`: change the account's own profile with the fields of
+    /// `body` (`name`, `description`, `avatarId`, `bannerId`), and return
+    /// it as it now is. Sent once, as every write is.
+    pub fn update_me(&self, body: &Value) -> Result<User> {
+        let v = self.call("i/update", body)?;
+        serde_json::from_value(v)
+            .map_err(|e| Error::api(format!("i/update: unexpected answer: {e}")))
+    }
+
     pub fn me(&self) -> Result<User> {
         let v = self.call("i", &json!({}))?;
         serde_json::from_value(v).map_err(|e| Error::api(format!("i: unexpected answer: {e}")))

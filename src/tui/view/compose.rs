@@ -22,7 +22,7 @@ pub(super) fn draw_single_input(frame: &mut Frame, area: Rect, input: &TextInput
     }
 }
 
-fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
+pub(super) fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
     let layout = input.layout(usize::from(area.width.max(1)));
     let h = usize::from(area.height.max(1));
     let first = layout.cursor.0.saturating_sub(h - 1);

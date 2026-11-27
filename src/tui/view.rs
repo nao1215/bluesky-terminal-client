@@ -24,6 +24,7 @@ use crate::tui::theme::Theme;
 mod browse;
 mod chat;
 mod compose;
+mod edit_profile;
 mod settings;
 #[cfg(test)]
 mod tests;
@@ -142,7 +143,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
                 &t,
             );
         }
-        Some(Overlay::Compose(_)) => {}
+        Some(Overlay::Compose(_) | Overlay::EditProfile(_)) => {}
         Some(Overlay::Settings { selected, edit }) => {
             let rows = app.settings_rows();
             settings::draw_settings(frame, area, &rows, *selected, edit.as_ref(), &t);
@@ -172,6 +173,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     );
     if !video_shown {
         images.stop_video();
+    }
+    if let Some(Overlay::EditProfile(e)) = &mut app.overlay {
+        edit_profile::draw_edit_profile(frame, area, e, images, &t);
     }
     if let Some(Overlay::Compose(c)) = &mut app.overlay {
         draw_compose(frame, area, c, images, &t);

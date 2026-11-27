@@ -707,6 +707,9 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('i'),
         key('s'),
         key('T'),
+        key('e'),
+        code(KeyCode::Tab),
+        KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL),
         key('t'),
         key('i'),
         key('f'),
@@ -806,6 +809,26 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                         result: if fail { Err(Error::api("x")) } else { Ok(()) },
                     },
                     Job::MarkRead => Event::MarkedRead(Ok(())),
+                    Job::LoadProfileEditor => Event::ProfileEditor(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok(Box::new(
+                            serde_json::from_value(
+                                json!({"id": "u-me", "username": "me", "name": "名前"}),
+                            )
+                            .unwrap(),
+                        ))
+                    }),
+                    Job::SaveProfile(_) => Event::ProfileSaved(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok(Box::new(
+                            serde_json::from_value(
+                                json!({"id": "u-me", "username": "me", "name": "新"}),
+                            )
+                            .unwrap(),
+                        ))
+                    }),
                     Job::ChatHistory => Event::ChatHistory(if fail {
                         Err(Error::api("x"))
                     } else {
@@ -2089,4 +2112,99 @@ fn the_language_is_the_settings_then_the_locale() {
         _ => None,
     });
     assert_eq!(language(&set(None), &lc_all), Lang::Ja);
+}
+
+// e on your own Profile tab opens the editor, which starts from the
+// profile read; ctrl+s sends only what changed, once; a failure keeps the
+// editor open; esc closes it. On another account's profile e reacts.
+#[test]
+fn e_on_your_own_profile_edits_it() {
+    let mut app = writer(vec![]);
+    let jobs = app.handle_key(key('6'));
+    assert_eq!(app.tab, Tab::Profile);
+    let seq = jobs[0].0;
+    app.handle_answer(
+        seq,
+        Event::Profile(Ok(Box::new((
+            serde_json::from_value(json!({"id": "u-me", "username": "me"})).unwrap(),
+            vec![],
+        )))),
+    );
+    let jobs = app.handle_key(key('e'));
+    assert_eq!(jobs[0].1, Job::LoadProfileEditor);
+    // Keys before the profile came are not typed.
+    app.handle_key(key('x'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ProfileEditor(Ok(Box::new(
+            serde_json::from_value(json!({"id": "u-me", "username": "me", "name": "猫", "description": "説明\n二行目"})).unwrap(),
+        ))),
+    );
+    let Some(Overlay::EditProfile(e)) = &app.overlay else {
+        panic!("{:?}", app.overlay)
+    };
+    assert_eq!(e.fields[0].text(), "猫");
+    assert_eq!(e.fields[1].text(), "説明\n二行目");
+    // Unchanged: nothing is sent.
+    assert!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
+            .is_empty()
+    );
+    assert!(app.overlay.is_none());
+    let jobs = app.handle_key(key('e'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ProfileEditor(Ok(Box::new(
+            serde_json::from_value(json!({"id": "u-me", "username": "me", "name": "猫"})).unwrap(),
+        ))),
+    );
+    type_str(&mut app, " 🐈‍⬛");
+    app.handle_key(code(KeyCode::Tab));
+    app.handle_key(code(KeyCode::Tab));
+    app.handle_key(code(KeyCode::Tab));
+    type_str(&mut app, "/tmp/banner.txt");
+    let none = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    assert!(none.is_empty(), "not a picture");
+    assert!(app.status.as_ref().unwrap().text.contains("not a picture"));
+    for _ in 0..4 {
+        app.handle_key(code(KeyCode::Backspace));
+    }
+    type_str(&mut app, ".png");
+    let jobs = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    let Job::SaveProfile(change) = &jobs[0].1 else {
+        panic!("{jobs:?}")
+    };
+    assert_eq!(change.name.as_deref(), Some("猫 🐈‍⬛"));
+    assert_eq!(change.description, None);
+    assert_eq!(
+        change.banner,
+        Some(std::path::PathBuf::from("/tmp/banner.png"))
+    );
+    assert!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
+            .is_empty(),
+        "once"
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::ProfileSaved(Err(Error::api("i/update failed: INVALID_PARAM"))),
+    );
+    assert!(
+        matches!(app.overlay, Some(Overlay::EditProfile(_))),
+        "kept open"
+    );
+    let jobs = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    app.handle_answer(
+        jobs[0].0,
+        Event::ProfileSaved(Ok(Box::new(
+            serde_json::from_value(json!({"id": "u-me", "username": "me", "name": "猫 🐈‍⬛"}))
+                .unwrap(),
+        ))),
+    );
+    assert!(app.overlay.is_none());
+    assert_eq!(
+        app.profile.user.as_ref().unwrap().name.as_deref(),
+        Some("猫 🐈‍⬛")
+    );
+    assert_eq!(app.status.as_ref().unwrap().text, "profile saved");
 }

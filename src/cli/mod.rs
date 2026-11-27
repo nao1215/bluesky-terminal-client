@@ -1769,7 +1769,7 @@ mod tests {
             "the check carries no token"
         );
         assert!(
-            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks,read:chat,write:chat\n")),
+            err.contains(&format!("{url}/miauth/{session}?name=msky&permission=read:account,read:notifications,read:following,read:reactions,write:notes,write:drive,write:following,write:reactions,write:notifications,read:mutes,write:mutes,read:blocks,write:blocks,read:chat,write:chat,write:account,write:report-abuse\n")),
             "{err}"
         );
         assert!(!err.contains(FAKE) && !out.contains(FAKE));

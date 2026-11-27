@@ -19,6 +19,7 @@ use crate::tui::worker::{Event, Job, Thread};
 
 mod browse;
 mod chat;
+mod edit_profile;
 mod settings;
 mod write;
 
@@ -27,6 +28,7 @@ mod tests;
 
 pub use browse::{Profile, Search, SearchMode};
 pub use chat::{ChatPane, partner};
+pub use edit_profile::EditProfile;
 pub use settings::{Environment, SettingRow};
 pub use write::Compose;
 
@@ -444,6 +446,8 @@ pub enum Overlay {
     Themes { selected: usize, previous: usize },
     /// The languages, from the settings screen.
     Languages { selected: usize },
+    /// The profile editor, opened with `e` on your own profile.
+    EditProfile(Box<EditProfile>),
 }
 
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
@@ -654,7 +658,8 @@ impl App {
 
     fn info(&mut self, text: impl Into<String>) {
         self.status = Some(Status {
-            text: text.into(),
+            // A string marked for translation shows in the language in use.
+            text: crate::i18n::t(&text.into()).to_string(),
             error: false,
             at: Instant::now(),
         });
@@ -662,7 +667,8 @@ impl App {
 
     fn error(&mut self, text: impl Into<String>) {
         self.status = Some(Status {
-            text: text.into(),
+            // A string marked for translation shows in the language in use.
+            text: crate::i18n::t(&text.into()).to_string(),
             error: true,
             at: Instant::now(),
         });
@@ -891,6 +897,9 @@ impl App {
             | Event::SearchNotes { .. }
             | Event::SearchUsers { .. }) => self.browse_answer(seq, e),
             Event::Followed { user_id, result } => self.followed(&user_id, result),
+            e @ (Event::ProfileEditor(_) | Event::ProfileSaved(_)) => {
+                return self.edit_profile_answer(e);
+            }
             e @ (Event::ChatHistory(_) | Event::ChatMessages { .. } | Event::ChatSent { .. }) => {
                 self.chat_answer(seq, e)
             }
@@ -1030,6 +1039,7 @@ impl App {
                 self.themes_key(key, selected, previous);
                 return Vec::new();
             }
+            Overlay::EditProfile(_) => return self.edit_profile_key(key),
             Overlay::Languages { selected } => {
                 let selected = *selected;
                 self.languages_key(key, selected);
@@ -1053,7 +1063,7 @@ impl App {
                     KeyCode::Enter => {
                         self.overlay = None;
                         if let Some((k, _)) = entries.get(selected) {
-                            return self.main_key(keys::action_key(k));
+                            return self.note_action(keys::action_key(k));
                         }
                     }
                     // A key the list names does what it says, from the list too.
@@ -1063,7 +1073,7 @@ impl App {
                             .any(|(k, _)| keys::action_key(k).code == KeyCode::Char(c)) =>
                     {
                         self.overlay = None;
-                        return self.main_key(key);
+                        return self.note_action(key);
                     }
                     _ => {}
                 }
@@ -1230,14 +1240,15 @@ impl App {
             KeyCode::Char('r') => self.compose(true, false),
             KeyCode::Char('Q') => self.compose(false, true),
             KeyCode::Char('l') => return self.like(),
-            KeyCode::Char('e') => {
-                if self.shown_note().is_some() {
-                    self.overlay = Some(Overlay::Reactions {
-                        selected: 0,
-                        query: String::new(),
-                    });
-                }
+            KeyCode::Char('e')
+                if self.tab == Tab::Profile
+                    && !in_thread
+                    && self.profile.came_from.is_none()
+                    && self.profile.own(self.my_user_id()) =>
+            {
+                return self.edit_profile();
             }
+            KeyCode::Char('e') => self.open_reactions(),
             KeyCode::Char('b') => return self.toggle_renote(),
             KeyCode::Char('D') => self.ask_delete(),
             KeyCode::Char('q') => self.quit = true,
@@ -1367,6 +1378,26 @@ impl App {
             Tab::Timeline(k) => Some(k),
             _ => None,
         }
+    }
+
+    /// `e` on a note: the reactions to choose from.
+    fn open_reactions(&mut self) {
+        if self.shown_note().is_some() {
+            self.overlay = Some(Overlay::Reactions {
+                selected: 0,
+                query: String::new(),
+            });
+        }
+    }
+
+    /// A key the actions list runs on the note: `e` there is a reaction,
+    /// on your own profile too, where the key alone edits the profile.
+    fn note_action(&mut self, key: KeyEvent) -> Jobs {
+        if key.code == KeyCode::Char('e') {
+            self.open_reactions();
+            return Vec::new();
+        }
+        self.main_key(key)
     }
 
     /// Move the selection, and ask for the next page when it nears the end.

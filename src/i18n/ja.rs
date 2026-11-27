@@ -5,7 +5,9 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Browser", "ブラウザ"),
     ("Chat", "チャット"),
     ("Composer", "投稿欄"),
+    ("Description", "自己紹介"),
     ("Download folder", "保存先フォルダ"),
+    ("Edit profile", "プロフィールを編集"),
     ("File browser", "ファイル選択"),
     ("General", "全体"),
     ("Global", "グローバル"),
@@ -15,6 +17,15 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Lists", "一覧"),
     ("Local", "ローカル"),
     ("Log in", "ログイン"),
+    ("Name", "名前"),
+    (
+        "New avatar (a path, or ctrl+o to choose; optional)",
+        "新しいアバター (パス、または ctrl+o で選ぶ。省略可)",
+    ),
+    (
+        "New banner (a path, or ctrl+o to choose; optional)",
+        "新しいバナー (パス、または ctrl+o で選ぶ。省略可)",
+    ),
     ("Notes", "ノート"),
     ("Notifications", "通知"),
     ("Profile", "プロフィール"),
@@ -62,6 +73,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("cancel", "取消"),
     ("change", "変更"),
     ("choose", "選択"),
+    ("choose a picture", "画像を選ぶ"),
     ("choose a reaction", "リアクションを選ぶ"),
     (
         "choose a reaction: recent, default, or the server's emoji by name",
@@ -92,7 +104,12 @@ pub const TABLE: &[(&str, &str)] = &[
     ("done", "完了"),
     ("download", "保存"),
     ("download folder: {}", "保存先フォルダ: {}"),
+    ("edit profile", "プロフィール編集"),
     ("edit query", "検索語を編集"),
+    (
+        "edit your profile: name, description, avatar, banner",
+        "プロフィールを編集: 名前、自己紹介、アバター、バナー",
+    ),
     ("enter apply  esc cancel", "enter 適用  esc 取消"),
     (
         "enter changes it; x goes back to the default",
@@ -174,6 +191,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ),
     ("new note", "新しいノート"),
     ("next / previous tab", "次 / 前のタブ"),
+    ("next field", "次の欄"),
     (
         "next field: the warning, a file's alt text",
         "次の欄: 注釈、ファイルの代替テキスト",
@@ -182,6 +200,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("note", "ノート"),
     ("notes", "ノート"),
     ("notes / accounts", "ノート / アカウント"),
+    ("nothing changed", "変更はありません"),
     ("open", "開く"),
     ("open / choose", "開く / 選ぶ"),
     ("open in browser", "ブラウザで開く"),
@@ -221,6 +240,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("previous / next", "前 / 次"),
     ("previous / next file", "前 / 次のファイル"),
     ("profile", "プロフィール"),
+    ("profile saved", "プロフィールを保存しました"),
     ("quit", "終了"),
     ("quote it in a new note", "新しいノートで引用"),
     (
@@ -252,6 +272,7 @@ pub const TABLE: &[(&str, &str)] = &[
         "reply, react, renote the note it is about",
         "対象のノートに返信・リアクション・リノート",
     ),
+    ("save", "保存"),
     ("save it in the download folder", "保存先フォルダに保存"),
     ("save its files", "ファイルを保存"),
     (
@@ -348,6 +369,10 @@ pub const TABLE: &[(&str, &str)] = &[
     (
         "{} (not kept: settings.json could not be read, so it is left as it is)",
         "{} (保存しません: settings.json を読めなかったので、そのままにします)",
+    ),
+    (
+        "{} is not a picture (JPEG, PNG, GIF or WebP)",
+        "{} は画像 (JPEG、PNG、GIF、WebP) ではありません",
     ),
     ("{}: back to the default", "{}: 既定に戻しました"),
 ];
