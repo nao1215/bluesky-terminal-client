@@ -76,8 +76,15 @@ fn a_logged_in_start_opens_on_home_and_reads_the_notifications_too() {
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     assert_eq!(app.tabs, DEFAULT_TABS);
     let asked: Vec<&Job> = jobs.iter().map(|(_, j)| j).collect();
-    assert_eq!(asked, [&home(None), &Job::Notifications { until: None }]);
-    assert_eq!(app.pending, 2);
+    assert_eq!(
+        asked,
+        [
+            &home(None),
+            &Job::Notifications { until: None },
+            &Job::Unread
+        ]
+    );
+    assert_eq!(app.pending, 2, "the unread count is not waited for");
     assert!(timeline(&app).loading);
 }
 
@@ -822,6 +829,19 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                             Ok(page("f"))
                         },
                     },
+                    Job::ReadAhead { id } => Event::ReadAhead {
+                        id,
+                        result: if fail {
+                            Err(Error::api("x"))
+                        } else {
+                            Ok(Box::default())
+                        },
+                    },
+                    Job::Unread => Event::Unread(if fail {
+                        Err(Error::api("x"))
+                    } else {
+                        Ok((Some(size as u64), size > 0))
+                    }),
                     Job::Report { .. } => {
                         Event::Reported(if fail { Err(Error::api("x")) } else { Ok(()) })
                     }
@@ -965,6 +985,11 @@ fn random_keys_and_answers_leave_the_state_consistent() {
                 .chain([(app.search.users.selected, app.search.users.items.len())])
                 .chain([(app.profile.notes.selected, app.profile.notes.items.len())])
                 .chain(
+                    app.feeds
+                        .iter()
+                        .map(|f| (f.list.selected, f.list.items.len())),
+                )
+                .chain(
                     app.threads
                         .iter()
                         .map(|t| (t.list.selected, t.list.items.len())),
@@ -972,7 +997,9 @@ fn random_keys_and_answers_leave_the_state_consistent() {
             for (sel, len) in lists {
                 assert!(sel < len.max(1), "run {run} step {step}: {sel} of {len}");
             }
-            assert_eq!(app.pending, out.len(), "run {run} step {step}");
+            // The unread count is asked in the background, not waited for.
+            let waited = out.iter().filter(|(_, j)| *j != Job::Unread).count();
+            assert_eq!(app.pending, waited, "run {run} step {step}");
             if out.is_empty() {
                 assert!(
                     app.in_flight.is_empty(),
@@ -2433,4 +2460,120 @@ fn bang_reports_a_note_once_y_confirms() {
     )]);
     app.handle_key(key('!'));
     assert!(app.overlay.is_none());
+}
+
+fn thread_of(id: &str) -> Box<crate::tui::worker::Thread> {
+    Box::new(crate::tui::worker::Thread {
+        ancestors: notes(&["root"]),
+        note: notes(&[id]).remove(0),
+        replies: vec![(notes(&["re"]).remove(0), vec![])],
+    })
+}
+
+// The selection resting 400 ms on a note reads its thread ahead, once and
+// not counted as pending; v then shows it at once, without asking; one
+// read before a write is not used.
+#[test]
+fn a_thread_is_read_ahead_where_the_selection_rests() {
+    let mut app = logged_in(&["a", "b"]);
+    let t0 = Instant::now();
+    assert!(app.poll_read_ahead(t0).is_empty(), "just arrived");
+    assert!(
+        app.poll_read_ahead(t0 + Duration::from_millis(100))
+            .is_empty()
+    );
+    let pending = app.pending;
+    let jobs = app.poll_read_ahead(t0 + Duration::from_millis(450));
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].1, Job::ReadAhead { id: "a".into() });
+    assert_eq!(app.pending, pending, "not waited for");
+    assert!(
+        app.poll_read_ahead(t0 + Duration::from_millis(900))
+            .is_empty(),
+        "once"
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            id: "a".into(),
+            result: Ok(thread_of("a")),
+        },
+    );
+    assert_eq!(app.pending, pending);
+    assert_eq!(app.read_ahead.kept(), 1);
+    // v: shown at once, nothing asked.
+    let jobs = app.handle_key(key('v'));
+    assert!(jobs.is_empty(), "{jobs:?}");
+    let th = app.threads.last().unwrap();
+    assert!(th.list.loaded);
+    assert_eq!(th.list.current().unwrap().note.id, "a");
+    app.handle_key(code(KeyCode::Esc));
+    // Moving on: b rests, is read, then a reaction is sent: b's thread
+    // read before it is not used.
+    app.handle_key(key('j'));
+    let t1 = t0 + Duration::from_secs(2);
+    app.poll_read_ahead(t1);
+    let jobs = app.poll_read_ahead(t1 + Duration::from_millis(450));
+    let seq = jobs[0].0;
+    app.handle_key(key('l'));
+    app.handle_answer(
+        seq,
+        Event::ReadAhead {
+            id: "b".into(),
+            result: Ok(thread_of("b")),
+        },
+    );
+    assert_eq!(app.read_ahead.kept(), 0);
+    let jobs = app.handle_key(key('v'));
+    assert_eq!(jobs[0].1, Job::Thread { id: "b".into() });
+}
+
+// v while the thread is still being read ahead waits for that answer,
+// counted as pending, instead of asking again.
+#[test]
+fn v_waits_for_a_thread_being_read_ahead() {
+    let mut app = logged_in(&["a"]);
+    let t0 = Instant::now();
+    app.poll_read_ahead(t0);
+    let jobs = app.poll_read_ahead(t0 + Duration::from_millis(450));
+    let pending = app.pending;
+    assert!(app.handle_key(key('v')).is_empty());
+    assert_eq!(app.pending, pending + 1);
+    assert!(!app.threads[0].list.loaded);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ReadAhead {
+            id: "a".into(),
+            result: Ok(thread_of("a")),
+        },
+    );
+    assert_eq!(app.pending, pending);
+    assert!(app.threads[0].list.loaded);
+    assert_eq!(app.threads[0].list.items.len(), 3);
+}
+
+// The Notifications tab counts what is unread, as bsky's does: the
+// server's count, (•) for a server that only says there are some, and
+// nothing once they are marked read. It is asked at most once a minute.
+#[test]
+fn the_notifications_tab_counts_the_unread() {
+    let mut app = writer(vec![]);
+    let t0 = Instant::now();
+    app.unread_polled = None;
+    let jobs = app.ask_unread(t0);
+    assert_eq!(jobs[0].1, Job::Unread);
+    assert!(app.ask_unread(t0 + Duration::from_secs(30)).is_empty());
+    assert_eq!(app.ask_unread(t0 + Duration::from_secs(61)).len(), 1);
+    app.handle_answer(jobs[0].0, Event::Unread(Ok((Some(3), true))));
+    assert_eq!(app.unread_label().as_deref(), Some("(3)"));
+    app.handle_answer(0, Event::Unread(Ok((Some(120), true))));
+    assert_eq!(app.unread_label().as_deref(), Some("(99+)"));
+    app.handle_answer(0, Event::Unread(Ok((None, true))));
+    assert_eq!(app.unread_label().as_deref(), Some("(•)"));
+    app.handle_answer(0, Event::Unread(Ok((Some(2), true))));
+    app.handle_answer(0, Event::MarkedRead(Ok(())));
+    assert_eq!(app.unread_label(), None);
+    // A visitor asks nothing.
+    let (mut v, _) = App::new(None, ORIGIN);
+    assert!(v.ask_unread(t0 + Duration::from_secs(600)).is_empty());
 }

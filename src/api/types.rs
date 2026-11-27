@@ -35,6 +35,10 @@ pub struct User {
     pub is_blocking: bool,
     /// Whether it approves its followers.
     pub is_locked: bool,
+    /// The account's own notifications not read yet (`i` only; a server
+    /// before Misskey 2023.12 leaves the count out).
+    pub unread_notifications_count: Option<u64>,
+    pub has_unread_notification: Option<bool>,
     /// Whether the account asking has asked to follow it, not yet approved.
     pub has_pending_follow_request_from_you: bool,
     /// What the account may do on its server (`i` only): `maxFileSizeMb`

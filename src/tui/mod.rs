@@ -367,6 +367,14 @@ fn event_loop(
         if app.expire_status(std::time::Instant::now()) {
             dirty = true;
         }
+        // The unread count on the Notifications tab, once a minute.
+        for (seq, job) in app.ask_unread(std::time::Instant::now()) {
+            worker.send(seq, job);
+        }
+        // The thread of the note the selection rests on, read ahead.
+        for (seq, job) in app.poll_read_ahead(std::time::Instant::now()) {
+            worker.send(seq, job);
+        }
         // The Chat tab reads the server again now and then while shown.
         for (seq, job) in app.poll_chat(std::time::Instant::now()) {
             worker.send(seq, job);

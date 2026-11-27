@@ -41,6 +41,10 @@ pub enum Job {
     Notifications { until: Option<String> },
     /// The thread of note `id`: what it answers, it, and its replies.
     Thread { id: String },
+    /// The thread of note `id`, read before it is opened.
+    ReadAhead { id: String },
+    /// How many notifications are unread, from the account (`i`).
+    Unread,
     /// Save files of notes in the download folder, each with the note it
     /// is attached to and its place there, from 1, as `msky download`
     /// names them.
@@ -148,6 +152,17 @@ impl ProfileChange {
     }
 }
 
+impl Job {
+    /// Whether it changes what a thread read ahead shows: a note, a
+    /// reaction, a renote, a deletion.
+    pub fn writes(&self) -> bool {
+        matches!(
+            self,
+            Job::Post { .. } | Job::React { .. } | Job::Renote { .. } | Job::Delete { .. }
+        )
+    }
+}
+
 /// Whom a chat conversation is with.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ChatWith {
@@ -188,6 +203,10 @@ pub struct Thread {
 /// A finished job.
 #[derive(Debug)]
 pub enum Event {
+    ReadAhead {
+        id: String,
+        result: Result<Box<Thread>>,
+    },
     Timeline {
         kind: TimelineKind,
         until: Option<String>,
@@ -222,6 +241,8 @@ pub enum Event {
         result: Result<()>,
     },
     MarkedRead(Result<()>),
+    /// The unread count, when the server gives one, and whether any is.
+    Unread(Result<(Option<u64>, bool)>),
     /// The server's custom emoji: name and picture address.
     Emojis(Result<Vec<(String, String)>>),
     FeedNotes {
@@ -295,6 +316,7 @@ impl Job {
                 result: Err(e),
             },
             Job::Thread { id } => Event::Thread { id, result: Err(e) },
+            Job::ReadAhead { id } => Event::ReadAhead { id, result: Err(e) },
             Job::Download { .. } => Event::Downloaded(Err(e)),
             Job::OpenLink { .. } => Event::Opened(Err(e)),
             Job::Servers => Event::Servers {
@@ -315,6 +337,7 @@ impl Job {
             },
             Job::Delete { id } => Event::Deleted { id, result: Err(e) },
             Job::MarkRead => Event::MarkedRead(Err(e)),
+            Job::Unread => Event::Unread(Err(e)),
             Job::Emojis => Event::Emojis(Err(e)),
             Job::FeedNotes { feed, until } => Event::FeedNotes {
                 feed,
@@ -380,6 +403,10 @@ pub fn run(job: Job, client: &Client) -> Event {
             result: thread(client, &id).map(Box::new),
             id,
         },
+        Job::ReadAhead { id } => Event::ReadAhead {
+            result: thread(client, &id).map(Box::new),
+            id,
+        },
         Job::Download { files, dir } => Event::Downloaded(save(&files, dir)),
         Job::Post {
             text,
@@ -424,6 +451,13 @@ pub fn run(job: Job, client: &Client) -> Event {
             id,
         },
         Job::MarkRead => Event::MarkedRead(client.mark_all_read()),
+        Job::Unread => Event::Unread(client.me().map(|u| {
+            let n = u.unread_notifications_count;
+            (
+                n,
+                n.map_or(u.has_unread_notification == Some(true), |n| n > 0),
+            )
+        })),
         Job::Emojis => Event::Emojis(client.emojis()),
         Job::FeedNotes { feed, until } => {
             let (endpoint, key) = feed.kind.endpoint();

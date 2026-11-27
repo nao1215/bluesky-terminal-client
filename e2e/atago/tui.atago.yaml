@@ -182,11 +182,13 @@ scenarios:
             body:
               json:
                 - { path: "$.untilId", equals: q1 }
+      # The first note's thread was read ahead while the pictures were
+      # waited for; v on the renote then read its own.
       - assert:
           mock:
             name: api
             path: /api/notes/show
-            count: 1
+            count: 2
             body:
               json:
                 - { path: "$.noteId", equals: o1 }
@@ -595,3 +597,57 @@ scenarios:
             - send: q
       - assert:
           exit_code: 0
+
+  - name: the thread where the selection rests is read ahead, so v asks nothing; the Notifications tab counts the unread
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: n1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob }, text: "先読みされるノート", repliesCount: 1, reactions: {} }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/i
+            json: { id: u-me, username: me, unreadNotificationsCount: 3, hasUnreadNotification: true }
+          - method: POST
+            path: /api/notes/show
+            json: { id: n1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob }, text: "先読みされるノート", repliesCount: 1, reactions: {} }
+          - method: POST
+            path: /api/notes/children
+            json:
+              - { id: c1, createdAt: "2026-11-26T10:05:00.000Z", replyId: n1, userId: u-cat, user: { id: u-cat, username: cat }, text: "返信 🐈", reactions: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0801", "permissions": ["read:account"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["先読みされるノート", "4 Notifications (3)"]
+                stable_for: 1500ms
+            - send: v
+            - expect_screen:
+                contains: ["返信 🐈", "Thread"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/show
+            count: 1

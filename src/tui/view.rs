@@ -324,7 +324,12 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme;
     let mut spans = Vec::new();
     for (i, &tab) in app.tabs.iter().enumerate() {
-        let label = format!(" {} {} ", i + 1, app.tab_label(tab));
+        let label = match (tab, app.unread_label()) {
+            (Tab::Notifications, Some(count)) => {
+                format!(" {} {} {count} ", i + 1, app.tab_label(tab))
+            }
+            _ => format!(" {} {} ", i + 1, app.tab_label(tab)),
+        };
         let style = if tab == app.tab {
             t.selected()
         } else {

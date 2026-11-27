@@ -21,6 +21,7 @@ mod browse;
 mod chat;
 mod edit_profile;
 mod feeds;
+mod read_ahead;
 mod report;
 mod settings;
 mod write;
@@ -466,6 +467,8 @@ pub struct Status {
 }
 
 pub const STATUS_TTL: Duration = Duration::from_secs(5);
+/// How often the unread count is asked for.
+pub const UNREAD_POLL: Duration = Duration::from_secs(60);
 pub const ERROR_TTL: Duration = Duration::from_secs(10);
 
 /// Jobs, each with the number it is sent and answered under.
@@ -493,6 +496,15 @@ pub struct App {
     pub feeds: Vec<FeedTab>,
     /// The tab `x` asked to close, waiting for `y`.
     pub confirm_close_tab: Option<Tab>,
+    /// Threads read ahead of `v`.
+    pub read_ahead: read_ahead::ReadAhead,
+    /// The notifications not read yet, as the Notifications tab counts
+    /// them: the server's count, or `None` with `unread_any` for a server
+    /// that only says whether there are any.
+    pub unread: Option<u64>,
+    pub unread_any: bool,
+    /// When the count was last asked for.
+    pub unread_polled: Option<Instant>,
     /// Threads opened with `v`, the last on top; Esc closes the top one.
     pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
@@ -585,6 +597,10 @@ impl App {
             chat: ChatPane::default(),
             feeds: Vec::new(),
             confirm_close_tab: None,
+            read_ahead: Default::default(),
+            unread: None,
+            unread_any: false,
+            unread_polled: None,
             threads: Vec::new(),
             overlay: None,
             status: None,
@@ -663,8 +679,11 @@ impl App {
             Tab::Timeline(kind) => self.load_timeline(kind),
             _ => Vec::new(),
         };
+        self.unread = None;
+        self.unread_any = false;
         if self.session.is_some() {
             jobs.extend(self.load_notifications());
+            jobs.extend(self.ask_unread(Instant::now()));
         }
         jobs
     }
@@ -673,6 +692,9 @@ impl App {
     fn stamp(&mut self, job: Job) -> (u64, Job) {
         self.sent += 1;
         self.pending += 1;
+        if job.writes() {
+            self.read_ahead.wrote(self.sent);
+        }
         (self.sent, job)
     }
 
@@ -813,6 +835,22 @@ impl App {
 
     /// Take the answer to job `seq`.
     pub fn handle_answer(&mut self, seq: u64, event: Event) -> Jobs {
+        // A thread read ahead was not counted as pending.
+        if let Event::ReadAhead { id, result } = event {
+            return self.read_ahead_answer(seq, id, result);
+        }
+        // Nor was the unread count.
+        if let Event::Unread(result) = event {
+            if seq >= self.account_since
+                && let Ok((count, any)) = result
+                // Shown, the tab marks them read: the count is not news.
+                && (self.tab != Tab::Notifications || !self.read_sent)
+            {
+                self.unread = count;
+                self.unread_any = any;
+            }
+            return Vec::new();
+        }
         self.pending = self.pending.saturating_sub(1);
         if seq < self.account_since {
             return Vec::new();
@@ -920,6 +958,8 @@ impl App {
             Event::Followed { user_id, result } => self.followed(&user_id, result),
             e @ (Event::FeedNotes { .. } | Event::FeedChoices(_)) => self.feed_answer(seq, e),
             Event::Reported(result) => self.reported(result),
+            // Taken before the rest, above.
+            Event::ReadAhead { .. } => {}
             e @ (Event::ProfileEditor(_) | Event::ProfileSaved(_)) => {
                 return self.edit_profile_answer(e);
             }
@@ -929,7 +969,13 @@ impl App {
             Event::Emojis(Ok(list)) => self.emojis = list.into_iter().collect(),
             // Custom emoji are then shown by name, as before.
             Event::Emojis(Err(_)) => {}
-            Event::MarkedRead(Ok(())) => {}
+            Event::MarkedRead(Ok(())) => {
+                self.unread = Some(0);
+                self.unread_any = false;
+            }
+            // Taken before the rest, above; a failure is not worth a
+            // message.
+            Event::Unread(_) => {}
             Event::MarkedRead(Err(e)) => self.error(said(&e)),
             Event::Opened(Ok(())) => {}
             // The address of a login is on screen to open by hand.
@@ -1377,6 +1423,33 @@ impl App {
         self.mark_read()
     }
 
+    /// Ask how many notifications are unread, at most once a minute.
+    pub fn ask_unread(&mut self, now: Instant) -> Jobs {
+        if self.session.is_none()
+            || self
+                .unread_polled
+                .is_some_and(|t| now.saturating_duration_since(t) < UNREAD_POLL)
+        {
+            return Vec::new();
+        }
+        self.unread_polled = Some(now);
+        // In the background: the screen does not wait for it.
+        self.sent += 1;
+        vec![(self.sent, Job::Unread)]
+    }
+
+    /// The label of the Notifications tab's count: `(3)`, `(•)` when the
+    /// server only says there are some, or nothing.
+    pub fn unread_label(&self) -> Option<String> {
+        match self.unread {
+            Some(0) => None,
+            Some(n) if n > 99 => Some("(99+)".into()),
+            Some(n) => Some(format!("({n})")),
+            None if self.unread_any => Some("(•)".into()),
+            None => None,
+        }
+    }
+
     /// Ask for the server's custom emoji, which notes and reactions are
     /// drawn with.
     pub fn load_emojis(&mut self) -> Jobs {
@@ -1531,11 +1604,23 @@ impl App {
         let Some(id) = self.shown_note().map(|n| n.id.clone()) else {
             return Vec::new();
         };
-        let (seq, job) = self.stamp(Job::Thread { id: id.clone() });
-        let mut list = List::default();
-        list.begin();
-        list.asked = seq;
-        self.threads.push(ThreadView { id, list });
+        let mut view = ThreadView {
+            id: id.clone(),
+            list: List::default(),
+        };
+        if !self.fill_from_read_ahead(&mut view) {
+            self.threads.push(view);
+            return Vec::new();
+        }
+        let (seq, job) = self.stamp(Job::Thread { id });
+        // Shown as it was read ahead, if it was, while it is read again.
+        if !view.list.loaded {
+            view.list.begin();
+        } else {
+            view.list.loading = true;
+        }
+        view.list.asked = seq;
+        self.threads.push(view);
         vec![(seq, job)]
     }
 
