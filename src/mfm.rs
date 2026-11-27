@@ -294,10 +294,10 @@ pub fn without_hash(url: &str) -> &str {
 /// which reads as the same `[`. A `<plain>` that never closes would be
 /// closed by the `</plain>` added after it, so it is written
 /// `<plain><</plain>plain>`, which reads as the same `<plain>`; so is the
-/// `<` of a `<https://` with no `>` that the `>` of `<plain>` would close.
-/// A link
-/// right after `http://` gets an empty `<plain></plain>` before its `?`,
-/// which would otherwise make `http://?` an address.
+/// `<` of a `<https://` with no `>`, which the `>` of a `<plain>` added
+/// after it would close. A link right after `http://` gets an empty
+/// `<plain></plain>` before its `?`, which would otherwise make `http://?`
+/// an address.
 pub fn silenced(text: &str) -> String {
     let b = text.as_bytes();
     let (links, strays) = scan(b);
@@ -307,15 +307,11 @@ pub fn silenced(text: &str) -> String {
     for l in links {
         while let Some(at) = strays.next_if(|at| *at < l.start) {
             if b[at] == b'<' {
-                // A `<https://` with a space before the link cannot reach
-                // the `>` added after it.
-                let open = b[at..].starts_with(b"<plain>")
-                    || !b[at..l.start].iter().any(u8::is_ascii_whitespace);
-                if open {
-                    out.push_str(&text[last..at]);
-                    out.push_str("<plain><</plain>");
-                    last = at + 1;
-                }
+                // Even with a space before the link, the `>` of an escape
+                // written before it may come first.
+                out.push_str(&text[last..at]);
+                out.push_str("<plain><</plain>");
+                last = at + 1;
                 continue;
             }
             let open = label_end(b, at + 1);
@@ -804,6 +800,7 @@ mod tests {
     )]
     #[case("<https://🇯🇵https://a.test 後")]
     #[case("$[x ```\n[a https://in.block/\n```]")]
+    #[case("<https://x$[x2 漢字 http://p")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }
