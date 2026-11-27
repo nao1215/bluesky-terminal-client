@@ -387,6 +387,15 @@ impl Writer {
     }
 
     fn put_inline(&mut self, s: &str) {
+        // The mark of a quote's blank line is not text; it would show as
+        // nothing on a terminal anyway.
+        let owned;
+        let s = if s.contains(QUOTED_BLANK) {
+            owned = s.replace(QUOTED_BLANK, "");
+            owned.as_str()
+        } else {
+            s
+        };
         if s.is_empty() {
             return;
         }
@@ -416,6 +425,7 @@ impl Writer {
                 // A blank line inside a quote still says it is quoted.
                 let depth = self.pending_quote.min(self.quote);
                 if i + 1 < self.pending && depth > 0 {
+                    self.out.push(QUOTED_BLANK);
                     self.out.push_str(&">".repeat(depth));
                 }
             }
@@ -588,42 +598,36 @@ impl Writer {
     fn finish(mut self) -> String {
         self.close_anchor();
         trim_line_end(&mut self.out);
-        let mut out = String::with_capacity(self.out.len());
         // Lines end without spaces, and no more than one blank line is in a
-        // row (a line of a quote's `>` alone is a blank one).
+        // row: a line of a quote's `>` alone is a blank one too.
+        let mut lines: Vec<(bool, &str)> = Vec::new();
         let mut blank = 0;
         for line in self.out.split('\n') {
             let line = line.trim_end_matches([' ', '\u{a0}']);
-            let empty = line.chars().all(|c| c == '>');
+            let (empty, line) = match line.strip_prefix(QUOTED_BLANK) {
+                Some(marks) => (true, marks),
+                None => (line.is_empty(), line),
+            };
             if empty {
                 blank += 1;
-                if blank > 1 || out.is_empty() {
+                if blank > 1 || lines.is_empty() {
                     continue;
                 }
             } else {
                 blank = 0;
             }
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(line);
+            lines.push((empty, line));
         }
-        while out.ends_with('\n')
-            || out.ends_with('>')
-                && out
-                    .lines()
-                    .last()
-                    .is_some_and(|l| l.chars().all(|c| c == '>'))
-        {
-            match out.rfind('\n') {
-                Some(i) if out[i + 1..].chars().all(|c| c == '>') => out.truncate(i),
-                _ if out.chars().all(|c| c == '>' || c == '\n') => out.clear(),
-                _ => break,
-            }
+        while lines.last().is_some_and(|(empty, _)| *empty) {
+            lines.pop();
         }
-        out
+        lines.iter().map(|(_, l)| *l).collect::<Vec<_>>().join("\n")
     }
 }
+
+/// What starts a blank line inside a quote while it is written: a control
+/// character, which no text keeps (see [`Writer::put_inline`]).
+const QUOTED_BLANK: char = '\u{1}';
 
 /// Remove the spaces at the end of the last line of `out`.
 fn trim_line_end(out: &mut String) {

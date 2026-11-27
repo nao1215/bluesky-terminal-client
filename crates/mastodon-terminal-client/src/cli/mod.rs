@@ -8,6 +8,8 @@
 pub(crate) mod format;
 mod post;
 
+#[cfg(test)]
+pub(crate) use post::counted;
 pub use post::{PostArgs, Visibility};
 
 use std::collections::HashSet;
