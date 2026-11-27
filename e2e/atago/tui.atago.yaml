@@ -444,6 +444,70 @@ scenarios:
       - assert:
           mock: { name: api, path: /files/clip.mp4 }
 
+  # A video in the timeline is drawn by the poster the server made of it
+  # (thumbnailUrl), in a picture's box and in the note's order beside a
+  # picture, under the line that says it is a video, as bsky draws a
+  # video's thumbnail. The video itself is not fetched to draw the list.
+  - name: the timeline draws a video by its thumbnail beside a picture
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - id: v1
+                createdAt: "2026-11-26T10:00:00.000Z"
+                user: { username: vic }
+                text: "動画と写真 🎬📷"
+                files:
+                  - { id: f1, name: clip.mp4, type: video/mp4, size: 1838, url: "${api.url}/files/clip.mp4", thumbnailUrl: "${api.url}/img/poster.png" }
+                  - { id: f2, name: photo.png, type: image/png, size: 242, url: "${api.url}/img/photo.png", properties: { width: 120, height: 90 } }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: GET, path: /img/poster.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /img/photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /files/clip.mp4, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0101"}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["動画と写真 🎬📷", "▶ 1 video"]
+                not_contains: "▣ 1 picture"
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 500ms
+            - send: q
+      - assert:
+          exit_code: 0
+          screen:
+            images:
+              count: 2
+              contains:
+                - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
+      - assert:
+          mock: { name: api, path: /img/poster.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /files/clip.mp4, count: 0 }
+
   # The server's custom emoji (/api/emojis) are drawn as pictures in a
   # note's text and its reaction counts; one it does not have keeps its
   # name.

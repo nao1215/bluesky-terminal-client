@@ -234,6 +234,102 @@ fn a_sensitive_file_is_shown_with_a_mark() {
     );
 }
 
+/// `n` laid out as the timeline lays it out at `width`, with pictures.
+fn laid_out(app: &App, n: &Note, width: u16) -> NoteLines {
+    let ctx = Ctx {
+        opened: &app.opened,
+        emojis: &app.emojis,
+        me: None,
+        renoted: &app.renoted,
+        fresh: &app.fresh,
+        t: app.theme,
+    };
+    NoteLines::new(n, width, Some((8, 16)), &ctx)
+}
+
+// A video is drawn by the poster the server made of it (thumbnailUrl), in
+// the box a picture gets and in the note's order among the pictures, under
+// the line that says it is a video, as bsky draws a video's thumbnail under
+// "▶ video". A video without a poster stays that line alone, and the file
+// itself is never asked for to draw the list.
+#[test]
+fn a_video_is_drawn_by_its_thumbnail_among_the_pictures() {
+    let app = with_notes(Vec::new());
+    let mixed = note(json!({
+        "id": "v", "createdAt": "t", "user": {"username": "vic"}, "text": "動画 🎬",
+        "files": [
+            {"id": "a", "type": "video/mp4", "url": format!("{NOWHERE}/a.mp4"),
+             "thumbnailUrl": format!("{NOWHERE}/a.webp"), "isSensitive": true,
+             "properties": {"width": 1920, "height": 1080}},
+            {"id": "b", "type": "image/png", "url": format!("{NOWHERE}/b.png"),
+             "thumbnailUrl": format!("{NOWHERE}/b.webp")},
+            {"id": "c", "type": "video/webm", "url": format!("{NOWHERE}/c.webm")}
+        ]
+    }));
+    let nl = laid_out(&app, &mixed, 80);
+    assert_eq!(
+        nl.images,
+        vec![
+            (format!("{NOWHERE}/a.webp"), Some((1920, 1080))),
+            (format!("{NOWHERE}/b.webp"), None),
+        ]
+    );
+    // Two boxes of 36 cells: the 16:9 poster needs 11 rows, the picture
+    // without a shape the default 8; the taller decides.
+    assert_eq!(nl.image_rows, 11);
+    let body: Vec<String> = nl.body.iter().map(ToString::to_string).collect();
+    assert!(
+        body.contains(&"⚠ 1 sensitive file ▶ 2 videos".to_string()),
+        "{body:?}"
+    );
+
+    let bare = note(json!({
+        "id": "w", "createdAt": "t", "user": {"username": "vic"},
+        "files": [{"id": "c", "type": "video/mp4", "url": format!("{NOWHERE}/c.mp4")}]
+    }));
+    let nl = laid_out(&app, &bare, 80);
+    assert!(nl.images.is_empty());
+    assert_eq!(nl.image_rows, 0);
+
+    // Posters count among the four drawn, and the rest are counted.
+    let mut files: Vec<Value> = (0..4)
+        .map(|i| json!({"id": format!("p{i}"), "type": "image/png", "url": format!("{NOWHERE}/p{i}.png")}))
+        .collect();
+    files.insert(
+        1,
+        json!({"id": "v", "type": "video/mp4", "url": format!("{NOWHERE}/v.mp4"), "thumbnailUrl": format!("{NOWHERE}/v.webp")}),
+    );
+    let five =
+        note(json!({"id": "x", "createdAt": "t", "user": {"username": "vic"}, "files": files}));
+    let nl = laid_out(&app, &five, 80);
+    let urls: Vec<&str> = nl.images.iter().map(|(u, _)| u.as_str()).collect();
+    assert_eq!(
+        urls,
+        [
+            format!("{NOWHERE}/p0.png"),
+            format!("{NOWHERE}/v.webp"),
+            format!("{NOWHERE}/p1.png"),
+            format!("{NOWHERE}/p2.png"),
+        ]
+    );
+    let body: Vec<String> = nl.body.iter().map(ToString::to_string).collect();
+    assert!(
+        body.contains(&"+1 more: space shows them all".to_string()),
+        "{body:?}"
+    );
+
+    // Without pictures the note still says what it carries.
+    let mut app = with_notes(vec![json!({
+        "id": "v", "createdAt": "t", "user": {"username": "vic"}, "text": "動画 🎬",
+        "files": [
+            {"id": "a", "type": "video/mp4", "thumbnailUrl": format!("{NOWHERE}/a.webp")},
+            {"id": "b", "type": "image/png", "url": format!("{NOWHERE}/b.png")}
+        ]
+    })]);
+    let text = render_text(&mut app, 80, 12);
+    assert!(text.contains("▣ 1 picture · ▶ 1 video"), "{text}");
+}
+
 // Emoji (a family, a skin tone, flags, a keycap, VS16) and CJK are wrapped
 // and cut between whole clusters at every width: no row is wider than the
 // screen, and no piece of a cluster is drawn on its own.

@@ -807,12 +807,26 @@ fn image_rows(aspect: Option<(u32, u32)>, box_w: u16, cell: (u16, u16)) -> u16 {
 }
 
 /// The picture to show of `f` in a list: the server's thumbnail when it
-/// made one.
+/// made one, or the picture itself. A video is shown by its thumbnail, the
+/// poster the server made of it, as bsky draws a video's; without one it
+/// has no picture, and its line of text says it is there.
 fn list_picture(f: &DriveFile) -> Option<String> {
-    f.thumbnail_url
-        .clone()
-        .or_else(|| f.url.clone())
-        .filter(|u| !u.is_empty())
+    let thumb = f.thumbnail_url.clone().filter(|u| !u.is_empty());
+    if f.is_picture() {
+        thumb.or_else(|| f.url.clone().filter(|u| !u.is_empty()))
+    } else if f.mime.starts_with("video/") {
+        thumb
+    } else {
+        None
+    }
+}
+
+/// The files of a note drawn in a list, in the note's order, each with
+/// the picture that shows it.
+fn list_pictures(files: &[DriveFile]) -> impl Iterator<Item = (&DriveFile, String)> {
+    files
+        .iter()
+        .filter_map(|f| list_picture(f).map(|url| (f, url)))
 }
 
 /// What a note's files are, in words: `▣ 2 pictures · ▶ 1 video · 1 file`,
@@ -983,24 +997,24 @@ impl NoteLines {
         let mut images = Vec::new();
         let mut rows = 0;
         // The files of a note whose text is hidden stay with it.
-        let pictures: Vec<&DriveFile> = if text_shown {
-            shown.files.iter().filter(|f| f.is_picture()).collect()
+        let pictures: Vec<(&DriveFile, String)> = if text_shown {
+            list_pictures(&shown.files).collect()
         } else {
             Vec::new()
         };
         if let Some(cell) = cell
             && !pictures.is_empty()
         {
-            let drawn: Vec<&DriveFile> = pictures.iter().copied().take(IMAGES_SHOWN).collect();
+            let drawn = &pictures[..pictures.len().min(IMAGES_SHOWN)];
             let box_w = image_box_width(width as u16, drawn.len() as u16);
             rows = drawn
                 .iter()
-                .map(|f| image_rows(f.aspect(), box_w, cell))
+                .map(|(f, _)| image_rows(f.aspect(), box_w, cell))
                 .max()
                 .unwrap_or(0);
             images = drawn
                 .iter()
-                .filter_map(|f| list_picture(f).map(|u| (u, f.aspect())))
+                .map(|(f, url)| (url.clone(), f.aspect()))
                 .collect();
             if pictures.len() > IMAGES_SHOWN {
                 body.push(Line::styled(
@@ -1300,10 +1314,8 @@ fn draw_notes<T: NoteRow>(
         if let Some(url) = &n.user.avatar_url {
             images.warm(url);
         }
-        for f in n.files.iter().filter(|f| f.is_picture()).take(IMAGES_SHOWN) {
-            if let Some(url) = list_picture(f) {
-                images.warm(&url);
-            }
+        for (_, url) in list_pictures(&n.files).take(IMAGES_SHOWN) {
+            images.warm(&url);
         }
     }
 }
