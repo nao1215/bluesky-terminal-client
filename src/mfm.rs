@@ -48,7 +48,8 @@ pub fn links(text: &str) -> Vec<Link> {
 }
 
 /// Every link in `b`, and where each `[` that opens neither a link nor a
-/// function is (outside code, `<plain>` and math, as the links are).
+/// function is, and each `<plain>` that never closes (outside code,
+/// `<plain>` and math, as the links are).
 fn scan(b: &[u8]) -> (Vec<Link>, Vec<usize>) {
     let mut found = Vec::new();
     let mut strays = Vec::new();
@@ -73,7 +74,8 @@ fn scan(b: &[u8]) -> (Vec<Link>, Vec<usize>) {
             found.push(link);
             continue;
         }
-        if b[i] == b'[' {
+        // `skipped` takes a `<plain>` that closes, so one here does not.
+        if b[i] == b'[' || b[i..].starts_with(b"<plain>") {
             strays.push(i);
         }
         // One character on: a byte inside a multi-byte one never starts
@@ -285,7 +287,9 @@ pub fn without_hash(url: &str) -> &str {
 /// A `[` before a link on its line that no `]` closes before the link
 /// would take the `](` added after the address as the end of its own label
 /// and make a link that is not silent, so it is written `<plain>[</plain>`,
-/// which reads as the same `[`.
+/// which reads as the same `[`. A `<plain>` that never closes would be
+/// closed by the `</plain>` added after it, so it is written
+/// `<plain><</plain>plain>`, which reads as the same `<plain>`.
 pub fn silenced(text: &str) -> String {
     let b = text.as_bytes();
     let (links, strays) = scan(b);
@@ -294,6 +298,12 @@ pub fn silenced(text: &str) -> String {
     let mut strays = strays.into_iter().peekable();
     for l in links {
         while let Some(at) = strays.next_if(|at| *at < l.start) {
+            if b[at] == b'<' {
+                out.push_str(&text[last..at]);
+                out.push_str("<plain><</plain>");
+                last = at + 1;
+                continue;
+            }
             let open = label_end(b, at + 1);
             let line_ends = b[at..l.start].contains(&b'\n');
             if !line_ends && open.is_none_or(|close| close >= l.start) {
@@ -726,6 +736,10 @@ mod tests {
     #[case("$[x2 [baz https://a.test]")]
     #[case("$[x2 $[tada 👨\u{200d}👩\u{200d}👧 https://a.test]] [x](https://b.test)")]
     #[case("`[` [ https://a.test")]
+    #[case(
+        "$[x2  http$[x3 $[x4 \0\0\0\0\0\0\0\0\0\0\0$[flip $[spin deep]]]]] ?[<plain>]</plai]>n(https://example.com/p)"
+    )]
+    #[case("<plain>閉じない 👍🏽\nhttps://a.test")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }

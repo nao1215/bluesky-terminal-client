@@ -71,3 +71,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `msky post --no-card` no longer leaves a preview under a link that a function holds (`$[x2 https://...]`) or that comes after a `[` closing nothing on its line: the `[` is written `<plain>[</plain>`, which reads the same.
 - An address in angle brackets (`<https://...>`) is shown in the client without its brackets, as Misskey's web client shows it, where it kept them.
 - A function, `**bold**` or a tag in a note now closes after an address in it rather than at a `]`, `**` or `</tag>` inside the address, as Misskey reads it, and `msky post --no-card` keeps such a note reading as it did.
+- `msky post --no-card` no longer leaves a preview under a link after a `<plain>` that never closes: the `</plain>` it adds closed it, and the `<plain>` is now written `<plain><</plain>plain>`, which reads the same.
