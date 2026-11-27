@@ -442,7 +442,7 @@ fn special<'a>(s: &'a str, i: usize, bold: bool, depth: usize) -> Drawn<'a> {
         ));
     }
     if b[i..].starts_with(b"**") {
-        let close = find(b, i + 2, b"**").filter(|c| *c > i + 2)?;
+        let close = closing(b, i + 2, b"**").filter(|c| *c > i + 2)?;
         let inner = &s[i + 2..close];
         return Some((
             close + 2,
@@ -509,8 +509,8 @@ fn function(b: &[u8], i: usize) -> Option<(usize, usize)> {
 }
 
 /// The `]` that closes a function whose content starts at `from`: a `$[`
-/// in it opens another, which its own `]` closes, and a labeled link's
-/// `]` is the link's.
+/// in it opens another, which its own `]` closes, and a `]` in a link or
+/// in `<plain>` is theirs ([`atom_end`]).
 fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
     let mut open = 0usize;
     let mut j = from;
@@ -520,10 +520,8 @@ fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
             j += 2;
             continue;
         }
-        if (b[j] == b'[' || b[j..].starts_with(b"?["))
-            && let Some(l) = labeled(b, j)
-        {
-            j = l.end;
+        if let Some(end) = atom_end(b, j) {
+            j = end;
             continue;
         }
         if b[j] == b']' {
@@ -537,13 +535,44 @@ fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
     None
 }
 
+/// The end of what at `j` is read whole inside markup, so that nothing in
+/// it closes the markup: a link of any form, or `<plain>`. Silencing turns
+/// one form of link into another, and a `]`, `**` or `</tag>` read inside
+/// one would close the markup somewhere else after it.
+fn atom_end(b: &[u8], j: usize) -> Option<usize> {
+    if b[j..].starts_with(b"<plain>") {
+        return find(b, j + 7, b"</plain>").map(|close| close + 8);
+    }
+    labeled(b, j)
+        .or_else(|| angle(b, j))
+        .or_else(|| bare(b, j))
+        .map(|l| l.end)
+}
+
+/// The first `what` from `from` outside what [`atom_end`] reads whole.
+fn closing(b: &[u8], from: usize, what: &[u8]) -> Option<usize> {
+    let mut j = from;
+    while j < b.len() {
+        if let Some(end) = atom_end(b, j) {
+            j = end;
+        } else if b[j..].starts_with(what) {
+            return Some(j);
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
 /// The `</tag>` that closes a `<tag>` whose content starts at `from`, the
 /// same tag opened inside closed first.
 fn closing_tag(b: &[u8], from: usize, open: &[u8], close: &[u8]) -> Option<usize> {
     let mut depth = 0usize;
     let mut j = from;
     while j < b.len() {
-        if b[j..].starts_with(open) {
+        if let Some(end) = atom_end(b, j) {
+            j = end;
+        } else if b[j..].starts_with(open) {
             depth += 1;
             j += open.len();
         } else if b[j..].starts_with(close) {
@@ -698,6 +727,24 @@ mod tests {
     #[case("$[x2 $[tada 👨\u{200d}👩\u{200d}👧 https://a.test]] [x](https://b.test)")]
     #[case("`[` [ https://a.test")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
+        silencing_keeps_the_text(text);
+    }
+
+    // Markup closes where it did before silencing: a `]`, `**` or `</tag>`
+    // in an address, which silencing writes in a label and `<plain>`, is
+    // the address's.
+    #[rstest]
+    #[case(
+        "$[x2  http$https://example.com/wiki/Foo_(bar)_[baz] https://example.com/((((x))))]]]$[flip $[spin deep]]]]]example.com/p)"
+    )]
+    #[case("$[x2 https://a.test/[1]] 後")]
+    #[case("**太字 <https://a.test/**> まだ**")]
+    #[case("<small>小 <https://a.test/</small>> 🇯🇵</small>")]
+    fn markup_closes_where_it_did_before_silencing(#[case] text: &str) {
+        silencing_keeps_the_text(text);
+    }
+
+    fn silencing_keeps_the_text(text: &str) {
         let s = silenced(text);
         assert_eq!(previewed(&s, &[]), Vec::<String>::new(), "{s}");
         assert_eq!(urls(&s), urls(text), "{s}");
