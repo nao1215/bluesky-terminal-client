@@ -2,7 +2,7 @@ name: Mutation
 
 # Mutation testing rewrites one operator, constant or return value at a time and
 # checks that a unit test fails. Every mutant rebuilds the crate and reruns the
-# unit tests, so the whole set (about 1170 mutants in the files
+# unit tests, so the whole set (about 1550 mutants in the files
 # `.cargo/mutants.toml` names) runs weekly in shards, and a pull request mutates
 # only the lines it changes.
 #
@@ -36,7 +36,7 @@ env:
   CARGO_TERM_COLOR: never
   # The score of the last full run (cargo mutants over every file
   # .cargo/mutants.toml names). Raise it when the score goes up.
-  MUTATION_MIN_SCORE: "0"
+  MUTATION_MIN_SCORE: "77"
   # A mutant that allocates without end would take the runner down with it,
   # leaving no log; the limit turns it into a failed test instead. Two
   # mutants run at once on a 16 GB runner, so each gets 4 GiB. The limit is
