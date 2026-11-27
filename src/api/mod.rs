@@ -104,6 +104,10 @@ const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 /// Connections kept open to one server between requests.
 const IDLE_PER_HOST: usize = 8;
 
+/// The handles of a post's mentions looked up side by side, within the
+/// connections kept open.
+const MENTIONS_AT_ONCE: usize = 4;
+
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
 pub fn agent() -> ureq::Agent {
@@ -940,16 +944,41 @@ impl Client {
     /// cannot be resolved stays plain text rather than failing the send.
     fn facets(&self, text: &str) -> Vec<Value> {
         let mut out = Vec::new();
-        // Each handle is looked up once, however often it is mentioned: a
-        // lookup holds up the post and every write behind it.
+        let spans = facets::detect(text);
+        // Each handle is looked up once, however often it is mentioned, and
+        // the lookups run side by side, a few at a time: a lookup holds up
+        // the post and every write behind it, and one after another they
+        // were a round trip each. Each handle is kept lowercased, to find
+        // it by, and as it was first written, to ask for.
+        let mut handles: Vec<(String, &str)> = Vec::new();
+        for span in &spans {
+            if let facets::Target::Mention(handle) = &span.target {
+                let key = handle.to_lowercase();
+                if !handles.iter().any(|(k, _)| *k == key) {
+                    handles.push((key, handle.as_str()));
+                }
+            }
+        }
         let mut dids: std::collections::HashMap<String, Option<String>> =
             std::collections::HashMap::new();
-        for span in facets::detect(text) {
+        for batch in handles.chunks(MENTIONS_AT_ONCE) {
+            std::thread::scope(|s| {
+                let asked: Vec<_> = batch
+                    .iter()
+                    .map(|(key, handle)| (key, s.spawn(|| self.resolve_handle(handle).ok())))
+                    .collect();
+                for (key, found) in asked {
+                    // A lookup whose thread failed leaves the mention as
+                    // plain text, as one the server could not resolve.
+                    dids.insert(key.clone(), found.join().ok().flatten());
+                }
+            });
+        }
+        for span in spans {
             let did = match &span.target {
-                facets::Target::Mention(handle) => dids
-                    .entry(handle.to_lowercase())
-                    .or_insert_with(|| self.resolve_handle(handle).ok())
-                    .clone(),
+                facets::Target::Mention(handle) => {
+                    dids.get(&handle.to_lowercase()).cloned().flatten()
+                }
                 _ => None,
             };
             if let Some(f) = facets::to_json(&span, did.as_deref()) {
