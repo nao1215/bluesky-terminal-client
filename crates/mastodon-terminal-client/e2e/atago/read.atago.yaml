@@ -1,0 +1,268 @@
+# mstdn's read commands as a visitor: author, status, thread, profile, the
+# local and public timelines, and a hashtag search. The Mastodon server is
+# an atago mock reached through --host, so the suite needs no network and
+# no account. Each list is read a page at a time, the next page where the
+# Link header says (max_id), as Mastodon pages them.
+version: "1"
+
+suite:
+  name: mstdn read
+
+scenarios:
+  - name: author prints the account's posts as text, the HTML read back, emoji and CJK whole
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/accounts/lookup
+            json: { id: "7", username: alice, acct: alice, display_name: "家族👨‍👩‍👧 アリス" }
+          - method: GET
+            path: /api/v1/accounts/7/statuses
+            header:
+              Link: '<${api.url}/api/v1/accounts/7/statuses?max_id=101>; rel="next", <${api.url}/api/v1/accounts/7/statuses?min_id=102>; rel="prev"'
+            json:
+              - id: "102"
+                created_at: "2026-09-20T10:00:00.000Z"
+                account: { id: "7", username: alice, acct: alice, display_name: "家族👨‍👩‍👧 アリス" }
+                content: '<p>山の写真 🇯🇵👍🏽<br />二行目 مرحبا</p><p><a href="https://m.test/tags/rust" class="mention hashtag" rel="tag">#<span>rust</span></a> :blobcat: <a href="https://example.com/a/very/long/path" rel="nofollow noopener" target="_blank"><span class="invisible">https://</span><span class="ellipsis">example.com/a/very</span><span class="invisible">/long/path</span></a> &amp; <a href="https://other.test/post">the article</a></p>'
+                favourites_count: 6
+                reblogs_count: 1
+                replies_count: 4
+                media_attachments:
+                  - { id: m1, type: image, url: "${api.url}/files/m1.png", description: "山 🏔️" }
+              - id: "101"
+                created_at: "2026-09-20T09:00:00.000Z"
+                account: { id: "7", username: alice, acct: alice, display_name: "家族👨‍👩‍👧 アリス" }
+                spoiler_text: "ネタバレ"
+                content: "<p>結末は…</p>"
+    steps:
+      - run:
+          command: mstdn author @alice -n 2 --host ${api.url}
+          env: &env
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              家族👨‍👩‍👧 アリス @alice · 2026-09-20 10:00
+              山の写真 🇯🇵👍🏽
+              二行目 مرحبا
+
+              #rust :blobcat: https://example.com/a/very/long/path & the article (https://other.test/post)
+              [1 picture]
+              ♡ 6  ⟳ 1  ↩ 4
+              ${api.url}/@alice/102
+
+              家族👨‍👩‍👧 アリス @alice · 2026-09-20 09:00
+              CW: ネタバレ
+              結末は…
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/@alice/101
+      # As bsky's author, replies are listed (--filter with-replies) and
+      # boosts are left out unless --reposts asks for them. A visitor
+      # sends no token.
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/accounts/lookup
+            method: GET
+            count: 1
+            query: { name: acct, equals: alice }
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/accounts/7/statuses
+            count: 1
+            query: { name: exclude_replies, equals: "false" }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/7/statuses, query: { name: exclude_reblogs, equals: "true" } }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/7/statuses, query: { name: limit, equals: "2" } }
+      # -n 4 asks for the next page where the Link header says; a page
+      # that brings nothing new ends it.
+      - run:
+          command: mstdn author alice -n 4 --filter media --reposts --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            # One post a line, the second the older.
+            matches: '^\{[^\n]*"id":"102"[^\n]*\}\n\{[^\n]*"id":"101"[^\n]*\}\n$'
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/7/statuses, count: 3 }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/7/statuses, query: { name: max_id, equals: "101" } }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/7/statuses, query: { name: only_media, equals: "true" } }
+      - run:
+          command: mstdn author alice -n 1 --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: "102" }
+              - { path: "$.url", equals: "${api.url}/@alice/102" }
+              - { path: "$.user.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.text", equals: "山の写真 🇯🇵👍🏽\n二行目 مرحبا\n\n#rust :blobcat: https://example.com/a/very/long/path & the article (https://other.test/post)" }
+              - { path: "$.files[0].description", equals: "山 🏔️" }
+              - { path: "$.favouritesCount", equals: 6 }
+
+  - name: status, thread and profile read one post, its thread and an account, an address on its own server
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/statuses/200
+            json: { id: "200", created_at: "2026-11-20T10:00:00Z", account: { username: bob, acct: bob }, content: "<p>本文 🐈‍⬛</p>" }
+          - method: GET
+            path: /api/v1/statuses/200/context
+            json:
+              ancestors: [{ id: "199", created_at: "2026-11-20T09:00:00Z", account: { username: carol, acct: carol@far.test }, content: "<p>質問</p>" }]
+              descendants: [{ id: "201", created_at: "2026-11-20T11:00:00Z", account: { username: carol, acct: carol@far.test }, content: "<p>ありがとう</p>" }]
+          - method: GET
+            path: /api/v1/accounts/lookup
+            json: { id: "8", username: bob, acct: bob, display_name: "ボブ", note: "<p>こんにちは<br>二行目</p>", followers_count: 1, following_count: 2, statuses_count: 3 }
+      - name: far
+        routes:
+          - method: GET
+            path: /api/v1/statuses/9
+            json: { id: "9", account: { username: dave, acct: dave }, content: "<p>よそ</p>" }
+    steps:
+      - run:
+          command: mstdn status ${api.url}/@bob/200 --host ${far.url}
+          env: { TZ: UTC }
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @bob · 2026-11-20 10:00
+              本文 🐈‍⬛
+              ♡ 0  ⟳ 0  ↩ 0
+              ${api.url}/@bob/200
+      - run:
+          command: mstdn note ${far.url}/users/dave/statuses/9 --json
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.text", equals: よそ }
+      - run:
+          command: mstdn thread 200 --json --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{"content":"<p>質問</p>".*"id":"199".*\n\{.*"id":"200".*\n\{.*"id":"201".*\n$'
+      - run:
+          command: mstdn profile @bob --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              ボブ @bob@127.0.0.1:${api.port}
+              ${api.url}/@bob
+              1 followers  2 following  3 posts
+
+              こんにちは
+              二行目
+
+  - name: the local and public timelines are read as a visitor, home needs a login
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            json: [{ id: "5", account: { acct: alice }, content: "<p>公開</p>" }]
+    steps:
+      - run:
+          command: mstdn timeline local -n 1 --json --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.text", equals: 公開 }
+      - assert:
+          mock: { name: api, path: /api/v1/timelines/public, count: 1, query: { name: local, equals: "true" } }
+      - run:
+          command: mstdn tl federated -n 1 --host ${api.url}
+      - assert:
+          exit_code: 0
+      - run:
+          command: mstdn timeline --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `mstdn login --host 127.0.0.1:${api.port}`
+      - assert:
+          mock: { name: api, path: /api/v1/timelines/public, count: 2 }
+
+  # Mastodon answers a visitor's full-text search with no posts at all, so
+  # mstdn says so before it asks; a hashtag is read from its timeline.
+  - name: search reads a hashtag as a visitor and asks for a login for words
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/tag/rust
+            json: [{ id: "6", account: { acct: alice }, content: '<p><a href="https://m.test/tags/rust" class="mention hashtag" rel="tag">#<span>rust</span></a> 1.90</p>' }]
+          - method: GET
+            path: /api/v2/search
+            json: { accounts: [], statuses: [] }
+    steps:
+      - run:
+          command: mstdn search "#rust" -n 1 --json --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.text", equals: "#rust 1.90" }
+      - run:
+          command: mstdn search 猫 --json --host ${api.url}
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", equals: "127.0.0.1:${api.port} searches the text of posts only for an account that is logged in" }
+              - { path: "$.status", equals: 1 }
+      - assert:
+          mock: { name: api, path: /api/v2/search, count: 0 }
+
+  - name: what the server refuses is exit 4 with its words, and a rate limit is waited for
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/statuses/404
+            status: 404
+            json: { error: "Record not found" }
+          - method: GET
+            path: /api/v1/statuses/429
+            status: 429
+            header: { Retry-After: "0" }
+            json: { error: "Too many requests" }
+    steps:
+      - run:
+          command: mstdn status 404 --host ${api.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: |
+              error: v1/statuses/404 failed: Record not found
+              hint: check the name or the ID, and that it is on 127.0.0.1:${api.port} (or pass --host)
+      - run:
+          command: mstdn status 429 --host ${api.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            contains:
+              - "asks to wait; trying again in 0 s"
+              - "error: v1/statuses/429 failed: Too many requests\nhint: 127.0.0.1:${api.port} limits how often it is asked; wait a while and try again"
+      - assert:
+          mock: { name: api, path: /api/v1/statuses/429, count: 4 }
+      - run:
+          command: mstdn status ../../api/v1/x --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not a post"

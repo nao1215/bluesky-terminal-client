@@ -282,6 +282,8 @@ struct Anchor {
     /// A mention or a hashtag: it reads as its text.
     named: bool,
     text: String,
+    /// Whether a space was due before the link.
+    space_before: bool,
 }
 
 /// A list being read: numbered from its next item's number, or not.
@@ -331,9 +333,7 @@ impl Writer {
         let mut run = String::new();
         let mut chars = s.chars().peekable();
         while let Some(c) = chars.next() {
-            if matches!(c, '\n' | '\r' | '\x0c')
-                || (c.is_ascii_whitespace() && c != ' ' && c != '\t')
-            {
+            if matches!(c, '\n' | '\r' | '\x0c') {
                 // Spaces before the break go with it.
                 let kept = run.trim_end_matches(' ').len();
                 run.truncate(kept);
@@ -356,9 +356,14 @@ impl Writer {
         }
     }
 
-    /// Text already decoded (an entity's character).
+    /// Text already decoded (an entity's character): a line break written
+    /// as one is the source's layout too, but in preformatted text.
     fn decoded(&mut self, s: &str) {
-        self.put(s, self.pre > 0);
+        if self.pre > 0 || self.anchor.is_some() {
+            self.put(s, self.pre > 0);
+        } else {
+            self.text(s);
+        }
     }
 
     /// Write `s`, starting a line first when one is due.
@@ -372,14 +377,13 @@ impl Writer {
             return;
         }
         if literal && s.contains('\n') {
+            // Each line break of preformatted text is one, blank lines
+            // included.
             for (i, line) in s.split('\n').enumerate() {
-                if i > 0 {
-                    self.newline(1);
-                    self.flush_breaks();
+                if i > 0 && !self.out.is_empty() {
+                    self.pending += 1;
                 }
-                if !line.is_empty() {
-                    self.put_inline(line.trim_end_matches('\r'));
-                }
+                self.put_inline(line.trim_end_matches('\r'));
             }
             return;
         }
@@ -399,9 +403,9 @@ impl Writer {
         if s.is_empty() {
             return;
         }
-        let was_start = self.out.is_empty() || self.pending > 0 || self.line_start;
+        // A new line starts without the space due (start_line drops it).
         self.flush_breaks();
-        if self.soft_space && !was_start {
+        if self.soft_space {
             self.out.push(' ');
         }
         self.soft_space = false;
@@ -413,9 +417,7 @@ impl Writer {
     fn flush_breaks(&mut self) {
         if self.out.is_empty() {
             self.pending = 0;
-            if self.line_start || self.out.is_empty() {
-                self.start_line();
-            }
+            self.start_line();
             return;
         }
         if self.pending > 0 {
@@ -496,8 +498,8 @@ impl Writer {
                     href: t.attr("href").trim().to_string(),
                     named,
                     text: String::new(),
+                    space_before: std::mem::take(&mut self.soft_space),
                 });
-                self.soft_space_into_anchor();
             }
             ("a", true) => self.close_anchor(),
             ("img", _) => {
@@ -512,7 +514,11 @@ impl Writer {
                 closing,
             ) => {
                 self.close_anchor();
-                self.newline(2);
+                // A list inside a list item is on the next line, not after a
+                // blank one.
+                let nested = matches!(t.name.as_str(), "ul" | "ol")
+                    && self.lists.len() > usize::from(closing);
+                self.newline(if nested { 1 } else { 2 });
                 match (t.name.as_str(), closing) {
                     ("blockquote", false) => self.quote += 1,
                     ("blockquote", true) => self.quote = self.quote.saturating_sub(1),
@@ -554,19 +560,6 @@ impl Writer {
         None
     }
 
-    /// A space due before the anchor is written before its text.
-    fn soft_space_into_anchor(&mut self) {
-        if self.soft_space {
-            let was = self.anchor.take();
-            self.put_inline("");
-            if !self.out.is_empty() && self.pending == 0 && !self.line_start {
-                self.out.push(' ');
-            }
-            self.soft_space = false;
-            self.anchor = was;
-        }
-    }
-
     /// Write the `<a>` being read, as a mention, a hashtag or a link reads.
     fn close_anchor(&mut self) {
         let Some(a) = self.anchor.take() else {
@@ -587,17 +580,16 @@ impl Writer {
         } else {
             format!("{text} ({})", a.href)
         };
-        let soft = self.soft_space;
-        self.soft_space = false;
-        if soft {
-            self.soft_space = true;
-        }
+        // The space due before the link goes before it, and one due at its
+        // end after it.
+        let after = self.soft_space;
+        self.soft_space = a.space_before;
         self.put(&shown, false);
+        self.soft_space = after;
     }
 
     fn finish(mut self) -> String {
         self.close_anchor();
-        trim_line_end(&mut self.out);
         // Lines end without spaces, and no more than one blank line is in a
         // row: a line of a quote's `>` alone is a blank one too.
         let mut lines: Vec<(bool, &str)> = Vec::new();
@@ -768,6 +760,43 @@ mod tests {
             "fn main() {\n    let x = 1;\n}\n\nend"
         );
         assert_eq!(to_text("<h2>Title</h2><p>body</p>"), "Title\n\nbody");
+    }
+
+    // What the rarer tags and layouts do, one by one.
+    #[rstest]
+    #[case::declarations("<!DOCTYPE html><?xml version=\"1.0\"?><p>a</p>", "a")]
+    #[case::template("<template><p>x</p></template><p>y</p>", "y")]
+    #[case::table("<table><tr><td>a</td></tr><tr><td>b</td></tr></table>", "a\nb")]
+    #[case::nested_lists("<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>", "- a\n  - b\n- c")]
+    #[case::item_on_two_lines("<ul><li>a<br>b</li></ul>", "- a\n  b")]
+    #[case::text_after_pre("<pre>x  y</pre>a\nb", "x  y\n\na b")]
+    #[case::blank_line_in_pre("<pre>a\n\nb\n</pre>", "a\n\nb")]
+    #[case::newline_entity("<p>a&#10;b</p><pre>c&#10;d</pre>", "a b\n\nc\nd")]
+    #[case::space_before_a_link(
+        "<p>see\n<a href=\"https://e.test/\">e.test</a>\nnow</p>",
+        "see e.test now"
+    )]
+    #[case::tab_typed("<p>a\tb</p>", "a\tb")]
+    #[case::formfeed("<p>a\u{c}b</p>", "a b")]
+    fn rarer_html_reads_as_its_text(#[case] html: &str, #[case] want: &str) {
+        assert_eq!(to_text(html), want);
+    }
+
+    // A mention or a hashtag is told by its class or by rel="tag" alone,
+    // and reads as its text; a quoted `>` in an attribute does not end the
+    // tag, and the attributes after a quoted one are read.
+    #[rstest]
+    #[case("<a href=\"https://m.test/tags/x\" rel=\"tag\">#x</a>", "#x")]
+    #[case("<a href=\"https://m.test/tags/x\" class=\"hashtag\">#x</a>", "#x")]
+    #[case("<a href=\"https://m.test/@a\" class=\"u-url mention\">@a</a>", "@a")]
+    #[case("<a class=\"mention\" href=\"https://m.test/@a\">@a</a>", "@a")]
+    #[case(
+        "<a title='x' href=\"https://e.test/?a>b\">t</a>",
+        "t (https://e.test/?a>b)"
+    )]
+    #[case("<a href=\"https://e.test\">…</a>", "… (https://e.test)")]
+    fn links_are_told_apart_by_what_they_say_they_are(#[case] html: &str, #[case] want: &str) {
+        assert_eq!(to_text(html), want);
     }
 
     // A tag that is not closed, a quote that never ends, and the like are

@@ -349,7 +349,8 @@ pub fn post(
     // The limits are the server's own, from its instance's configuration.
     let limits = client.limits();
     too_much(&d, &limits, client.host())?;
-    let me = me(ctx, &client)?;
+    // The account is asked for only to say who would post.
+    let me = if a.dry_run { me(ctx, &client)? } else { None };
     let reply = match (&d.reply, a.reply.as_deref()) {
         (Some((at, id)), Some(typed)) => Some(replied(ctx, &client, typed, at.as_deref(), id)?),
         _ => None,
