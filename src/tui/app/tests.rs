@@ -1677,13 +1677,15 @@ fn enter_opens_the_authors_profile_and_esc_goes_back() {
     );
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    // Your own by the ID the login has, so it is not asked for first.
     let jobs = app.handle_key(key('6'));
     assert_eq!(
         jobs[0].1,
         Job::Profile {
-            who: crate::tui::worker::Who::Me
+            who: crate::tui::worker::Who::Id("u-me".into())
         }
     );
+    assert!(app.profile.own(Some("u-me")));
     // A visitor's 5 says how to log in, and asks nothing.
     let (mut visitor, _) = App::new(None, ORIGIN);
     assert!(visitor.handle_key(key('6')).is_empty());

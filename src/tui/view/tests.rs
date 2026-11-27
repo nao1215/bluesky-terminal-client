@@ -857,3 +857,107 @@ fn the_theme_list_draws_every_theme() {
         assert!(screen.contains(&format!("{}/", i + 1)), "{screen}");
     }
 }
+
+/// Notes as a busy timeline has them: MFM, CJK and emoji, custom emoji,
+/// pictures, reactions, replies and renotes.
+fn heavy_notes(n: usize) -> Vec<Value> {
+    (0..n)
+        .map(|i| {
+            let text = format!(
+                "$[x2 **見出し {i}**] と :blobcat: の話 👨‍👩‍👧 🇯🇵 <center>中央</center> @alice@x.test #タグ https://example.com/{i}\n{}",
+                "長い本文が続きます。".repeat(8)
+            );
+            let mut v = json!({
+                "id": format!("n{i:04}"), "createdAt": "2026-11-27T10:00:00.000Z",
+                "userId": format!("u{i}"),
+                "user": {"id": format!("u{i}"), "username": format!("user{i}"), "name": format!("名前 {i} :blobcat:"),
+                    "avatarUrl": format!("{NOWHERE}/a{}.png", i % 20)},
+                "text": text,
+                "reactions": {"👍": 3, ":blobcat@.:": 2, "❤": 1},
+                "renoteCount": 2, "repliesCount": 1,
+            });
+            if i % 3 == 0 {
+                v["files"] = json!([{"id": format!("f{i}"), "type": "image/png", "name": "p.png",
+                    "url": format!("{NOWHERE}/p{i}.png"), "thumbnailUrl": format!("{NOWHERE}/t{i}.png"),
+                    "properties": {"width": 800, "height": 600}}]);
+            }
+            if i % 5 == 0 {
+                v["reply"] = json!({"id": format!("r{i}"), "createdAt": "t", "user": {"username": "bob"}, "text": "返信先の本文 🙂"});
+                v["replyId"] = json!(format!("r{i}"));
+            }
+            v
+        })
+        .collect()
+}
+
+/// Time to draw one frame of the timeline while `j` walks down 200 notes,
+/// the cost a held key pays per step, as bsky's `frame_time`. Prints the
+/// median and the slowest, with pictures (halfblocks) and without.
+#[test]
+#[ignore = "measurement"]
+fn frame_time() {
+    for pictures in [false, true] {
+        let mut runs = Vec::new();
+        for _ in 0..5 {
+            let mut app = with_notes(heavy_notes(200));
+            app.emojis = [("blobcat".to_string(), format!("{NOWHERE}/blobcat.png"))]
+                .into_iter()
+                .collect();
+            let mut images = if pictures {
+                Images::new(Picker::halfblocks(), None).unwrap()
+            } else {
+                app.pictures = false;
+                Images::none()
+            };
+            let mut term = Terminal::new(TestBackend::new(120, 50)).unwrap();
+            let mut times = Vec::new();
+            let mut keys = Vec::new();
+            for _ in 0..500 {
+                let k = key(if times.len() % 250 < 199 { 'j' } else { 'k' });
+                let start = std::time::Instant::now();
+                drop(app.handle_key(k));
+                keys.push(start.elapsed());
+                let start = std::time::Instant::now();
+                term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+                times.push(start.elapsed());
+            }
+            times.sort();
+            keys.sort();
+            runs.push((
+                times[times.len() / 2],
+                times[times.len() - 1],
+                keys[keys.len() / 2],
+            ));
+        }
+        for (median, max, key) in runs {
+            println!(
+                "pictures {pictures}: frame median {median:?}, max {max:?}; key median {key:?}"
+            );
+        }
+    }
+}
+
+/// Time to draw the first frame of each tab after switching to it, the
+/// cost of `1` `2` ... on a full timeline.
+#[test]
+#[ignore = "measurement"]
+fn tab_switch_time() {
+    let mut app = with_notes(heavy_notes(200));
+    app.pictures = false;
+    let mut images = Images::none();
+    let mut term = Terminal::new(TestBackend::new(120, 50)).unwrap();
+    let mut times = Vec::new();
+    for i in 0..200 {
+        let k = key(if i % 2 == 0 { '4' } else { '1' });
+        drop(app.handle_key(k));
+        let start = std::time::Instant::now();
+        term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+        times.push(start.elapsed());
+    }
+    times.sort();
+    println!(
+        "tab switch: median {:?}, max {:?}",
+        times[times.len() / 2],
+        times[times.len() - 1]
+    );
+}

@@ -7,6 +7,7 @@
 //! they run side by side on a few threads, and a thread opened meanwhile
 //! does not wait behind a slow page.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -28,6 +29,8 @@ pub const PAGE: usize = 30;
 /// [`NESTED`] of them.
 const REPLIES: usize = 30;
 const NESTED: usize = 10;
+/// The replies under replies asked for side by side.
+const NESTED_AT_ONCE: usize = 5;
 
 /// Work for the worker threads.
 #[derive(Debug, Clone, PartialEq)]
@@ -544,29 +547,71 @@ pub fn run(job: Job, client: &Client) -> Event {
 /// The thread of note `id`: the note, what it answers, its replies, and
 /// the replies to the first of them that have some.
 fn thread(client: &Client, id: &str) -> Result<Thread> {
+    // The note first, which says what else there is to ask for; then its
+    // replies and the notes above it side by side, then the replies under
+    // the first replies side by side. One after another they were up to
+    // 13 round trips, where bsky's thread is one; what is asked for is the
+    // same as before.
     let note = client.note(id)?;
-    let mut ancestors = if note.reply_id.is_some() {
-        client.conversation(id, REPLIES)?
-    } else {
-        Vec::new()
-    };
+    let has_children = note.replies_count > 0 || note.renote_count > 0;
+    let (children, ancestors) = std::thread::scope(|s| {
+        let ancestors = note
+            .reply_id
+            .is_some()
+            .then(|| s.spawn(|| client.conversation(id, REPLIES)));
+        let children = if has_children {
+            client.children(id, REPLIES)
+        } else {
+            Ok(Vec::new())
+        };
+        let ancestors = match ancestors {
+            Some(h) => joined(h, "notes/conversation"),
+            None => Ok(Vec::new()),
+        };
+        (children, ancestors)
+    });
+    let children = children?;
+    let mut ancestors = ancestors?;
+    let nested: Vec<&Note> = children
+        .iter()
+        .take(NESTED)
+        .filter(|r| r.replies_count > 0)
+        .collect();
+    let mut under: HashMap<String, Result<Vec<Note>>> = HashMap::new();
+    std::thread::scope(|s| {
+        // At most a few at a time, so that a thread with many replies does
+        // not open a connection for each.
+        for batch in nested.chunks(NESTED_AT_ONCE) {
+            let asked: Vec<_> = batch
+                .iter()
+                .map(|r| (r.id.clone(), s.spawn(|| client.children(&r.id, REPLIES))))
+                .collect();
+            for (rid, h) in asked {
+                under.insert(rid, joined(h, "notes/children"));
+            }
+        }
+    });
     ancestors.reverse();
     let mut replies = Vec::new();
-    if note.replies_count > 0 || note.renote_count > 0 {
-        for (i, r) in client.children(id, REPLIES)?.into_iter().enumerate() {
-            let under = if i < NESTED && r.replies_count > 0 {
-                client.children(&r.id, REPLIES)?
-            } else {
-                Vec::new()
-            };
-            replies.push((r, under));
-        }
+    for r in children {
+        let below = match under.remove(&r.id) {
+            Some(found) => found?,
+            None => Vec::new(),
+        };
+        replies.push((r, below));
     }
     Ok(Thread {
         ancestors,
         note,
         replies,
     })
+}
+
+/// What a request run on a thread of its own answered; a thread that
+/// panicked is an error, not a panic of the worker.
+fn joined<T>(h: std::thread::ScopedJoinHandle<'_, Result<T>>, what: &str) -> Result<T> {
+    h.join()
+        .unwrap_or_else(|_| Err(Error::api(format!("{what}: the request thread failed"))))
 }
 
 /// The notes of an account a profile lists: its notes, replies and
@@ -583,9 +628,13 @@ fn profile(client: &Client, who: &Who) -> Result<(User, Vec<Note>)> {
         Who::Me => client.me()?.id,
         Who::Id(id) => id.clone(),
     };
-    let user = client.user_by_id(&id)?;
-    let notes = client.user_notes(&user.id, &ALL_NOTES, PAGE, None)?;
-    Ok((user, notes))
+    // The account and its notes at once, as bsky's profile: the notes are
+    // asked for by the ID, which need not wait for the account.
+    let (user, notes) = std::thread::scope(|s| {
+        let notes = s.spawn(|| client.user_notes(&id, &ALL_NOTES, PAGE, None));
+        (client.user_by_id(&id), joined(notes, "users/notes"))
+    });
+    Ok((user?, notes?))
 }
 
 /// Follow, unfollow, or take back a request, then read the account again:

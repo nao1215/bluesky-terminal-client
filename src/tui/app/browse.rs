@@ -105,7 +105,13 @@ impl App {
         };
         self.tab = Tab::Profile;
         self.threads.clear();
-        let (seq, job) = self.stamp(Job::Profile { who: who.clone() });
+        // Your own by its ID when the login has it: the worker then asks
+        // for the account and its notes at once, without `i` first.
+        let asked = match (&who, self.my_user_id()) {
+            (Who::Me, Some(id)) => Who::Id(id.to_string()),
+            _ => who.clone(),
+        };
+        let (seq, job) = self.stamp(Job::Profile { who: asked });
         self.profile = Profile {
             who: Some(who),
             loading: true,
