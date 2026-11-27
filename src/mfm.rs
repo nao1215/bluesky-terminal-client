@@ -289,7 +289,9 @@ pub fn without_hash(url: &str) -> &str {
 /// and make a link that is not silent, so it is written `<plain>[</plain>`,
 /// which reads as the same `[`. A `<plain>` that never closes would be
 /// closed by the `</plain>` added after it, so it is written
-/// `<plain><</plain>plain>`, which reads as the same `<plain>`.
+/// `<plain><</plain>plain>`, which reads as the same `<plain>`. A link
+/// right after `http://` gets an empty `<plain></plain>` before its `?`,
+/// which would otherwise make `http://?` an address.
 pub fn silenced(text: &str) -> String {
     let b = text.as_bytes();
     let (links, strays) = scan(b);
@@ -313,6 +315,9 @@ pub fn silenced(text: &str) -> String {
             }
         }
         out.push_str(&text[last..l.start]);
+        if l.form != (Form::Labeled { silent: true }) && joins_address(out.as_bytes()) {
+            out.push_str("<plain></plain>");
+        }
         match l.form {
             Form::Bare => out.push_str(&format!("?[<plain>{0}</plain>]({0})", l.url)),
             Form::Angle => out.push_str(&format!("?[<plain>{0}</plain>](<{0}>)", l.url)),
@@ -326,6 +331,20 @@ pub fn silenced(text: &str) -> String {
     }
     out.push_str(&text[last..]);
     out
+}
+
+/// Whether the `?` that starts a silent link would be taken into an
+/// address that `out` ends in (`http://` before `[label](...)` is no link,
+/// but `http://?` is). Such a link is put after an empty `<plain>`.
+fn joins_address(out: &[u8]) -> bool {
+    let mut k = out.len();
+    while k > 0 && (is_url_char(out[k - 1]) || b"()[]".contains(&out[k - 1])) {
+        k -= 1;
+    }
+    let mut tail = out[k..].to_vec();
+    let q = tail.len();
+    tail.push(b'?');
+    (0..q).any(|p| bare(&tail, p).is_some_and(|l| l.end > q))
 }
 
 /// A run of a note's text as the client draws it: its characters, and
@@ -758,6 +777,8 @@ mod tests {
         "$[x2  http$[x3 $[x4 \0\0\0\0\0\0\0\0\0\0\0$[flip $[spin deep]]]]] ?[<plain>]</plai]>n(https://example.com/p)"
     )]
     #[case("<plain>閉じない 👍🏽\nhttps://a.test")]
+    #[case("http://[x3 flip $[spin deplain>](https://example.com/p)")]
+    #[case("見てhttps://<https://a.test>")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }

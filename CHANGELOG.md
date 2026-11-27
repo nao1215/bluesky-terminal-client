@@ -75,3 +75,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - An address whose brackets hold what reads as MFM elsewhere (`https://a.test/([x](https://b.test))`) is shown as written in the client, as Misskey reads it, where the label inside it was drawn as a link.
 - A `$[` that starts no function (`$[x2 $[ab:c] 後]`) is text in the client, as Misskey reads it, so the `]` after it closes the function around it.
 - Code in a function (`$[x2 `]` 後]`) no longer closes it at a `]` inside the code, as Misskey reads it.
+- `msky post --no-card` no longer makes `http://` before a link into an address of its own with a preview: the `?` it adds is put after an empty `<plain></plain>` there.
