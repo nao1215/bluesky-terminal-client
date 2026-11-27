@@ -63,8 +63,11 @@ jobs:
       - name: Check the tag, the toolchain pin, and the CHANGELOG section
         run: ./scripts/release/check-version.sh "${GITHUB_REF_NAME}" "${RUST_TOOLCHAIN}"
 
-      - name: Verify the crate packages and builds
-        run: cargo publish --locked --dry-run
+      # Both crates, terminal-kit first: bsky depends on it, and cargo builds
+      # bsky against the terminal-kit packaged here even before it is on
+      # crates.io. A version already on crates.io is only a warning here.
+      - name: Verify the crates package and build
+        run: cargo publish --workspace --locked --dry-run
 
   build-binaries:
     needs: [verify, targets]
@@ -91,7 +94,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release --locked --target "${TARGET}"
+        run: cargo build --release --locked -p bluesky-terminal-client --target "${TARGET}"
 
       - name: Pack
         shell: bash
@@ -377,7 +380,10 @@ jobs:
   # crates.io with CARGO_REGISTRY_TOKEN when it is set, else trusted publishing
   # (which needs the crate to exist on crates.io first). The crate is published
   # after the release so a failed build never leaves a version on crates.io
-  # without binaries.
+  # without binaries. terminal-kit goes first, since bsky depends on it, and
+  # only when its version is not on crates.io yet: most releases of bsky leave
+  # it as it was. A version new to crates.io needs CARGO_REGISTRY_TOKEN, as
+  # trusted publishing cannot create a crate.
   publish-crate:
     needs: [create-release, verify-release]
     if: ${{ !contains(github.ref_name, '-') }}
@@ -402,8 +408,20 @@ jobs:
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
+      - name: Publish terminal-kit unless its version is out already
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "terminal-kit") | .version')"
+          status="$(curl -s -o /dev/null -w '%{http_code}' -A "${GITHUB_REPOSITORY} release" "https://crates.io/api/v1/crates/terminal-kit/${version}")"
+          case "${status}" in
+            200) echo "terminal-kit ${version} is on crates.io already" ;;
+            404) cargo publish --locked -p terminal-kit ;;
+            *) echo "::error::crates.io answered ${status} for terminal-kit ${version}"; exit 1 ;;
+          esac
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ env.HAS_CARGO_REGISTRY_TOKEN == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.crates-auth.outputs.token }}
+
       - name: Publish the crate
-        run: cargo publish --locked
+        run: cargo publish --locked -p bluesky-terminal-client
         env:
           CARGO_REGISTRY_TOKEN: ${{ env.HAS_CARGO_REGISTRY_TOKEN == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.crates-auth.outputs.token }}
 

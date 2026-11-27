@@ -391,7 +391,7 @@ mod tests {
         assert_eq!(cells("ｶﾞｲｼﾞﾝ"), 6);
         assert_eq!(cells("ﾊﾟ"), 2);
         assert_eq!(cells("\u{ff9e}"), 1);
-        let input = crate::tui::input::TextInput::single("ﾊﾟﾝ");
+        let input = crate::input::TextInput::single("ﾊﾟﾝ");
         assert_eq!(input.layout(20).cursor, (0, 3));
         assert_eq!(wrap("ﾊﾟﾊﾟﾊﾟ", 4), ["ﾊﾟﾊﾟ", "ﾊﾟ"]);
     }
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn wrapped_lines_never_exceed_the_width() {
         let texts = [
-            "Bluesky は分散型の SNS です。https://example.com/a/very/long/path/that/keeps/going 👍",
+            "この端末は分散型の SNS です。https://example.com/a/very/long/path/that/keeps/going 👍",
             "لا لا لالا \u{644}\u{627}\u{644}\u{627}\u{644}\u{627} مرحبا",
         ];
         for text in texts {
@@ -533,7 +533,7 @@ mod tests {
     fn truncation_is_a_grapheme_prefix_within_the_width() {
         let texts = [
             "👨\u{200d}👩\u{200d}👧 family 🇯🇵 flag 👍🏽 か\u{3099}",
-            "Bluesky は分散型の SNS です 👍",
+            "この端末は分散型の SNS です 👍",
             "لالالالالالالالا مرحبا",
         ];
         for s in texts {

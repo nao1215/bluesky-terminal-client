@@ -19,6 +19,7 @@ on:
   pull_request:
     paths:
       - "src/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".cargo/mutants.toml"
@@ -74,10 +75,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff "${BASE_SHA}...HEAD" -- src > pr.diff
+          git diff "${BASE_SHA}...HEAD" -- src crates > pr.diff
           ulimit -v "${MUTANT_MEMORY_KIB}"
           status=0
-          cargo mutants --in-diff pr.diff --no-shuffle -j 2 || status=$?
+          cargo mutants --workspace --in-diff pr.diff --no-shuffle -j 2 || status=$?
           # 0: every mutant caught, 2: some missed, 3: some timed out. The score
           # below decides; anything else is a failure of the run itself.
           case "${status}" in
@@ -128,7 +129,7 @@ jobs:
         run: |
           ulimit -v "${MUTANT_MEMORY_KIB}"
           status=0
-          cargo mutants --shard "${{ matrix.shard }}/8" --no-shuffle -j 2 || status=$?
+          cargo mutants --workspace --shard "${{ matrix.shard }}/8" --no-shuffle -j 2 || status=$?
           case "${status}" in
             0|2|3) ;;
             *) exit "${status}" ;;

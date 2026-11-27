@@ -4,7 +4,7 @@ Each technique here is used because it catches a kind of bug the others miss. Th
 
 ## Unit tests
 
-The unit tests sit beside the code they test, in a `#[cfg(test)] mod tests` at the end of each file (or a `tests/` folder next to it for `src/tui/app` and `src/tui/view`). `App` holds no terminal and no network, so a key press, a page of posts arriving late or a failed write is a function call; what the screen shows is drawn into ratatui's `TestBackend`. Sets that have to be covered case by case, such as the punctuation that ends a link, are `rstest` tables. CI runs them with `cargo test --locked --all-targets` on Linux, macOS and Windows.
+The unit tests sit beside the code they test, in a `#[cfg(test)] mod tests` at the end of each file (or a `tests/` folder next to it for `src/tui/app` and `src/tui/view`). `App` holds no terminal and no network, so a key press, a page of posts arriving late or a failed write is a function call; what the screen shows is drawn into ratatui's `TestBackend`. Sets that have to be covered case by case, such as the punctuation that ends a link, are `rstest` tables. The drawing helpers that know nothing of Bluesky (text layout, the text field, picture scaling, themes, input events) are in the `terminal-kit` crate under [crates/terminal-kit](../crates/terminal-kit), with their tests. CI runs both crates' tests with `cargo test --locked --workspace --all-targets` on Linux, macOS and Windows.
 
 ## State-transition tests
 
@@ -18,7 +18,7 @@ The unit tests sit beside the code they test, in a `#[cfg(test)] mod tests` at t
 
 [proptest](https://github.com/proptest-rs/proptest) generates the inputs and checks a property every answer has to satisfy. The text is drawn from pieces that are hard to lay out or to count: ZWJ families, flags, keycaps, emoji with VS16 or a skin tone, combining marks, CJK and full-width spaces, half-width kana with sound marks, Arabic ligatures, tabs and control characters.
 
-- `mod properties` at the end of [src/tui/text.rs](../src/tui/text.rs) covers the layout of text in cells: the clusters are the ones unicode-segmentation finds, a wrapped line is never wider than its column (unless one cluster is), wrapping drops nothing but spaces, and a cut keeps a prefix or a suffix of whole clusters within the width.
+- `mod properties` at the end of [crates/terminal-kit/src/text.rs](../crates/terminal-kit/src/text.rs) covers the layout of text in cells: the clusters are the ones unicode-segmentation finds, a wrapped line is never wider than its column (unless one cluster is), wrapping drops nothing but spaces, and a cut keeps a prefix or a suffix of whole clusters within the width.
 - `mod properties` at the end of [src/api/facets.rs](../src/api/facets.rs) covers the facets of a new post: every range is a separate slice of the text on character boundaries, and the bytes it covers are what it points at (the URL, `@` and the handle, `#` and the tag).
 
 ## Metamorphic tests
@@ -28,7 +28,7 @@ The same modules check how two runs relate, which can be said exactly where the 
 Property and metamorphic tests run in every `cargo test` with proptest's default of 256 cases each and a fresh seed each run; a failure prints the minimal input it shrank to. The `Nightly properties` workflow runs them in release mode with 20,000 cases each. To run them that way locally:
 
 ```sh
-PROPTEST_CASES=20000 cargo test --release --bins properties
+PROPTEST_CASES=20000 cargo test --release --workspace --lib --bins properties
 BSKY_FUZZ_SEEDS=2000 cargo test --release --bins random_keys_and_late_answers_keep_the_client_sound
 ```
 
@@ -38,7 +38,7 @@ A failure becomes a plain unit test with the input proptest printed, fixed on it
 
 [cargo-mutants](https://mutants.rs) rewrites one operator, constant or return value at a time in the code that computes and decides on its own, which [.cargo/mutants.toml](../.cargo/mutants.toml) lists: text layout, facets, HLS and MPEG-TS, link cards, languages, picture scaling, columns and the text field. It runs the unit tests against each rewrite. A rewrite no test notices, such as `<` turned into `<=` in a width check, is a missed mutant: the line runs under the tests but nothing checks its answer. The rest of the crate mostly connects that code to the terminal, the network and the worker, which the state-transition and end-to-end suites cover.
 
-The `Mutation` workflow runs the whole set every Saturday in eight shards and, on a pull request that touches `src/`, only the mutants on the lines it changes (`cargo mutants --in-diff`). Both fail when the score, caught / (caught + missed) with timeouts counted as caught and mutants that do not compile left out, falls below the recorded score in `MUTATION_MIN_SCORE`. The missed mutants are listed in the job summary. Some are equivalent to the original and no test can catch them, so the recorded score is what the suite reaches today rather than 100%, and it is raised when a test closes a gap.
+The `Mutation` workflow runs the whole set every Saturday in eight shards and, on a pull request that touches `src/` or `crates/`, only the mutants on the lines it changes (`cargo mutants --in-diff`). Both fail when the score, caught / (caught + missed) with timeouts counted as caught and mutants that do not compile left out, falls below the recorded score in `MUTATION_MIN_SCORE`. The missed mutants are listed in the job summary. Some are equivalent to the original and no test can catch them, so the recorded score is what the suite reaches today rather than 100%, and it is raised when a test closes a gap.
 
 | Date | Mutants | Score |
 |---|---|---|
@@ -50,7 +50,7 @@ To run it locally (a full run takes hours; keep its temporary copies off a small
 
 ```sh
 cargo install cargo-mutants --locked
-TMPDIR=$HOME/.cache/mutants RUST_TEST_THREADS=4 MALLOC_ARENA_MAX=2 cargo mutants -j 4
+TMPDIR=$HOME/.cache/mutants RUST_TEST_THREADS=4 MALLOC_ARENA_MAX=2 cargo mutants --workspace -j 4
 python3 scripts/mutation_score.py mutants.out
 ```
 

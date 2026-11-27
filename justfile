@@ -10,11 +10,11 @@ default:
 
 # Run unit tests
 test:
-    cargo test --all-targets
+    cargo test --workspace --all-targets
 
 # Run clippy with warnings as errors
 lint:
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Check formatting (does not modify files)
 fmt-check:
@@ -26,7 +26,7 @@ fmt:
 
 # Build documentation with warnings as errors
 doc:
-    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 # Run security audit (requires cargo-audit)
 audit:

@@ -7,20 +7,29 @@
 # pictures in cells, the columns and the text field. The rest mostly wires
 # those to the terminal, the network and the worker thread, which the state
 # tests of App and the E2E suite cover.
+#
+# The text layout, the picture scaling and the text field live in the
+# terminal-kit crate of the workspace, so mutation.yml runs cargo mutants with
+# --workspace.
 examine_globs = [
-  "src/tui/text.rs",
+  "crates/terminal-kit/src/text.rs",
   "src/api/facets.rs",
   "src/hls.rs",
   "src/og.rs",
   "src/langs.rs",
-  "src/tui/scale.rs",
+  "crates/terminal-kit/src/scale.rs",
   "src/tui/columns.rs",
-  "src/tui/input.rs",
+  "crates/terminal-kit/src/input.rs",
 ]
 
-# bsky is a binary crate: its unit tests are in the bin target. They run in
-# about ten seconds.
-additional_cargo_test_args = ["--bins"]
+# A mutant in terminal-kit is judged by bsky's tests too, which draw whole
+# screens with it, as they did when the code was part of bsky.
+test_workspace = true
+
+# bsky's unit tests are in its bin target and terminal-kit's in its lib
+# target; --all-targets runs both and leaves the doc tests out. They run in
+# about twenty seconds.
+additional_cargo_test_args = ["--all-targets"]
 
 # A mutant that turns a loop condition around can spin forever.
 timeout_multiplier = 3.0

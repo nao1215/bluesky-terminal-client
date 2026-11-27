@@ -10,7 +10,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::tui::text::drawable;
+use crate::text::drawable;
 
 /// One editable text field.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -267,7 +267,7 @@ impl TextInput {
                 continue;
             }
             let shown = if self.masked { "•" } else { g };
-            let w = crate::tui::text::cluster_width(shown);
+            let w = crate::text::cluster_width(shown);
             if col + w > width {
                 lines.push(String::new());
                 col = 0;
@@ -492,7 +492,7 @@ mod tests {
             let drawn = t.layout(40).cursor;
             t.handle_key(key(KeyCode::Char('x')));
             let x = t.text().find('x').unwrap();
-            let col = crate::tui::text::cells(&t.text()[..x]);
+            let col = crate::text::cells(&t.text()[..x]);
             assert_eq!(drawn, (0, col), "{:?}", t.text());
         }
     }
@@ -544,7 +544,7 @@ mod tests {
             let at = t.text().find('!').unwrap();
             let before = &t.text()[..at];
             let row = before.matches('\n').count();
-            let col = crate::tui::text::cells(before.rsplit('\n').next().unwrap());
+            let col = crate::text::cells(before.rsplit('\n').next().unwrap());
             assert_eq!(drawn, (row, col), "{text:?} {code:?}: {:?}", t.text());
             assert!(
                 t.text().starts_with(before) && !before.ends_with(['🇯', 'b']),

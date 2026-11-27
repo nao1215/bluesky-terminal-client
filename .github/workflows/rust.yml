@@ -61,7 +61,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests
-        run: cargo test --locked --all-targets
+        run: cargo test --locked --workspace --all-targets
 
   clippy:
     runs-on: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
@@ -121,7 +121,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build documentation
-        run: cargo doc --locked --no-deps
+        run: cargo doc --locked --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -153,7 +153,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check with the declared minimum toolchain
-        run: cargo check --locked --all-targets
+        run: cargo check --locked --workspace --all-targets
 
   # The release scripts run only on a tag, so they are tested here on every
   # platform that packs an archive, and the compiler the release pins is

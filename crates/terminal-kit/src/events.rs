@@ -5,7 +5,7 @@
 //! (emoji, most of all): a terminal sends such a character as two UTF-16
 //! surrogates, each as a key-down and a key-up record, and crossterm pairs a
 //! surrogate's key-up with its own key-down, fails to decode the pair, and
-//! throws both away (#20). So on Windows bsky takes the records of
+//! throws both away. So on Windows this module takes the records of
 //! surrogates off the console input before crossterm reads them, assembles
 //! the characters from the key-down records, and leaves every other record
 //! to crossterm.
@@ -17,7 +17,7 @@ use std::time::Duration;
 use crossterm::event;
 use crossterm::event::Event;
 
-/// The input events of the terminal bsky runs in.
+/// The input events of the terminal the program runs in.
 pub struct Input {
     #[cfg(windows)]
     console: windows::Console,
