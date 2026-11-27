@@ -569,6 +569,9 @@ pub struct App {
     /// Answers to jobs numbered before this are of the account before a
     /// switch.
     account_since: u64,
+    /// The server has no chat for this account: the Chat tab is not shown,
+    /// and stays in the setting for a server that has.
+    no_chat: bool,
 }
 
 /// What a timeline that needs an account says when there is none.
@@ -633,6 +636,7 @@ impl App {
             to_copy: None,
             sent: 0,
             account_since: 0,
+            no_chat: false,
         };
         let jobs = app.start();
         (app, jobs)
@@ -655,6 +659,11 @@ impl App {
         self.search = Search::default();
         self.profile = Profile::default();
         self.chat = ChatPane::default();
+        // Another server or account may have chat: it is asked again.
+        self.no_chat = false;
+        if self.settings.tabs.is_none() {
+            self.tabs = DEFAULT_TABS.to_vec();
+        }
         // The feed tabs are the server's: another server shows its own.
         if let Some(names) = self.settings.tabs.clone() {
             let (tabs, _) = self.tabs_for_host(&names);
@@ -684,6 +693,11 @@ impl App {
         if self.session.is_some() {
             jobs.extend(self.load_notifications());
             jobs.extend(self.ask_unread(Instant::now()));
+            // Asked now, so that on a server without chat its tab goes
+            // before it is opened; on one with, the list is then ready.
+            if self.tabs.contains(&Tab::Chat) {
+                jobs.extend(self.load_chat());
+            }
         }
         jobs
     }
@@ -1474,6 +1488,7 @@ impl App {
             return Vec::new();
         }
         self.tabs = tabs;
+        self.hide_chat_if_none();
         let first = self.tabs[0];
         if self.tab == first {
             return Vec::new();

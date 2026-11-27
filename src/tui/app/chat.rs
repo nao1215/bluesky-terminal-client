@@ -86,7 +86,19 @@ impl App {
         Vec::new()
     }
 
-    fn load_chat(&mut self) -> Jobs {
+    /// Without chat on this server, no Chat tab; the tab shown moves to
+    /// the first if it was Chat.
+    pub(super) fn hide_chat_if_none(&mut self) {
+        if !self.no_chat || !self.tabs.contains(&Tab::Chat) || self.tabs.len() <= 1 {
+            return;
+        }
+        self.tabs.retain(|t| *t != Tab::Chat);
+        if self.tab == Tab::Chat {
+            self.tab = self.tabs[0];
+        }
+    }
+
+    pub(super) fn load_chat(&mut self) -> Jobs {
         let (seq, job) = self.stamp(Job::ChatHistory);
         self.chat.convos.begin();
         self.chat.convos.asked = seq;
@@ -240,15 +252,18 @@ impl App {
                         self.chat.convos.cursor = None;
                     }
                     Err(e) if crate::api::chat_unavailable(&e) => {
-                        self.tabs.retain(|t| *t != Tab::Chat);
-                        if self.tab == Tab::Chat {
-                            self.tab = self.tabs[0];
+                        let shown = self.tab == Tab::Chat;
+                        self.no_chat = true;
+                        self.hide_chat_if_none();
+                        // Asked at the start, the tab just goes; said only
+                        // to one who was looking at it.
+                        if shown {
+                            self.error(format!(
+                                "{} has no chat for this account ({}); the Chat tab is taken away",
+                                self.host(),
+                                e.message()
+                            ));
                         }
-                        self.error(format!(
-                            "{} has no chat for this account ({}); the Chat tab is taken away",
-                            self.host(),
-                            e.message()
-                        ));
                     }
                     Err(e) => self.chat.convos.failed(said(&e)),
                 }

@@ -432,6 +432,7 @@ impl App {
                     return Vec::new();
                 }
                 self.tabs = tabs.clone();
+                self.hide_chat_if_none();
                 let jobs = self.set_tabs(tabs);
                 let shown = self.tabs_setting().join(", ");
                 self.keep_tabs(tf("tabs: {}", &[&shown]));

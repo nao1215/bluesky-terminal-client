@@ -315,6 +315,10 @@ impl App {
             })
             .filter(|s| !s.is_empty())
             .collect();
+        // Hidden here for want of chat, it stays for a server that has.
+        if self.no_chat && !out.iter().any(|s| s == "chat") {
+            out.push("chat".to_string());
+        }
         let host = self.host().to_string();
         for s in self.settings.tabs.iter().flatten() {
             if let Some(f) = Feed::parse(s)

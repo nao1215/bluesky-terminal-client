@@ -96,7 +96,7 @@ The settings screen (`s`) changes the same file, and keeps what it does not know
 
 When the selection rests on a note for 400 ms, its thread is read ahead, as bsky's is, so `v` shows it at once; one read more than 15 s before is shown while it is read again, and one read before a note, a reaction, a renote or a deletion you sent is not used. The Notifications tab counts the notifications not read yet, `4 Notifications (3)`, from the account's `unreadNotificationsCount`, asked once a minute; a server that only says whether there are any shows `(•)`.
 
-The Chat tab is Misskey's chat (`chat/history`, `chat/messages/*`, from Misskey 2025.4): the conversations with accounts and rooms, the newest first and an unread one marked, and one conversation's messages, the newest at the bottom. A server without chat, or a role that may not chat, takes the tab away and says so.
+The Chat tab is Misskey's chat (`chat/history`, `chat/messages/*`, from Misskey 2025.4): the conversations with accounts and rooms, the newest first and an unread one marked, and one conversation's messages, the newest at the bottom. Chat is asked for when the client starts: on a server without chat, or for a role that may not chat, the Chat tab is not shown (misskey.io has no chat routes, although its meta says chat is available). It stays in the `tabs` setting for a server that has chat, and switching account asks again.
 
 The Profile tab shows the account's name and address, how you and it follow each other, its counts and what it says about itself (as plain text), over its notes, paged as the timelines are. The Search tab searches notes (`notes/search`, paged by `untilId`) or accounts (`users/search`, paged by offset).
 

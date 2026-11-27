@@ -70,6 +70,7 @@ scenarios:
                 reaction: ":blobcat@.:"
                 user: { username: gus, name: "Gus 🐈‍⬛" }
                 note: { id: a1, text: "おはよう" }
+          - { method: POST, path: /api/chat/history, json: [] }
           - method: POST
             path: /api/notes/show
             json: { id: o1, createdAt: "2026-11-26T09:00:00.000Z", user: { username: bob, host: misskey.design, name: "ボブ" }, cw: "ネタバレ", text: "犯人は執事" }
@@ -507,6 +508,7 @@ scenarios:
             path: /api/notes/timeline
             json: []
           - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/chat/history, json: [] }
     steps:
       - fixture:
           file: cfg/accounts/127.0.0.1_${api.port}.json

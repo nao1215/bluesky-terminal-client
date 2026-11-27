@@ -81,10 +81,11 @@ fn a_logged_in_start_opens_on_home_and_reads_the_notifications_too() {
         [
             &home(None),
             &Job::Notifications { until: None },
-            &Job::Unread
+            &Job::Unread,
+            &Job::ChatHistory
         ]
     );
-    assert_eq!(app.pending, 2, "the unread count is not waited for");
+    assert_eq!(app.pending, 3, "the unread count is not waited for");
     assert!(timeline(&app).loading);
 }
 
@@ -285,7 +286,10 @@ fn pages_continue_from_the_last_note_and_end_when_nothing_is_new() {
     );
     assert_eq!(timeline(&app).cursor, None);
     assert!(app.handle_key(key('k')).is_empty());
-    assert_eq!(app.pending, 1, "the notifications are still out");
+    assert_eq!(
+        app.pending, 2,
+        "the notifications and the chat are still out"
+    );
 }
 
 // A failed next page is asked for again on the next move, and says why.
@@ -1892,6 +1896,8 @@ fn chat_message(v: Value) -> crate::api::types::ChatMessage {
 #[test]
 fn the_chat_tab_lists_opens_and_sends() {
     let mut app = writer(vec![]);
+    // As if the list asked at the start had not come yet.
+    app.chat = ChatPane::default();
     let jobs = app.handle_key(key('7'));
     assert_eq!(app.tab, Tab::Chat);
     assert_eq!(jobs[0].1, Job::ChatHistory);
@@ -1976,9 +1982,38 @@ fn the_chat_tab_lists_opens_and_sends() {
 }
 
 // A server without chat, or a role that may not chat, takes the tab away.
+// Asked at the start, the tab goes before it is opened, without a word;
+// the setting keeps it for a server that has chat, and another account
+// asks again.
+#[test]
+fn a_server_without_chat_hides_the_tab_from_the_start() {
+    let (mut app, jobs) = App::new(Some(session()), ORIGIN);
+    let (seq, _) = jobs
+        .iter()
+        .find(|(_, j)| *j == Job::ChatHistory)
+        .cloned()
+        .expect("chat asked at the start");
+    app.handle_answer(
+        seq,
+        Event::ChatHistory(Err(Error::api("chat/history failed: HTTP 404"))),
+    );
+    assert!(!app.tabs.contains(&Tab::Chat));
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    assert!(app.status.is_none(), "nothing said: the tab was not open");
+    assert!(app.tabs_setting().iter().any(|s| s == "chat"));
+    app.handle_key(key('7'));
+    assert_ne!(app.tab, Tab::Chat, "7 opens no Chat tab");
+    app.switched_to(Some(session()), ORIGIN);
+    assert!(
+        app.tabs.contains(&Tab::Chat),
+        "asked again for the next account"
+    );
+}
+
 #[test]
 fn a_server_without_chat_takes_the_tab_away() {
     let mut app = writer(vec![]);
+    app.chat = ChatPane::default();
     let jobs = app.handle_key(key('7'));
     app.handle_answer(
         jobs[0].0,

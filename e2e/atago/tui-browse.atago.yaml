@@ -130,6 +130,7 @@ scenarios:
         routes:
           - { method: POST, path: /api/notes/timeline, json: [] }
           - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/chat/history, json: [] }
           - method: POST
             path: /api/antennas/list
             json: [{ id: ant1, name: "ニュース 📰" }]
