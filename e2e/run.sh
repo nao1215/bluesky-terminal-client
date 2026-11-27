@@ -29,8 +29,8 @@ fi
 
 cd "$REPO_ROOT"
 
-echo "e2e: building bsky (cargo build --profile e2e --locked)..."
-cargo build --profile e2e --locked
+echo "e2e: building bsky (cargo build --profile e2e --locked -p bluesky-terminal-client)..."
+cargo build --profile e2e --locked -p bluesky-terminal-client
 
 export PATH="$REPO_ROOT/target/e2e:$PATH"
 # bsky picks its language from LC_ALL, LC_MESSAGES or LANG, and the specs

@@ -166,7 +166,7 @@ fn thumbnail_windows(from: u32, to: u32) -> Option<Vec<(usize, usize)>> {
 
 /// `img.thumbnail(max_w, max_h)`: `img` made smaller to fit in
 /// `max_w` x `max_h` by averaging blocks of pixels, the same pixels
-/// `image` gives, faster for an RGB or RGBA picture ([`thumbnail_exact`]).
+/// `image` gives, faster for an RGB or RGBA picture (`thumbnail_exact`).
 pub fn thumbnail(img: &DynamicImage, max_w: u32, max_h: u32) -> DynamicImage {
     let (w, h) = fit(img.width(), img.height(), max_w, max_h);
     thumbnail_exact(img, w, h).unwrap_or_else(|| img.thumbnail_exact(w, h))

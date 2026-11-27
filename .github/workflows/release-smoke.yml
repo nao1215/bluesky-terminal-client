@@ -100,7 +100,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release --locked --target "${TARGET}"
+        run: cargo build --release --locked -p bluesky-terminal-client --target "${TARGET}"
 
       - name: Pack
         shell: bash

@@ -11,7 +11,6 @@ mod api;
 mod browser;
 mod card;
 mod cli;
-mod clock;
 mod compose;
 mod config;
 mod download;
@@ -25,6 +24,9 @@ mod terminal;
 mod timeline;
 mod tui;
 mod video;
+
+// Times as bsky shows them, shared with other terminal clients.
+use terminal_kit::clock;
 
 use std::io::Write;
 use std::process::ExitCode;

@@ -1,4 +1,4 @@
-//! Times as bsky shows them, in the client and on the command line.
+//! Times as a client shows them, on the screen and on the command line.
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;

@@ -49,7 +49,7 @@ jobs:
       - name: Properties and metamorphic relations
         env:
           PROPTEST_CASES: ${{ inputs.cases || '20000' }}
-        run: cargo test --locked --release --bins properties
+        run: cargo test --locked --release --workspace --lib --bins properties
 
       - name: Random keys and late answers
         env:

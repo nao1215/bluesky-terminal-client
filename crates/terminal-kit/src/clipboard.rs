@@ -2,7 +2,8 @@
 //!
 //! OSC 52 asks the terminal itself to hold the text, so it works over ssh
 //! and inside tmux (with `set-clipboard on`), where a clipboard program on
-//! the machine bsky runs on would put it somewhere nobody can paste from.
+//! the machine the client runs on would put it somewhere nobody can paste
+//! from.
 //! A terminal that does not know the sequence ignores it.
 
 /// The escape sequence that puts `text` in the terminal's clipboard.
@@ -45,13 +46,13 @@ mod tests {
     #[case("fooba", "Zm9vYmE=")]
     #[case("foobar", "Zm9vYmFy")]
     #[case(
-        "https://bsky.app/profile/did:plc:me/post/mine",
-        "aHR0cHM6Ly9ic2t5LmFwcC9wcm9maWxlL2RpZDpwbGM6bWUvcG9zdC9taW5l"
+        "https://example.com/users/me/posts/mine",
+        "aHR0cHM6Ly9leGFtcGxlLmNvbS91c2Vycy9tZS9wb3N0cy9taW5l"
     )]
     // A skin tone, CJK, and a URL: the bytes are encoded, not the characters.
     #[case(
-        "👍🏽 家族 https://bsky.app/x",
-        "8J+RjfCfj70g5a625pePIGh0dHBzOi8vYnNreS5hcHAveA=="
+        "👍🏽 家族 https://example.com/x",
+        "8J+RjfCfj70g5a625pePIGh0dHBzOi8vZXhhbXBsZS5jb20veA=="
     )]
     fn base64_is_the_standard_alphabet_with_padding(#[case] text: &str, #[case] want: &str) {
         assert_eq!(base64(text.as_bytes()), want);
