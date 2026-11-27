@@ -283,6 +283,237 @@ pub fn silenced(text: &str) -> String {
     out
 }
 
+/// A run of a note's text as the client draws it: its characters, and
+/// whether MFM makes them bold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run {
+    pub text: String,
+    pub bold: bool,
+}
+
+/// `text` as plain text, the way Misskey's own client shows what MFM
+/// draws, less the drawing: a function (`$[x2 ...]`, `$[tada ...]`,
+/// `$[fg.color=f00 ...]`, nested ones too) is its content, `$[ruby base
+/// reading]` is `base(reading)`, `<center>`, `<small>`, `<i>`, `<s>`,
+/// `<sup>` and `<sub>` are what they hold, `<b>` and `**bold**` are bold,
+/// a link with a label (`[label](address)`, `?[label](address)`) is its
+/// label, and `<plain>` is what it holds as it is. Code, math, custom
+/// emoji (`:name:`) and anything that does not close are left as written.
+/// The text never grows: markup is only taken away.
+pub fn plain(text: &str) -> Vec<Run> {
+    let mut runs = Vec::new();
+    render(text, false, 0, &mut runs);
+    runs
+}
+
+/// [`plain`] without the bold: the text alone.
+pub fn plain_text(text: &str) -> String {
+    plain(text).into_iter().map(|r| r.text).collect()
+}
+
+/// Add `s` to `runs`, joined to the last run when it is of the same style.
+fn push(runs: &mut Vec<Run>, s: &str, bold: bool) {
+    if s.is_empty() {
+        return;
+    }
+    match runs.last_mut() {
+        Some(r) if r.bold == bold => r.text.push_str(s),
+        _ => runs.push(Run {
+            text: s.to_string(),
+            bold,
+        }),
+    }
+}
+
+/// The tags whose content is drawn as it is, bold for `<b>`.
+const TAGS: &[(&str, bool)] = &[
+    ("center", false),
+    ("small", false),
+    ("i", false),
+    ("s", false),
+    ("sup", false),
+    ("sub", false),
+    ("b", true),
+];
+
+fn render(s: &str, bold: bool, depth: usize, runs: &mut Vec<Run>) {
+    let b = s.as_bytes();
+    let mut i = 0;
+    let mut last = 0;
+    while i < b.len() {
+        let line_start = i == 0 || b[i - 1] == b'\n';
+        let found: Drawn<'_> = if b[i..].starts_with(b"<plain>") {
+            find(b, i + 7, b"</plain>").map(|close| {
+                let inner = &s[i + 7..close];
+                (
+                    close + 8,
+                    Box::new(move |r: &mut Vec<Run>| push(r, inner, bold))
+                        as Box<dyn FnOnce(&mut Vec<Run>)>,
+                )
+            })
+        } else if let Some(end) = skipped(b, i, line_start) {
+            let kept = &s[i..end];
+            Some((end, Box::new(move |r: &mut Vec<Run>| push(r, kept, bold))))
+        } else if depth < NEST_LIMIT {
+            special(s, i, bold, depth)
+        } else {
+            None
+        };
+        match found {
+            Some((end, draw)) => {
+                push(runs, &s[last..i], bold);
+                draw(runs);
+                i = end;
+                last = end;
+            }
+            None => {
+                // One character on: every form starts with an ASCII byte.
+                i += 1;
+                while i < b.len() && !s.is_char_boundary(i) {
+                    i += 1;
+                }
+            }
+        }
+    }
+    push(runs, &s[last..], bold);
+}
+
+type Drawn<'a> = Option<(usize, Box<dyn FnOnce(&mut Vec<Run>) + 'a>)>;
+
+/// The MFM at `i` that draws its content otherwise than as written: where
+/// it ends, and how to draw it.
+fn special<'a>(s: &'a str, i: usize, bold: bool, depth: usize) -> Drawn<'a> {
+    let b = s.as_bytes();
+    if b[i..].starts_with(b"$[") {
+        let (name_end, content) = function(b, i)?;
+        let close = closing_bracket(b, content)?;
+        let name = &s[i + 2..name_end];
+        let inner = &s[content..close];
+        let ruby = name == "ruby";
+        return Some((
+            close + 1,
+            Box::new(
+                move |r: &mut Vec<Run>| match inner.split_once(' ').filter(|_| ruby) {
+                    Some((base, reading)) => {
+                        render(base, bold, depth + 1, r);
+                        push(r, "(", bold);
+                        render(reading, bold, depth + 1, r);
+                        push(r, ")", bold);
+                    }
+                    None => render(inner, bold, depth + 1, r),
+                },
+            ),
+        ));
+    }
+    if b[i..].starts_with(b"**") {
+        let close = find(b, i + 2, b"**").filter(|c| *c > i + 2)?;
+        let inner = &s[i + 2..close];
+        return Some((
+            close + 2,
+            Box::new(move |r: &mut Vec<Run>| render(inner, true, depth + 1, r)),
+        ));
+    }
+    if b[i] == b'<' {
+        for (tag, makes_bold) in TAGS {
+            let open = format!("<{tag}>");
+            if !b[i..].starts_with(open.as_bytes()) {
+                continue;
+            }
+            let close_tag = format!("</{tag}>");
+            let close = closing_tag(b, i + open.len(), open.as_bytes(), close_tag.as_bytes())?;
+            let inner = &s[i + open.len()..close];
+            let style = bold || *makes_bold;
+            return Some((
+                close + close_tag.len(),
+                Box::new(move |r: &mut Vec<Run>| render(inner, style, depth + 1, r)),
+            ));
+        }
+        return None;
+    }
+    if b[i] == b'[' || b[i..].starts_with(b"?[") {
+        let link = labeled(b, i)?;
+        let open = if b[i] == b'?' { i + 2 } else { i + 1 };
+        let label_close = label_end(b, open)?;
+        let label = &s[open..label_close];
+        return Some((
+            link.end,
+            Box::new(move |r: &mut Vec<Run>| render(label, bold, depth + 1, r)),
+        ));
+    }
+    None
+}
+
+/// For `$[name.args ` at `i`: where the name ends, and where the content
+/// starts, after the space. A name is letters, digits and `_`; the
+/// arguments after a `.` are anything up to the space but a bracket.
+fn function(b: &[u8], i: usize) -> Option<(usize, usize)> {
+    let mut j = i + 2;
+    while j < b.len() && (b[j].is_ascii_alphanumeric() || b[j] == b'_') {
+        j += 1;
+    }
+    let name_end = j;
+    if name_end == i + 2 {
+        return None;
+    }
+    if b.get(j) == Some(&b'.') {
+        while j < b.len() && !matches!(b[j], b' ' | b'\n' | b'[' | b']') {
+            j += 1;
+        }
+    }
+    (b.get(j) == Some(&b' ')).then_some((name_end, j + 1))
+}
+
+/// The `]` that closes a function whose content starts at `from`: a `$[`
+/// in it opens another, which its own `]` closes, and a labeled link's
+/// `]` is the link's.
+fn closing_bracket(b: &[u8], from: usize) -> Option<usize> {
+    let mut open = 0usize;
+    let mut j = from;
+    while j < b.len() {
+        if b[j..].starts_with(b"$[") {
+            open += 1;
+            j += 2;
+            continue;
+        }
+        if (b[j] == b'[' || b[j..].starts_with(b"?["))
+            && let Some(l) = labeled(b, j)
+        {
+            j = l.end;
+            continue;
+        }
+        if b[j] == b']' {
+            if open == 0 {
+                return Some(j);
+            }
+            open -= 1;
+        }
+        j += 1;
+    }
+    None
+}
+
+/// The `</tag>` that closes a `<tag>` whose content starts at `from`, the
+/// same tag opened inside closed first.
+fn closing_tag(b: &[u8], from: usize, open: &[u8], close: &[u8]) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut j = from;
+    while j < b.len() {
+        if b[j..].starts_with(open) {
+            depth += 1;
+            j += open.len();
+        } else if b[j..].starts_with(close) {
+            if depth == 0 {
+                return Some(j);
+            }
+            depth -= 1;
+            j += close.len();
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +637,155 @@ mod tests {
         assert_eq!(s, want);
         assert!(previewed(&s, &[]).is_empty(), "{s}");
         assert_eq!(urls(&s), urls(text));
+    }
+
+    fn runs(text: &str) -> Vec<(String, bool)> {
+        plain(text).into_iter().map(|r| (r.text, r.bold)).collect()
+    }
+
+    #[rstest]
+    #[case("$[x2 大きい]", "大きい")]
+    #[case("$[tada.speed=2s :blobcat:]", ":blobcat:")]
+    #[case("$[fg.color=f00 赤い$[bg.color=0f0 緑の上]文字]", "赤い緑の上文字")]
+    #[case("$[spin $[x3 $[tada 🎉]]]!", "🎉!")]
+    #[case("$[ruby 漢字 かんじ]を読む", "漢字(かんじ)を読む")]
+    #[case("<center>まんなか</center>", "まんなか")]
+    #[case("<small>小さく<i>斜め</i></small>", "小さく斜め")]
+    #[case("<center><center>二重</center></center>", "二重")]
+    #[case(
+        "?[ラベル](https://example.com/a) と [見出し](https://example.com/b)",
+        "ラベル と 見出し"
+    )]
+    #[case(
+        "<plain>$[x2 そのまま] **太くない**</plain>",
+        "$[x2 そのまま] **太くない**"
+    )]
+    #[case("`$[x2 code]` は $[x2 そのまま]", "`$[x2 code]` は そのまま")]
+    #[case("$[x2 [label](https://example.com/a)]", "label")]
+    #[case(":blobcat: :custom_emoji_name:", ":blobcat: :custom_emoji_name:")]
+    #[case(
+        "家族👨\u{200d}👩\u{200d}👧$[x2 🇯🇵👍🏽❤\u{fe0f}]",
+        "家族👨\u{200d}👩\u{200d}👧🇯🇵👍🏽❤\u{fe0f}"
+    )]
+    fn mfm_is_drawn_as_its_text(#[case] text: &str, #[case] want: &str) {
+        assert_eq!(plain_text(text), want);
+    }
+
+    // What does not close, or is not a function, is left as written.
+    #[rstest]
+    #[case("$[x2 閉じない")]
+    #[case("$[x2]")]
+    #[case("$[ 名前なし]")]
+    #[case("$[x2\n改行]")]
+    #[case("<center>閉じない")]
+    #[case("**片方だけ")]
+    #[case("****")]
+    #[case("price is $[100]")]
+    #[case("[label](not an address)")]
+    #[case("$[")]
+    fn mfm_that_does_not_close_is_left_as_written(#[case] text: &str) {
+        assert_eq!(plain_text(text), text);
+    }
+
+    #[test]
+    fn bold_is_marked_and_the_rest_is_not() {
+        assert_eq!(
+            runs("前**太い$[x2 中も]**後<b>タグ</b>"),
+            [
+                ("前".to_string(), false),
+                ("太い中も".to_string(), true),
+                ("後".to_string(), false),
+                ("タグ".to_string(), true),
+            ]
+        );
+    }
+
+    // Notes of misskey.io's local timeline, as they were written there.
+    #[test]
+    fn real_notes_are_drawn_as_their_text() {
+        let v: serde_json::Value =
+            serde_json::from_str(include_str!("testdata/mfm_samples.json")).unwrap();
+        let got: Vec<String> = v["texts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| plain_text(t.as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                "アイドルとして見せられない(バレたらおわる)もの:blobcatphoto_frustration:",
+                "misskey.ioに新しい絵文字 :anagi_cheer_dance: (`anagi_cheer_dance`)が追加されたかも。\n:anagi_cheer_dance:",
+                ":anagi_cheer_dance::blobcat_yay:",
+                "じゃあ強化ペネ持続重ねするね…:blobcat_finger_beam:",
+                "セブンの春巻きう、うましぎ～～！🫨\n───常設化しろ。",
+            ]
+        );
+    }
+
+    // On random mixes of MFM's pieces, emoji and CJK: nothing panics, the
+    // text never grows, every character drawn is one of the text's, in
+    // order, and markup nested past mfm-js's limit is left as written.
+    #[test]
+    fn plain_never_panics_and_never_grows() {
+        const PIECES: &[&str] = &[
+            "$[",
+            "x2 ",
+            "tada.speed=1s ",
+            "ruby ",
+            "]",
+            "[",
+            "](https://e.test/a)",
+            "?[",
+            "**",
+            "<center>",
+            "</center>",
+            "<small>",
+            "</small>",
+            "<b>",
+            "</b>",
+            "<plain>",
+            "</plain>",
+            "`",
+            "\n",
+            " ",
+            "a",
+            "漢字",
+            "👨\u{200d}👩\u{200d}👧",
+            "🇯🇵",
+            "👍🏽",
+            ":blobcat:",
+            "(",
+            ")",
+            "\\(",
+            "\\)",
+            "```\n",
+        ];
+        let mut x: u64 = 0x2545_f491_4f6c_dd1d;
+        for _ in 0..50_000 {
+            let mut text = String::new();
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            for _ in 0..(x % 16) {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                text.push_str(PIECES[(x % PIECES.len() as u64) as usize]);
+            }
+            let out = plain_text(&text);
+            assert!(
+                out.chars().count() <= text.chars().count(),
+                "{text:?} -> {out:?}"
+            );
+            // Every character but the parentheses a ruby adds is one of
+            // the text's, in order.
+            let mut rest = text.chars();
+            for c in out.chars().filter(|c| !matches!(c, '(' | ')')) {
+                assert!(rest.any(|t| t == c), "{text:?} -> {out:?}: {c:?}");
+            }
+        }
+        let deep = format!("{}x{}", "$[x2 ".repeat(40), "]".repeat(40));
+        assert!(plain_text(&deep).chars().count() <= deep.chars().count());
     }
 }

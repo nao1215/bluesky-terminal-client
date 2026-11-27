@@ -455,9 +455,66 @@ fn first_line(n: &Note, opened: bool) -> String {
         _ => n
             .text
             .as_deref()
-            .map(|t| drawable(t).lines().next().unwrap_or("").to_string())
+            .map(|t| {
+                drawable(&crate::mfm::plain_text(t))
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            })
             .unwrap_or_default(),
     }
+}
+
+/// A note's text as lines of `width`: its MFM drawn as plain text
+/// ([`crate::mfm::plain`]), the bold runs bold.
+fn mfm_lines(text: &str, width: usize) -> Vec<Line<'static>> {
+    let runs = crate::mfm::plain(text);
+    // The text as wrap lays it out, each run made drawable first, and
+    // where each bold run is in it.
+    let mut plain = String::new();
+    let mut bold: Vec<(usize, usize)> = Vec::new();
+    for r in &runs {
+        let t = drawable(&r.text);
+        if r.bold {
+            bold.push((plain.len(), plain.len() + t.len()));
+        }
+        plain.push_str(&t);
+    }
+    let lines = crate::tui::text::wrap_cached(&plain, width);
+    if bold.is_empty() {
+        return lines.into_iter().map(Line::from).collect();
+    }
+    // Each line is a piece of the text, in order: where it is says which
+    // of its characters are bold.
+    let mut at = 0;
+    lines
+        .into_iter()
+        .map(|line| {
+            let Some(start) = plain[at..].find(line.as_str()).map(|p| at + p) else {
+                return Line::from(line);
+            };
+            at = start + line.len();
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            let mut cut = 0;
+            for &(b0, b1) in &bold {
+                let (s0, s1) = (b0.max(start), b1.min(at));
+                if s0 >= s1 {
+                    continue;
+                }
+                let (s0, s1) = (s0 - start, s1 - start);
+                if s0 > cut {
+                    spans.push(Span::raw(line[cut..s0].to_string()));
+                }
+                spans.push(Span::styled(line[s0..s1].to_string(), Style::new().bold()));
+                cut = s1;
+            }
+            if cut < line.len() {
+                spans.push(Span::raw(line[cut..].to_string()));
+            }
+            Line::from(spans)
+        })
+        .collect()
 }
 
 /// A reaction as it reads: a custom emoji of the server read, `:name@.:`,
@@ -617,11 +674,7 @@ impl NoteLines {
         }
         if text_shown {
             if let Some(text) = &shown.text {
-                body.extend(
-                    crate::tui::text::wrap_cached(text, width)
-                        .into_iter()
-                        .map(Line::from),
-                );
+                body.extend(mfm_lines(text, width));
             }
         } else {
             let chars = shown.text.as_deref().map_or(0, |s| graphemes(s).count());

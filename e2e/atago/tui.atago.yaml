@@ -241,8 +241,11 @@ scenarios:
             - expect_screen:
                 contains: ["Log in", "hub-one.test  ハブいち 🐈  1234 accounts", "j k move  enter log in  / other server  esc back"]
                 not_contains: fork.test
+            # The home timeline's message shows behind the box: the box
+            # gone is what says esc was read.
             - send: { key: esc }
             - expect_screen:
+                not_contains: "Log in"
                 contains:
                   - "127.0.0.1:${api.port} (visitor)"
                   - "no account is logged in on 127.0.0.1:${api.port}"

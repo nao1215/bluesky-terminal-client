@@ -502,3 +502,45 @@ fn the_viewer_draws_the_picture_full_screen() {
         .count();
     assert!(painted > 1000, "{painted} cells painted");
 }
+
+// MFM is drawn as its text: functions, tags and labeled links are their
+// content, **bold** is bold, custom emoji stay as their names, and a quote
+// or a reply line shows the text the same way.
+#[test]
+fn mfm_is_drawn_as_plain_text_with_bold_kept() {
+    let mut app = with_notes(vec![
+        json!({"id": "m", "createdAt": "t", "user": {"username": "mia"},
+               "text": "$[x2 $[tada 🎉祝]] <center>まんなか</center> **太字👨‍👩‍👧** ?[リンク](https://e.test/a) :blobcat:"}),
+        json!({"id": "q", "createdAt": "t", "user": {"username": "quin"}, "text": "引用",
+               "renoteId": "o", "renote": {"id": "o", "user": {"username": "olly"}, "text": "$[spin 回る]ノート"}}),
+    ]);
+    app.pictures = false;
+    let mut images = Images::none();
+    let mut term = Terminal::new(TestBackend::new(80, 16)).unwrap();
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    let buf = term.backend().buffer().clone();
+    let row = |y: u16| -> String {
+        let mut s = String::new();
+        let mut x = 0;
+        while x < 80 {
+            let sym = buf[(x, y)].symbol();
+            x += sym.width().max(1) as u16;
+            s.push_str(sym);
+        }
+        s
+    };
+    let screen: Vec<String> = (0..16).map(row).collect();
+    let text = screen.join("\n");
+    assert!(
+        text.contains("🎉祝 まんなか 太字👨‍👩‍👧 リンク :blobcat:"),
+        "{text}"
+    );
+    assert!(text.contains("❝ @olly: 回るノート"), "{text}");
+    assert!(!text.contains("$["), "{text}");
+    // 太 is bold, まんなか is not.
+    let y = screen.iter().position(|l| l.contains("太字")).unwrap() as u16;
+    let x_of = |s: &str| (0..80u16).find(|&x| buf[(x, y)].symbol() == s).unwrap();
+    use ratatui::style::Modifier;
+    assert!(buf[(x_of("太"), y)].modifier.contains(Modifier::BOLD));
+    assert!(!buf[(x_of("ま"), y)].modifier.contains(Modifier::BOLD));
+}
