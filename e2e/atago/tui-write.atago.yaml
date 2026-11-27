@@ -249,21 +249,22 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "7 Chat"
+                contains: "7 Chat (1)"
             - send: "7"
             - expect_screen:
                 contains: ["@bob ●", "bob: やあ 👋", "enter open"]
             - send: { key: enter }
             - expect_screen:
-                contains: ["@bob", "esc back", "やあ 👋", "i to write"]
+                contains: ["@bob", "やあ 👋", "i write a message"]
+                not_contains: "Chat (1)"
             - send: i
             - send: "こんにちは 🇯🇵"
             - send: { key: enter }
             - expect_screen:
-                contains: ["me · 2026-11-26 10:01", "こんにちは 🇯🇵"]
+                contains: ["you · 2026-11-26 10:01", "こんにちは 🇯🇵"]
             - send: { key: esc }
             - expect_screen:
-                contains: "i to write"
+                contains: "i write a message"
             - send: { key: esc }
             - expect_screen:
                 contains: "enter open"

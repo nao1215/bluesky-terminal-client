@@ -14,6 +14,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{DriveFile, Note, Notification, User};
 use crate::cli::TimelineKind;
+use crate::i18n::{self, n};
 use crate::terminal::protocol_name;
 use crate::tui::app::{Account, App, List, LoginForm, Overlay, Tab, ThreadRow, ThreadView};
 use crate::tui::images::Images;
@@ -37,6 +38,8 @@ use compose::{draw_browser, draw_compose, draw_reactions};
 const MARK_W: u16 = 2;
 /// Avatar size in the lists, in cells.
 const AVATAR: (u16, u16) = (4, 2);
+/// Avatar size at the head of a profile, in cells, as bsky's.
+const BIG_AVATAR: (u16, u16) = (12, 6);
 /// Rows for a note's pictures when the server did not measure them.
 const IMAGE_ROWS: u16 = 8;
 /// Bounds on the rows a note's pictures take.
@@ -87,6 +90,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     let ctx = Ctx {
         opened: &app.opened,
         emojis: &app.emojis,
+        me: app.session.as_ref().map(|s| s.user_id.as_str()),
+        renoted: &app.renoted,
+        fresh: &app.fresh,
         t,
     };
     if let Some(th) = app.threads.last_mut() {
@@ -115,7 +121,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
                         body,
                         &mut f.list,
                         images,
-                        "No notes yet. Press R to refresh.",
+                        n!("No notes yet. Press R to refresh."),
                         &ctx,
                     );
                 }
@@ -136,7 +142,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         Some(Overlay::Actions { selected }) => {
             let rows: Vec<String> = actions.iter().map(|(k, d)| format!("{k:<6} {d}")).collect();
-            draw_choices(frame, area, "Actions", &rows, *selected, None, &t);
+            draw_choices(frame, area, i18n::t("Actions"), &rows, *selected, None, &t);
         }
         Some(Overlay::Accounts { selected }) => {
             let me = app.session.as_ref().map(|s| s.host().to_string());
@@ -254,24 +260,36 @@ struct Ctx<'a> {
     opened: &'a std::collections::HashSet<String>,
     /// The server's custom emoji, name to picture address.
     emojis: &'a std::collections::HashMap<String, String>,
+    /// The account in use, by ID.
+    me: Option<&'a str>,
+    /// The notes renoted from here, which their counts show in colour.
+    renoted: &'a std::collections::HashSet<String>,
+    /// The notifications not seen before the tab was shown.
+    fresh: &'a std::collections::HashSet<String>,
     t: Theme,
 }
 
 fn empty_timeline(kind: TimelineKind) -> &'static str {
     match kind {
-        TimelineKind::Home => "No notes from the accounts you follow yet. Press R to refresh.",
-        _ => "No notes yet. Press R to refresh.",
+        TimelineKind::Home => n!("No notes from the accounts you follow yet. Press R to refresh."),
+        _ => n!("No notes yet. Press R to refresh."),
     }
 }
 
 /// The screen for a terminal too small for the client, as bsky's says.
 fn draw_too_small(frame: &mut Frame, area: Rect, t: &Theme) {
     let w = usize::from(area.width).max(1);
-    let mut lines: Vec<Line> = wrap("Terminal too small", w)
+    let mut lines: Vec<Line> = wrap(i18n::t("Terminal too small"), w)
         .into_iter()
         .map(|l| Line::styled(l, t.accent().bold()).centered())
         .collect();
-    let size = format!("{MIN_W}x{MIN_H} needed, now {}x{}", area.width, area.height);
+    let size = i18n::tf(
+        "{} needed, now {}",
+        &[
+            &format!("{MIN_W}x{MIN_H}"),
+            &format!("{}x{}", area.width, area.height),
+        ],
+    );
     lines.extend(wrap(&size, w).into_iter().map(|l| Line::raw(l).centered()));
     let h = lines.len() as u16;
     frame.render_widget(
@@ -294,7 +312,7 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
         .map(|l| Line::styled(l, t.error()))
         .collect();
     lines.push(Line::default());
-    lines.push(Line::styled("any key closes this", t.dim()));
+    lines.push(Line::styled(i18n::t("any key closes this"), t.dim()));
     let h = lines.len() as u16 + 2;
     let r = Rect {
         x: area.x + area.width.saturating_sub(w) / 2,
@@ -305,7 +323,7 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
     frame.render_widget(Clear, r);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
-        .title(" Error ")
+        .title(format!(" {} ", i18n::t("Error")))
         .border_style(t.error())
         .style(t.base());
     let inner = block.inner(r);
@@ -328,6 +346,12 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             (Tab::Notifications, Some(count)) => {
                 format!(" {} {} {count} ", i + 1, app.tab_label(tab))
             }
+            (Tab::Chat, _) if app.chat.unread(app.my_user_id()) > 0 => format!(
+                " {} {} ({}) ",
+                i + 1,
+                app.tab_label(tab),
+                app.chat.unread(app.my_user_id())
+            ),
             _ => format!(" {} {} ", i + 1, app.tab_label(tab)),
         };
         let style = if tab == app.tab {
@@ -336,13 +360,16 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             t.dim()
         };
         spans.push(Span::styled(label, style));
+        // A space between the tabs, as bsky's, so the ones not shown do not
+        // run together.
+        spans.push(Span::raw(" "));
     }
     // Who the client reads as, at the right where it fits whole: the
     // account in use, or the server read as a visitor.
     let used: usize = spans.iter().map(|s| cells(&s.content)).sum();
     let name = match &app.session {
         Some(s) => format!("@{}@{} ", s.username, s.host()),
-        None => format!("{} (visitor) ", app.host()),
+        None => format!("{} ({}) ", app.host(), i18n::t("visitor")),
     };
     let name = drawable(&name).into_owned();
     let room = usize::from(area.width).saturating_sub(used);
@@ -387,11 +414,11 @@ fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>>
 fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     let t = app.theme;
     let right = if app.pending > 0 || images.loading() {
-        "loading… ".to_string()
+        format!("{} ", i18n::t("loading…"))
     } else if images.shows() {
         format!("{} ", protocol_name(images.protocol_type()))
     } else {
-        "text ".to_string()
+        format!("{} ", i18n::t("text"))
     };
     let w = cells(&right) as u16;
     if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
@@ -474,10 +501,10 @@ fn wrapped(text: &str, width: u16) -> Paragraph<'static> {
 fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, t: &Theme) {
     let p = match &list.error {
         Some(e) if list.retry => {
-            wrapped(&format!(" {e}  (R to retry)"), area.width).style(t.error())
+            wrapped(&format!(" {e}  {}", i18n::t("(R to retry)")), area.width).style(t.error())
         }
         Some(e) => wrapped(&format!(" {e}"), area.width).style(t.dim()),
-        None => wrapped(&format!(" {empty}"), area.width).style(t.dim()),
+        None => wrapped(&format!(" {}", i18n::t(empty)), area.width).style(t.dim()),
     };
     frame.render_widget(p, area);
 }
@@ -792,23 +819,32 @@ fn files_line(files: &[DriveFile], pictures_drawn: bool, t: &Theme) -> Option<Li
     let other = files.len() - pics - videos - sounds;
     let plural = |n: usize, one: &str, many: &str| {
         if n == 1 {
-            format!("1 {one}")
+            i18n::t(one).to_string()
         } else {
-            format!("{n} {many}")
+            i18n::tf(many, &[&n.to_string()])
         }
     };
     let mut parts = Vec::new();
     if pics > 0 && !pictures_drawn {
-        parts.push(format!("▣ {}", plural(pics, "picture", "pictures")));
+        parts.push(format!(
+            "▣ {}",
+            plural(pics, n!("1 picture"), n!("{} pictures"))
+        ));
     }
     if videos > 0 {
-        parts.push(format!("▶ {}", plural(videos, "video", "videos")));
+        parts.push(format!(
+            "▶ {}",
+            plural(videos, n!("1 video"), n!("{} videos"))
+        ));
     }
     if sounds > 0 {
-        parts.push(format!("♪ {}", plural(sounds, "sound", "sounds")));
+        parts.push(format!(
+            "♪ {}",
+            plural(sounds, n!("1 sound"), n!("{} sounds"))
+        ));
     }
     if other > 0 {
-        parts.push(plural(other, "file", "files"));
+        parts.push(plural(other, n!("1 file"), n!("{} files")));
     }
     let sensitive = files.iter().filter(|f| f.is_sensitive).count();
     let mut spans = Vec::new();
@@ -816,7 +852,7 @@ fn files_line(files: &[DriveFile], pictures_drawn: bool, t: &Theme) -> Option<Li
         spans.push(Span::styled(
             format!(
                 "⚠ {} ",
-                plural(sensitive, "sensitive file", "sensitive files")
+                plural(sensitive, n!("1 sensitive file"), n!("{} sensitive files"))
             ),
             t.warn(),
         ));
@@ -838,7 +874,10 @@ impl NoteLines {
         if n.is_pure_renote() {
             context.push(Line::styled(
                 truncate(
-                    &format!("⟳ renoted by {} {}", display_name(&n.user), acct(&n.user)),
+                    &i18n::tf(
+                        "⟳ renoted by {} {}",
+                        &[&display_name(&n.user), &acct(&n.user)],
+                    ),
                     width,
                 ),
                 t.renote(),
@@ -865,7 +904,7 @@ impl NoteLines {
             Span::styled(format!(" · {}", format_time(&shown.created_at)), t.dim()),
         ];
         if shown.reply_id.is_some() {
-            header.push(Span::styled(" ↩ reply", t.dim()));
+            header.push(Span::styled(format!(" ↩ {}", i18n::t("reply")), t.dim()));
         }
         let header = truncate_line(Line::from(header), width);
 
@@ -874,12 +913,12 @@ impl NoteLines {
         let text_shown = shown.cw.is_none() || ctx.opened.contains(&shown.id);
         if let Some(cw) = &shown.cw {
             let cw = if cw.trim().is_empty() {
-                "(no reason given)"
+                i18n::t("(no reason given)")
             } else {
                 cw
             };
             body.extend(
-                crate::tui::text::wrap_cached(&format!("⚠ CW: {cw}"), width)
+                crate::tui::text::wrap_cached(&i18n::tf("⚠ CW: {}", &[cw]), width)
                     .into_iter()
                     .map(|l| Line::styled(l, t.warn())),
             );
@@ -895,11 +934,15 @@ impl NoteLines {
             }
         } else {
             let chars = shown.text.as_deref().map_or(0, |s| graphemes(s).count());
-            let mut hidden = format!("w shows it ({chars} characters");
-            if !shown.files.is_empty() {
-                hidden.push_str(&format!(", {} files", shown.files.len()));
-            }
-            hidden.push(')');
+            let chars = chars.to_string();
+            let hidden = if shown.files.is_empty() {
+                i18n::tf("w shows it ({} characters)", &[&chars])
+            } else {
+                i18n::tf(
+                    "w shows it ({} characters, {} files)",
+                    &[&chars, &shown.files.len().to_string()],
+                )
+            };
             body.push(Line::styled(truncate(&hidden, width), t.dim()));
         }
         // A quote: who is quoted and the start of what they wrote.
@@ -910,7 +953,7 @@ impl NoteLines {
                     acct(&q.user),
                     first_line(q, ctx.opened.contains(&q.id))
                 ),
-                None => "❝ (the quoted note is not shown)".to_string(),
+                None => format!("❝ {}", i18n::t("(the quoted note is not shown)")),
             };
             body.push(Line::styled(truncate(&line, width), t.dim()));
         }
@@ -938,9 +981,9 @@ impl NoteLines {
                 .collect();
             if pictures.len() > IMAGES_SHOWN {
                 body.push(Line::styled(
-                    format!(
+                    i18n::tf(
                         "+{} more: space shows them all",
-                        pictures.len() - IMAGES_SHOWN
+                        &[&(pictures.len() - IMAGES_SHOWN).to_string()],
                     ),
                     t.dim(),
                 ));
@@ -949,10 +992,21 @@ impl NoteLines {
         if text_shown && let Some(l) = files_line(&shown.files, cell.is_some(), t) {
             body.push(truncate_line(l, width));
         }
+        // Your own reaction and renote in colour, as bsky's like and repost.
+        let (heart, heart_style) = if shown.my_reaction.is_some() {
+            ("♥", t.like())
+        } else {
+            ("♡", t.dim())
+        };
+        let renote_style = if ctx.renoted.contains(&shown.id) {
+            t.renote()
+        } else {
+            t.dim()
+        };
         let mut stats = vec![
-            Span::styled(format!("♡ {}", shown.reaction_total()), t.dim()),
+            Span::styled(format!("{heart} {}", shown.reaction_total()), heart_style),
             Span::raw("   "),
-            Span::styled(format!("⟳ {}", shown.renote_count), t.dim()),
+            Span::styled(format!("⟳ {}", shown.renote_count), renote_style),
             Span::styled(format!("   ↩ {}", shown.replies_count), t.dim()),
         ];
         let mut reactions: Vec<(&String, &u64)> = shown.reactions.iter().collect();
@@ -1090,7 +1144,10 @@ fn draw_notes<T: NoteRow>(
 ) {
     let t = &ctx.t;
     if !list.loaded {
-        frame.render_widget(Paragraph::new(" loading…").style(t.dim()), area);
+        frame.render_widget(
+            Paragraph::new(format!(" {}", i18n::t("loading…"))).style(t.dim()),
+            area,
+        );
         return;
     }
     if list.items.is_empty() {
@@ -1235,8 +1292,8 @@ fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut 
     let [title, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     frame.render_widget(
         Line::from(vec![
-            Span::styled(" Thread ", t.selected()),
-            Span::styled("  esc back", t.dim()),
+            Span::styled(format!(" {} ", i18n::t("Thread")), t.selected()),
+            Span::styled(format!("  esc {}", i18n::t("back")), t.dim()),
         ]),
         title,
     );
@@ -1245,7 +1302,11 @@ fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut 
     {
         frame.render_widget(
             wrapped(
-                &format!(" could not load the thread: {e}  (R to retry)"),
+                &format!(
+                    " {}  {}",
+                    i18n::tf("could not load the thread: {}", &[e]),
+                    i18n::t("(R to retry)")
+                ),
                 list.width,
             )
             .style(t.error()),
@@ -1258,43 +1319,53 @@ fn draw_thread(frame: &mut Frame, area: Rect, th: &mut ThreadView, images: &mut 
         list,
         &mut th.list,
         images,
-        "The thread is empty.",
+        n!("The thread is empty."),
         ctx,
     );
 }
 
 /// What a notification says happened, as `msky notifications` says it.
 fn happened(n: &Notification) -> String {
-    match n.kind.as_str() {
-        "follow" => "followed you".into(),
-        "mention" => "mentioned you".into(),
-        "reply" => "replied to you".into(),
-        "renote" => "renoted your note".into(),
-        "quote" => "quoted your note".into(),
-        "reaction" => format!(
-            "reacted {} to your note",
-            reaction_label(n.reaction.as_deref().unwrap_or("?"))
-        ),
-        "pollEnded" => "a poll has ended".into(),
-        "receiveFollowRequest" => "asked to follow you".into(),
-        "followRequestAccepted" => "accepted your follow request".into(),
-        "achievementEarned" => format!(
-            "achievement earned: {}",
-            n.achievement.as_deref().unwrap_or("")
-        ),
-        "app" => [n.header.as_deref(), n.body.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(": "),
-        other => format!("({other})"),
-    }
+    let what = match n.kind.as_str() {
+        "follow" => i18n::t("followed you"),
+        "mention" => i18n::t("mentioned you"),
+        "reply" => i18n::t("replied to you"),
+        "renote" => i18n::t("renoted your note"),
+        "quote" => i18n::t("quoted your note"),
+        "reaction" => {
+            return i18n::tf(
+                "reacted {} to your note",
+                &[&reaction_label(n.reaction.as_deref().unwrap_or("?"))],
+            );
+        }
+        "pollEnded" => i18n::t("a poll has ended"),
+        "receiveFollowRequest" => i18n::t("asked to follow you"),
+        "followRequestAccepted" => i18n::t("accepted your follow request"),
+        "achievementEarned" => {
+            return i18n::tf(
+                "achievement earned: {}",
+                &[n.achievement.as_deref().unwrap_or("")],
+            );
+        }
+        "app" => {
+            return [n.header.as_deref(), n.body.as_deref()]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(": ");
+        }
+        other => return format!("({other})"),
+    };
+    what.to_string()
 }
 
 fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
     let t = &ctx.t;
     let width = usize::from(width.max(1));
     let mut head = Vec::new();
+    if ctx.fresh.contains(&n.id) {
+        head.push(Span::styled("● ", t.accent()));
+    }
     if let Some(u) = &n.user {
         head.push(Span::styled(display_name(u), Style::new().bold()));
         head.push(Span::styled(format!(" {}", acct(u)), t.dim()));
@@ -1331,11 +1402,14 @@ fn draw_notifications(
 ) {
     let t = &ctx.t;
     if !list.loaded {
-        frame.render_widget(Paragraph::new(" loading…").style(t.dim()), area);
+        frame.render_widget(
+            Paragraph::new(format!(" {}", i18n::t("loading…"))).style(t.dim()),
+            area,
+        );
         return;
     }
     if list.items.is_empty() {
-        empty_message(frame, area, list, "No notifications yet.", t);
+        empty_message(frame, area, list, n!("No notifications yet."), t);
         return;
     }
     const H: u16 = 3;
@@ -1411,7 +1485,7 @@ fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) 
         .border_type(BorderType::Rounded)
         .style(t.base())
         .border_style(t.accent())
-        .title(format!(" {title} "));
+        .title(format!(" {} ", i18n::t(title)));
     let inner = block.inner(r);
     frame.render_widget(block, r);
     inner
@@ -1441,7 +1515,11 @@ fn draw_choices(
         .skip(first_shown(selected, inner.height))
         .map(|(i, r)| {
             let marker = if i == selected { "▶ " } else { "  " };
-            let mark = if current == Some(i) { "  (shown)" } else { "" };
+            let mark = if current == Some(i) {
+                format!("  {}", i18n::t("(shown)"))
+            } else {
+                String::new()
+            };
             let style = if i == selected {
                 t.base().bold()
             } else {
@@ -1449,7 +1527,7 @@ fn draw_choices(
             };
             Line::from(vec![
                 Span::styled(marker, t.accent().bold()),
-                Span::styled(truncate(r, width.saturating_sub(2 + cells(mark))), style),
+                Span::styled(truncate(r, width.saturating_sub(2 + cells(&mark))), style),
                 Span::styled(mark, t.accent()),
             ])
         })
@@ -1470,7 +1548,7 @@ fn draw_account_list(
         area,
         LIST_W,
         accounts.len().max(1) as u16 + 4,
-        "Accounts",
+        i18n::t("Accounts"),
         t,
     );
     let width = usize::from(inner.width);
@@ -1483,13 +1561,13 @@ fn draw_account_list(
         .map(|(i, a)| {
             let marker = if i == selected { "▶ " } else { "  " };
             let used = if me == Some(a.host.as_str()) {
-                "  in use"
+                format!("  {}", i18n::t("in use"))
             } else {
-                ""
+                String::new()
             };
             let name = truncate(
                 &format!("@{}@{}", a.username, a.host),
-                width.saturating_sub(cells(marker) + cells(used)),
+                width.saturating_sub(cells(marker) + cells(&used)),
             );
             let style = if i == selected {
                 t.base().bold()
@@ -1504,11 +1582,17 @@ fn draw_account_list(
         })
         .collect();
     if accounts.is_empty() {
-        lines.push(Line::styled("  no account yet: run `msky login`", t.dim()));
+        lines.push(Line::styled(
+            format!("  {}", i18n::t("no account yet: run `msky login`")),
+            t.dim(),
+        ));
     }
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        truncate(" enter use  x log out  a log in another", width),
+        truncate(
+            &format!(" {}", i18n::t("enter use  x log out  a log in another")),
+            width,
+        ),
         t.dim(),
     ));
     frame.render_widget(Paragraph::new(lines), inner);
@@ -1519,14 +1603,17 @@ fn draw_account_list(
 fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
     let w = HELP_W.min(area.width);
     let h = area.height.saturating_sub(4).clamp(8, 24);
-    let inner = popup(frame, area, w, h, "Log in", t);
+    let inner = popup(frame, area, w, h, i18n::t("Log in"), t);
     let width = usize::from(inner.width.max(1));
     let mut lines: Vec<Line> = Vec::new();
     if let Some(wait) = &f.waiting {
         let host = crate::api::authority(&wait.origin);
         lines.extend(
             wrap(
-                &format!("Open this address, signed in on {host}, and allow msky to read your account, post notes and follow:"),
+                &i18n::tf(
+                    "Open this address, signed in on {}, and allow msky to read your account, post notes and follow:",
+                    &[host],
+                ),
                 width,
             )
             .into_iter()
@@ -1540,7 +1627,10 @@ fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
         }
         lines.push(Line::raw(""));
         lines.push(Line::styled(
-            truncate("waiting for it…  o opens it again, esc calls it off", width),
+            truncate(
+                i18n::t("waiting for it…  o opens it again, esc calls it off"),
+                width,
+            ),
             t.dim(),
         ));
         frame.render_widget(Paragraph::new(lines), inner);
@@ -1548,7 +1638,10 @@ fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
     }
     lines.push(Line::styled(
         truncate(
-            " The server to log in on (MiAuth: msky never sees the password)",
+            &format!(
+                " {}",
+                i18n::t("The server to log in on (MiAuth: msky never sees the password)")
+            ),
             width,
         ),
         t.dim(),
@@ -1557,7 +1650,7 @@ fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
     let rows = inner.height.saturating_sub(1 + foot);
     if let Some(typed) = &f.typed {
         lines.push(Line::from(vec![
-            Span::styled(" host: ", t.accent().bold()),
+            Span::styled(format!(" {} ", i18n::t("host:")), t.accent().bold()),
             Span::raw(truncate(&format!("{typed}▏"), width.saturating_sub(7))),
         ]));
     } else {
@@ -1571,7 +1664,7 @@ fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
             let marker = if i == f.selected { "▶ " } else { "  " };
             let users = s
                 .users
-                .map(|n| format!("  {n} accounts"))
+                .map(|n| format!("  {}", i18n::tf("{} accounts", &[&n.to_string()])))
                 .unwrap_or_default();
             let style = if i == f.selected {
                 t.base().bold()
@@ -1603,12 +1696,12 @@ fn draw_login(frame: &mut Frame, area: Rect, f: &LoginForm, t: &Theme) {
         );
     }
     let note = if f.loading {
-        " reading Misskey Hub's list…"
+        i18n::t("reading Misskey Hub's list…")
     } else {
-        " / another server  enter log in  esc back"
+        i18n::t("/ another server  enter log in  esc back")
     };
     lines.push(Line::raw(""));
-    lines.push(Line::styled(truncate(note, width), t.dim()));
+    lines.push(Line::styled(truncate(&format!(" {note}"), width), t.dim()));
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -1667,7 +1760,10 @@ fn draw_viewer(
         human_bytes(f.size)
     )));
     if f.is_sensitive {
-        head.push(Span::styled("  ⚠ sensitive", t.warn()));
+        head.push(Span::styled(
+            format!("  ⚠ {}", i18n::t("sensitive")),
+            t.warn(),
+        ));
     }
     let url = f.url.as_deref().unwrap_or("");
     if f.is_picture() && !url.is_empty() {
@@ -1692,17 +1788,29 @@ fn draw_viewer(
         }
         use crate::tui::player::State;
         let (text, style) = match state {
-            State::Loading => ("  loading the video…".to_string(), t.dim()),
-            State::Playing => ("  ▶ playing (no sound)".to_string(), t.accent()),
-            State::Ended => ("  ■ ended  r plays it again".to_string(), t.dim()),
-            State::Warning(why) => (format!("  ⚠ {why}; d saves it, o opens it"), t.error()),
+            State::Loading => (format!("  {}", i18n::t("loading the video…")), t.dim()),
+            State::Playing => (format!("  ▶ {}", i18n::t("playing (no sound)")), t.accent()),
+            State::Ended => (
+                format!("  ■ {}", i18n::t("ended  r plays it again")),
+                t.dim(),
+            ),
+            State::Warning(why) => (
+                format!(
+                    "  ⚠ {}",
+                    i18n::tf("{}; d saves it, o opens it", &[i18n::t(&why)])
+                ),
+                t.error(),
+            ),
         };
         head.push(Span::styled(text, style));
     } else {
         let what = if f.mime.starts_with("video/") {
-            "▶ a video: d saves it, o opens it in the browser"
+            format!(
+                "▶ {}",
+                i18n::t("a video: d saves it, o opens it in the browser")
+            )
         } else {
-            "a file: d saves it, o opens it in the browser"
+            i18n::t("a file: d saves it, o opens it in the browser").to_string()
         };
         let lines = vec![Line::styled(what, t.dim()).centered()];
         frame.render_widget(
@@ -1722,7 +1830,7 @@ fn draw_viewer(
                 usize::from(caption.width.saturating_sub(2))
             )
         )),
-        None => Line::styled(" (no alt text)", t.dim()),
+        None => Line::styled(format!(" {}", i18n::t("(no alt text)")), t.dim()),
     };
     frame.render_widget(
         Paragraph::new(vec![
@@ -1764,14 +1872,18 @@ fn draw_help(frame: &mut Frame, area: Rect, scroll: &mut u16, pictures: bool, t:
             );
         }
     }
-    let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, "Keys", t);
+    let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, n!("Keys"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     let max = (lines.len() as u16).saturating_sub(body.height);
     *scroll = (*scroll).min(max);
     frame.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), body);
-    let more = if *scroll < max { "  j/pgdn more" } else { "" };
+    let more = if *scroll < max {
+        format!("  {}", i18n::t("j/pgdn more"))
+    } else {
+        String::new()
+    };
     frame.render_widget(
-        Paragraph::new(format!(" esc/q/? close{more}")).style(t.dim()),
+        Paragraph::new(format!(" {}{more}", i18n::t("esc/q/? close"))).style(t.dim()),
         foot,
     );
 }

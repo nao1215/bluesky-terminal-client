@@ -540,7 +540,9 @@ fn the_actions_list_names_the_keys_and_runs_the_one_chosen() {
     let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
     assert_eq!(
         names,
-        ["r", "l", "e", "b", "Q", "space", "v", "d", "o", "c", "!"]
+        [
+            "r", "l", "e", "b", "Q", "space", "v", "d", "o", "c", "!", "enter"
+        ]
     );
     for _ in 0..6 {
         app.handle_key(key('j'));
@@ -2611,4 +2613,75 @@ fn the_notifications_tab_counts_the_unread() {
     // A visitor asks nothing.
     let (mut v, _) = App::new(None, ORIGIN);
     assert!(v.ask_unread(t0 + Duration::from_secs(600)).is_empty());
+}
+
+// m on someone's profile opens the Chat tab with the conversation with
+// them, as bsky's; it asks for their messages and sends nothing. On your
+// own profile, or a server without chat, it only says why not.
+#[test]
+fn m_on_a_profile_opens_the_conversation_with_them() {
+    let mut app = writer(vec![]);
+    let jobs = app.open_profile(crate::tui::worker::Who::Id("u-bob".into()));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-bob", "username": "bob", "host": "x.test"})),
+            vec![],
+        )))),
+    );
+    let jobs = app.handle_key(key('m'));
+    assert_eq!(app.tab, Tab::Chat);
+    let open = app.chat.open.as_ref().unwrap();
+    assert_eq!(open.title, "@bob@x.test");
+    assert!(jobs.iter().any(|(_, j)| *j
+        == Job::ChatMessages {
+            with: crate::tui::worker::ChatWith::User("u-bob".into()),
+            until: None
+        }));
+    assert!(jobs.iter().all(|(_, j)| !j.writes()), "{jobs:?}");
+    // Your own profile: nothing to open.
+    let jobs = app.open_profile(crate::tui::worker::Who::Me);
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-me", "username": "me"})),
+            vec![],
+        )))),
+    );
+    app.chat.open = None;
+    assert!(app.handle_key(key('m')).is_empty());
+    assert_eq!(app.tab, Tab::Profile);
+    // A server without chat.
+    let jobs = app.open_profile(crate::tui::worker::Who::Id("u-bob".into()));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-bob", "username": "bob"})),
+            vec![],
+        )))),
+    );
+    app.no_chat = true;
+    assert!(app.handle_key(key('m')).is_empty());
+    assert_eq!(app.tab, Tab::Profile);
+    assert!(app.status.as_ref().unwrap().text.contains("no chat"));
+}
+
+// e on your own profile edits it even when it was opened from a list, as
+// bsky's; esc still goes back there.
+#[test]
+fn e_edits_your_own_profile_opened_from_a_list() {
+    let mut app = writer(vec![note(
+        json!({"id": "n1", "userId": "u-me", "user": {"id": "u-me", "username": "me"}, "text": "mine"}),
+    )]);
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            user(json!({"id": "u-me", "username": "me"})),
+            vec![],
+        )))),
+    );
+    assert!(app.profile.came_from.is_some());
+    let jobs = app.handle_key(key('e'));
+    assert_eq!(jobs[0].1, Job::LoadProfileEditor);
 }

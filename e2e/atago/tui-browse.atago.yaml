@@ -78,7 +78,7 @@ scenarios:
                 contains: "タイムラインのノート"
             - send: { key: enter }
             - expect_screen:
-                contains: ["ボブ @bob@x.test", "… requested", "9 notes  2 following  5 followers", "Go と Rust", "ボブのノート"]
+                contains: ["@bob@x.test", "… requested", "5 followers  2 following  9 notes", "(f to toggle)", "Go と Rust", "ボブのノート"]
                 not_contains: "<center>"
             # The request is pending: f takes it back, and the account as
             # the server has it after says how it stands.
@@ -123,6 +123,74 @@ scenarios:
             count: 1
       - assert:
           mock: { name: api, path: /api/following/create, count: 0 }
+
+  - name: m on someone's profile opens the conversation with them, and the profile says how you are related
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: t1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test, name: "ボブ 🇯🇵" }, text: "タイムラインのノート" }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/chat/history, json: [] }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: x.test, name: "ボブ 🇯🇵", notesCount: 9, followingCount: 2, followersCount: 5, isFollowing: true, isFollowed: true, isMuted: true }
+          - { method: POST, path: /api/users/notes, json: [] }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m1, createdAt: "2026-11-26T09:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob, host: x.test }, toUserId: u-me, text: "久しぶり 👋" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0401",
+             "permissions": ["read:account", "read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["タイムラインのノート", "7 Chat"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["ボブ 🇯🇵", "@bob@x.test", "5 followers  2 following  9 notes", "✓ following  · follows you  · muted  (f to toggle)", "esc back to timeline"]
+                not_contains: "this is you"
+            - send: "."
+            - expect_screen:
+                contains: ["m      message them", "f      unfollow", "M      unmute them", "B      block them (y confirms)"]
+            - send: { key: esc }
+            - send: m
+            - expect_screen:
+                contains: ["@bob@x.test", "久しぶり 👋", "i write a message"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/messages/user-timeline
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+      # Opening the conversation writes nothing.
+      - assert:
+          mock: { name: api, path: /api/chat/messages/create-to-user, count: 0 }
 
   - name: + adds an antenna as a tab, which reads its notes, and the tabs setting keeps it; x then y closes it
     mock_servers:
@@ -229,7 +297,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["1 ☰ 友達  2 Home", "リストのノート 👨‍👩‍👧"]
+                contains: ["1 ☰ 友達   2 Home", "リストのノート 👨‍👩‍👧"]
                 not_contains: "よそ"
             - send: q
       - assert:

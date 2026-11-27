@@ -105,6 +105,7 @@ pub const HELP: &[Section] = &[
                 "e",
                 n!("edit your profile: name, description, avatar, banner"),
             ),
+            ("m", n!("message the account shown")),
             ("f", n!("follow / unfollow the account shown")),
             ("M", n!("mute / unmute the account shown")),
             ("B", n!("block / unblock the account: y confirms")),
@@ -122,6 +123,7 @@ pub const HELP: &[Section] = &[
     Section {
         title: n!("Notifications"),
         keys: &[
+            ("enter", n!("open the profile of who it is from")),
             (
                 "v space",
                 n!("the thread or the files of the note it is about"),
@@ -426,8 +428,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
         }
         Tab::Search if app.search.mode == crate::tui::app::SearchMode::Accounts => vec![
             ("j k", n!("move")),
-            ("enter", n!("profile")),
-            ("f", n!("follow")),
+            (".", n!("actions")),
             ("/", n!("edit query")),
             ("t", n!("notes")),
         ],
@@ -437,19 +438,26 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("/", n!("edit query")),
             ("t", n!("accounts")),
         ],
-        Tab::Profile if app.profile.came_from.is_some() => vec![
-            ("esc", n!("back")),
+        Tab::Profile if !app.profile.own(app.my_user_id()) => vec![
+            ("esc", back_label(app.profile.came_from)),
             ("j k", n!("move")),
             (".", n!("actions")),
-            ("f", n!("follow")),
+            ("space", n!("view")),
         ],
-        Tab::Profile => vec![
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("e", n!("edit profile")),
-            ("s", n!("settings")),
-            ("R", n!("reload")),
-        ],
+        Tab::Profile => {
+            let mut v = vec![
+                ("j k", n!("move")),
+                (".", n!("actions")),
+                ("e", n!("edit profile")),
+                ("s", n!("settings")),
+                ("R", n!("reload")),
+            ];
+            // Your own profile, opened from a list: esc still goes back.
+            if app.profile.came_from.is_some() {
+                v.insert(0, ("esc", back_label(app.profile.came_from)));
+            }
+            v
+        }
         Tab::Feed(_) => vec![
             ("j k", n!("move")),
             (".", n!("actions")),
@@ -485,10 +493,75 @@ pub fn actions(app: &App) -> Vec<Hint> {
     if app.overlay.is_some() && !matches!(app.overlay, Some(Overlay::Actions { .. })) {
         return Vec::new();
     }
-    let Some(n) = app.shown_note() else {
-        return Vec::new();
-    };
     let mut v: Vec<Hint> = Vec::new();
+    if let Some(n) = app.shown_note() {
+        note_actions(app, n, &mut v);
+    }
+    account_actions(app, &mut v);
+    translated(v)
+}
+
+/// What `.` offers on the account shown or found, as bsky's: the keys
+/// that act on it, each saying what it would do now.
+fn account_actions(app: &App, v: &mut Vec<Hint>) {
+    let in_list = app.threads.is_empty();
+    let me = app.my_user_id();
+    if app.tab == Tab::Profile && in_list {
+        if let Some(u) = &app.profile.user
+            && !app.profile.own(me)
+        {
+            v.push(("m", n!("message them")));
+            push_guards(v, u);
+        }
+        return;
+    }
+    if app.tab == Tab::Search && in_list && app.search.mode == crate::tui::app::SearchMode::Accounts
+    {
+        if let Some(u) = app.search.users.current() {
+            v.push(("enter", n!("open the profile")));
+            if Some(u.id.as_str()) != me {
+                push_guards(v, u);
+            }
+        }
+        return;
+    }
+    if app.shown_note().is_some() || (app.tab == Tab::Notifications && in_list) {
+        v.push(("enter", n!("open the profile")));
+    }
+}
+
+/// f, M and B on an account, each saying what it would do now.
+fn push_guards(v: &mut Vec<Hint>, u: &crate::api::types::User) {
+    v.push((
+        "f",
+        if u.is_following {
+            n!("unfollow")
+        } else if u.has_pending_follow_request_from_you {
+            n!("take back the follow request")
+        } else {
+            n!("follow")
+        },
+    ));
+    v.push((
+        "M",
+        if u.is_muted {
+            n!("unmute them")
+        } else {
+            n!("mute them")
+        },
+    ));
+    v.push((
+        "B",
+        if u.is_blocking {
+            n!("unblock them")
+        } else {
+            n!("block them (y confirms)")
+        },
+    ));
+}
+
+/// What `.` offers on the selected note.
+fn note_actions(app: &App, n: &crate::api::types::Note, v: &mut Vec<Hint>) {
     let files = !n.attached().is_empty();
     v.push(("r", n!("reply to it")));
     v.push((
@@ -548,7 +621,6 @@ pub fn actions(app: &App) -> Vec<Hint> {
     } else {
         v.push(("!", n!("report it")));
     }
-    translated(v)
 }
 
 /// The key an entry of the actions list stands for.
@@ -559,4 +631,15 @@ pub fn action_key(name: &str) -> KeyEvent {
         _ => KeyCode::Char(name.chars().next().unwrap_or('?')),
     };
     KeyEvent::from(code)
+}
+
+/// What esc on the Profile tab goes back to, as bsky's says it.
+fn back_label(from: Option<Tab>) -> &'static str {
+    match from {
+        Some(Tab::Search) => n!("back to search"),
+        Some(Tab::Timeline(_) | Tab::Feed(_)) => n!("back to timeline"),
+        Some(Tab::Notifications) => n!("back to notifications"),
+        Some(Tab::Chat) => n!("back to chat"),
+        _ => n!("my profile"),
+    }
 }

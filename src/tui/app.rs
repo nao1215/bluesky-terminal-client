@@ -548,6 +548,9 @@ pub struct App {
     pub in_flight: HashSet<String>,
     /// The notes renoted from here, which `b` takes back.
     pub renoted: HashSet<String>,
+    /// The notifications that were unread when the tab read them, marked
+    /// with a dot as bsky's are.
+    pub fresh: HashSet<String>,
     /// The note `D` asked about, waiting for its `y`.
     pub confirm_delete: Option<String>,
     /// The account `B` asked about, waiting for its `y`.
@@ -626,6 +629,7 @@ impl App {
             logged_in: None,
             in_flight: HashSet::new(),
             renoted: HashSet::new(),
+            fresh: HashSet::new(),
             confirm_delete: None,
             confirm_block: None,
             read_sent: false,
@@ -656,6 +660,7 @@ impl App {
         self.threads.clear();
         self.opened.clear();
         self.renoted.clear();
+        self.fresh.clear();
         self.search = Search::default();
         self.profile = Profile::default();
         self.chat = ChatPane::default();
@@ -1331,7 +1336,6 @@ impl App {
             KeyCode::Char('e')
                 if self.tab == Tab::Profile
                     && !in_thread
-                    && self.profile.came_from.is_none()
                     && self.profile.own(self.my_user_id()) =>
             {
                 return self.edit_profile();
@@ -1371,6 +1375,9 @@ impl App {
             KeyCode::Char('t') if self.tab == Tab::Search && !in_thread => {
                 self.toggle_search_mode();
                 return self.run_search();
+            }
+            KeyCode::Char('m') if self.tab == Tab::Profile && !in_thread => {
+                return self.message_shown();
             }
             KeyCode::Char('f') => return self.toggle_follow(),
             KeyCode::Char('M') => return self.toggle_mute(),

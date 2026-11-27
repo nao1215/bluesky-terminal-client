@@ -61,6 +61,7 @@ It needs Rust 1.90 or later.
 | `s` | The settings: the theme, the language, the download folder, the browser and the tabs, kept in `settings.json`, as bsky's |
 | `T` | The themes, bsky's, each previewed as the selection moves; `enter` keeps one, `esc` puts the one before back |
 | `M`, `B` | Mutes or unmutes that account; blocks it (`y` confirms) or unblocks it |
+| `m` on someone's Profile tab | Opens the Chat tab with the conversation with them, as bsky's |
 | Chat tab: `enter`, `i`, `esc` | Opens a conversation (with an account or a room), writes a message (`enter` sends it), goes back; `k` `j` read further back and forward; read again every 15 s while shown, as bsky's |
 | `j` `k` `↓` `↑`, `pgdn` `pgup`, `g` `G` | Move; the next page loads by itself near the end (`untilId`) |
 | `v` | The thread: what the note answers, the note, and two levels of replies; `esc` closes it |
@@ -98,7 +99,7 @@ When the selection rests on a note for 400 ms, its thread is read ahead, as bsky
 
 The Chat tab is Misskey's chat (`chat/history`, `chat/messages/*`, from Misskey 2025.4): the conversations with accounts and rooms, the newest first and an unread one marked, and one conversation's messages, the newest at the bottom. Chat is asked for when the client starts: on a server without chat, or for a role that may not chat, the Chat tab is not shown (misskey.io has no chat routes, although its meta says chat is available). It stays in the `tabs` setting for a server that has chat, and switching account asks again.
 
-The Profile tab shows the account's name and address, how you and it follow each other, its counts and what it says about itself (as plain text), over its notes, paged as the timelines are. The Search tab searches notes (`notes/search`, paged by `untilId`) or accounts (`users/search`, paged by offset).
+The Profile tab shows the account's avatar, name and address, its counts, how you and it are related (following, muted, blocked) or, on your own, the `e` and `s` buttons, and what it says about itself (as plain text), over its notes, paged as the timelines are. The Search tab searches notes (`notes/search`, paged by `untilId`) or accounts (`users/search`, paged by offset).
 
 The composer (`n`, `r`, `Q`) takes bsky's keys: `ctrl+s` sends, `ctrl+o` opens a file browser to attach up to four pictures or one video (`space` marks several, `enter` chooses), `tab` moves to a file's alt text, `ctrl+x` removes a file, `esc` closes without sending. Misskey's own are `ctrl+w`, which adds or takes off a content warning, and `ctrl+p`, which steps through who may see the note (public, home, followers); a reply starts as visible as the note it answers. The length is checked against the server's own limit (its `meta`) when the note is sent. A write is sent once, and a key pressed again while one is on its way is refused. The notifications are marked read when their tab shows them.
 

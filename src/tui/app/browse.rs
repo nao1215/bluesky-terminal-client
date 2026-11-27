@@ -165,7 +165,7 @@ impl App {
         Vec::new()
     }
 
-    pub(super) fn my_user_id(&self) -> Option<&str> {
+    pub fn my_user_id(&self) -> Option<&str> {
         self.session
             .as_ref()
             .map(|s| s.user_id.as_str())

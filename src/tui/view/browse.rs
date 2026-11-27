@@ -16,9 +16,15 @@ fn account_lines(u: &User, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
         Span::styled(format!(" {}", acct(u)), t.dim()),
     ];
     if u.is_following {
-        head.push(Span::styled("  ✓ following", t.accent()));
+        head.push(Span::styled(
+            format!("  {}", i18n::t("✓ following")),
+            t.accent(),
+        ));
     } else if u.has_pending_follow_request_from_you {
-        head.push(Span::styled("  … requested", t.accent()));
+        head.push(Span::styled(
+            format!("  {}", i18n::t("… requested")),
+            t.accent(),
+        ));
     }
     let desc = u
         .description
@@ -50,15 +56,15 @@ fn draw_accounts(
     let t = &ctx.t;
     if !list.loaded {
         let what = if list.loading {
-            " searching…"
+            i18n::t("searching…")
         } else {
-            " type a query and press enter"
+            i18n::t("type a query and press enter")
         };
-        frame.render_widget(Paragraph::new(what).style(t.dim()), area);
+        frame.render_widget(Paragraph::new(format!(" {what}")).style(t.dim()), area);
         return;
     }
     if list.items.is_empty() {
-        empty_message(frame, area, list, "No accounts found.", t);
+        empty_message(frame, area, list, n!("No accounts found."), t);
         return;
     }
     list.offset = scroll_offset(
@@ -111,16 +117,17 @@ pub(super) fn draw_search(
     let t = &ctx.t;
     let [bar, list] = Layout::vertical([Constraint::Length(2), Constraint::Min(1)]).areas(area);
     let label = match s.mode {
-        SearchMode::Notes => " Search notes: ",
-        SearchMode::Accounts => " Search accounts: ",
+        SearchMode::Notes => n!("Search notes:"),
+        SearchMode::Accounts => n!("Search accounts:"),
     };
     let style = if s.editing {
         t.accent().bold()
     } else {
         t.dim()
     };
-    frame.render_widget(Paragraph::new(label).style(style), bar);
-    let w = cells(label) as u16;
+    let label = format!(" {} ", i18n::t(label));
+    frame.render_widget(Paragraph::new(label.as_str()).style(style), bar);
+    let w = cells(&label) as u16;
     let field = Rect {
         x: bar.x + w.min(bar.width),
         width: bar.width.saturating_sub(w + 1),
@@ -132,55 +139,107 @@ pub(super) fn draw_search(
         SearchMode::Notes => {
             if !s.notes.loaded && !s.notes.loading {
                 frame.render_widget(
-                    Paragraph::new(" type a query and press enter").style(t.dim()),
+                    Paragraph::new(format!(" {}", i18n::t("type a query and press enter")))
+                        .style(t.dim()),
                     list,
                 );
                 return;
             }
-            draw_notes(frame, list, &mut s.notes, images, "No notes found.", ctx);
+            draw_notes(
+                frame,
+                list,
+                &mut s.notes,
+                images,
+                n!("No notes found."),
+                ctx,
+            );
         }
         SearchMode::Accounts => draw_accounts(frame, list, &mut s.users, images, ctx),
     }
 }
 
-/// The account's header lines: who, how you are related, its counts, and
-/// what it says about itself as MFM draws it.
+/// The account's header lines, as bsky's: the name, the address, the
+/// counts, how you are related (or, on your own, the buttons for the keys
+/// that edit it), and what it says about itself as MFM draws it.
 fn header_lines(u: &User, width: u16, me: bool, ctx: &Ctx) -> Vec<Line<'static>> {
     let t = &ctx.t;
     let width_us = usize::from(width.max(1));
-    let mut head = vec![
-        Span::styled(display_name(u), Style::new().bold()),
-        Span::styled(format!(" {}", acct(u)), t.dim()),
-    ];
-    if !me {
-        let rel = match (
-            u.is_following,
-            u.has_pending_follow_request_from_you,
-            u.is_followed,
-        ) {
-            (true, _, true) => "  ✓ following each other",
-            (true, _, false) => "  ✓ following",
-            (false, true, _) => "  … requested",
-            (false, false, true) => "  follows you",
-            _ => "  not following",
-        };
-        head.push(Span::styled(rel, t.accent()));
-    }
+    let mut lines = vec![truncate_line(
+        Line::styled(display_name(u), Style::new().bold()),
+        width_us,
+    )];
+    let mut who = vec![Span::styled(acct(u), t.dim())];
     if u.is_locked {
-        head.push(Span::styled("  🔒 approves followers", t.dim()));
+        who.push(Span::styled(
+            format!("  {}", i18n::t("🔒 approves followers")),
+            t.dim(),
+        ));
     }
-    let mut lines = vec![truncate_line(Line::from(head), width_us)];
-    lines.push(Line::styled(
-        format!(
-            "{} notes  {} following  {} followers",
-            u.notes_count.unwrap_or(0),
-            u.following_count.unwrap_or(0),
-            u.followers_count.unwrap_or(0)
-        ),
-        t.dim(),
-    ));
+    lines.push(truncate_line(Line::from(who), width_us));
+    let count = |n: Option<u64>, what: &str, last: bool| {
+        [
+            Span::styled(n.unwrap_or(0).to_string(), Style::new().bold()),
+            Span::raw(format!(
+                " {}{}",
+                i18n::t(what),
+                if last { "" } else { "  " }
+            )),
+        ]
+    };
+    let mut counts = Vec::new();
+    counts.extend(count(u.followers_count, n!("followers"), false));
+    counts.extend(count(u.following_count, n!("following"), false));
+    counts.extend(count(u.notes_count, n!("notes"), true));
+    lines.push(truncate_line(Line::from(counts), width_us));
+    if me {
+        // Buttons that say the keys exist: msky does not read the mouse, so
+        // they are pressed with the key they name, as bsky's.
+        let button = |key: &'static str, what: &'static str| {
+            [
+                Span::styled("[ ", t.accent()),
+                Span::styled(key, t.accent().bold()),
+                Span::styled(format!(" {} ]", i18n::t(what)), t.accent()),
+            ]
+        };
+        let mut row = vec![Span::styled(
+            format!("{}  ", i18n::t("this is you")),
+            t.dim(),
+        )];
+        row.extend(button("e", n!("Edit profile")));
+        row.push(Span::raw("  "));
+        row.extend(button("s", n!("Settings")));
+        lines.push(truncate_line(Line::from(row), width_us));
+    } else {
+        let mut rel = vec![if u.is_following {
+            Span::styled(i18n::t("✓ following"), t.accent().bold())
+        } else if u.has_pending_follow_request_from_you {
+            Span::styled(i18n::t("… requested"), t.accent())
+        } else {
+            Span::styled(i18n::t("not following"), t.dim())
+        }];
+        if u.is_followed {
+            rel.push(Span::styled(
+                format!("  · {}", i18n::t("follows you")),
+                t.dim(),
+            ));
+        }
+        if u.is_muted {
+            rel.push(Span::styled(format!("  · {}", i18n::t("muted")), t.error()));
+        }
+        if u.is_blocking {
+            rel.push(Span::styled(
+                format!("  · {}", i18n::t("blocked")),
+                t.error(),
+            ));
+        }
+        rel.push(Span::styled(
+            format!("  {}", i18n::t("(f to toggle)")),
+            t.dim(),
+        ));
+        lines.push(truncate_line(Line::from(rel), width_us));
+    }
     if let Some(d) = u.description.as_deref().filter(|d| !d.trim().is_empty()) {
-        lines.extend(mfm_lines(d, width_us).into_iter().take(3));
+        lines.extend(mfm_lines(d, width_us).into_iter().take(4));
     }
     lines
 }
@@ -194,40 +253,46 @@ pub(super) fn draw_profile(
 ) {
     let t = &ctx.t;
     let Some(u) = p.user.clone() else {
-        let text = match &p.error {
+        let msg = match &p.error {
             Some(e) => {
-                frame.render_widget(wrapped(&format!(" {e}"), area.width).style(t.error()), area);
-                return;
+                wrapped(&format!(" {e}  {}", i18n::t("(R to retry)")), area.width).style(t.error())
             }
-            None => " loading…",
+            None => wrapped(&format!(" {}", i18n::t("loading…")), area.width).style(t.dim()),
         };
-        frame.render_widget(Paragraph::new(text).style(t.dim()), area);
+        frame.render_widget(msg, area);
         return;
     };
-    let content = content_rect(area, images.shows());
-    let me = p.who == Some(crate::tui::worker::Who::Me);
-    let lines = header_lines(&u, content.width, me, ctx);
-    let h = (lines.len() as u16).max(AVATAR.1) + 1;
+    // The avatar is drawn big beside the header, as bsky's.
+    let big = if images.shows() { BIG_AVATAR } else { (0, 0) };
+    let text_x = if images.shows() {
+        MARK_W + big.0 + 2
+    } else {
+        MARK_W + 1
+    };
+    let text_w = area.width.saturating_sub(text_x);
+    let me = p.own(ctx.me);
+    let lines = header_lines(&u, text_w, me, ctx);
+    let h = (lines.len() as u16).max(big.1) + 1;
     let [head, list] = Layout::vertical([Constraint::Length(h), Constraint::Min(1)]).areas(area);
-    if let Some(url) = u.avatar_url.as_deref() {
-        images.draw(
-            frame,
-            Rect {
-                x: area.x + MARK_W,
-                y: head.y,
-                width: AVATAR.0,
-                height: AVATAR.1,
-            },
-            url,
-        );
+    if images.shows()
+        && let Some(url) = u.avatar_url.as_deref().filter(|u| !u.is_empty())
+    {
+        let a = Rect {
+            x: head.x + MARK_W,
+            y: head.y,
+            width: BIG_AVATAR.0,
+            height: BIG_AVATAR.1,
+        };
+        images.draw(frame, a.intersection(head), url);
     }
     frame.render_widget(
         Paragraph::new(lines),
         Rect {
+            x: head.x + text_x.min(head.width),
             y: head.y,
+            width: text_w,
             height: head.height.saturating_sub(1),
-            ..content
         },
     );
-    draw_notes(frame, list, &mut p.notes, images, "No notes yet.", ctx);
+    draw_notes(frame, list, &mut p.notes, images, n!("No notes yet."), ctx);
 }

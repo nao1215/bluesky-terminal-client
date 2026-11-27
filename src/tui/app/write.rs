@@ -566,6 +566,13 @@ impl App {
         if self.tab != Tab::Notifications || !self.notifications.loaded || self.read_sent {
             return Vec::new();
         }
+        // The newest ones, as many as the server counts unread, are the
+        // ones not seen yet: they keep a dot, as bsky's, while shown.
+        let unread = usize::try_from(self.unread.unwrap_or(0)).unwrap_or(0);
+        self.fresh = (self.notifications.items.iter())
+            .take(unread)
+            .map(|n| n.id.clone())
+            .collect();
         let allowed = self.session.as_ref().is_some_and(|s| {
             s.permissions.is_empty() || s.permissions.iter().any(|p| p == "write:notifications")
         });

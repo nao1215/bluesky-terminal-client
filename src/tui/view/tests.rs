@@ -114,7 +114,7 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
         lines[0].starts_with(
-            " 1 Home  2 Local  3 Global  4 Notifications  5 Search  6 Profile  7 Chat"
+            " 1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
         ),
         "{screen}"
     );
@@ -653,13 +653,24 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
         )))),
     );
     let screen = render_text(&mut app, 90, 20);
-    assert!(screen.contains("わたし 👩🏽‍💻 @me"), "{screen}");
+    assert!(screen.contains("わたし 👩🏽‍💻\n"), "{screen}");
     assert!(
-        screen.contains("12 notes  3 following  4 followers"),
+        screen.contains("4 followers  3 following  12 notes"),
+        "{screen}"
+    );
+    // Your own: the buttons for the keys that edit it, as bsky's.
+    assert!(
+        screen.contains("this is you  [ e Edit profile ]  [ s Settings ]"),
         "{screen}"
     );
     assert!(screen.contains("Rust と Go が好き"), "{screen}");
     assert!(screen.contains("自分のノート"), "{screen}");
+    assert!(screen.contains("e edit profile  s settings"), "{screen}");
+    crate::i18n::set(crate::i18n::Lang::Ja);
+    let ja = render_text(&mut app, 90, 20);
+    crate::i18n::set(crate::i18n::Lang::En);
+    assert!(ja.contains("4 フォロワー  3 フォロー  12 ノート"), "{ja}");
+    assert!(ja.contains("[ e プロフィールを編集 ]"), "{ja}");
     app.handle_key(key('5'));
     for c in "rust".chars() {
         app.handle_key(key(c));
@@ -685,7 +696,92 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
         "{screen}"
     );
     assert!(screen.contains("crab"), "{screen}");
-    assert!(screen.contains("enter profile  f follow"), "{screen}");
+    assert!(
+        screen.contains("j k move  . actions  / edit query"),
+        "{screen}"
+    );
+    // . lists what the keys do to the account found.
+    let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
+    assert_eq!(names, ["enter", "f", "M", "B"]);
+    assert_eq!(keys::actions(&app)[1].1, "unfollow");
+}
+
+// Another account's profile says how you are related, as bsky's: whether
+// you follow it, it follows you, you muted or blocked it, with the key
+// that changes it; its avatar is drawn big beside the header.
+#[test]
+fn another_profile_says_how_you_are_related() {
+    let mut app = with_notes(vec![json!({"id": "n1", "createdAt": "t",
+        "user": {"id": "u-ann", "username": "ann", "host": "x.test"}, "text": "hi"})]);
+    let jobs = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Profile(Ok(Box::new((
+            serde_json::from_value(json!({"id": "u-ann", "username": "ann", "host": "x.test",
+                "name": "アン 🇯🇵", "isFollowed": true, "isMuted": true, "isBlocking": true,
+                "isLocked": true, "avatarUrl": format!("{NOWHERE}/a.png")}))
+            .unwrap(),
+            vec![],
+        )))),
+    );
+    let screen = render_text(&mut app, 100, 16);
+    assert!(
+        screen.contains("@ann@x.test  🔒 approves followers"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("not following  · follows you  · muted  · blocked  (f to toggle)"),
+        "{screen}"
+    );
+    assert!(!screen.contains("this is you"), "{screen}");
+    assert!(
+        screen.contains("esc back to timeline  j k move  . actions"),
+        "{screen}"
+    );
+    let names: Vec<&str> = keys::actions(&app).iter().map(|(k, _)| *k).collect();
+    assert_eq!(names, ["m", "f", "M", "B"]);
+    // With pictures, the text starts right of the big avatar.
+    let pictures = render(&mut app, 100, 16);
+    let line = pictures.lines().find(|l| l.contains("アン")).unwrap();
+    let x = crate::tui::text::cells(&line[..line.find("アン").unwrap()]);
+    assert_eq!(x, usize::from(MARK_W + BIG_AVATAR.0 + 2), "{pictures}");
+}
+
+// The notifications not read when the tab showed them keep a dot; the
+// Chat tab counts the conversations with a message not read.
+#[test]
+fn unread_notifications_and_chats_are_marked() {
+    let mut app = with_notes(vec![]);
+    app.unread = Some(1);
+    app.chat.convos.loaded = true;
+    app.chat.convos.items = vec![
+        serde_json::from_value(json!({"id": "c1", "createdAt": "t", "fromUserId": "u-ann",
+            "fromUser": {"id": "u-ann", "username": "ann"}, "toUserId": "u-me", "text": "やあ", "isRead": false}))
+        .unwrap(),
+        serde_json::from_value(json!({"id": "c2", "createdAt": "t", "fromUserId": "u-me",
+            "toUserId": "u-bob", "toUser": {"id": "u-bob", "username": "bob"}, "text": "どうも", "isRead": false}))
+        .unwrap(),
+    ];
+    let screen = render_text(&mut app, 100, 12);
+    assert!(screen.contains(" 7 Chat (1)"), "{screen}");
+    // Read in the background at the start, then shown.
+    app.notifications.loaded = true;
+    app.notifications.items = vec![
+        serde_json::from_value(json!({"id": "a", "createdAt": "t", "type": "follow",
+            "user": {"username": "new"}}))
+        .unwrap(),
+        serde_json::from_value(json!({"id": "b", "createdAt": "t", "type": "follow",
+            "user": {"username": "old"}}))
+        .unwrap(),
+    ];
+    let jobs = app.handle_key(key('4'));
+    assert_eq!(jobs[0].1, crate::tui::worker::Job::MarkRead);
+    let screen = render_text(&mut app, 100, 12);
+    assert!(screen.contains("● new @new followed you"), "{screen}");
+    assert!(screen.contains("\n   old @old followed you"), "{screen}");
+    app.handle_key(key('7'));
+    let screen = render_text(&mut app, 100, 12);
+    assert!(screen.contains("you: どうも"), "{screen}");
 }
 
 // A custom emoji the server has is drawn as its picture where pictures

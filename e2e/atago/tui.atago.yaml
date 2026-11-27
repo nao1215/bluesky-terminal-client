@@ -90,7 +90,7 @@ scenarios:
           command: msky
           graphics: kitty
           rows: 40
-          cols: 100
+          cols: 120
           env: &env
             MSKY_CONFIG_DIR: ${workdir}/cfg
             MSKY_CACHE_DIR: "off"
@@ -102,7 +102,7 @@ scenarios:
           session:
             - expect_screen:
                 contains:
-                  - "1 Home  2 Local  3 Global  4 Notifications  5 Search  6 Profile  7 Chat"
+                  - "1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
                   - "4 Notifications"
                   - "@me@127.0.0.1:${api.port}"
                   - "アリス 👩🏽‍💻 @alice · 2026-11-26 10:00"
@@ -235,7 +235,7 @@ scenarios:
           command: msky --host ${api.url}
           graphics: kitty
           rows: 30
-          cols: 100
+          cols: 120
           env:
             MSKY_CONFIG_DIR: ${workdir}/cfg
             MSKY_CACHE_DIR: "off"
@@ -535,7 +535,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "1 Home  2 Chat"
+                contains: "1 Home   2 Chat"
             - send: s
             - expect_screen:
                 contains: ["Settings", "Theme", "terminal", "Language", "English", "Tabs", "Home, Chat"]
@@ -553,7 +553,7 @@ scenarios:
             - send: j
             - send: { key: enter }
             - expect_screen:
-                contains: ["1 ホーム  2 チャット", "設定", "言語", "日本語"]
+                contains: ["1 ホーム   2 チャット", "設定", "言語", "日本語"]
             - send: { key: esc }
             - expect_screen:
                 not_contains: "言語"

@@ -41,6 +41,18 @@ pub struct ChatPane {
     pub polled: Option<Instant>,
 }
 
+impl ChatPane {
+    /// The conversations whose newest message, from someone else, is not
+    /// read yet, which the tab counts as bsky's does.
+    pub fn unread(&self, me: Option<&str>) -> usize {
+        self.convos
+            .items
+            .iter()
+            .filter(|m| m.is_read == Some(false) && Some(m.from_user_id.as_str()) != me)
+            .count()
+    }
+}
+
 /// Whom message `m` is a conversation with, seen from `me`, and its title.
 pub fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
     if let Some(room) = &m.to_room {
@@ -138,6 +150,50 @@ impl App {
             o.messages.asked = seq;
         }
         vec![(seq, job)]
+    }
+
+    /// m on someone's profile: the Chat tab, with the conversation with
+    /// them open, as bsky's.
+    pub(super) fn message_shown(&mut self) -> Jobs {
+        if self.tab != Tab::Profile || !self.threads.is_empty() || self.session.is_none() {
+            return Vec::new();
+        }
+        let Some(u) = self.profile.user.clone() else {
+            return Vec::new();
+        };
+        if self.profile.own(self.my_user_id()) {
+            self.info("this is your own account");
+            return Vec::new();
+        }
+        if self.no_chat {
+            self.info("this server has no chat for this account");
+            return Vec::new();
+        }
+        if !self.tabs.contains(&Tab::Chat) {
+            self.info("the Chat tab is not shown: + adds it");
+            return Vec::new();
+        }
+        let title = match u.host.as_deref().filter(|h| !h.is_empty()) {
+            Some(h) => format!("@{}@{h}", u.username),
+            None => format!("@{}", u.username),
+        };
+        let with = ChatWith::User(u.id);
+        self.tab = Tab::Chat;
+        self.chat.open = Some(OpenChat {
+            with: with.clone(),
+            title,
+            messages: List::default(),
+            input: TextInput::single(""),
+            typing: false,
+            sending: false,
+        });
+        let mut jobs = Vec::new();
+        if !self.chat.convos.loaded && !self.chat.convos.loading {
+            jobs.extend(self.load_chat());
+        }
+        self.chat.polled = Some(Instant::now());
+        jobs.extend(self.load_messages(with));
+        jobs
     }
 
     /// A key on the Chat tab; `None` when the tab's keys do not take it.
@@ -273,6 +329,7 @@ impl App {
                 until,
                 result,
             } => {
+                let me = self.my_user_id().map(str::to_string);
                 let Some(o) = self.chat.open.as_mut().filter(|o| o.with == with) else {
                     return;
                 };
@@ -281,6 +338,13 @@ impl App {
                         // Read again, the newest stays in sight.
                         o.messages.set(m);
                         o.messages.selected = 0;
+                        // The server reads the conversation as it is shown:
+                        // the tab's count goes down with it.
+                        for c in &mut self.chat.convos.items {
+                            if partner(c, me.as_deref()).0 == with {
+                                c.is_read = Some(true);
+                            }
+                        }
                     }
                     (None, Err(e)) if o.messages.asked == seq => o.messages.failed(said(&e)),
                     (Some(u), Ok(m)) => o.messages.append(&u, m),

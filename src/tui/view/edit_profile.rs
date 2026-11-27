@@ -14,7 +14,10 @@ pub(super) fn draw_edit_profile(
 ) {
     let inner = popup(frame, area, 76, 20, i18n::t("Edit profile"), t);
     if e.loading {
-        frame.render_widget(Paragraph::new(" loading…").style(t.dim()), inner);
+        frame.render_widget(
+            Paragraph::new(format!(" {}", i18n::t("loading…"))).style(t.dim()),
+            inner,
+        );
         return;
     }
     let heights = [1u16, 5, 1, 1];
@@ -53,7 +56,7 @@ pub(super) fn draw_edit_profile(
     }
     if e.saving && y < inner.bottom() {
         frame.render_widget(
-            Paragraph::new(" saving…").style(t.dim()),
+            Paragraph::new(format!(" {}", i18n::t("saving…"))).style(t.dim()),
             Rect {
                 y: inner.bottom() - 1,
                 height: 1,

@@ -72,9 +72,9 @@ pub(super) fn draw_compose(
     t: &Theme,
 ) {
     let (title, target) = match (&c.reply, &c.quote) {
-        (Some(r), _) => (format!("Reply to {}", r.who), Some(r)),
-        (None, Some(q)) => (format!("Quote {}", q.who), Some(q)),
-        (None, None) => ("New note".to_string(), None),
+        (Some(r), _) => (i18n::tf("Reply to {}", &[&r.who]), Some(r)),
+        (None, Some(q)) => (i18n::tf("Quote {}", &[&q.who]), Some(q)),
+        (None, None) => (i18n::t("New note").to_string(), None),
     };
     let n = c.media.len() as u16;
     let pics_h = if n > 0 { THUMB.1 + n } else { 0 };
@@ -123,9 +123,17 @@ pub(super) fn draw_compose(
     }
     let count = c.input.text().trim().chars().count();
     let action = if c.sending {
-        "posting…".to_string()
+        i18n::t("posting…").to_string()
     } else {
-        format!("{count} characters  ·  {}", c.visibility.name())
+        let who = match c.visibility {
+            crate::cli::Visibility::Public => i18n::t("public"),
+            crate::cli::Visibility::Home => i18n::t("home"),
+            crate::cli::Visibility::Followers => i18n::t("followers"),
+        };
+        format!(
+            "{}  ·  {who}",
+            i18n::tf("{} characters", &[&count.to_string()])
+        )
     };
     frame.render_widget(
         truncate_line(
@@ -187,7 +195,7 @@ fn draw_attachments(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let label = format!(" {} {}  alt: ", i + 1, truncate(&name, 20));
+        let label = format!(" {} {}  {} ", i + 1, truncate(&name, 20), i18n::t("alt:"));
         let label_w = cells(&label) as u16;
         let style = if focused { t.accent().bold() } else { t.dim() };
         frame.render_widget(Paragraph::new(label).style(style), row);
@@ -198,7 +206,7 @@ fn draw_attachments(
         };
         if a.alt.is_empty() && !focused {
             frame.render_widget(
-                Paragraph::new("(none; tab to describe it)").style(t.dim()),
+                Paragraph::new(i18n::t("(none; tab to describe it)")).style(t.dim()),
                 field,
             );
         } else {
@@ -207,7 +215,11 @@ fn draw_attachments(
     }
     if n > shown {
         frame.render_widget(
-            Paragraph::new(format!(" and {} more", n - shown)).style(t.dim()),
+            Paragraph::new(format!(
+                " {}",
+                i18n::tf("and {} more", &[&(n - shown).to_string()])
+            ))
+            .style(t.dim()),
             Rect {
                 y: area.y + top + shown,
                 height: 1,
@@ -227,9 +239,12 @@ pub(super) fn draw_browser(
     t: &Theme,
 ) {
     let title = if b.videos {
-        format!("Attach pictures (up to {}) or a video", b.room)
+        i18n::tf(
+            "Attach pictures (up to {}) or a video",
+            &[&b.room.to_string()],
+        )
     } else {
-        format!("Attach pictures (up to {})", b.room)
+        i18n::tf("Attach pictures (up to {})", &[&b.room.to_string()])
     };
     let w = area.width.saturating_sub(4).min(110);
     let h = area.height.saturating_sub(2).min(34);
@@ -340,18 +355,21 @@ pub(super) fn draw_browser(
             );
         }
         Some(_) => frame.render_widget(
-            Paragraph::new("enter opens the folder").style(t.dim()),
+            Paragraph::new(i18n::t("enter opens the folder")).style(t.dim()),
             preview,
         ),
         None => frame.render_widget(
-            Paragraph::new("no folders, pictures, or videos here").style(t.dim()),
+            Paragraph::new(i18n::t("no folders, pictures, or videos here")).style(t.dim()),
             preview,
         ),
     }
     let foot_line = match &b.note {
         Some(n) => Line::styled(format!(" {n}"), t.error()),
         None => Line::styled(
-            " enter choose  space mark  h up  . hidden  esc cancel",
+            format!(
+                " {}",
+                i18n::t("enter choose  space mark  h up  . hidden  esc cancel")
+            ),
             t.dim(),
         ),
     };
@@ -375,7 +393,7 @@ pub(super) fn draw_reactions(
     t: &Theme,
 ) {
     let rows = choices.len().clamp(1, 12) as u16;
-    let inner = popup(frame, area, 50, rows + 4, "React", t);
+    let inner = popup(frame, area, 50, rows + 4, n!("React"), t);
     let [search, list, foot] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
@@ -383,17 +401,20 @@ pub(super) fn draw_reactions(
     ])
     .areas(inner);
     let typed = if query.is_empty() {
-        Line::styled(" type to search the server's emoji", t.dim())
+        Line::styled(
+            format!(" {}", i18n::t("type to search the server's emoji")),
+            t.dim(),
+        )
     } else {
         Line::from(vec![
-            Span::styled(" search: ", t.accent().bold()),
+            Span::styled(format!(" {} ", i18n::t("search:")), t.accent().bold()),
             Span::raw(format!("{query}▏")),
         ])
     };
     frame.render_widget(typed, search);
     if choices.is_empty() {
         frame.render_widget(
-            Paragraph::new(" no emoji has that name").style(t.dim()),
+            Paragraph::new(format!(" {}", i18n::t("no emoji has that name"))).style(t.dim()),
             list,
         );
     }
@@ -444,7 +465,10 @@ pub(super) fn draw_reactions(
         Paragraph::new(vec![
             Line::raw(""),
             Line::styled(
-                " ↑ ↓ choose  enter react  1-9 0 default ones  esc close",
+                format!(
+                    " {}",
+                    i18n::t("↑ ↓ choose  enter react  1-9 0 default ones  esc close")
+                ),
                 t.dim(),
             ),
         ]),
