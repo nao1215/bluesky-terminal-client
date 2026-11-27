@@ -76,3 +76,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A `$[` that starts no function (`$[x2 $[ab:c] 後]`) is text in the client, as Misskey reads it, so the `]` after it closes the function around it.
 - Code in a function (`$[x2 `]` 後]`) no longer closes it at a `]` inside the code, as Misskey reads it.
 - `msky post --no-card` no longer makes `http://` before a link into an address of its own with a preview: the `?` it adds is put after an empty `<plain></plain>` there.
+- `msky post --no-card` no longer leaves a preview under a link after a `<https://` that never closes: the `>` it adds closed it, and the `<` is now written `<plain><</plain>`, which reads the same.

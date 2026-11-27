@@ -74,8 +74,12 @@ fn scan(b: &[u8]) -> (Vec<Link>, Vec<usize>) {
             found.push(link);
             continue;
         }
-        // `skipped` takes a `<plain>` that closes, so one here does not.
-        if b[i] == b'[' || b[i..].starts_with(b"<plain>") {
+        // `skipped` takes a `<plain>` that closes, and `angle` an address
+        // whose `>` comes, so one here does not.
+        if b[i] == b'['
+            || b[i..].starts_with(b"<plain>")
+            || (b[i] == b'<' && scheme_len(b, i + 1).is_some())
+        {
             strays.push(i);
         }
         // One character on: a byte inside a multi-byte one never starts
@@ -289,7 +293,9 @@ pub fn without_hash(url: &str) -> &str {
 /// and make a link that is not silent, so it is written `<plain>[</plain>`,
 /// which reads as the same `[`. A `<plain>` that never closes would be
 /// closed by the `</plain>` added after it, so it is written
-/// `<plain><</plain>plain>`, which reads as the same `<plain>`. A link
+/// `<plain><</plain>plain>`, which reads as the same `<plain>`; so is the
+/// `<` of a `<https://` with no `>` that the `>` of `<plain>` would close.
+/// A link
 /// right after `http://` gets an empty `<plain></plain>` before its `?`,
 /// which would otherwise make `http://?` an address.
 pub fn silenced(text: &str) -> String {
@@ -301,9 +307,15 @@ pub fn silenced(text: &str) -> String {
     for l in links {
         while let Some(at) = strays.next_if(|at| *at < l.start) {
             if b[at] == b'<' {
-                out.push_str(&text[last..at]);
-                out.push_str("<plain><</plain>");
-                last = at + 1;
+                // A `<https://` with a space before the link cannot reach
+                // the `>` added after it.
+                let open = b[at..].starts_with(b"<plain>")
+                    || !b[at..l.start].iter().any(u8::is_ascii_whitespace);
+                if open {
+                    out.push_str(&text[last..at]);
+                    out.push_str("<plain><</plain>");
+                    last = at + 1;
+                }
                 continue;
             }
             let open = label_end(b, at + 1);
@@ -779,6 +791,10 @@ mod tests {
     #[case("<plain>閉じない 👍🏽\nhttps://a.test")]
     #[case("http://[x3 flip $[spin deplain>](https://example.com/p)")]
     #[case("見てhttps://<https://a.test>")]
+    #[case(
+        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0<https://\0\0\0\0\0\0\0\0\0\0\0\0\0<https://expsb np\n["
+    )]
+    #[case("<https://🇯🇵https://a.test 後")]
     fn a_bracket_before_a_silenced_link_does_not_bring_its_preview_back(#[case] text: &str) {
         silencing_keeps_the_text(text);
     }
