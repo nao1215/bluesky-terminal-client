@@ -362,9 +362,9 @@ fn pick<'a>(env: &'a Option<String>, file: &'a Option<String>) -> Option<(&'a st
 /// Environment variable naming the folder downloads are saved in.
 pub const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
 
-/// Where the viewer's `d` saves pictures and videos: `BSKY_DOWNLOAD_DIR`,
-/// else the settings, else `bsky` in the platform download folder
-/// (`~/Downloads/bsky`).
+/// Where the viewer's `d` and `bsky download` save pictures and videos:
+/// `BSKY_DOWNLOAD_DIR`, else the settings, else `bsky` in the platform
+/// download folder (`~/Downloads/bsky`).
 pub fn download_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
     match pick(&env.download_dir, &settings.download_dir) {
         Some((v, from)) => (Some(PathBuf::from(v)), from),

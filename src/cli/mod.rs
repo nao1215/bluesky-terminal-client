@@ -15,7 +15,7 @@ use clap::Subcommand;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::api::types::{FeedItem, Notification, Post, Profile};
+use crate::api::types::{FeedItem, Media, Notification, Post, Profile};
 use crate::api::{self, Client};
 use crate::compose::{Attachment, PostOptions, send_post};
 use crate::config::{AccountStore, Environment, Session, SettingsStore};
@@ -36,6 +36,36 @@ pub enum Command {
         feed: String,
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
+    },
+    /// An account's posts, newest first.
+    ///
+    /// Pages are read until there are --limit posts or the account has no
+    /// more, so none is left out as a search for "from:ACTOR" can.
+    Author {
+        actor: String,
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+        /// Which of the account's posts.
+        #[arg(long, value_enum, default_value_t = AuthorFilter::WithReplies)]
+        filter: AuthorFilter,
+        /// Keep the posts the account reposted too.
+        #[arg(long)]
+        reposts: bool,
+        /// Save the pictures and videos of the posts instead of printing
+        /// them, in DIR or the download folder, as `download` does.
+        #[arg(long, value_name = "DIR", num_args = 0..=1)]
+        download: Option<Option<PathBuf>>,
+    },
+    /// Save a post's pictures and video in the download folder.
+    ///
+    /// The files are named and saved as `d` saves them in the client: a
+    /// picture full size, a video as one .ts file, and a name already taken
+    /// gets a number, so nothing is overwritten. Each saved file is printed.
+    Download {
+        post: String,
+        /// The folder to save in instead of the download folder.
+        #[arg(short = 'o', long, value_name = "DIR")]
+        output: Option<PathBuf>,
     },
     /// A post and its replies.
     Thread { post: String },
@@ -184,6 +214,39 @@ pub enum Command {
     },
 }
 
+/// Which posts of an account `author` lists: `app.bsky.feed.getAuthorFeed`'s
+/// `filter`, also taken by its lexicon name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum AuthorFilter {
+    /// Posts and replies.
+    #[value(alias = "posts_with_replies")]
+    WithReplies,
+    /// Posts, not replies.
+    #[value(alias = "posts_no_replies")]
+    NoReplies,
+    /// Posts with pictures or a video.
+    #[value(alias = "posts_with_media")]
+    Media,
+    /// Posts with a video.
+    #[value(alias = "posts_with_video")]
+    Video,
+    /// Posts, and replies in the account's own threads.
+    #[value(alias = "posts_and_author_threads")]
+    Threads,
+}
+
+impl AuthorFilter {
+    fn token(self) -> &'static str {
+        match self {
+            AuthorFilter::WithReplies => "posts_with_replies",
+            AuthorFilter::NoReplies => "posts_no_replies",
+            AuthorFilter::Media => "posts_with_media",
+            AuthorFilter::Video => "posts_with_video",
+            AuthorFilter::Threads => "posts_and_author_threads",
+        }
+    }
+}
+
 /// Why a post or an account is reported: `com.atproto.moderation.defs`.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum ReportReason {
@@ -266,6 +329,14 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
     match cmd {
         Command::Timeline { limit } => timeline(ctx, o, limit),
         Command::Feed { feed, limit } => custom_feed(ctx, o, &feed, limit),
+        Command::Author {
+            actor,
+            limit,
+            filter,
+            reposts,
+            download,
+        } => author(ctx, o, &actor, limit, filter, reposts, download),
+        Command::Download { post, output } => download(ctx, o, &post, output),
         Command::Thread { post } => thread(ctx, o, &post),
         Command::Notifications { limit, seen } => notifications(ctx, o, limit, seen),
         Command::Search {
@@ -493,6 +564,178 @@ fn custom_feed(ctx: &Ctx, out: &mut dyn Write, feed: &str, limit: usize) -> Resu
         })
         .collect();
     print_posts(ctx, out, posts.iter().map(|(v, p)| (v, p.clone())))
+}
+
+fn author(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    actor: &str,
+    limit: usize,
+    filter: AuthorFilter,
+    reposts: bool,
+    download_to: Option<Option<PathBuf>>,
+) -> Result<()> {
+    let client = ctx.client()?;
+    // getAuthorFeed takes a handle as it is, without a resolveHandle first.
+    let actor = actor.trim().trim_start_matches('@');
+    let items = author_feed(
+        |q| client.get_value("app.bsky.feed.getAuthorFeed", q),
+        actor,
+        filter,
+        reposts,
+        limit,
+    )?;
+    if let Some(dir) = download_to {
+        let dir = download_dir(ctx, dir)?;
+        for (_, item) in &items {
+            save_media(ctx, out, &item.post, &dir)?;
+        }
+        return Ok(());
+    }
+    for (i, (raw, item)) in items.iter().enumerate() {
+        if ctx.json {
+            json_line(out, raw)?;
+            continue;
+        }
+        if i > 0 {
+            text(out, "\n")?;
+        }
+        if let Some(by) = reposted_by(item) {
+            text(out, &format!("⟳ reposted by @{}\n", format::one_line(&by)))?;
+        }
+        text(out, &format::post(&item.post))?;
+    }
+    Ok(())
+}
+
+/// The handle that reposted `item` into the feed, if a repost brought it.
+fn reposted_by(item: &FeedItem) -> Option<String> {
+    let reason = item.reason.as_ref()?;
+    (reason.get("$type").and_then(Value::as_str) == Some(REASON_REPOST)).then(|| {
+        reason
+            .pointer("/by/handle")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    })
+}
+
+const REASON_REPOST: &str = "app.bsky.feed.defs#reasonRepost";
+
+/// The newest `limit` items of `actor`'s feed that `filter` and `reposts`
+/// keep, read with `get` page by page. Every page is read until there are
+/// that many or the feed ends: a page can be all reposts, and leaving the
+/// rest unread would leave posts out. A post a later page repeats is kept
+/// once, and a cursor seen before ends the reading rather than going round.
+fn author_feed(
+    get: impl Fn(&[(&str, &str)]) -> Result<Value>,
+    actor: &str,
+    filter: AuthorFilter,
+    reposts: bool,
+    limit: usize,
+) -> Result<Vec<(Value, FeedItem)>> {
+    let mut kept: Vec<(Value, FeedItem)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cursors = std::collections::HashSet::new();
+    let mut cursor: Option<String> = None;
+    while kept.len() < limit {
+        // Full pages when reposts are dropped: a page of one could take as
+        // many requests as the account has reposts.
+        let want = if reposts { limit - kept.len() } else { 100 };
+        let page = want.clamp(1, 100).to_string();
+        let mut q: Vec<(&str, &str)> = vec![
+            ("actor", actor),
+            ("filter", filter.token()),
+            ("limit", &page),
+        ];
+        if let Some(c) = &cursor {
+            q.push(("cursor", c));
+        }
+        let v = get(&q)?;
+        let got = v
+            .get("feed")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let next = v.get("cursor").and_then(Value::as_str).map(str::to_string);
+        let empty = got.is_empty();
+        for raw in got {
+            let Ok(item) = FeedItem::deserialize(&raw) else {
+                continue;
+            };
+            let key = match (&item.reason, reposted_by(&item)) {
+                (None, _) => item.post.uri.clone(),
+                (Some(_), Some(by)) if reposts => format!("{by} {}", item.post.uri),
+                // A repost left out, or another reason (a pinned post is
+                // out of the feed's order and comes again in its place).
+                _ => continue,
+            };
+            if seen.insert(key) && kept.len() < limit {
+                kept.push((raw, item));
+            }
+        }
+        match next {
+            Some(n) if !empty && cursors.insert(n.clone()) => cursor = Some(n),
+            _ => break,
+        }
+    }
+    Ok(kept)
+}
+
+fn download(ctx: &Ctx, out: &mut dyn Write, post: &str, output: Option<PathBuf>) -> Result<()> {
+    let client = ctx.client()?;
+    let p = fetch_post(&client, post)?;
+    let dir = download_dir(ctx, output)?;
+    if p.embed.as_ref().is_none_or(|e| e.media().is_empty()) {
+        return Err(Error::new(
+            Kind::Usage,
+            format!("{} has no pictures or video", p.uri),
+        ));
+    }
+    save_media(ctx, out, &p, &dir)
+}
+
+/// Where a download goes: `given`, else the client's download folder.
+fn download_dir(ctx: &Ctx, given: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(dir) = given {
+        return Ok(dir);
+    }
+    let settings = SettingsStore::new(ctx.dir).load().0;
+    crate::config::download_dir(&Environment::read(), &settings)
+        .0
+        .ok_or_else(|| {
+            Error::io("there is no download folder").with_hint(format!(
+                "pass -o DIR, or set {}",
+                crate::config::DOWNLOAD_DIR_ENV
+            ))
+        })
+}
+
+/// Save every picture and video of `post` in `dir`, as the viewer's `d`
+/// saves one, printing each file as it is written.
+fn save_media(ctx: &Ctx, out: &mut dyn Write, post: &Post, dir: &std::path::Path) -> Result<()> {
+    let media = post
+        .embed
+        .as_ref()
+        .map(crate::api::types::Embed::media)
+        .unwrap_or_default();
+    for m in &media {
+        let path = crate::download::save(m, Some(dir))?;
+        let (kind, url) = match m {
+            Media::Image { url, .. } => ("image", url),
+            Media::Video { playlist, .. } => ("video", playlist),
+        };
+        let shown = path.to_string_lossy();
+        if ctx.json {
+            json_line(
+                out,
+                &json!({"post": post.uri, "kind": kind, "url": url, "path": shown}),
+            )?;
+        } else {
+            text(out, &format!("{shown}\n"))?;
+        }
+    }
+    Ok(())
 }
 
 /// A feed's at:// URI from what was typed: the URI, a bsky.app feed
@@ -1608,5 +1851,203 @@ mod tests {
         ];
         let e = no_pinned_feed("dogs", &pinned);
         assert_eq!(e.hint(), Some("pinned: Cats 🐱]52;c;cHduZWQ=[2J, 日本 語"));
+    }
+
+    fn feed_post(uri: &str, text: &str) -> Value {
+        json!({"post": {"uri": uri, "cid": "c", "author": {"did": "did:plc:alice", "handle": "alice.test"},
+            "record": {"text": text, "createdAt": "2026-09-20T10:00:00.000Z"}}})
+    }
+
+    fn repost_of(uri: &str) -> Value {
+        let mut v = feed_post(uri, "someone else's");
+        v["reason"] =
+            json!({"$type": REASON_REPOST, "by": {"did": "did:plc:alice", "handle": "alice.test"}});
+        v
+    }
+
+    /// A stand-in getAuthorFeed that answers `pages` by cursor (the first
+    /// with none) and records the queries it was sent.
+    struct Stand {
+        pages: Vec<(Option<&'static str>, Value)>,
+        sent: std::cell::RefCell<Vec<Vec<(String, String)>>>,
+    }
+
+    impl Stand {
+        fn get(&self, q: &[(&str, &str)]) -> Result<Value> {
+            self.sent.borrow_mut().push(
+                q.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            );
+            let cursor = q.iter().find(|(k, _)| *k == "cursor").map(|(_, v)| *v);
+            Ok(self
+                .pages
+                .iter()
+                .find(|(c, _)| *c == cursor)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| json!({"feed": []})))
+        }
+    }
+
+    fn pages(pages: Vec<(Option<&'static str>, Value)>) -> Stand {
+        Stand {
+            pages,
+            sent: std::cell::RefCell::default(),
+        }
+    }
+
+    fn uris(items: &[(Value, FeedItem)]) -> Vec<&str> {
+        items.iter().map(|(_, i)| i.post.uri.as_str()).collect()
+    }
+
+    // The account's feed is read page after page with its cursor, until the
+    // limit or the end: a page of reposts, left out, does not end it, and a
+    // post a later page repeats comes once.
+    #[test]
+    fn author_reads_every_page_and_leaves_out_reposts_and_repeats() {
+        let stand = pages(vec![
+            (
+                None,
+                json!({"cursor": "c2", "feed": [
+                    feed_post("at://a/p/1", "山の写真 🏔️👨‍👩‍👧"),
+                    repost_of("at://b/p/9"),
+                    repost_of("at://b/p/8"),
+                ]}),
+            ),
+            (
+                Some("c2"),
+                json!({"cursor": "c3", "feed": [
+                    feed_post("at://a/p/1", "山の写真 🏔️👨‍👩‍👧"),
+                    feed_post("at://a/p/2", "🇯🇵 1️⃣ ❤️"),
+                ]}),
+            ),
+            (
+                Some("c3"),
+                json!({"feed": [feed_post("at://a/p/3", "末尾")]}),
+            ),
+        ]);
+        let got = author_feed(
+            |q| stand.get(q),
+            "alice.test",
+            AuthorFilter::NoReplies,
+            false,
+            10,
+        )
+        .unwrap();
+        assert_eq!(uris(&got), ["at://a/p/1", "at://a/p/2", "at://a/p/3"]);
+        assert_eq!(got[0].1.post.record().text, "山の写真 🏔️👨‍👩‍👧");
+        let sent = stand.sent.borrow();
+        assert_eq!(sent.len(), 3, "{sent:?}");
+        let param =
+            |i: usize, k: &str| sent[i].iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+        assert_eq!(param(0, "actor").as_deref(), Some("alice.test"));
+        assert_eq!(param(0, "filter").as_deref(), Some("posts_no_replies"));
+        assert_eq!(param(0, "cursor"), None);
+        assert_eq!(param(1, "cursor").as_deref(), Some("c2"));
+        assert_eq!(param(2, "cursor").as_deref(), Some("c3"));
+    }
+
+    #[test]
+    fn author_stops_at_the_limit_without_reading_further() {
+        let stand = pages(vec![(
+            None,
+            json!({"cursor": "c2", "feed": [feed_post("at://a/p/1", "a"), feed_post("at://a/p/2", "b")]}),
+        )]);
+        let got = author_feed(
+            |q| stand.get(q),
+            "alice.test",
+            AuthorFilter::WithReplies,
+            false,
+            1,
+        )
+        .unwrap();
+        assert_eq!(uris(&got), ["at://a/p/1"]);
+        assert_eq!(stand.sent.borrow().len(), 1);
+    }
+
+    #[test]
+    fn author_keeps_reposts_with_reposts_and_says_who() {
+        let stand = pages(vec![(
+            None,
+            json!({"feed": [feed_post("at://a/p/1", "a"), repost_of("at://b/p/9"),
+                {"post": feed_post("at://a/p/0", "pinned")["post"], "reason": {"$type": "app.bsky.feed.defs#reasonPin"}}]}),
+        )]);
+        let got = author_feed(
+            |q| stand.get(q),
+            "did:plc:alice",
+            AuthorFilter::Media,
+            true,
+            5,
+        )
+        .unwrap();
+        assert_eq!(
+            uris(&got),
+            ["at://a/p/1", "at://b/p/9"],
+            "the pin is left out"
+        );
+        assert_eq!(reposted_by(&got[1].1).as_deref(), Some("alice.test"));
+        assert_eq!(reposted_by(&got[0].1), None);
+        // With reposts kept a page is as large as what is still wanted.
+        assert!(stand.sent.borrow()[0].contains(&("limit".into(), "5".into())));
+        assert!(stand.sent.borrow()[0].contains(&("filter".into(), "posts_with_media".into())));
+    }
+
+    // A server that hands back a cursor it gave before would be read round
+    // and round; the reading ends there.
+    #[test]
+    fn author_stops_at_a_cursor_seen_before() {
+        let stand = pages(vec![
+            (
+                None,
+                json!({"cursor": "c2", "feed": [feed_post("at://a/p/1", "a")]}),
+            ),
+            (
+                Some("c2"),
+                json!({"cursor": "c3", "feed": [feed_post("at://a/p/2", "b")]}),
+            ),
+            (
+                Some("c3"),
+                json!({"cursor": "c2", "feed": [feed_post("at://a/p/3", "c")]}),
+            ),
+        ]);
+        let got = author_feed(
+            |q| stand.get(q),
+            "alice.test",
+            AuthorFilter::WithReplies,
+            false,
+            50,
+        )
+        .unwrap();
+        assert_eq!(uris(&got), ["at://a/p/1", "at://a/p/2", "at://a/p/3"]);
+        assert_eq!(stand.sent.borrow().len(), 3);
+    }
+
+    #[test]
+    fn author_filters_are_taken_by_their_lexicon_names_too() {
+        use clap::ValueEnum;
+        for f in AuthorFilter::value_variants() {
+            assert_eq!(AuthorFilter::from_str(f.token(), false), Ok(*f));
+        }
+    }
+
+    // -o wins over the download folder, which is the client's otherwise.
+    #[test]
+    fn download_goes_to_the_folder_given_or_the_clients() {
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = AccountStore::open(dir.path());
+        let ctx = Ctx {
+            dir: dir.path(),
+            accounts: &accounts,
+            session: None,
+            service: "http://127.0.0.1:9",
+            json: false,
+        };
+        let given = PathBuf::from("写真 👨‍👩‍👧");
+        assert_eq!(download_dir(&ctx, Some(given.clone())).unwrap(), given);
+        let settings = SettingsStore::new(dir.path()).load().0;
+        assert_eq!(
+            download_dir(&ctx, None).ok(),
+            crate::config::download_dir(&Environment::read(), &settings).0
+        );
     }
 }

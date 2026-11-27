@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- `bsky author <ACTOR>` lists an account's posts newest first, read from its own feed page by page until `-n` posts or the end, so nothing is left out as a search for `from:` can. `--filter` picks posts with replies (the default), without replies, with media, with a video, or the account's threads; reposts are printed only with `--reposts`; `--json` prints one feedViewPost a line, as `bsky timeline` does.
+- `bsky download <POST>` saves a post's pictures and video in the download folder, or in `-o DIR`, named and saved as `d` saves them in the viewer: pictures full size, a video as one .ts file, and a name already taken gets a number rather than being overwritten. It prints each saved file, or with `--json` one `{"post", "kind", "url", "path"}` object a line. `bsky author <ACTOR> --download [DIR]` does the same for every post it read.
+
 ## [0.14.2] - 2026-11-19
 
 ### Changed

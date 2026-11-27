@@ -112,9 +112,11 @@ Chat, accounts and columns show made-up data served by [doc/demo-server.py](doc/
 bsky tl -n 5
 bsky post "hello" --image cat.jpg
 bsky search rust --json | jq -r .uri
+bsky author alice.bsky.social -n 100 --filter no-replies
+bsky download https://bsky.app/profile/alice.bsky.social/post/3l... -o pics
 ```
 
-`bsky --help` lists them all.
+`bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `bsky download` saves a post's pictures and video where `d` in the viewer does, and `bsky author ... --download` saves those of every post it read. `bsky --help` lists them all.
 
 ## Environment
 
