@@ -137,7 +137,7 @@ A write prints one object:
 
 More keys: bsky `cid`, and for `app-passwords add` the `password`; msky `reaction`, `requested` (a follow the account has to accept), and a report's `comment`; mstdn `uri`.
 
-`post --dry-run --json` prints what would be sent and sends nothing: `{"dryRun": true, "host", "username", "post": {"text", "cw", "visibility", "replyId", "files"}, ...}`; msky adds the quote's `quoteId` and the link preview the server would make.
+`post --dry-run --json` prints what would be sent and sends nothing: `{"dryRun": true, "host", "username", "post": {"text", "cw", "visibility", "replyId", "files"}, ...}`; msky and bsky add the quote's `quoteId`, msky the link preview the server would make, and bsky the `card` its first link would get.
 
 ## Errors
 

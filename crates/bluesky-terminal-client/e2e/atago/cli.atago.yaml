@@ -1859,3 +1859,94 @@ scenarios:
               - { path: "$.path", matches: 'picked[/\\]bafy1\.png$' }
       - assert:
           dir: { path: picked, count: 1, contains: [bafy1.png] }
+
+  # As msky's: a job that announces a page checks what it would post, the
+  # card included, before it posts. Nothing goes up, not even the card's
+  # picture or the files attached.
+  - name: post --dry-run shows the post and its card and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - *card_page
+          - *card_photo
+          - *card_upload
+          - *card_create
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "hello", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: 'bsky post --dry-run --reply at://did:plc:alice/app.bsky.feed.post/p1 "新しい記事 🐈‍⬛ ${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "dry run: nothing was sent to 127.0.0.1:${api.port}\nas @me.test\n"
+              - "reply to: at://did:plc:alice/app.bsky.feed.post/p1\n"
+              - " of 300 characters):\n新しい記事 🐈‍⬛ ${api.url}/page\n"
+              - "card of ${api.url}/page:\n  title: A note & its card\n  description: What the page is about\n  image: ${api.url}/img/photo.png\n"
+      - run:
+          command: bsky post --dry-run --json --image photo.png --alt "写真 📷" "pictures, so no card ${api.url}/page"
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.dryRun", equals: true }
+              - { path: "$.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.username", equals: me.test }
+              - { path: "$.post.text", equals: "pictures, so no card ${api.url}/page" }
+              - { path: "$.post.files[0].type", equals: image }
+              - { path: "$.post.files[0].alt", equals: "写真 📷" }
+              - { path: "$.maxCharacters", equals: 300 }
+              - { path: "$.card", equals: null }
+      - assert:
+          mock: { name: api, path: /page, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  # As msky's and mstdn's whoami: which account the commands write as.
+  - name: whoami prints the account in use
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "私 🇯🇵", followersCount: 1, followsCount: 2, postsCount: 3 }
+    steps:
+      - *session
+      - run:
+          command: bsky whoami --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: did:plc:me }
+              - { path: "$.username", equals: me.test }
+              - { path: "$.name", equals: "私 🇯🇵" }
+              - { path: "$.postsCount", equals: 3 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, query: { name: actor, equals: did:plc:me } }
+      - run:
+          command: bsky whoami
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              私 🇯🇵 @me.test
+              did:plc:me
+              1 followers  2 following  3 posts
