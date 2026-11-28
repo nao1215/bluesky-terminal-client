@@ -158,7 +158,7 @@ From their READMEs and source, September 2026.
 
 ## Related projects
 
-- [msky](crates/misskey-terminal-client): a Misskey client for the terminal, in this repository.
+- [msky](../misskey-terminal-client/README.md): a Misskey client for the terminal, in the same repository.
 
 ## Testing
 

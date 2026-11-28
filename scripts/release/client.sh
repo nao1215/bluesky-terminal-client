@@ -16,7 +16,7 @@ bin="${BIN:-bsky}"
 case "$bin" in
 bsky)
 	tag_prefix="v"
-	package_dir="."
+	package_dir="crates/bluesky-terminal-client"
 	formula_class="Bsky"
 	formula_desc="Bluesky client for the terminal that shows pictures and videos inline"
 	;;

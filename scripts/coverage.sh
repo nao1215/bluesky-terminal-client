@@ -47,7 +47,10 @@ echo "coverage: end-to-end suites"
 cargo build "${deps_optimized[@]}" --locked -p bluesky-terminal-client -p misskey-terminal-client
 # The same locale as each suite's e2e/run.sh: the specs read the clients in
 # English and set the locale themselves where they read another one.
-PATH="$CARGO_TARGET_DIR/debug:$PATH" LC_ALL=C.UTF-8 LANG=C.UTF-8 atago run e2e/atago
+(
+	cd crates/bluesky-terminal-client
+	PATH="$CARGO_TARGET_DIR/debug:$PATH" LC_ALL=C.UTF-8 LANG=C.UTF-8 atago run e2e/atago
+)
 (
 	cd crates/misskey-terminal-client
 	PATH="$CARGO_TARGET_DIR/debug:$PATH" LC_ALL=C.UTF-8 LANG=C.UTF-8 LC_MESSAGES='' atago run e2e/atago

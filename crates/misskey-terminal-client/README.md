@@ -153,7 +153,7 @@ From their READMEs, November 2026.
 
 ## Related projects
 
-- [bsky](../../README.md#bsky): a Bluesky client for the terminal, in the same repository.
+- [bsky](../bluesky-terminal-client/README.md): a Bluesky client for the terminal, in the same repository.
 
 ## Contributing
 

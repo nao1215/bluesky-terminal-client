@@ -32,11 +32,13 @@
 set -eu
 cd "$(dirname "$0")/.."
 OUT=$(pwd)/doc/img
-BIN=$(pwd)/target/release
+# The crate is a member of the workspace two directories up, which builds
+# into its own target/.
+BIN=$(cd ../.. && pwd)/target/release
 WORK=$(mktemp -d)
 SOCK=unix:$WORK/kitty.sock
 mkdir -p "$OUT"
-cargo build --release --locked
+cargo build --release --locked -p bluesky-terminal-client
 
 KPID=""
 FPID=""

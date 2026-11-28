@@ -22,9 +22,8 @@ on:
       - "Cargo.lock"
       - "deny.toml"
       - "about.toml"
-      - "about.hbs"
       - "crates/*/Cargo.toml"
-      - "crates/misskey-terminal-client/about.hbs"
+      - "crates/*/about.hbs"
       - ".github/workflows/licenses.yml"
   pull_request:
     branches:
@@ -34,9 +33,8 @@ on:
       - "Cargo.lock"
       - "deny.toml"
       - "about.toml"
-      - "about.hbs"
       - "crates/*/Cargo.toml"
-      - "crates/misskey-terminal-client/about.hbs"
+      - "crates/*/about.hbs"
       - ".github/workflows/licenses.yml"
 
 concurrency:
@@ -72,8 +70,8 @@ jobs:
 
       - name: Write the third-party licenses the releases ship
         run: |
-          cargo about generate --locked --fail about.hbs -o THIRD_PARTY_LICENSES.html
-          test -s THIRD_PARTY_LICENSES.html
+          cargo about generate --locked --fail -m crates/bluesky-terminal-client/Cargo.toml -c about.toml crates/bluesky-terminal-client/about.hbs -o bsky-THIRD_PARTY_LICENSES.html
+          test -s bsky-THIRD_PARTY_LICENSES.html
           cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml crates/misskey-terminal-client/about.hbs -o msky-THIRD_PARTY_LICENSES.html
           test -s msky-THIRD_PARTY_LICENSES.html
 
@@ -81,7 +79,7 @@ jobs:
         with:
           name: third-party-licenses
           path: |
-            THIRD_PARTY_LICENSES.html
+            bsky-THIRD_PARTY_LICENSES.html
             msky-THIRD_PARTY_LICENSES.html
           if-no-files-found: error
           retention-days: 7

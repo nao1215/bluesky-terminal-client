@@ -1,74 +1,6 @@
-[package]
-name = "bluesky-terminal-client"
-version = "0.15.0"
-edition = "2024"
-rust-version = "1.90"
-authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
-description = "Unofficial Bluesky client for the terminal that shows pictures and videos inline (kitty graphics, sixel, iTerm2)."
-license = "MIT"
-readme = "README.md"
-repository = "https://github.com/nao1215/social-terminal-clients"
-keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
-categories = ["command-line-utilities"]
-# The unit tests read e2e/atago/testdata, so it ships; the rest of the
-# repository's tooling does not.
-exclude = [
-    ".github/",
-    ".gitignore",
-    ".octocov.yml",
-    "about.hbs",
-    "about.toml",
-    "bench/",
-    "deny.toml",
-    "doc/",
-    "e2e/*.sh",
-    "e2e/atago/*.yaml",
-    "fuzz/",
-    "justfile",
-    "scripts/",
-]
-
-# `cargo binstall bluesky-terminal-client` fetches the release archive instead
-# of building it.
-[package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v{ version }/bsky-v{ version }-{ target }{ archive-suffix }"
-bin-dir = "{ bin }{ binary-ext }"
-pkg-fmt = "tgz"
-
-[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
-pkg-fmt = "zip"
-
-[[bin]]
-name = "bsky"
-path = "src/main.rs"
-
-[dependencies]
-clap.workspace = true
-crossterm.workspace = true
-dirs.workspace = true
-image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
-jiff.workspace = true
-openh264.workspace = true
-ratatui.workspace = true
-ratatui-image.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-terminal-kit = { path = "crates/terminal-kit", version = "0.1.0" }
-unicode-segmentation.workspace = true
-unicode-width.workspace = true
-ureq.workspace = true
-
-[dev-dependencies]
-proptest.workspace = true
-rstest.workspace = true
-tempfile.workspace = true
-
-[lints]
-workspace = true
-
-# msky (crates/misskey-terminal-client) and the shared terminal drawing
-# helpers (crates/terminal-kit) live in crates/; the root package is a member
-# too, and bare cargo commands at the root act on it alone.
+# The workspace of the terminal clients: each client and the shared terminal
+# drawing helpers (terminal-kit) are a package in crates/, and the root holds
+# no package of its own. A bare cargo command at the root acts on every member.
 [workspace]
 members = ["crates/*"]
 resolver = "3"
@@ -125,9 +57,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# What e2e/run.sh builds: the release optimizations without the link-time
-# optimization and the single codegen unit, which make the same code a little
-# faster and took most of the E2E job (3 minutes of the 4 on Windows).
+# What each client's e2e/run.sh builds: the release optimizations without the
+# link-time optimization and the single codegen unit, which make the same code
+# a little faster and took most of the E2E job (3 minutes of the 4 on Windows).
 [profile.e2e]
 inherits = "release"
 lto = false

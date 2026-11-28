@@ -1,6 +1,6 @@
 # Contributing to bsky
 
-msky, the Misskey client in [crates/misskey-terminal-client](crates/misskey-terminal-client), has its own [CONTRIBUTING.md](crates/misskey-terminal-client/CONTRIBUTING.md); the checks below run it too where they say so.
+bsky lives in `crates/bluesky-terminal-client` of the [social-terminal-clients](../../README.md) workspace, beside msky and the shared crate `crates/terminal-kit`. The commands below run in this directory unless they say otherwise; the workflows, `deny.toml`, `about.toml`, `.cargo/mutants.toml` and `scripts/` are the workspace's, at the repository root. The repository's [CONTRIBUTING.md](../../CONTRIBUTING.md) covers the workspace, and msky has [its own](../misskey-terminal-client/CONTRIBUTING.md).
 
 ## Prerequisites
 
@@ -17,16 +17,18 @@ just lint        # clippy with warnings as errors
 just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
 just e2e         # end-to-end suite
-just e2e-msky    # msky's end-to-end suite
+just deny        # dependency advisories and licenses (needs cargo-deny)
 just bench       # performance with himorime (see bench/README.md)
-just coverage    # line coverage of the unit tests and both E2E suites together (needs cargo-llvm-cov)
+just coverage    # line coverage of the workspace's unit tests and both E2E suites together (needs cargo-llvm-cov)
+just fuzz <target> -max_total_time=60   # one fuzz target (needs nightly and cargo-fuzz)
+just release-test                       # the release scripts, without a tag
 ```
 
-`just ci` runs all of them except the benchmarks and coverage.
+`just ci` runs the first five.
 
 ## End-to-end tests
 
-The suite lives in `e2e/atago/*.atago.yaml` and runs with `e2e/run.sh`, which builds the binary with the `e2e` profile (the release optimizations without link-time optimization) and puts it first on `PATH`. It needs no account and no network:
+The suite lives in `e2e/atago/*.atago.yaml` and runs with `e2e/run.sh`, which builds the binary with the workspace's `e2e` profile (the release optimizations without link-time optimization) and puts it first on `PATH`. It needs no account and no network:
 
 - The Bluesky PDS is an atago mock server. Each scenario declares the XRPC routes it needs and asserts what bsky sent (`mock:` with `body:`, `header:`, and `query:`).
 - The terminal is an atago pseudo-terminal. `graphics: kitty` makes it answer like a terminal that draws images, and `screen.images` asserts what bsky drew, down to the pixels. Leaving `graphics` out is how a terminal without image support is tested.
@@ -38,7 +40,7 @@ Write a scenario for every behavior you add or change, including how it fails. W
 
 ## Benchmarks
 
-`bench/himorime.yaml` measures start-up, the commands, and the client from start to its first post, against a stand-in server. Every pull request is compared with its base by `.github/workflows/bench.yml`; see [bench/README.md](bench/README.md).
+`bench/himorime.yaml` measures start-up, the commands, and the client from start to its first post, against a stand-in server. Every pull request is compared with its base by the workspace's `.github/workflows/bench.yml`; see [bench/README.md](bench/README.md).
 
 ## Fuzzing
 
@@ -46,7 +48,7 @@ Write a scenario for every behavior you add or change, including how it fails. W
 
 bsky has no library target, so a target includes the file it tests with `#[path = "../../src/..."] mod ...;`. Only a file that uses nothing else from the crate can be included that way; keep `src/hls.rs` and `src/api/facets.rs` free of `use crate::`.
 
-Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`). `just fuzz hls_demux -max_total_time=60` runs one target; new inputs go to the ignored `fuzz/work/`, and `fuzz/corpus/<target>/` holds the committed seeds. Pull requests that touch those files or `fuzz/` build the targets and run each over its seeds; `.github/workflows/fuzz.yml` explores every night. When it finds a crash, add the input to `fuzz/corpus/<target>/` and to a unit test before fixing it.
+Fuzzing needs nightly and cargo-fuzz (`rustup toolchain install nightly`, `cargo install --locked cargo-fuzz`). `just fuzz hls_demux -max_total_time=60` runs one target; new inputs go to the ignored `fuzz/work/`, and `fuzz/corpus/<target>/` holds the committed seeds. Pull requests that touch those files or `fuzz/` build the targets and run each over its seeds (the workspace's `rust.yml`); `fuzz.yml` explores every night. When it finds a crash, add the input to `fuzz/corpus/<target>/` and to a unit test before fixing it.
 
 ## Screenshots
 
@@ -64,13 +66,11 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ## Releasing
 
-A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`: it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN` and no build cache, packs reproducible archives, writes the third-party license texts (`cargo about`, from `about.toml` and `about.hbs`), `checksums.txt` and a CycloneDX SBOM, attests the build provenance of the archives and the SBOM, signs `checksums.txt` with cosign, creates the GitHub release with the CHANGELOG section as its text, adds SLSA provenance, verifies the published release the way README describes, and then publishes the crate and updates the formula in nao1215/homebrew-tap.
+A pushed tag `vX.Y.Z` runs the workspace's `.github/workflows/release.yml` (msky's `msky-vX.Y.Z` tags run `release-msky.yml`, and neither workflow starts on the other's tags): it checks the tag, builds every target in `.github/release-targets.json` with the pinned `RUST_TOOLCHAIN` and no build cache, packs reproducible archives, writes the third-party license texts (`cargo about`, from the workspace's `about.toml` and this directory's `about.hbs`), `checksums.txt` and a CycloneDX SBOM, attests the build provenance of the archives and the SBOM, signs `checksums.txt` with cosign, creates the GitHub release with the CHANGELOG section as its text, adds SLSA provenance, verifies the published release the way README describes, and then publishes the crate (terminal-kit first, when its version is not on crates.io yet) and updates the formula `bsky.rb` in nao1215/homebrew-tap.
 
-Before a tag, two workflows run the same steps on pull requests and on main. `.github/workflows/release-smoke.yml` builds and packs every target with the pinned compiler, checks the glibc ceiling, then downloads each archive on a fresh runner and runs `bsky --version`. `.github/workflows/licenses.yml` checks the dependency licenses with cargo-deny and writes the third-party license texts with cargo-about, so a crate the release could not ship fails review instead of the release.
+Before a tag, two workflows run the same steps on pull requests and on main. `.github/workflows/release-smoke.yml` builds and packs every target with the pinned compiler, checks the glibc ceiling, then downloads each archive on a fresh runner and runs `bsky --version` and `msky --version`. `.github/workflows/licenses.yml` checks the dependency licenses with cargo-deny and writes the third-party license texts with cargo-about, so a crate the release could not ship fails review instead of the release.
 
-1. In a pull request, set `version` in `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
+1. In a pull request, set `version` in this directory's `Cargo.toml` to `X.Y.Z`, rename `## [Unreleased]` in this directory's `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it. `just release-test` checks the release scripts.
 2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
 
 The workflow stops before building if the tag is not `v` plus the `Cargo.toml` version, the pinned compiler is older than `rust-version`, or the CHANGELOG has no section for the version. A tag with a hyphen (`v0.2.0-rc.1`) makes a pre-release and skips crates.io and Homebrew. Publishing to crates.io uses `CARGO_REGISTRY_TOKEN` when it is set, else trusted publishing (the first publish needs the token). The formula is updated only when `HOMEBREW_TAP_GITHUB_TOKEN` is set.
-
-msky is released the same way from a tag `msky-vX.Y.Z`, which runs `.github/workflows/release-msky.yml` and not `release.yml` (and a `vX.Y.Z` tag does not run `release-msky.yml`); its steps are in [msky's CONTRIBUTING.md](crates/misskey-terminal-client/CONTRIBUTING.md#releasing). terminal-kit is published to crates.io by whichever release first needs a version of it that is not there yet.

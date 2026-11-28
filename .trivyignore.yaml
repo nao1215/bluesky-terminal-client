@@ -1,8 +1,8 @@
 secrets:
   - id: jwt-token
     paths:
-      - src/api/mod.rs
-      - e2e/atago/timeline.atago.yaml
+      - crates/bluesky-terminal-client/src/api/mod.rs
+      - crates/bluesky-terminal-client/e2e/atago/timeline.atago.yaml
     statement: >-
       Test fixtures: unsigned JWTs whose signature is the literal "sig" and
       whose exp is 2023-11-14, used to check how the client reads token

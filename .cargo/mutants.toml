@@ -1,12 +1,12 @@
 # cargo-mutants configuration (https://mutants.rs).
 #
 # Mutation testing changes one operator, constant or return value at a time and
-# checks that some test fails. It is pointed at the code that computes and
-# decides on its own: laying text out in cells, finding the facets of a post,
-# reading HLS playlists and MPEG-TS, reading a page's link card, fitting
-# pictures in cells, the columns and the text field. The rest mostly wires
-# those to the terminal, the network and the worker thread, which the state
-# tests of App and the E2E suite cover.
+# checks that some test fails. In bsky (crates/bluesky-terminal-client) it is
+# pointed at the code that computes and decides on its own: laying text out in
+# cells, finding the facets of a post, reading HLS playlists and MPEG-TS,
+# reading a page's link card, fitting pictures in cells, the columns and the
+# text field. The rest mostly wires those to the terminal, the network and the
+# worker thread, which the state tests of App and the E2E suite cover.
 #
 # In msky (crates/misskey-terminal-client) it is pointed at reading a note's
 # MFM (its links and its plain text), taking the metadata off a file before it
@@ -18,12 +18,12 @@
 # mutation.yml runs cargo mutants with --workspace.
 examine_globs = [
   "crates/terminal-kit/src/text.rs",
-  "src/api/facets.rs",
-  "src/hls.rs",
-  "src/og.rs",
-  "src/langs.rs",
+  "crates/bluesky-terminal-client/src/api/facets.rs",
+  "crates/bluesky-terminal-client/src/hls.rs",
+  "crates/bluesky-terminal-client/src/og.rs",
+  "crates/bluesky-terminal-client/src/langs.rs",
   "crates/terminal-kit/src/scale.rs",
-  "src/tui/columns.rs",
+  "crates/bluesky-terminal-client/src/tui/columns.rs",
   "crates/terminal-kit/src/input.rs",
   "crates/misskey-terminal-client/src/mfm.rs",
   "crates/misskey-terminal-client/src/metadata.rs",
