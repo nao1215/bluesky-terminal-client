@@ -75,7 +75,7 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
         chat::draw(frame, body, app, images, &ctx);
     } else if app.in_deck() {
         deck::draw(frame, body, app, images, &ctx);
-    } else if matches!(app.tab, Tab::Search | Tab::Profile) {
+    } else if app.search_results() || app.tab == Tab::Profile {
         browse::draw_browse(frame, body, app, images, &ctx);
     } else {
         match app.tab.kind() {
@@ -238,6 +238,9 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
         }
         None => {}
     }
+    if app.search.editing {
+        browse::search_box(frame, body, app, &th);
+    }
     if let Some(m) = app.message.as_ref().filter(|m| m.error) {
         draw_error(frame, area, &m.text, &th);
     }
@@ -321,7 +324,12 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         } else {
             String::new()
         };
-        let label = format!(" {} {}{} ", i + 1, t(tab.title()), count);
+        let title = if app.search.back.is_some() && tab == app.search.tab {
+            tf("Search: {}", &[&app.search.query])
+        } else {
+            t(tab.title()).to_string()
+        };
+        let label = format!(" {} {}{} ", i + 1, drawable(&title), count);
         let style = if tab == app.tab {
             th.selected()
         } else {

@@ -24,7 +24,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("General"),
         keys: &[
-            ("1 2 3 4 5 6 7", n!("the tabs, in the order shown")),
+            ("1 2 3 4 5 6", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
             ("/", n!("search")),
             ("A", n!("switch accounts")),
@@ -37,7 +37,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Chat"),
         keys: &[
-            ("7", n!("direct conversations")),
+            ("6", n!("direct conversations")),
             ("m", n!("message the profile account")),
             ("enter", n!("open and mark read / send message")),
             ("i", n!("write a message")),
@@ -153,10 +153,11 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Search"),
         keys: &[
-            ("/ i", n!("edit the search")),
+            ("/", n!("open search box")),
             ("enter", n!("search / open profile")),
-            ("t ctrl+t", n!("posts / accounts")),
-            ("esc", n!("leave the search field")),
+            ("Ctrl+T", n!("posts/accounts")),
+            ("Esc", n!("cancel / back to timeline")),
+            ("enter v", n!("open profile")),
         ],
     },
     Section {
@@ -355,22 +356,22 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("?", n!("help")),
         ];
     }
-    if app.tab == Tab::Search && app.threads.is_empty() {
-        return if app.search.editing {
-            vec![
-                ("enter", n!("search")),
-                ("ctrl+t", n!("posts / accounts")),
-                ("esc", n!("back")),
-            ]
-        } else {
-            vec![
-                ("?", n!("help")),
-                ("/", n!("search")),
-                ("t", n!("posts / accounts")),
-                ("enter", n!("open profile")),
-                ("v", n!("thread")),
-            ]
-        };
+    if app.search_results() && app.threads.is_empty() {
+        return vec![
+            ("Esc", n!("back to timeline")),
+            ("/", n!("search")),
+            ("enter", n!("open profile")),
+            (
+                "v",
+                if app.search.result_accounts {
+                    n!("open profile")
+                } else {
+                    n!("thread")
+                },
+            ),
+            (".", n!("actions")),
+            ("?", n!("help")),
+        ];
     }
     if !app.threads.is_empty() {
         return vec![
@@ -398,6 +399,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
     v.insert(0, ("?", n!("help")));
+    v.insert(1, ("/", n!("search")));
     if app
         .selected()
         .is_some_and(|s| s.card.is_some() && app.text_shown(s))

@@ -37,7 +37,7 @@ impl App {
             if self.tab == Tab::Profile {
                 return self.profile.account.as_ref();
             }
-            if self.tab == Tab::Search && self.search.accounts {
+            if self.search_results() && self.search.result_accounts {
                 return self.search.users.current();
             }
         }

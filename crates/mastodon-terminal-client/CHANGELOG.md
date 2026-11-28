@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- `/` opens a search box. Results replace the timeline, and Esc restores its selection and scroll position without refetching. The Search tab is gone; Profile and Chat are now tabs 5 and 6.
+
 ### Added
 
 - `mstdn`, a Mastodon client for the terminal made of commands that read timelines, posts and accounts, save their files, and post.
@@ -22,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `-n 0` is a usage error (exit 1), as in bsky and msky.
 - `mstdn` without a command opens a full-screen client: the home, local and federated timelines and the notifications, the next page loaded near the end, a post's thread with its replies, favourites and boosts shown at once and taken back when the server refuses them, a composer for posts and replies with a content warning and who may see it, content warnings folded until `w`, `o` and `c` for a post's address, `.` for what the keys do, the 42 themes of bsky and msky kept in `settings.json`, and `?` for the keys, in English or Japanese. A visitor reads the local and federated timelines. `q` waits up to 3 seconds for a write still on its way, and a terminal it cannot run in exits with status 2.
 - The full-screen client draws pictures and video thumbnails in the lists with kitty graphics, sixel or iTerm2 images, and lists the files with their alt text in other terminals. `space` shows a post's pictures full screen and plays MP4/H.264 videos without sound, and `d` saves its files as `mstdn download` does. Pictures are cached on disk unless `MSTDN_CACHE_DIR` is `off`, and `MSTDN_GRAPHICS` picks the protocol.
-- Search (`5`, `/`) reads a hashtag's posts as a visitor and, with a login, finds posts or accounts. Profile (`6`) shows the account in use and its posts, and `enter` opens the profile of a post's author or of an account found.
+- Search (`/`) reads a hashtag's posts as a visitor and, with a login, finds posts or accounts. Profile (`5`) shows the account in use and its posts, and `enter` opens the profile of a post's author or of an account found.
 - `A` switches between the saved accounts, and `s` opens the settings: the theme and the language, kept in `settings.json`, the language before `LC_ALL`, `LC_MESSAGES` and `LANG`.
 - `f`, `M` and `B` follow, mute and block the selected post author or the profile shown, toggle those states back, and restore the previous state when the server refuses; mute and block require `y`.
 - `D` deletes your own selected post after `y` confirms, removing it from the lists when the server accepts it.
@@ -33,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `Q` creates quote posts on Mastodon 4.5 or later, with quote approval chosen using `ctrl+q`; received quotes are shown on any server that supplies them.
 - Custom emoji are drawn as pictures in posts, display names, profiles and notifications on terminals with graphics, with shortcodes kept on other terminals.
 - `+` adds list, hashtag, notification and search columns beside Home; `H` and `L` focus columns, `<` and `>` move them, and `x` then `y` closes one. Columns are saved per account.
-- Chat (`7`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.
+- Chat (`6`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.
 
 - Commands now favourite and boost posts, take those actions back, delete posts, follow, mute and block accounts, and list their related accounts. Favourites, bookmarks and Mastodon lists can be read from the command line.
 - `report` accepts a reason and comment with explicit confirmation; `chat` lists direct conversations, reads one-to-one history and sends direct posts. `search --accounts` finds accounts and `post --quote` quotes posts on Mastodon 4.5 or later.

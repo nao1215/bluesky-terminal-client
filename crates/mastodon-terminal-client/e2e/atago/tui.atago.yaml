@@ -111,7 +111,7 @@ scenarios:
                   - "ボブ @bob@mastodon.test · 2026-11-26 09:00"
                   - "⚠ CW: ネタバレ"
                   - "w shows it (5 characters)"
-                  - "? help  j k move  tab next tab"
+                  - "? help  / search  j k move  tab next tab"
                 not_contains: "犯人は執事"
             - send: l
             - expect_screen:
@@ -283,7 +283,7 @@ scenarios:
           command: mstdn --host ${api.url}
           graphics: kitty
           rows: 24
-          # Wide enough for the seven tabs and the server name beside them.
+          # Wide enough for the six tabs and the server name beside them.
           cols: 120
           env:
             MSTDN_CONFIG_DIR: ${workdir}/cfg
