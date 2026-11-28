@@ -1,0 +1,1809 @@
+version: '1'
+suite:
+  name: mstdn live catalog
+runners:
+  peer: {type: http, base_url: '${env:MSTDN_HOST}'}
+scenarios:
+- name: 'usable: token identity'
+  steps:
+  - run:
+      command: mstdn --json whoami
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.id
+          equals: ${env:MSTDN_SEED_ALICE}
+        - path: $.username
+          equals: alice
+- name: 'usable: home timeline newest page'
+  steps:
+  - run:
+      command: mstdn --json timeline home -n 1
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.id
+          equals: ${env:MSTDN_SEED_VIEWER_PICTURE}
+        - path: $.text
+          equals: compatibility viewer picture
+- name: 'usable: local timeline newest page'
+  steps:
+  - run:
+      command: mstdn --json timeline local -n 1
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.id
+          equals: ${env:MSTDN_SEED_VIEWER_PICTURE}
+        - path: $.text
+          equals: compatibility viewer picture
+- name: 'usable: public timeline newest page'
+  steps:
+  - run:
+      command: mstdn --json timeline public -n 1
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.id
+          equals: ${env:MSTDN_SEED_VIEWER_PICTURE}
+        - path: $.text
+          equals: compatibility viewer picture
+- name: 'usable: three pages of video posts and end count'
+  steps:
+  - run:
+      command: mstdn --json author videos -n 150
+      timeout: 60s
+      deterministic: {runs: 2, compare: [stdout, exit_code]}
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+  - assert:
+      stdout:
+        matches: '^\{[^\n]*"text":"video099 #compatvideo"[^\n]*\n(?:[^\n]*\n){98}\{[^\n]*"text":"video000 #compatvideo"[^\n]*\n$'
+- name: 'usable: post reply and thread'
+  steps:
+  - run:
+      command: 'mstdn --json post "compatibility live post #compatlive"'
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: root
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json post "compatibility live reply" --reply ${root}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: reply
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json thread ${root}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){2}$
+  - assert:
+      stdout:
+        contains:
+        - '"id":"${root}"'
+        - '"id":"${reply}"'
+        - '"replyId":"${root}"'
+- name: 'usable: picture upload alt text and download'
+  steps:
+  - run:
+      command: mstdn --json post "compatibility live picture" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --alt "Round trip alt 👩🏽‍💻"
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: picture
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${picture}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.files[0].type
+          equals: image
+        - path: $.files[0].description
+          equals: Round trip alt 👩🏽‍💻
+  - run:
+      command: mstdn --json download ${picture} -o dl
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.postId
+          equals: ${picture}
+  - store:
+      name: download
+      from:
+        stdout:
+          json:
+            path: $.path
+  - assert:
+      image:
+        path: ${download}
+        width: 64
+        height: 64
+- name: 'usable: video upload'
+  steps:
+  - run:
+      command: mstdn --json post "compatibility live video" --video "${env:MSTDN_COMPAT_SEED}/clip.mp4" --alt "Round trip video"
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: video
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${video}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.files[0].type
+          equals: video
+        - path: $.files[0].description
+          equals: Round trip video
+- name: 'usable: content warning and public visibility'
+  steps:
+  - run:
+      command: mstdn --json post "@bob visibility round trip" --cw "Round trip CW" --visibility public
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: post
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${post}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: Round trip CW
+        - path: $.visibility
+          equals: public
+- name: 'usable: content warning and unlisted visibility'
+  steps:
+  - run:
+      command: mstdn --json post "@bob visibility round trip" --cw "Round trip CW" --visibility unlisted
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: post
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${post}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: Round trip CW
+        - path: $.visibility
+          equals: unlisted
+- name: 'usable: content warning and private visibility'
+  steps:
+  - run:
+      command: mstdn --json post "@bob visibility round trip" --cw "Round trip CW" --visibility private
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: post
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${post}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: Round trip CW
+        - path: $.visibility
+          equals: private
+- name: 'usable: content warning and direct visibility'
+  steps:
+  - run:
+      command: mstdn --json post "@bob visibility round trip" --cw "Round trip CW" --visibility direct
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: post
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: mstdn --json status ${post}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: Round trip CW
+        - path: $.visibility
+          equals: direct
+- name: 'usable: notification kinds'
+  steps:
+  - run:
+      command: mstdn --json notifications -n 2000
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        contains:
+        - '"type":"mention"'
+        - '"type":"follow"'
+        - '"type":"like"'
+        - '"type":"repost"'
+- name: 'usable: hashtag search'
+  steps:
+  - run:
+      command: mstdn --json search "#compatvideo" -n 150
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+- name: 'heavy: 100 four-picture posts'
+  steps:
+  - run:
+      command: mstdn --json search "#compatpictures" -n 150
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+- name: 'heavy: 50-deep thread'
+  steps:
+  - run:
+      command: mstdn --json thread ${env:MSTDN_SEED_DEEP_LAST}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){51}$
+  - assert:
+      stdout:
+        contains:
+        - '"id":"${env:MSTDN_SEED_DEEP}"'
+        - '"id":"${env:MSTDN_SEED_DEEP_LAST}"'
+- name: 'heavy: 200 replies'
+  steps:
+  - run:
+      command: mstdn --json thread ${env:MSTDN_SEED_WIDE}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){201}$
+- name: 'heavy: at least 500 notifications'
+  steps:
+  - run:
+      command: mstdn --json notifications -n 2000
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){500,}$
+- name: 'heavy: longest text and one over'
+  steps:
+  - fixture: {file: max-text.txt, from: '${env:MSTDN_COMPAT_SEED}/max-text.txt'}
+  - fixture: {file: over-text.txt, from: '${env:MSTDN_COMPAT_SEED}/over-text.txt'}
+  - run:
+      command: mstdn --json post -
+      timeout: 60s
+      stdin:
+        file: max-text.txt
+  - assert:
+      exit_code: 0
+  - run:
+      command: mstdn --json post -
+      timeout: 60s
+      stdin:
+        file: over-text.txt
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: ['takes up to', '${env:MSTDN_LIMIT_TEXT}']
+- name: 'behavior: wrong token'
+  steps:
+  - run:
+      command: mstdn --json whoami
+      timeout: 60s
+      env:
+        MSTDN_TOKEN: invalid-compatibility-token
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+- name: 'behavior: deleted status remains a resource error'
+  steps:
+  - run:
+      command: mstdn --json status ${env:MSTDN_SEED_DELETED}
+      timeout: 60s
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+- name: 'speed: timeline under 10s'
+  steps:
+  - run:
+      command: mstdn --json timeline home -n 100
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+- name: 'speed: notifications under 10s'
+  steps:
+  - run:
+      command: mstdn --json notifications -n 100
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+- name: 'speed: search under 10s'
+  steps:
+  - run:
+      command: mstdn --json search "#compatvideo" -n 100
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){100}$
+- name: 'speed: picture post under 30s'
+  steps:
+  - run:
+      command: mstdn --json post "speed picture" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --alt "Speed picture"
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 30s
+      stdout:
+        matches: ^(?:\{[^\n]+\}\n){1}$
+- name: 'usable: kitty timeline thread compose and quit'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatroot'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+      - send: v
+      - expect_screen:
+          contains: compatibility reply
+          timeout: 10s
+      - send:
+          key: esc
+      - expect_screen:
+          contains: Search
+          not_contains: Thread
+          stable_for: 150ms
+          timeout: 10s
+      - send: '1'
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: n
+      - expect_screen:
+          contains: New post
+          timeout: 10s
+      - send: compatibility TUI composed
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: posted
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'heavy: scroll compatvideo down and back with kitty'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 480s
+      session:
+      - {expect_screen: {contains: Home, timeout: 10s}}
+      - {send: /}
+      - {expect_screen: {contains: Search, timeout: 10s}}
+      - {send: '#compatvideo'}
+      - {send: {key: enter}}
+      - {expect_screen: {contains: Search, timeout: 10s, not_contains: loading…, stable_for: 150ms}}
+      - {expect_screen: {matches: '(?m)^▌  video099 ', timeout: 10s, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video098 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video097 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video096 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video095 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video094 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video093 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video092 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video091 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video090 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video089 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video088 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video087 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video086 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video085 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video084 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video083 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video082 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video081 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video080 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video079 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video078 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video077 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video076 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video075 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video074 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video073 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video072 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video071 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video070 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video069 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video068 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video067 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video066 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video065 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video064 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video063 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video062 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video061 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video060 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video059 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video058 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video057 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video056 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video055 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video054 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video053 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video052 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video051 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video050 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video049 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video048 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video047 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video046 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video045 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video044 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video043 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video042 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video041 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video040 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video039 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video038 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video037 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video036 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video035 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video034 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video033 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video032 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video031 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video030 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video029 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video028 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video027 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video026 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video025 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video024 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video023 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video022 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video021 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video020 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video019 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video018 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video017 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video016 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video015 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video014 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video013 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video012 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video011 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video010 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video009 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video008 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video007 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video006 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video005 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video004 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video003 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video002 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video001 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  video000 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: ' '}
+      - {expect_screen: {contains: [Video 000, playing (no sound)], timeout: 10s, images: {min_count: 1}}}
+      - {send: q}
+      - {expect_screen: {matches: '(?m)^▌  video000 ', timeout: 10s}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video001 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video002 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video003 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video004 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video005 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video006 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video007 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video008 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video009 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video010 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video011 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video012 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video013 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video014 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video015 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video016 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video017 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video018 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video019 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video020 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video021 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video022 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video023 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video024 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video025 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video026 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video027 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video028 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video029 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video030 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video031 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video032 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video033 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video034 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video035 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video036 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video037 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video038 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video039 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video040 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video041 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video042 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video043 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video044 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video045 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video046 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video047 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video048 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video049 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video050 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video051 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video052 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video053 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video054 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video055 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video056 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video057 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video058 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video059 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video060 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video061 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video062 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video063 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video064 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video065 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video066 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video067 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video068 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video069 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video070 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video071 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video072 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video073 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video074 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video075 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video076 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video077 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video078 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video079 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video080 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video081 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video082 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video083 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video084 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video085 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video086 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video087 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video088 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video089 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video090 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video091 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video092 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video093 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video094 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video095 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video096 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video097 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video098 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  video099 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: q}
+  - assert:
+      exit_code: 0
+- name: 'heavy: scroll compatpictures down and back with kitty'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 480s
+      session:
+      - {expect_screen: {contains: Home, timeout: 10s}}
+      - {send: /}
+      - {expect_screen: {contains: Search, timeout: 10s}}
+      - {send: '#compatpictures'}
+      - {send: {key: enter}}
+      - {expect_screen: {contains: Search, timeout: 10s, not_contains: loading…, stable_for: 150ms}}
+      - {expect_screen: {matches: '(?m)^▌  pictures099 ', timeout: 10s, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures098 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures097 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures096 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures095 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures094 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures093 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures092 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures091 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures090 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures089 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures088 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures087 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures086 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures085 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures084 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures083 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures082 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures081 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures080 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures079 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures078 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures077 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures076 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures075 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures074 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures073 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures072 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures071 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures070 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures069 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures068 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures067 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures066 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures065 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures064 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures063 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures062 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures061 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures060 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures059 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures058 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures057 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures056 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures055 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures054 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures053 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures052 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures051 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures050 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures049 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures048 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures047 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures046 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures045 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures044 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures043 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures042 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures041 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures040 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures039 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures038 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures037 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures036 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures035 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures034 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures033 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures032 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures031 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures030 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures029 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures028 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures027 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures026 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures025 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures024 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures023 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures022 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures021 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures020 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures019 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures018 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures017 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures016 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures015 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures014 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures013 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures012 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures011 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures010 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures009 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures008 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures007 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures006 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures005 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures004 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures003 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures002 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures001 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: j}
+      - {expect_screen: {matches: '(?m)^▌  pictures000 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: ' '}
+      - {expect_screen: {contains: [Picture 000/0, '1/4 · image'], timeout: 10s, images: {min_count: 1}}}
+      - {send: q}
+      - {expect_screen: {matches: '(?m)^▌  pictures000 ', timeout: 10s}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures001 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures002 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures003 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures004 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures005 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures006 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures007 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures008 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures009 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures010 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures011 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures012 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures013 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures014 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures015 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures016 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures017 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures018 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures019 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures020 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures021 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures022 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures023 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures024 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures025 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures026 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures027 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures028 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures029 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures030 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures031 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures032 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures033 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures034 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures035 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures036 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures037 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures038 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures039 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures040 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures041 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures042 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures043 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures044 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures045 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures046 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures047 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures048 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures049 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures050 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures051 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures052 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures053 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures054 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures055 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures056 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures057 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures058 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures059 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures060 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures061 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures062 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures063 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures064 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures065 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures066 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures067 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures068 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures069 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures070 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures071 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures072 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures073 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures074 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures075 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures076 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures077 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures078 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures079 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures080 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures081 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures082 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures083 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures084 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures085 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures086 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures087 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures088 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures089 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures090 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures091 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures092 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures093 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures094 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures095 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures096 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures097 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures098 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: k}
+      - {expect_screen: {matches: '(?m)^▌  pictures099 ', timeout: 10s, stable_for: 50ms, images: {min_count: 1}}}
+      - {send: q}
+  - assert:
+      exit_code: 0
+- name: 'heavy: preserved unsupported codec offers saving'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatcodec'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility codec
+          timeout: 10s
+      - send: ' '
+      - expect_screen:
+          contains: WebM
+          timeout: 10s
+          not_contains: loading…
+      - send: d
+      - expect_screen:
+          contains: saved 1 files
+          timeout: 10s
+      - send: q
+      - expect_screen:
+          contains: compatibility codec
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+  only:
+    env: MSTDN_PRESERVES_WEBM
+- name: 'usable: favourite boost and take both back'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatroot'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+      - send: l
+      - expect_screen:
+          contains: favourited
+          timeout: 10s
+      - send: b
+      - expect_screen:
+          contains: boosted
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+  - run:
+      command: mstdn --json status ${env:MSTDN_SEED_TEXT}
+      timeout: 60s
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.likeCount
+          equals: 2
+        - path: $.repostCount
+          equals: 2
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatroot'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+      - send: l
+      - expect_screen:
+          contains: took the favourite back
+          timeout: 10s
+      - send: b
+      - expect_screen:
+          contains: took the boost back
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+  - run:
+      command: mstdn --json status ${env:MSTDN_SEED_TEXT}
+      timeout: 60s
+      retry:
+        times: 30
+        interval: 200ms
+        until:
+          exit_code: 0
+          stdout:
+            json:
+              path: $.repostCount
+              equals: 1
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.likeCount
+          equals: 1
+        - path: $.repostCount
+          equals: 1
+- name: 'usable: delete own post in TUI'
+  steps:
+  - run:
+      command: 'mstdn --json post "delete me #compatdelete"'
+      timeout: 60s
+  - assert:
+      exit_code: 0
+  - store:
+      name: deleted
+      from:
+        stdout:
+          json:
+            path: $.id
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatdelete'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: delete me
+          timeout: 10s
+      - send: D
+      - expect_screen:
+          contains: Delete
+          timeout: 10s
+      - send: y
+      - expect_screen:
+          contains: deleted
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+  - run:
+      command: mstdn --json status ${deleted}
+      timeout: 60s
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+- name: 'usable: unsupported quotes name the server and preserve navigation'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatroot'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+      - send: Q
+      - expect_screen:
+          contains:
+          - does not support quote posts
+          - 127.0.0.1
+          timeout: 10s
+      - send: x
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+          not_contains: does not support quote posts
+      - send: q
+  - assert:
+      exit_code: 0
+  only:
+    env: MSTDN_COMPAT_GOTOSOCIAL
+- name: 'usable: quote with the server capability'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CACHE_DIR: ${workdir}/cache
+        MSTDN_DOWNLOAD_DIR: ${workdir}/download
+        MSTDN_GRAPHICS: kitty
+      timeout: 60s
+      session:
+      - expect_screen:
+          contains: Home
+          timeout: 10s
+      - send: /
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+      - send: '#compatroot'
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search
+          timeout: 10s
+          not_contains: loading…
+          stable_for: 150ms
+      - expect_screen:
+          contains: compatibility root
+          timeout: 10s
+      - send: Q
+      - expect_screen:
+          contains: Quote post
+          timeout: 10s
+      - send: compatibility quote
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: posted
+          timeout: 10s
+      - send: q
+  - assert:
+      exit_code: 0
+  only:
+    env: MSTDN_COMPAT_MASTODON
+- name: 'heavy: four pictures and client attachment ceiling'
+  steps:
+  - run:
+      command: mstdn --json post "four pictures" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --image "${env:MSTDN_COMPAT_SEED}/picture.png"
+        --image "${env:MSTDN_COMPAT_SEED}/picture.png"
+      timeout: 60s
+  - assert: {exit_code: 0}
+  - store: {name: created, from: {stdout: {json: {path: $.id}}}}
+  - run: {command: 'mstdn --json status ${created}', timeout: 60s}
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.files
+          length: 4
+  - run:
+      command: mstdn --json post "five pictures" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --image "${env:MSTDN_COMPAT_SEED}/picture.png"
+        --image "${env:MSTDN_COMPAT_SEED}/picture.png" --image "${env:MSTDN_COMPAT_SEED}/picture.png"
+      timeout: 60s
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: at most 4 pictures
+- name: 'heavy: advertised or fallback alt text limit and one over'
+  steps:
+  - fixture: {file: max-alt.txt, from: '${env:MSTDN_COMPAT_SEED}/max-alt.txt'}
+  - fixture: {file: over-alt.txt, from: '${env:MSTDN_COMPAT_SEED}/over-alt.txt'}
+  - store:
+      name: alt
+      from:
+        file:
+          path: max-alt.txt
+          text: true
+  - store:
+      name: over
+      from:
+        file:
+          path: over-alt.txt
+          text: true
+  - run:
+      command: mstdn --json post "max alt" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --alt "${alt}"
+      timeout: 60s
+  - assert: {exit_code: 0}
+  - store: {name: created, from: {stdout: {json: {path: $.id}}}}
+  - run: {command: 'mstdn --json status ${created}', timeout: 60s}
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.files[0].description
+          equals: ${alt}
+  - run:
+      command: mstdn --json post "over alt" --image "${env:MSTDN_COMPAT_SEED}/picture.png" --alt "${over}"
+      timeout: 60s
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: ['takes up to', '${env:MSTDN_LIMIT_ALT}']
+- name: 'behavior: server restart during a TUI session'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      timeout: 180s
+      env:
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_GRAPHICS: kitty
+      session:
+      - expect_screen:
+          contains: Home
+          not_contains: loading…
+          stable_for: 150ms
+          timeout: 10s
+      - exec:
+          command: docker stop ${env:MSTDN_COMPAT_CONTAINER}
+          timeout: 40s
+      - send: R
+      - expect_screen:
+          matches: (?i)(connect|refused)
+          timeout: 20s
+      - exec:
+          command: docker start ${env:MSTDN_COMPAT_CONTAINER}
+          timeout: 40s
+      - exec:
+          command: python3 ${env:MSTDN_COMPAT_ROOT}/scripts/compat/server.py ready ${env:MSTDN_HOST}
+          timeout: 60s
+      - send: R
+      - expect_screen:
+          contains: Home
+          not_contains:
+          - loading…
+          - refused
+          stable_for: 500ms
+          timeout: 90s
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'behavior: a blocked account is a resource error and unblocking restores reads'
+  steps:
+  - http:
+      runner: peer
+      method: POST
+      path: /api/v1/accounts/${env:MSTDN_SEED_ALICE}/block
+      header: {Authorization: 'Bearer ${env:MSTDN_TOKEN_SECOND}'}
+      json: {}
+  - assert: {status: 200}
+  - run: {command: 'mstdn --json status ${env:MSTDN_SEED_REPLY}', timeout: 60s}
+  - assert: {exit_code: 4, stdout: {json: {path: $.status, equals: 4}}}
+  - http:
+      runner: peer
+      method: POST
+      path: /api/v1/accounts/${env:MSTDN_SEED_ALICE}/unblock
+      header: {Authorization: 'Bearer ${env:MSTDN_TOKEN_SECOND}'}
+      json: {}
+  - assert: {status: 200}
+  - run: {command: 'mstdn --json status ${env:MSTDN_SEED_REPLY}', timeout: 60s}
+  - assert: {exit_code: 0, stdout: {json: {path: $.id, equals: '${env:MSTDN_SEED_REPLY}'}}}
+- name: 'usable: search accounts in the full-screen client'
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      timeout: 60s
+      env: {MSTDN_CACHE_DIR: 'off', MSTDN_GRAPHICS: kitty}
+      session:
+      - expect_screen: {contains: Home, timeout: 10s}
+      - send: /
+      - expect_screen: {contains: Search, timeout: 10s}
+      - send: bob
+      - send: {key: enter}
+      - expect_screen: {contains: Search, not_contains: 'loading…', stable_for: 150ms, timeout: 10s}
+      - send: t
+      - expect_screen: {contains: ['Accounts', '@bob'], not_contains: 'loading…', stable_for: 150ms, timeout: 10s}
+      - send: {key: enter}
+      - expect_screen: {contains: ['Profile', '@bob'], not_contains: 'loading…', stable_for: 150ms, timeout: 10s}
+      - send: q
+  - assert: {exit_code: 0}
+- name: 'heavy: Unicode text name and alt text survive JSON'
+  steps:
+  - run: {command: 'mstdn --json status ${env:MSTDN_SEED_UNICODE}', timeout: 60s}
+  - assert:
+      exit_code: 0
+      stdout:
+        contains: ['👨‍👩‍👧', '👍🏽', '🇯🇵', '✈️', '漢字', 'العربية', 'é', 'longwordlongword']
+  - assert: {stdout: {json: {path: '$.files[0].type', equals: image}}}
+  - store: {name: text, from: {stdout: {json: {path: $.text}}}}
+  - assert:
+      stdout:
+        json:
+        - {path: '$.files[0].description', equals: '${text}'}
+        - {path: $.user.name, equals: 'Alice 👩🏽‍💻 🇯🇵 漢字 é'}
+- name: 'heavy: published video byte limit and one over'
+  steps:
+  - run: {command: 'mstdn --json post "maximum video bytes" --video "${env:MSTDN_COMPAT_SEED}/max-video.mp4"', timeout: 120s}
+  - assert: {exit_code: 0, stdout: {not_contains: '"error"'}}
+  - store: {name: created, from: {stdout: {json: {path: $.id}}}}
+  - run: {command: 'mstdn --json status ${created}', timeout: 60s}
+  - assert: {exit_code: 0, stdout: {json: {path: '$.files[0].type', equals: video}}}
+  - run: {command: 'mstdn --json post "over video bytes" --video "${env:MSTDN_COMPAT_SEED}/over-video.mp4"', timeout: 60s}
+  - assert: {exit_code: 1, stdout: {contains: ['takes files smaller than', '${env:MSTDN_LIMIT_VIDEO}']}}

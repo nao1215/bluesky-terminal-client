@@ -188,6 +188,9 @@ scenarios:
       status: 200
       json:
         version: 4.4.3
+    - method: GET
+      path: /api/v1/statuses/42
+      json: {id: '42'}
   steps:
   - run:
       command: mstdn post comment --quote 42  --host ${api.url} --json
@@ -330,3 +333,56 @@ scenarios:
         json:
           path: $.status
           equals: 4
+
+- name: absent endpoints are exit 5 with server identity but missing resources and forbidden requests remain exit 4
+  mock_servers:
+    - name: api
+      routes:
+        - method: GET
+          path: /api/v1/timelines/public
+          status: 404
+          json: { error: Not Found }
+        - method: GET
+          path: /api/v1/timelines/home
+          status: 403
+          json: { error: insufficient scope }
+        - method: GET
+          path: /api/v1/statuses/missing
+          status: 404
+          json: { error: Record not found }
+        - method: GET
+          path: /api/v2/instance
+          json: { version: "4.2.0 (compatible; GoToSocial 0.19.0)" }
+        - method: GET
+          path: /.well-known/nodeinfo
+          json:
+            links:
+              - rel: http://nodeinfo.diaspora.software/ns/schema/2.0
+                href: "${api.url}/nodeinfo/2.0"
+        - method: GET
+          path: /nodeinfo/2.0
+          json: { version: "2.0", software: { name: gotosocial, version: "0.19.0" } }
+  steps:
+    - run:
+        command: mstdn timeline public --json --host ${api.url}
+    - assert:
+        exit_code: 5
+        stdout:
+          json:
+            - { path: "$.status", equals: 5 }
+            - { path: "$.error", equals: "127.0.0.1:${api.port} (gotosocial 0.19.0) does not support v1/timelines/public" }
+    - run:
+        command: mstdn status missing --json --host ${api.url}
+    - assert:
+        exit_code: 4
+        stdout:
+          json: { path: "$.status", equals: 4 }
+    - run:
+        command: mstdn timeline home --json --host ${api.url}
+        env: { MSTDN_TOKEN: fake-compat-token }
+    - assert:
+        exit_code: 4
+        stdout:
+          json: { path: "$.status", equals: 4 }
+    - assert:
+        mock: { name: api, path: /nodeinfo/2.0, count: 1 }

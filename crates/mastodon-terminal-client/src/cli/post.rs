@@ -266,6 +266,9 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.characters_reserved_per_url
         )));
     }
+    if !d.files.is_empty() && l.max_media_attachments == 0 {
+        return Err(Error::unsupported("media attachments", host));
+    }
     if d.files.len() > l.max_media_attachments {
         return Err(Error::usage(format!(
             "{host} takes up to {} files on a post",
@@ -293,10 +296,10 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.image_size_limit
         };
         if let Some(max) = max
-            && f.data.len() as u64 > max
+            && f.data.len() as u64 >= max
         {
             return Err(Error::usage(format!(
-                "{} is {} bytes; {host} takes files up to {max} bytes",
+                "{} is {} bytes; {host} takes files smaller than {max} bytes",
                 f.name,
                 f.data.len()
             )));
@@ -353,10 +356,8 @@ pub(super) fn post(
     }
     let client = ctx.writer(&scopes, "post")?;
     // The limits are the server's own, from its instance's configuration.
-    let limits = client.posting_limits(a.quote.is_some())?;
+    let limits = client.limits();
     too_much(&d, &limits, client.host())?;
-    // The account is asked for only to say who would post.
-    let me = if a.dry_run { me(ctx, &client)? } else { None };
     let reply = match (&d.reply, a.reply.as_deref()) {
         (Some((at, id)), Some(typed)) => Some(replied(ctx, &client, typed, at.as_deref(), id)?),
         _ => None,
@@ -369,7 +370,12 @@ pub(super) fn post(
             replied(ctx, &client, typed, at.as_deref(), &id)
         })
         .transpose()?;
+    if let Some(status) = &quote {
+        client.require_quotes(Some(&status.id))?;
+    }
     if a.dry_run {
+        // Identity is only for the preview, after capability checks succeed.
+        let me = me(ctx, &client)?;
         return dry_run(
             ctx,
             out,
@@ -406,9 +412,10 @@ pub(super) fn post(
 /// The same validation, uploads, processing wait and post used by the composer.
 pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
-    let quote =
-        extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some();
-    too_much(&d, &client.posting_limits(quote)?, client.host())?;
+    if extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some() {
+        client.require_quotes(extra["quoted_status_id"].as_str())?;
+    }
+    too_much(&d, &client.limits(), client.host())?;
     submit(
         client,
         a,

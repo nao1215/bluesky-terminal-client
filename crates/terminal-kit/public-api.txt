@@ -50,6 +50,7 @@ pub fn terminal_kit::error::Error::io(impl core::convert::Into<alloc::string::St
 pub fn terminal_kit::error::Error::kind(&self) -> terminal_kit::error::Kind
 pub fn terminal_kit::error::Error::message(&self) -> &str
 pub fn terminal_kit::error::Error::new(terminal_kit::error::Kind, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn terminal_kit::error::Error::unsupported(&str, &str) -> Self
 pub fn terminal_kit::error::Error::usage(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn terminal_kit::error::Error::with_api_code(self, alloc::string::String) -> Self
 pub fn terminal_kit::error::Error::with_hint(self, impl core::convert::Into<alloc::string::String>) -> Self

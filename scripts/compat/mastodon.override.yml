@@ -1,0 +1,26 @@
+# Overrides the official v4.5.0 production compose for a disposable local run.
+services:
+  db:
+    image: postgres:14-alpine@sha256:e7d9e6aac7fe3232f7661da103aebc0ce38b04105b46af5e9edd5ef6bc343f20
+    volumes: !override
+      - database:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    volumes: !override
+      - redis_data:/data
+  web:
+    image: ghcr.io/mastodon/mastodon:v4.5.0@sha256:dedcd81a5c632b5ca5bebca8cc70a5ddf49c365a87feee18b6a3176b2396dc42
+    ports: !override
+      - '127.0.0.1:13000:3000'
+    volumes: !override
+      - media:/opt/mastodon/public/system
+      - ./local_http.rb:/opt/mastodon/config/initializers/zz_local_http.rb:ro
+  sidekiq:
+    image: ghcr.io/mastodon/mastodon:v4.5.0@sha256:dedcd81a5c632b5ca5bebca8cc70a5ddf49c365a87feee18b6a3176b2396dc42
+    volumes: !override
+      - media:/opt/mastodon/public/system
+      - ./local_http.rb:/opt/mastodon/config/initializers/zz_local_http.rb:ro
+volumes:
+  database:
+  redis_data:
+  media:

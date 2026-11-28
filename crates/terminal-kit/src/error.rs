@@ -88,6 +88,14 @@ impl Error {
         Self::new(Kind::Api, message)
     }
 
+    /// Name the missing feature and the server that does not provide it.
+    pub fn unsupported(feature: &str, server: &str) -> Self {
+        Self::new(
+            Kind::Unsupported,
+            format!("{server} does not support {feature}"),
+        )
+    }
+
     /// Shorthand for [`Kind::Io`].
     pub fn io(message: impl Into<String>) -> Self {
         Self::new(Kind::Io, message)
@@ -132,6 +140,17 @@ mod tests {
     #[test]
     fn display_without_hint_is_one_line() {
         assert_eq!(Error::io("disk").to_string(), "error: disk");
+    }
+
+    #[test]
+    fn unsupported_names_the_feature_and_server_and_exits_five() {
+        let err = Error::unsupported("quote posts", "http://127.0.0.1:8080");
+        assert_eq!(err.kind(), Kind::Unsupported);
+        assert_eq!(err.kind().exit_code(), 5);
+        assert_eq!(
+            err.to_string(),
+            "error: http://127.0.0.1:8080 does not support quote posts"
+        );
     }
 
     #[test]

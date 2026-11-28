@@ -18,6 +18,12 @@ workflows:
     '.github/workflows/codeql.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'github/codeql-action@915412ff23e8b7659517e607487dbeae018f2934'
+    '.github/workflows/compat.yml':
+        - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+        - 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
+        - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
+        - 'nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa'
+        - 'swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0'
     '.github/workflows/coverage.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc'
