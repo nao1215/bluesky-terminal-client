@@ -249,8 +249,8 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "7 Chat (1)"
-            - send: "7"
+                contains: "6 Chat (1)"
+            - send: "6"
             - expect_screen:
                 contains: ["bob @bob ●", "やあ 👋", "enter open"]
                 not_contains: "bob: やあ"
@@ -329,8 +329,8 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "7 Chat"
-            - send: "7"
+                contains: "6 Chat"
+            - send: "6"
             - expect_screen:
                 contains: ["みか", "@mika@mi.example", "やあ", "👨‍👩‍👧", "enter open"]
                 not_contains: ":iruka:"
@@ -401,8 +401,8 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "6 Profile"
-            - send: "6"
+                contains: "5 Profile"
+            - send: "5"
             - expect_screen:
                 contains: ["e edit profile", "猫"]
             - send: e

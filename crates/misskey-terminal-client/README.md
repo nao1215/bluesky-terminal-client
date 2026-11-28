@@ -64,7 +64,7 @@ msky speaks English and 日本語: the language of your system, or the one chose
 | `space`: pictures and videos | `n` `ctrl+o`: attach pictures or a video |
 |:--:|:--:|
 | ![a note's pictures and a video, full screen](doc/img/viewer.gif) | ![the picture browser of the composer](doc/img/compose.png) |
-| `v`: thread | `/`: search |
+| `v`: thread | `/`: search box and results |
 | ![a thread](doc/img/thread.png) | ![accounts found for a search](doc/img/search.png) |
 | `.`: actions | `e`: edit your profile |
 | ![the list of what the keys do to a note](doc/img/actions.png) | ![the profile editor](doc/img/editor.png) |
@@ -90,20 +90,25 @@ The screens show made-up notes served by [doc/demo-server.py](doc/demo-server.py
 
 | Key | Action |
 |---|---|
-| `1`–`7` | Home, Local, Global, Notifications, Search, Profile, Chat |
+| `1`–`6` | Home, Local, Global, Notifications, Profile, Chat |
 | `+` `x` | Add a column, remove one |
 | `j` `k` | Move |
 | `n` `r` `Q` | Note, reply, quote |
-| `l` `e` `b` | React ❤, choose a reaction, renote |
+| `l` `e` `b` | React, choose a reaction, renote |
 | `f` `M` `B` | Follow, mute, block |
 | `D` `!` | Delete your note, report |
 | `v` `space` `w` | Thread, pictures or video, content warning |
 | `d` `o` `c` | Save files, open in the browser, copy the address |
-| `/` | Search |
+| `/` | Open the search box |
+| `Ctrl+T` in the search box | Switch Posts/Accounts |
+| `Enter` in the search box | Search |
+| `Esc` | Cancel the search box, return from results to the timeline |
 | `m` | Message the profile shown |
 | `e` on your profile | Edit your profile |
 | `A` `T` `s` | Accounts, themes, settings |
 | `?` `q` | Help, quit |
+
+Press `/` on a list to open a bordered search box. Enter runs the query and replaces the timeline area with results under `Search: <query>`. The Search tab is gone. Esc returns to the previous timeline with its selection and scroll position preserved. Esc in the box cancels. Ctrl+T switches between notes and accounts; Enter or `v` on an account opens its profile, and Esc returns to the results.
 
 The Chat tab is hidden on servers without chat, such as misskey.io.
 

@@ -1,5 +1,5 @@
-# The Search tab (5) and the Profile tab (6), driven in a pty with bsky's
-# keys against an atago mock: notes and accounts searched (/ and t), an
+# The search box and the Profile tab (5), driven in a pty against an
+# atago mock: notes and accounts searched (/ and Ctrl+T), an
 # author's profile opened with enter and left with esc, its notes paged,
 # and the account followed with f. The token is a throwaway value.
 version: "1"
@@ -18,6 +18,7 @@ scenarios:
           - method: POST
             path: /api/notes/timeline
             json:
+              - { id: t0, createdAt: "2026-11-26T11:00:00.000Z", userId: u-amy, user: { id: u-amy, username: amy }, text: "First timeline note" }
               - { id: t1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test, name: "ボブ" }, text: "タイムラインのノート" }
           - { method: POST, path: /api/i/notifications, json: [] }
           - method: POST
@@ -60,22 +61,41 @@ scenarios:
           timeout: 25s
           session:
             - expect_screen:
-                contains: ["タイムラインのノート", "5 Search", "6 Profile"]
-            - send: "5"
+                contains: ["タイムラインのノート", "5 Profile", "6 Chat"]
+            - send: j
+            - send: "/"
             - expect_screen:
-                contains: ["Search notes:", "enter search", "ctrl+t notes / accounts"]
+                contains: ["Search (Posts)", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "タイムラインのノート"
+                not_contains: "Search (Posts)"
+            - send: "/"
+            - expect_screen:
+                contains: "Search (Posts)"
             - send: "rust"
             - send: { key: enter }
             - expect_screen:
-                contains: ["cat @cat", "Rust の話 🦀"]
-                not_contains: "$[x2"
-            - send: t
+                contains: ["Search: rust", "cat @cat", "Rust の話 🦀", "Esc back to timeline"]
+                not_contains: ["$[x2", "タイムラインのノート", "Search (Posts)"]
+            - send: /
+            - send: { key: ctrl-t }
             - expect_screen:
-                contains: ["Search accounts: rust", "Ferris 🦀 @ferris@x.test", "crab"]
-            # A timeline note's author, opened with enter, and back.
-            - send: "1"
+                contains: "Search (Accounts)"
+            - send: { key: enter }
             - expect_screen:
-                contains: "タイムラインのノート"
+                contains: ["Search: rust", "Ferris 🦀 @ferris@x.test", "crab"]
+            - send: v
+            - expect_screen:
+                contains: "Go と Rust"
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["Search: rust", "Ferris 🦀 @ferris@x.test"]
+            # Escape restores the second timeline selection, without a refetch.
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["タイムラインのノート", "▌      ボブ"]
+                not_contains: "Search: rust"
             - send: { key: enter }
             - expect_screen:
                 contains: ["@bob@x.test", "… requested", "5 followers  2 following  9 notes", "(f to toggle)", "Go と Rust", "ボブのノート"]
@@ -114,6 +134,8 @@ scenarios:
             body:
               json:
                 - { path: "$.userId", equals: u-bob }
+      - assert:
+          mock: { name: api, path: /api/notes/timeline, count: 2 }
       # The request is pending, so f takes it back; the account is read
       # again after.
       - assert:
@@ -165,7 +187,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["タイムラインのノート", "7 Chat"]
+                contains: ["タイムラインのノート", "6 Chat"]
             - send: { key: enter }
             - expect_screen:
                 contains: ["ボブ 🇯🇵", "@bob@x.test", "5 followers  2 following  9 notes", "✓ following  · follows you  · muted  (f to toggle)", "esc back to timeline"]
@@ -236,7 +258,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: ["7 Chat", "ホームのノート 👩🏽‍💻"]
+                contains: ["6 Chat", "ホームのノート 👩🏽‍💻"]
             - send: "+"
             - expect_screen:
                 contains: ["Add a column", "Home", "📡 ニュース 📰  (antenna)", "☰ 友達  (list)", "Notifications", "Your notes (@me)", "Search…"]

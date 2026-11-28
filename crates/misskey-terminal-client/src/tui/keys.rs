@@ -22,7 +22,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("General"),
         keys: &[
-            ("1 2 3 4 5 6 7", n!("the tabs, in the order shown")),
+            ("1 2 3 4 5 6", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
             ("A", n!("accounts: switch, log out")),
             (
@@ -82,13 +82,12 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Search"),
         keys: &[
-            ("type", n!("the search box has focus when you arrive")),
+            ("/", n!("open the search box")),
             ("enter", n!("search, then move through the results")),
-            ("/ i", n!("type in the search box again")),
-            ("ctrl+t t", n!("search notes or accounts")),
-            ("enter", n!("open the account's profile")),
+            ("Ctrl+T", n!("posts/accounts")),
+            ("Enter v", n!("open the account's profile")),
             ("f", n!("follow / unfollow the account")),
-            ("esc", n!("leave the search box")),
+            ("Esc", n!("cancel the box or return to the timeline")),
         ],
     },
     Section {
@@ -404,6 +403,13 @@ fn view_hints(app: &App) -> Vec<Hint> {
         }
         None => {}
     }
+    if app.search.editing {
+        return vec![
+            ("Enter", n!("search")),
+            ("Ctrl+T", n!("posts/accounts")),
+            ("Esc", n!("cancel")),
+        ];
+    }
     if !app.threads.is_empty() {
         return vec![
             ("?", n!("help")),
@@ -413,60 +419,30 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("esc", n!("back")),
         ];
     }
+    if app.search_shown() {
+        return vec![
+            ("Esc", n!("back to timeline")),
+            ("j k", n!("move")),
+            (".", n!("actions")),
+            ("/", n!("edit query")),
+            ("?", n!("help")),
+        ];
+    }
+    if app.tab == Tab::Chat && app.chat.open.as_ref().is_some_and(|o| o.typing) {
+        return vec![("enter", n!("send")), ("esc", n!("stop writing"))];
+    }
     let mut v: Vec<Hint> = match app.tab {
-        Tab::Chat => match &app.chat.open {
-            Some(o) if o.typing => return vec![("enter", n!("send")), ("esc", n!("stop writing"))],
-            Some(_) => vec![
-                ("i", n!("write")),
-                ("j k", n!("scroll")),
-                ("esc", n!("back")),
-            ],
-            None => vec![
-                ("j k", n!("move")),
-                ("enter", n!("open")),
-                ("R", n!("refresh")),
-            ],
-        },
-        Tab::Search if app.search.editing => {
-            return vec![
-                ("enter", n!("search")),
-                ("ctrl+t", n!("notes / accounts")),
-                ("tab", n!("next tab")),
-                ("esc", n!("done")),
-            ];
-        }
-        Tab::Search if app.search.mode == crate::tui::app::SearchMode::Accounts => vec![
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("/", n!("edit query")),
-            ("t", n!("notes")),
+        Tab::Chat if app.chat.open.is_some() => vec![
+            ("i", n!("write")),
+            ("j k", n!("scroll")),
+            ("esc", n!("back")),
         ],
-        Tab::Search => vec![
+        Tab::Chat => vec![
             ("j k", n!("move")),
-            (".", n!("actions")),
-            ("/", n!("edit query")),
-            ("t", n!("accounts")),
+            ("enter", n!("open")),
+            ("R", n!("refresh")),
         ],
-        Tab::Profile if !app.profile.own(app.my_user_id()) => vec![
-            ("esc", back_label(app.profile.came_from)),
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("space", n!("view")),
-        ],
-        Tab::Profile => {
-            let mut v = vec![
-                ("j k", n!("move")),
-                (".", n!("actions")),
-                ("e", n!("edit profile")),
-                ("s", n!("settings")),
-                ("R", n!("reload")),
-            ];
-            // Your own profile, opened from a list: esc still goes back.
-            if app.profile.came_from.is_some() {
-                v.insert(0, ("esc", back_label(app.profile.came_from)));
-            }
-            v
-        }
+        Tab::Profile => profile_hints(app),
         Tab::Columns => vec![
             ("← →", n!("column")),
             ("j k", n!("move")),
@@ -492,8 +468,28 @@ fn view_hints(app: &App) -> Vec<Hint> {
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
     v.insert(0, ("?", n!("help")));
+    v.push(("/", n!("search")));
     v.push(("q", n!("quit")));
     v
+}
+
+/// Profile actions share movement and an optional route back to the list.
+fn profile_hints(app: &App) -> Vec<Hint> {
+    let own = app.profile.own(app.my_user_id());
+    let mut hints = vec![("j k", n!("move")), (".", n!("actions"))];
+    if own {
+        hints.extend([
+            ("e", n!("edit profile")),
+            ("s", n!("settings")),
+            ("R", n!("reload")),
+        ]);
+    } else {
+        hints.push(("space", n!("view")));
+    }
+    if !own || app.profile.came_from.is_some() {
+        hints.insert(0, ("esc", back_label(app)));
+    }
+    hints
 }
 
 /// What `.` offers on the selected note: the keys of this view that act on
@@ -524,8 +520,7 @@ fn account_actions(app: &App, v: &mut Vec<Hint>) {
         }
         return;
     }
-    if app.tab == Tab::Search && in_list && app.search.mode == crate::tui::app::SearchMode::Accounts
-    {
+    if app.search_accounts() && in_list {
         if let Some(u) = app.search.users.current() {
             v.push(("enter", n!("open the profile")));
             if Some(u.id.as_str()) != me {
@@ -643,9 +638,11 @@ pub(crate) fn action_key(name: &str) -> KeyEvent {
 }
 
 /// What esc on the Profile tab goes back to, as bsky's says it.
-fn back_label(from: Option<Tab>) -> &'static str {
-    match from {
-        Some(Tab::Search) => n!("back to search"),
+fn back_label(app: &App) -> &'static str {
+    if app.search.tab.is_some() && app.profile.came_from == app.search.tab {
+        return n!("back to search");
+    }
+    match app.profile.came_from {
         Some(Tab::Timeline(_) | Tab::Columns) => n!("back to timeline"),
         Some(Tab::Notifications) => n!("back to notifications"),
         Some(Tab::Chat) => n!("back to chat"),

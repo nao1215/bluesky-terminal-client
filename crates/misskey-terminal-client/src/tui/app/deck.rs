@@ -17,6 +17,7 @@ impl App {
         }
         if self.columns.items.is_empty() {
             self.tab = Tab::Timeline(TimelineKind::Home);
+            self.last_timeline = self.tab;
             let home = &self.timelines[TimelineKind::Home.index()];
             if !home.loaded && !home.loading {
                 return self.load_timeline(TimelineKind::Home);
@@ -24,6 +25,7 @@ impl App {
             return Vec::new();
         }
         self.tab = Tab::Columns;
+        self.last_timeline = self.tab;
         let waiting: Vec<u64> = self
             .columns
             .items
@@ -279,6 +281,7 @@ impl App {
     /// one added comes beside the home timeline, which becomes a column of
     /// its own.
     pub(super) fn add_column(&mut self, source: Source) -> Jobs {
+        self.close_search();
         self.overlay = None;
         if self.columns.items.is_empty() && source != Source::Home {
             self.columns.add(Source::Home);

@@ -425,9 +425,7 @@ impl App {
                 *selected = 0;
             }
             Some(_) => {}
-            None if self.tab == Tab::Search && self.search.editing => {
-                self.search.input.insert_str(text)
-            }
+            None if self.search.editing => self.search.input.insert_str(text),
             None if self.tab == Tab::Chat => {
                 if let Some(o) = self.chat.open.as_mut().filter(|o| o.typing && !o.sending) {
                     o.input.insert_str(text);
@@ -630,6 +628,7 @@ impl App {
         let notes = self
             .timelines
             .iter()
+            .chain([&self.search.notes, &self.profile.notes])
             .chain(self.columns.note_lists())
             .flat_map(|l| l.items.iter())
             .chain(
@@ -674,6 +673,7 @@ impl App {
         for l in self
             .timelines
             .iter_mut()
+            .chain([&mut self.search.notes, &mut self.profile.notes])
             .chain(self.columns.note_lists_mut())
         {
             l.items.iter_mut().for_each(apply);
@@ -762,6 +762,7 @@ impl App {
             for l in self
                 .timelines
                 .iter_mut()
+                .chain([&mut self.search.notes, &mut self.profile.notes])
                 .chain(self.columns.note_lists_mut())
             {
                 l.retain(|n| !mine(n));
@@ -780,6 +781,7 @@ impl App {
         for l in self
             .timelines
             .iter_mut()
+            .chain([&mut self.search.notes, &mut self.profile.notes])
             .chain(self.columns.note_lists_mut())
         {
             l.retain(|n| n.id != id);

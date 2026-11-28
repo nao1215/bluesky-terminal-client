@@ -113,9 +113,7 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
     let screen = render_text(&mut app, 100, 12);
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
-        lines[0].starts_with(
-            " 1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
-        ),
+        lines[0].starts_with(" 1 Home   2 Local   3 Global   4 Notifications   5 Profile   6 Chat"),
         "{screen}"
     );
     assert!(lines[0].ends_with("@me@misskey.test"), "{screen}");
@@ -130,8 +128,8 @@ fn the_timeline_draws_the_tabs_the_note_and_the_keys() {
         "{screen}"
     );
     assert!(
-        lines[10].starts_with(
-            " ? help  j k move  tab next tab  . actions  space open in browser  n note  R refresh  q quit"
+        lines[9].starts_with(
+            " ? help  j k move  tab next tab  . actions  space open in browser  n note  R refresh  / search"
         ),
         "{screen}"
     );
@@ -384,7 +382,7 @@ fn the_help_lists_the_keys() {
     for want in [
         "Keys",
         "General",
-        "1 2 3 4 5 6 7",
+        "1 2 3 4 5 6",
         "Columns",
         "← → H L",
         "Notes",
@@ -741,9 +739,9 @@ fn the_reaction_picker_shows_the_reactions() {
 // plain text, its counts, how you are related) over its notes; the Search
 // tab its box over the accounts found.
 #[test]
-fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
+fn profiles_and_search_results_draw_their_headers_and_lists() {
     let mut app = with_notes(vec![]);
-    let jobs = app.handle_key(key('6'));
+    let jobs = app.handle_key(key('5'));
     app.handle_answer(
         jobs[0].0,
         Event::Profile(Ok(Box::new((
@@ -771,7 +769,7 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
     crate::i18n::set(crate::i18n::Lang::En);
     assert!(ja.contains("4 フォロワー  3 フォロー  12 ノート"), "{ja}");
     assert!(ja.contains("[ e プロフィールを編集 ]"), "{ja}");
-    app.handle_key(key('5'));
+    app.handle_key(key('/'));
     for c in "rust".chars() {
         app.handle_key(key(c));
     }
@@ -790,7 +788,7 @@ fn the_profile_and_search_tabs_draw_their_headers_and_lists() {
         },
     );
     let screen = render_text(&mut app, 90, 20);
-    assert!(screen.contains("Search accounts: rust"), "{screen}");
+    assert!(screen.contains("Search: rust"), "{screen}");
     assert!(
         screen.contains("Ferris 🦀 @ferris@x.test  ✓ following"),
         "{screen}"
@@ -863,7 +861,7 @@ fn unread_notifications_and_chats_are_marked() {
         .unwrap(),
     ];
     let screen = render_text(&mut app, 100, 12);
-    assert!(screen.contains(" 7 Chat (1)"), "{screen}");
+    assert!(screen.contains(" 6 Chat (1)"), "{screen}");
     // Read in the background at the start, then shown.
     app.notifications.loaded = true;
     app.notifications.items = vec![
@@ -879,7 +877,7 @@ fn unread_notifications_and_chats_are_marked() {
     let screen = render_text(&mut app, 100, 12);
     assert!(screen.contains("● new @new followed you"), "{screen}");
     assert!(screen.contains("\n   old @old followed you"), "{screen}");
-    app.handle_key(key('7'));
+    app.handle_key(key('6'));
     let screen = render_text(&mut app, 100, 12);
     assert!(screen.contains("you: どうも"), "{screen}");
 }
@@ -904,7 +902,7 @@ fn chat_names_and_custom_emoji_are_drawn_as_a_notes_are() {
         "text": "ぶどう :budou: 🇯🇵"});
     app.chat.convos.loaded = true;
     app.chat.convos.items = vec![serde_json::from_value(theirs.clone()).unwrap()];
-    drop(app.handle_key(key('7')));
+    drop(app.handle_key(key('6')));
     let screen = render(&mut app, 100, 12);
     assert!(screen.contains("みか"), "{screen}");
     assert!(screen.contains("@mika@mi.example"), "{screen}");
@@ -1364,8 +1362,8 @@ fn plus_lists_what_a_column_can_show() {
 #[test]
 fn an_account_found_draws_the_emoji_of_its_description() {
     let mut app = with_notes(vec![]);
-    app.tab = crate::tui::app::Tab::Search;
-    app.search.mode = crate::tui::app::SearchMode::Accounts;
+    app.search.tab = Some(app.tab);
+    app.search.result_mode = crate::tui::app::SearchMode::Accounts;
     app.search.users.loaded = true;
     app.search.users.items = vec![
         serde_json::from_value(json!({
@@ -1382,4 +1380,79 @@ fn an_account_found_draws_the_emoji_of_its_description() {
     assert!(screen.contains("Aquariums"), "{screen}");
     assert!(screen.contains("and the sea"), "{screen}");
     assert!(!screen.contains(":iruka:"), "{screen}");
+}
+
+#[test]
+fn search_box_overlays_the_list_and_results_title_replaces_the_timeline_title() {
+    let mut app = with_notes(vec![
+        json!({"id":"home", "user":{"username":"alice"}, "text":"Original timeline"}),
+    ]);
+    app.handle_key(key('/'));
+    let screen = render_text(&mut app, 100, 20);
+    assert!(screen.contains("Search (Posts)"), "{screen}");
+    assert!(
+        screen.contains("Enter search · Ctrl+T posts/accounts · Esc cancel"),
+        "{screen}"
+    );
+    assert!(screen.contains('┌') && screen.contains('┘'), "{screen}");
+    assert!(screen.starts_with(" 1 Home"), "{screen}");
+    assert!(!screen.contains("5 Search"), "{screen}");
+    crate::i18n::set(crate::i18n::Lang::Ja);
+    let ja = render_text(&mut app, 100, 20);
+    crate::i18n::set(crate::i18n::Lang::En);
+    assert!(ja.contains("検索 (投稿)"), "{ja}");
+    app.handle_key(KeyEvent::from(KeyCode::Esc));
+    assert!(render_text(&mut app, 100, 20).contains("Original timeline"));
+    app.handle_key(key('/'));
+    for c in "rust".chars() {
+        app.handle_key(key(c));
+    }
+    let jobs = app.handle_key(KeyEvent::from(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchNotes {
+            query: "rust".into(),
+            until: None,
+            result: Ok(vec![]),
+        },
+    );
+    let screen = render_text(&mut app, 100, 20);
+    assert!(screen.starts_with(" 1 Search: rust"), "{screen}");
+    assert!(screen.contains("No results for \"rust\""), "{screen}");
+    assert!(screen.contains("Esc back to timeline"), "{screen}");
+    assert!(!screen.contains("Original timeline"), "{screen}");
+    assert!(!screen.contains("Search (Posts)"), "{screen}");
+    let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+    term.draw(|f| draw(f, &mut app, &mut Images::none()))
+        .unwrap();
+    assert_eq!(
+        term.backend().buffer()[(1, 0)].modifier,
+        app.theme.selected().add_modifier
+    );
+    crate::i18n::set(crate::i18n::Lang::Ja);
+    let ja = render_text(&mut app, 100, 20);
+    crate::i18n::set(crate::i18n::Lang::En);
+    assert!(ja.contains("検索: rust"), "{ja}");
+    assert!(ja.contains("「rust」の検索結果はありません"), "{ja}");
+}
+
+#[test]
+fn account_box_title_and_empty_results_use_the_same_search_area() {
+    let mut app = with_notes(vec![]);
+    app.handle_key(key('/'));
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    app.search.input = crate::tui::input::TextInput::single("nobody");
+    assert!(render_text(&mut app, 100, 20).contains("Search (Accounts)"));
+    let jobs = app.handle_key(KeyEvent::from(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchUsers {
+            query: "nobody".into(),
+            offset: 0,
+            result: Ok(vec![]),
+        },
+    );
+    let screen = render_text(&mut app, 100, 20);
+    assert!(screen.starts_with(" 1 Search: nobody"), "{screen}");
+    assert!(screen.contains("No results for \"nobody\""), "{screen}");
 }
