@@ -12,7 +12,8 @@ permissions:
   contents: read
 # After editing any workflow, regenerate actions.lock with
 # `python3 scripts/lock_actions.py` (needs `gh extension install github/gh-actions-lock`).
-# It keeps the full-SHA references that Scorecard reads.
+# It keeps the full-SHA references that Scorecard reads. When all pins are
+# already locked, use `python3 scripts/lock_actions.py --refresh-workflows` offline.
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -22,10 +23,11 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 scripts/test_lock_actions.py
+      - name: Check exact SHA coverage of every workflow
+        run: python3 scripts/lock_actions.py --check
       - name: Verify workflow lockfile and provenance
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh extension install github/gh-actions-lock --pin v0.4.1
-          python3 scripts/lock_actions.py --check
           gh actions-lock --verify

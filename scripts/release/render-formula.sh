@@ -3,7 +3,7 @@
 # render-formula.sh writes the Homebrew formula for a release from the
 # checksums.txt the release publishes, so Homebrew cannot disagree with it.
 #
-# usage: [BIN=bsky|msky] render-formula.sh <tag> <checksums.txt> <owner/repo>
+# usage: [BIN=bsky|msky|mstdn|nstr] render-formula.sh <tag> <checksums.txt> <owner/repo>
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
@@ -18,7 +18,7 @@ repo="$3"
 version="$(tag_version "$tag")"
 
 sha() {
-	# bsky-vX.Y.Z-<target> and msky-vX.Y.Z-<target>, whatever the tag prefix.
+	# <bin>-vX.Y.Z-<target>, whatever the tag prefix.
 	local file="$bin-v$version-$1.tar.gz"
 	local sum
 	sum="$(awk -v f="$file" '$2 == f || $2 == "*" f { print $1 }' "$sums")"

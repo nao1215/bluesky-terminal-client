@@ -13,7 +13,6 @@ repository = "https://github.com/nao1215/social-terminal-clients"
 keywords = ["misskey", "fediverse", "tui", "terminal", "sixel"]
 categories = ["command-line-utilities"]
 exclude = [
-    "about.hbs",
     "bench/",
     "doc/",
     "e2e/",

@@ -60,6 +60,27 @@ class LockActionsTests(unittest.TestCase):
         expected = {'.github/workflows/check.yml': set(), '.github/workflows/test.yml': {'actions/checkout@'+sha}}
         lock_actions.check_exact_refs(text, expected)
 
+    def test_refresh_adds_workflow_without_changing_dependency_metadata(self):
+        text = (lock_actions.ROOT/'.github/workflows/actions.lock').read_text()
+        workflows, _ = lock_actions.lock_sections(text)
+        refs = workflows['.github/workflows/release-msky.yml']
+        added = '.github/workflows/added-release.yml'
+        workflows[added] = refs
+        with self.assertRaisesRegex(ValueError, 'workflow references differ'):
+            lock_actions.check_exact_refs(text, workflows)
+        refreshed = lock_actions.refresh_workflows(text, workflows)
+        lock_actions.check_exact_refs(refreshed, workflows)
+        self.assertEqual(text.split('\ndependencies:\n')[1], refreshed.split('\ndependencies:\n')[1])
+        del workflows[added]
+        with self.assertRaisesRegex(ValueError, 'workflow references differ'):
+            lock_actions.check_exact_refs(refreshed, workflows)
+
+    def test_refresh_refuses_unreviewed_action_pin(self):
+        text = (lock_actions.ROOT/'.github/workflows/actions.lock').read_text()
+        expected = {'.github/workflows/new.yml': {'actions/checkout@'+'a'*40}}
+        with self.assertRaisesRegex(ValueError, 'needs the official generator'):
+            lock_actions.refresh_workflows(text, expected)
+
     def test_restore_sha_even_when_generator_fails(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

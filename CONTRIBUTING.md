@@ -57,4 +57,6 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ## Releasing
 
-Each client is released on its own tag: bsky on `vX.Y.Z` (`.github/workflows/release.yml`) and msky on `msky-vX.Y.Z` (`.github/workflows/release-msky.yml`). Neither workflow starts on the other's tags. The steps are in each client's CONTRIBUTING.md. terminal-kit is published to crates.io by whichever release first needs a version of it that is not there yet.
+Each client has a release workflow: bsky uses `vX.Y.Z` (`release.yml`), msky uses `msky-vX.Y.Z` (`release-msky.yml`), mstdn uses `mstdn-vX.Y.Z` (`release-mstdn.yml`), and nstr uses `nstr-vX.Y.Z` (`release-nstr.yml`), all under `.github/workflows/`. Each workflow accepts only its client's tags. terminal-kit is published to crates.io by whichever release first needs a version of it that is not there yet.
+
+mstdn and nstr remain at 0.1.0 with Unreleased changelogs while their release machinery is prepared. Before either first release, add a non-empty `## [0.1.0] - YYYY-MM-DD` section for the release notes; the tag check rejects an Unreleased-only changelog. Their workflows use msky's compiler pin, target matrix, signing and verification steps, crates.io authentication, and Homebrew tap token. The first publication uses `CARGO_REGISTRY_TOKEN`; later publications can use trusted publishing when configured.
