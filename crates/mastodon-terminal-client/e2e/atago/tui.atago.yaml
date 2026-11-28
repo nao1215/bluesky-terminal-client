@@ -309,11 +309,16 @@ scenarios:
     steps:
       - fixture: *account
       - fixture: *in_use
+      # The environment starts empty, as msky's step does: run.sh exports
+      # LC_ALL=C.UTF-8, and on Windows atago's pty hands the child the
+      # inherited LC_ALL and this one both, in that order.
       - pty:
           command: mstdn
           graphics: kitty
           rows: 24
           cols: 100
+          clear_env: true
+          pass_env: [PATH, HOME, USERPROFILE, APPDATA, LOCALAPPDATA]
           env:
             MSTDN_CONFIG_DIR: ${workdir}/cfg
             LC_ALL: ja_JP.UTF-8
