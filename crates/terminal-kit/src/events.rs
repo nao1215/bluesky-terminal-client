@@ -26,6 +26,9 @@ pub struct Input {
 impl Input {
     /// Starts reading the terminal's input; on Windows it opens the console.
     pub fn new() -> io::Result<Input> {
+        // Install crossterm's lazy SIGWINCH handler before the first frame: a resize between that frame and the first next() would otherwise be lost. Polling leaves any queued input for next().
+        #[cfg(not(windows))]
+        event::poll(Duration::ZERO)?;
         Ok(Input {
             #[cfg(windows)]
             console: windows::Console::new()?,
