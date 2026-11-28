@@ -1,0 +1,1 @@
+{"id": "5", "type": "mention", "created_at": "2026-09-22T01:02:03.000Z", "account": {"acct": "bob"}, "status": {"id": "1", "content": "<p>@alice hi</p>"}}

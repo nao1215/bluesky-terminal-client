@@ -66,11 +66,13 @@ jobs:
           BSKY_FUZZ_SEEDS: ${{ inputs.seeds || '2000' }}
         run: cargo test --locked --release -p bluesky-terminal-client --bins random_keys_and_late_answers_keep_the_client_sound
 
-      # A failing case of msky's is written under its crate; the smallest
-      # input goes into a unit test beside the code it breaks.
+      # A failing case of msky's or mstdn's is written under its crate; the
+      # smallest input goes into a unit test beside the code it breaks.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: proptest-regressions
-          path: crates/misskey-terminal-client/proptest-regressions
+          path: |
+            crates/misskey-terminal-client/proptest-regressions
+            crates/mastodon-terminal-client/proptest-regressions
           if-no-files-found: ignore

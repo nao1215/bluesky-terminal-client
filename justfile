@@ -45,8 +45,12 @@ e2e-bsky *ARGS:
 e2e-msky *ARGS:
     ./crates/misskey-terminal-client/e2e/run.sh {{ARGS}}
 
-# Run both end-to-end suites
-e2e: e2e-bsky e2e-msky
+# Run mstdn's end-to-end suite with atago (builds mstdn, needs atago on PATH)
+e2e-mstdn *ARGS:
+    ./crates/mastodon-terminal-client/e2e/run.sh {{ARGS}}
+
+# Run every end-to-end suite
+e2e: e2e-bsky e2e-msky e2e-mstdn
 
 # Run every CI check locally
 ci: test lint fmt-check doc e2e
@@ -55,7 +59,7 @@ ci: test lint fmt-check doc e2e
 build-release:
     cargo build --release --locked --workspace
 
-# Line coverage of the unit tests and both E2E suites together, as lcov.info (needs cargo-llvm-cov and atago)
+# Line coverage of the unit tests and every E2E suite together, as lcov.info (needs cargo-llvm-cov and atago)
 coverage:
     ./scripts/coverage.sh
 

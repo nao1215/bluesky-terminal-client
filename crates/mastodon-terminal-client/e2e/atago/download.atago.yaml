@@ -1,0 +1,83 @@
+# mstdn download and author --download: a post's files saved as
+# <status ID>-<n>.<ext>, the extension the type they are served as says,
+# never over a file already there.
+version: "1"
+
+suite:
+  name: mstdn download
+
+scenarios:
+  - name: download saves each file of a post, and the boosted post's for a boost
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/statuses/300
+            json:
+              id: "300"
+              account: { acct: alice }
+              reblog:
+                id: "299"
+                account: { acct: bob@far.test }
+                media_attachments:
+                  - { id: m1, type: image, url: "${api.url}/files/original/a.png" }
+                  - { id: m2, type: gifv, url: null, remote_url: "${api.url}/files/remote/b" }
+          - method: GET
+            path: /api/v1/statuses/301
+            json: { id: "301", account: { acct: alice }, content: "<p>文字だけ</p>" }
+          - { method: GET, path: /files/original/a.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /files/remote/b, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+    steps:
+      - fixture: { file: want/photo.png, from: testdata/photo.png }
+      - fixture: { file: want/clip.mp4, from: testdata/clip.mp4 }
+      - run:
+          command: mstdn download 300 -o 写真 --host ${api.url}
+      - assert:
+          exit_code: 0
+          # The paths are the system's: `\` between the parts on Windows.
+          stdout:
+            matches: '^写真[/\\]299-1\.png\n写真[/\\]299-2\.mp4\n$'
+      - assert:
+          file:
+            path: 写真/299-1.png
+            equals_file: want/photo.png
+      - assert:
+          file:
+            path: 写真/299-2.mp4
+            equals_file: want/clip.mp4
+      # Again: the files there are kept, and the new ones take the next name.
+      - run:
+          command: mstdn download ${api.url}/@alice/300 -o 写真 --json
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '"path":"写真(/|\\\\)299-1 \(1\)\.png","status":"http://127\.0\.0\.1:[0-9]+/@bob@far\.test/299","url":"http://127\.0\.0\.1:[0-9]+/files/original/a\.png"'
+      - run:
+          command: mstdn download 301 --host ${api.url}
+          env:
+            MSTDN_DOWNLOAD_DIR: ${workdir}/dl
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: ${api.url}/@alice/301 has no files"
+
+  - name: author --download saves the files of the account's posts
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/accounts/lookup, json: { id: "7", username: alice, acct: alice } }
+          - method: GET
+            path: /api/v1/accounts/7/statuses
+            json:
+              - { id: "12", account: { acct: alice }, media_attachments: [{ id: m1, type: image, url: "${api.url}/files/a.png" }] }
+              - { id: "11", account: { acct: alice }, media_attachments: [] }
+          - { method: GET, path: /files/a.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - run:
+          command: mstdn author alice --download -n 2 --host ${api.url}
+          env:
+            MSTDN_DOWNLOAD_DIR: ${workdir}/dl
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: 'dl[/\\]12-1\.png\n$'

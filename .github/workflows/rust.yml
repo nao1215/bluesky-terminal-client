@@ -198,7 +198,9 @@ jobs:
   # (crates/bluesky-terminal-client/fuzz/) take its src/hls.rs,
   # src/api/facets.rs and src/og.rs, and msky's
   # (crates/misskey-terminal-client/fuzz/) its src/mfm.rs, src/metadata.rs,
-  # src/error.rs, src/tui/mp4.rs and src/api/types.rs. A change there can
+  # src/error.rs, src/tui/mp4.rs and src/api/types.rs, and mstdn's
+  # (crates/mastodon-terminal-client/fuzz/) its src/html.rs and
+  # src/api/types.rs. A change there can
   # break a build that only fuzz.yml runs, at night. When they or the fuzz
   # directory change, build the targets and run each over its committed
   # seeds (no exploration; that stays in fuzz.yml). Other changes skip the
@@ -226,6 +228,12 @@ jobs:
               crates/misskey-terminal-client/src/tui/mp4.rs
               crates/misskey-terminal-client/src/api/types.rs
               crates/misskey-terminal-client/fuzz/
+          - client: mstdn
+            dir: crates/mastodon-terminal-client/fuzz
+            watched: >-
+              crates/mastodon-terminal-client/src/html.rs
+              crates/mastodon-terminal-client/src/api/types.rs
+              crates/mastodon-terminal-client/fuzz/
     name: fuzz-build (${{ matrix.client }})
     runs-on: ubuntu-latest
     timeout-minutes: 20

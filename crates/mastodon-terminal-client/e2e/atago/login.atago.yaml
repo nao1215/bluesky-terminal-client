@@ -1,0 +1,341 @@
+# mstdn login (OAuth), whoami, accounts and logout. The Mastodon server is
+# an atago mock reached through --host, so the suite needs no account and
+# no network. The token and the client secret below are throwaway values
+# the mock hands out; they are masked in reports all the same.
+version: "1"
+
+suite:
+  name: mstdn login
+
+secrets:
+  - e2e-fake-token-0001
+  - e2e-client-secret-0001
+
+scenarios:
+  # With --oob the page shows the code and it is pasted: mstdn registers
+  # itself, prints the page, trades the code, and saves the token.
+  - name: login --oob registers, takes the pasted code, and whoami and logout use the token
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/v1/apps
+            json: { id: "1", name: mstdn, client_id: e2e-client-id, client_secret: e2e-client-secret-0001 }
+          - method: POST
+            path: /oauth/token
+            json: { access_token: e2e-fake-token-0001, token_type: Bearer, scope: "read write", created_at: 1 }
+          - method: GET
+            path: /api/v1/accounts/verify_credentials
+            json:
+              id: "7"
+              username: alice
+              acct: alice
+              display_name: "アリス 🐈‍⬛"
+              note: "<p>家族👨‍👩‍👧 と 🇯🇵 に住む</p>"
+              followers_count: 12
+              following_count: 34
+              statuses_count: 56
+    steps:
+      - run:
+          command: mstdn login --oob --host ${api.url}
+          stdin: "e2e-code-0001\n"
+          env: &env
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged in as @alice@127.0.0.1:${api.port}\n"
+          # The page asks for reading and writing, with PKCE; neither the
+          # token nor the secret is printed.
+          stderr:
+            contains:
+              - "To log in on 127.0.0.1:${api.port}, open this address, signed in there, and allow mstdn to read and write:\n${api.url}/oauth/authorize?response_type=code&client_id=e2e-client-id&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&scope=read%20write&state="
+              - "&code_challenge_method=S256\n"
+              - "Paste the code the page shows, then press Enter: "
+            not_contains: [e2e-fake-token-0001, e2e-client-secret-0001]
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/apps
+            count: 1
+            body:
+              json:
+                - { path: "$.client_name", equals: mstdn }
+                - { path: "$.scopes", equals: "read write" }
+                - { path: "$.redirect_uris", equals: "urn:ietf:wg:oauth:2.0:oob" }
+      - assert:
+          mock:
+            name: api
+            path: /oauth/token
+            count: 1
+            header: { name: Content-Type, contains: "application/x-www-form-urlencoded" }
+            body:
+              contains:
+                - "grant_type=authorization_code"
+                - "code=e2e-code-0001"
+                - "client_secret=e2e-client-secret-0001"
+                - "code_verifier="
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/accounts/verify_credentials
+            header: { name: Authorization, equals: "Bearer e2e-fake-token-0001" }
+      # The token is saved for the server, named after its host and port,
+      # and the account is the one in use; the app is kept for the next
+      # login.
+      - assert:
+          file:
+            path: cfg/accounts/127.0.0.1_${api.port}.json
+            json:
+              - { path: "$.service", equals: "${api.url}" }
+              - { path: "$.userId", equals: "7" }
+              - { path: "$.username", equals: alice }
+              - { path: "$.token", equals: e2e-fake-token-0001 }
+              - { path: "$.scopes[1]", equals: write }
+      - assert:
+          file:
+            path: cfg/accounts.json
+            json: { path: "$.current", equals: "127.0.0.1:${api.port}" }
+      - assert:
+          file:
+            path: cfg/apps/127.0.0.1_${api.port}.json
+            json: { path: "$.clientId", equals: e2e-client-id }
+      # Without --host, the server is the account in use's.
+      - run:
+          command: mstdn whoami
+          env: *env
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+          stdout:
+            equals: |
+              アリス 🐈‍⬛ @alice@127.0.0.1:${api.port}
+              ${api.url}/@alice
+              12 followers  34 following  56 posts
+
+              家族👨‍👩‍👧 と 🇯🇵 に住む
+      - run:
+          command: mstdn accounts --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.username", equals: alice }
+              - { path: "$.current", equals: true }
+      # A second login uses the app saved: it is not registered again.
+      - run:
+          command: mstdn login --oob --json
+          stdin: "e2e-code-0002\n"
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.username", equals: alice }
+      - assert:
+          mock: { name: api, path: /api/v1/apps, count: 1 }
+      - run:
+          command: mstdn logout
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out @alice@127.0.0.1:${api.port}\n"
+      - assert:
+          file:
+            path: cfg/accounts/127.0.0.1_${api.port}.json
+            exists: false
+      - run:
+          command: mstdn whoami --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              error: not logged in on 127.0.0.1:${api.port}
+              hint: run `mstdn login --host 127.0.0.1:${api.port}`
+
+  # Without --oob the browser is sent back to a listener mstdn opens on
+  # this machine. The "browser" here is a script MSTDN_BROWSER names: it
+  # reads where to come back to and the state from the page's address,
+  # and comes back with a code, as the server would send it.
+  - name: login takes the code the browser brings back to mstdn
+    skip: { os: windows }
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/v1/apps
+            json: { client_id: e2e-client-id, client_secret: e2e-client-secret-0001 }
+          - method: POST
+            path: /oauth/token
+            json: { access_token: e2e-fake-token-0001, scope: "read write" }
+          - method: GET
+            path: /api/v1/accounts/verify_credentials
+            json: { id: "7", username: alice, acct: alice }
+    steps:
+      - fixture:
+          file: browser.sh
+          from: testdata/browser.sh
+          mode: "0755"
+      - run:
+          command: mstdn login --timeout 20 --host ${api.url}
+          env:
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            MSTDN_BROWSER: ${workdir}/browser.sh
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged in as @alice@127.0.0.1:${api.port}\n"
+          stderr:
+            contains:
+              - "redirect_uri=http%3A%2F%2F127.0.0.1%3A"
+              - "(opened in the web browser)\n"
+              - "Waiting for the browser to come back (up to 20 s; Ctrl-C to give up)...\n"
+      - assert:
+          mock:
+            name: api
+            path: /oauth/token
+            body:
+              contains: ["code=e2e-loopback-code", "redirect_uri=http%3A%2F%2F127.0.0.1%3A"]
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/apps
+            body:
+              json: { path: "$.redirect_uris", matches: "^http://127\\.0\\.0\\.1:[0-9]+/callback\nurn:ietf:wg:oauth:2\\.0:oob$" }
+
+  - name: a code the server does not take saves nothing, and a denial in the browser says so
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/v1/apps
+            json: { client_id: e2e-client-id, client_secret: e2e-client-secret-0001 }
+          - method: POST
+            path: /oauth/token
+            status: 400
+            json: { error: invalid_grant, error_description: "The provided authorization grant is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client." }
+    steps:
+      - run:
+          command: mstdn login --oob --json --host ${api.url}
+          stdin: "stale\n"
+          env: &cfg
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", matches: "^127\\.0\\.0\\.1:[0-9]+ did not take the code: invalid_grant: The provided authorization grant is invalid" }
+              - { path: "$.hint", equals: "nothing was saved; run `mstdn login` to ask again" }
+      - assert:
+          file:
+            path: cfg/accounts
+            exists: false
+      - run:
+          command: mstdn login --oob --host ${api.url}
+          stdin: ""
+          env: *cfg
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: no code was given"
+      - run:
+          command: mstdn login --timeout 1 --host ${api.url}
+          env: *cfg
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "error: the access was not given on 127.0.0.1:${api.port} within 1 s"
+              - "hint: nothing was saved"
+
+  # A token from the environment is used on MSTDN_HOST, else on --host,
+  # and never printed (the unit tests check another server gets none);
+  # one the server no longer takes says what to do.
+  - name: MSTDN_TOKEN is sent to its server only, and a token turned down says so
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/accounts/verify_credentials
+            status: 401
+            json: { error: "The access token is invalid" }
+          - method: GET
+            path: /api/v1/statuses/1
+            json: { id: "1", account: { acct: a }, content: "<p>x</p>" }
+      - name: other
+        routes:
+          - method: GET
+            path: /api/v1/statuses/2
+            json: { id: "2", account: { acct: b }, content: "<p>y</p>" }
+    steps:
+      - run:
+          command: mstdn whoami
+          env:
+            MSTDN_HOST: ${api.url}
+            MSTDN_TOKEN: e2e-fake-token-0001
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: |
+              error: v1/accounts/verify_credentials failed: The access token is invalid
+              hint: 127.0.0.1:${api.port} does not take the token in MSTDN_TOKEN; check it, or make a new one in Preferences > Development
+      - run:
+          command: mstdn status ${other.url}/@b/2
+          env:
+            MSTDN_HOST: ${api.url}
+            MSTDN_TOKEN: e2e-fake-token-0001
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: other, path: /api/v1/statuses/2, count: 1 }
+
+  - name: a broken login file says how to get out of it, and logout --all takes it away
+    steps:
+      - fixture:
+          file: cfg/accounts/mastodon.social.json
+          content: '{"token": "e2e-fake-token-0001" oops'
+      - fixture:
+          file: cfg/accounts.json
+          content: '{"current": "mastodon.social"}'
+      - run:
+          command: mstdn whoami
+          env: &broken
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 3
+          stderr:
+            contains: ["is not a valid login file (line 1, column", "hint: run `mstdn logout --all` to discard it and log in again"]
+            not_contains: e2e-fake-token-0001
+      - run:
+          command: mstdn logout --all
+          env: *broken
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "logged out of mastodon.social\n"
+
+  # What only a person reads (the login's directions) is in the locale's
+  # language; the errors stay in English for scripts.
+  - name: the login speaks Japanese where the locale is Japanese
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/v1/apps, json: { client_id: e2e-client-id, client_secret: e2e-client-secret-0001 } }
+    steps:
+      - run:
+          command: mstdn login --oob --host ${api.url}
+          stdin: ""
+          env:
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            LC_ALL: ja_JP.UTF-8
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "127.0.0.1:${api.port} にログインするには、そのサーバーにサインインした状態でこのアドレスを開き、mstdn に読み書きを許可してください:\n"
+              - "ページに表示されたコードを貼り付けて Enter を押してください: "
+              - "error: no code was given"

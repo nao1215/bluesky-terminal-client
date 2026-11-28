@@ -1,6 +1,6 @@
 name: licenses
 
-# Dependency license gate. Every crate compiled into bsky or msky, on every
+# Dependency license gate. Every crate compiled into a client, on every
 # target in release-targets.json, must carry a license in deny.toml's allow
 # list (cargo deny), and cargo-about must be able to write its license text
 # into the THIRD_PARTY_LICENSES file that release.yml and release-msky.yml

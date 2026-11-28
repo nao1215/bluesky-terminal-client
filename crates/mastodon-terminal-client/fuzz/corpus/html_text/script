@@ -1,0 +1,1 @@
+<p>a<script>alert(1)</script>b<style>p{}</style>c<!-- note -->d</p>

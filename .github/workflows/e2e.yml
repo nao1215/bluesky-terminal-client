@@ -31,19 +31,22 @@ jobs:
   # answers like a kitty-graphics terminal: a pty on Linux and macOS, a
   # ConPTY on Windows. On Windows atago runs `graphics: kitty` steps under
   # the OpenConsole it ships, which passes kitty graphics through
-  # (nao1215/atago#676). msky's runs it against atago mock servers of the
-  # Misskey API. Neither needs a network or an account.
+  # (nao1215/atago#676). msky's and mstdn's run them against atago mock
+  # servers of the Misskey and the Mastodon API. None needs a network or an
+  # account.
   atago:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        client: [bsky, msky]
+        client: [bsky, msky, mstdn]
         include:
           - client: bsky
             run: ./crates/bluesky-terminal-client/e2e/run.sh
           - client: msky
             run: ./crates/misskey-terminal-client/e2e/run.sh
+          - client: mstdn
+            run: ./crates/mastodon-terminal-client/e2e/run.sh
     name: atago (${{ matrix.client }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

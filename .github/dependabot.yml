@@ -38,6 +38,15 @@ updates:
         applies-to: version-updates
         patterns:
           - "*"
+  - package-ecosystem: cargo
+    directory: "/crates/mastodon-terminal-client/fuzz"
+    schedule:
+      interval: monthly
+    groups:
+      cargo-fuzz-mstdn:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
