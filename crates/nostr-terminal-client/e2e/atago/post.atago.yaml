@@ -104,7 +104,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "error: posting requires keyFile in the config\nhint: run `nstr --help` for usage\n"
+            equals: "error: posting requires keyFile or bunker in the config\nhint: run `nstr --help` for usage\n"
       - assert:
           file:
             path: requests.jsonl

@@ -1,0 +1,31 @@
+{
+  "source": "https://github.com/paulmillr/nip44/blob/main/nip44.vectors.json",
+  "description": "Selected original v2 vectors, retrieved 2026-11-28; field values preserved. The client caps plaintext at 65535 bytes.",
+  "conversation": [
+    {"sec1":"315e59ff51cb9209768cf7da80791ddcaae56ac9775eb25b6dee1234bc5d2268","pub2":"c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133","conversation_key":"3dfef0ce2a4d80a25e7a328accf73448ef67096f65f79588e358d9a0eb9013f1"},
+    {"sec1":"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364139","pub2":"0000000000000000000000000000000000000000000000000000000000000002","conversation_key":"8b6392dbf2ec6a2b2d5b1477fc2be84d63ef254b667cadd31bd3f444c44ae6ba"}
+  ],
+  "message_keys": {
+    "conversation_key":"a1a3d60f3470a8612633924e91febf96dc5366ce130f658b1f0fc652c20b3b54",
+    "nonce":"e1e6f880560d6d149ed83dcc7e5861ee62a5ee051f7fde9975fe5d25d2a02d72",
+    "chacha_key":"f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76",
+    "chacha_nonce":"c4ad129bb01180c0933a160c",
+    "hmac_key":"027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4"
+  },
+  "padding": [[16,32],[32,32],[33,64],[37,64],[45,64],[49,64],[64,64],[65,96],[100,128],[111,128],[200,224],[250,256],[320,320],[383,384],[384,384],[400,448],[500,512],[512,512],[515,640],[700,768],[800,896],[900,1024],[1020,1024],[65536,65536]],
+  "encrypt_decrypt": [
+    {"sec1":"0000000000000000000000000000000000000000000000000000000000000001","sec2":"0000000000000000000000000000000000000000000000000000000000000002","conversation_key":"c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d","nonce":"0000000000000000000000000000000000000000000000000000000000000001","plaintext":"a","payload":"AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb"},
+    {"sec1":"0000000000000000000000000000000000000000000000000000000000000002","sec2":"0000000000000000000000000000000000000000000000000000000000000001","conversation_key":"c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d","nonce":"f00000000000000000000000000000f00000000000000000000000000000000f","plaintext":"🍕🫃","payload":"AvAAAAAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAAAPSKSK6is9ngkX2+cSq85Th16oRTISAOfhStnixqZziKMDvB0QQzgFZdjLTPicCJaV8nDITO+QfaQ61+KbWQIOO2Yj"},
+    {"sec1":"5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a","sec2":"4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d","conversation_key":"3e2b52a63be47d34fe0a80e34e73d436d6963bc8f39827f327057a9986c20a45","nonce":"b635236c42db20f021bb8d1cdff5ca75dd1a0cc72ea742ad750f33010b24f73b","plaintext":"表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀","payload":"ArY1I2xC2yDwIbuNHN/1ynXdGgzHLqdCrXUPMwELJPc7s7JqlCMJBAIIjfkpHReBPXeoMCyuClwgbT419jUWU1PwaNl4FEQYKCDKVJz+97Mp3K+Q2YGa77B6gpxB/lr1QgoqpDf7wDVrDmOqGoiPjWDqy8KzLueKDcm9BVP8xeTJIxs="}
+  ],
+  "long": {"conversation_key":"8fc262099ce0d0bb9b89bac05bb9e04f9bc0090acc181fef6840ccee470371ed","nonce":"326bcb2c943cd6bb717588c9e5a7e738edf6ed14ec5f5344caa6ef56f0b9cff7","pattern":"x","repeat":65535,"plaintext_sha256":"09ab7495d3e61a76f0deb12cb0306f0696cbb17ffc12131368c7a939f12f56d3","payload_sha256":"90714492225faba06310bff2f249ebdc2a5e609d65a629f1c87f2d4ffc55330a"},
+  "invalid_decrypt": [
+    {"conversation_key":"ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642","payload":"#Atqupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJdU0MIDf06CUvEvdnr1cp1fiMtlM/GrE92xAc1K5odTpCzUB+mjXgbaqtntBUbTToSUoT0ovrlPwzGjyp","note":"unknown encryption version"},
+    {"conversation_key":"36f04e558af246352dcf73b692fbd3646a2207bd8abd4b1cd26b234db84d9481","payload":"AK1AjUvoYW3IS7C/BGRUoqEC7ayTfDUgnEPNeWTF/reBZFaha6EAIRueE9D1B1RuoiuFScC0Q94yjIuxZD3JStQtE8JMNacWFs9rlYP+ZydtHhRucp+lxfdvFlaGV/sQlqZz","note":"unknown encryption version 0"},
+    {"conversation_key":"ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642","payload":"Atфupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJZE0UICD06CUvEvdnr1cp1fiMtlM/GrE92xAc1EwsVCQEgWEu2gsHUVf4JAa3TpgkmFc3TWsax0v6n/Wq","note":"invalid base64"},
+    {"conversation_key":"cff7bd6a3e29a450fd27f6c125d5edeb0987c475fd1e8d97591e0d4d8a89763c","payload":"Agn/l3ULCEAS4V7LhGFM6IGA17jsDUaFCKhrbXDANholyySBfeh+EN8wNB9gaLlg4j6wdBYh+3oK+mnxWu3NKRbSvQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","note":"invalid MAC"},
+    {"conversation_key":"5254827d29177622d40a7b67cad014fe7137700c3c523903ebbe3e1b74d40214","payload":"Anq2XbuLvCuONcr7V0UxTh8FAyWoZNEdBHXvdbNmDZHB573MI7R7rrTYftpqmvUpahmBC2sngmI14/L0HjOZ7lWGJlzdh6luiOnGPc46cGxf08MRC4CIuxx3i2Lm0KqgJ7vA","note":"invalid padding"},
+    {"conversation_key":"fea39aca9aa8340c3a78ae1f0902aa7e726946e4efcd7783379df8096029c496","payload":"An1Cg+O1TIhdav7ogfSOYvCj9dep4ctxzKtZSniCw5MwRrrPJFyAQYZh5VpjC2QYzny5LIQ9v9lhqmZR4WBYRNJ0ognHVNMwiFV1SHpvUFT8HHZN/m/QarflbvDHAtO6pY16","note":"invalid padding"}
+  ],
+  "invalid_public": ["0000000000000000000000000000000000000000000000000000000000000000","eb1f7200aecaa86682376fb1c13cd12b732221e774f553b0a0857f88fa20f86d","709858a4c121e4a84eb59c0ded0261093c71e8ca29efeef21a6161c447bcaf9f"]
+}

@@ -2,6 +2,8 @@
 
 pub(crate) mod event;
 pub(crate) mod nip19;
+pub(crate) mod nip44;
+pub(crate) mod nip46;
 pub(crate) mod relay;
 
 use crate::{config::Config, error::Result};

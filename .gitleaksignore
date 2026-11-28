@@ -11,3 +11,22 @@
 # environment variable whose name had "API" in it, which the generic API key
 # rule takes for a key. The variable is RUSTDOC_JSON_NIGHTLY since.
 642f6b91a461d96f648e6ebaa505bca47b63b21d:.github/workflows/rules.yml:generic-api-key:140
+
+# NIP-44 v2 test vectors copied from paulmillr/nip44 (nip44.vectors.json), public
+# values every NIP-44 implementation tests against. The keys in them were made for
+# the vectors and belong to no account; the generic API key rule takes them for keys.
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:5
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:6
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:9
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:11
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:13
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:17
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:18
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:19
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:21
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:23
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:24
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:25
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:26
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:27
+a0cbd655cb4aa189e4cc3006fe44e187d125eb29:crates/nostr-terminal-client/tests/testdata/nip44-v2.json:generic-api-key:28
