@@ -1200,7 +1200,7 @@ impl Client {
         writer: crate::i18n::Lang,
     ) -> Result<CreatedRecord> {
         let text = text.trim_end();
-        if text.trim().is_empty() && matches!(media, PostMedia::None) {
+        if text.trim().is_empty() && quote.is_none() && matches!(media, PostMedia::None) {
             return Err(Error::new(Kind::Usage, crate::i18n::t("the post is empty")));
         }
         if let PostMedia::Images(images) = media

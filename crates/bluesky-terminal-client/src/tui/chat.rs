@@ -88,10 +88,10 @@ impl OpenConvo {
     pub(crate) fn take_latest(&mut self, newest_first: Vec<ChatMessage>, cursor: Option<String>) {
         let first = !self.got_latest;
         self.got_latest = true;
-        let known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
+        let mut known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
         let mut new: Vec<ChatMessage> = newest_first
             .into_iter()
-            .filter(|m| !known.contains(&m.id))
+            .filter(|m| known.insert(m.id.clone()))
             .collect();
         new.reverse();
         self.messages.extend(new);
@@ -114,10 +114,10 @@ impl OpenConvo {
             return;
         }
         self.loading_older = false;
-        let known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
+        let mut known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
         let mut older: Vec<ChatMessage> = newest_first
             .into_iter()
-            .filter(|m| !known.contains(&m.id))
+            .filter(|m| known.insert(m.id.clone()))
             .collect();
         older.reverse();
         older.append(&mut self.messages);
@@ -137,6 +137,16 @@ impl OpenConvo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_messages_in_a_page_are_shown_once() {
+        let mut open = OpenConvo::new(Convo::default());
+        open.take_latest(vec![m("3"), m("3"), m("2")], Some("older".into()));
+        assert_eq!(ids(&open), ["2", "3"]);
+        open.loading_older = true;
+        open.take_older("older", vec![m("2"), m("1"), m("1")], None);
+        assert_eq!(ids(&open), ["1", "2", "3"]);
+    }
 
     fn m(id: &str) -> ChatMessage {
         ChatMessage {

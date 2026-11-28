@@ -74,6 +74,32 @@ fn session(url: &str) -> Session {
     }
 }
 
+#[test]
+fn a_quote_embed_allows_empty_post_text() {
+    let (url, calls) = serve(Arc::new(|_, _| {
+        Some((
+            200,
+            r#"{"uri":"at://did:plc:a/app.bsky.feed.post/1","cid":"c"}"#.into(),
+            0,
+        ))
+    }));
+    let client = Client::new(session(&url), None);
+    let quote = StrongRef {
+        uri: "at://did:plc:x/app.bsky.feed.post/1".into(),
+        cid: "c1".into(),
+    };
+    client
+        .create_post(
+            "",
+            None,
+            Some(&quote),
+            &PostMedia::None,
+            crate::i18n::Lang::En,
+        )
+        .unwrap();
+    assert_eq!(calls.lock().unwrap().len(), 1);
+}
+
 // A handle mentioned many times is looked up once: each lookup holds up
 // the writes behind the post.
 #[test]
