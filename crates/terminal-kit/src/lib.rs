@@ -40,3 +40,5 @@ pub mod theme;
 pub mod media;
 
 pub mod files;
+
+pub mod locale;

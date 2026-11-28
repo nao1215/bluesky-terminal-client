@@ -57,22 +57,14 @@ impl Lang {
     /// `LC_MESSAGES` and `LANG` that is set (as `get` reads them), else
     /// English.
     pub(crate) fn from_locale(get: impl Fn(&str) -> Option<String>) -> Lang {
-        ["LC_ALL", "LC_MESSAGES", "LANG"]
-            .into_iter()
-            .find_map(|k| get(k).filter(|v| !v.is_empty()))
-            .and_then(|v| Lang::from_code(&v))
-            .unwrap_or(Lang::En)
+        Self::from_code(terminal_kit::locale::language_from_locale(get)).unwrap_or(Self::En)
     }
 
     /// The language a code names: `ja`, and a locale such as `ja_JP.UTF-8`
     /// or `pt-BR`, whatever its case.
     pub(crate) fn from_code(code: &str) -> Option<Lang> {
-        let head = code
-            .split(['_', '-', '.', '@'])
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        Lang::ALL.into_iter().find(|l| l.code() == head)
+        let code = terminal_kit::locale::language_code(code)?;
+        Self::ALL.into_iter().find(|lang| lang.code() == code)
     }
 
     /// Where the language is in [`Lang::ALL`].
