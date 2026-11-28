@@ -232,6 +232,11 @@ impl App {
         self.threads.clear();
         self.opened.clear();
         self.acting.clear();
+        self.relationships.clear();
+        self.relation_pending.clear();
+        self.relation_before.clear();
+        self.deleted.clear();
+        self.deleting.clear();
         self.waiting.clear();
         self.overlay = None;
         self.message = None;
@@ -240,6 +245,9 @@ impl App {
         self.tab = Tab::Home;
         let mut jobs = self.load_tab(self.tab, false);
         jobs.push(self.job(Job::Limits));
+        if self.session.as_ref().is_some_and(|s| s.user_id.is_empty()) {
+            jobs.push(self.job(Job::Identity));
+        }
         jobs
     }
 

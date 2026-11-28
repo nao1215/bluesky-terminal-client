@@ -738,3 +738,12 @@ mod properties {
         }
     }
 }
+
+/// A byte count the way a person reads it.
+pub fn human_bytes(n: u64) -> String {
+    match n {
+        n if n >= 1024 * 1024 => format!("{:.1} MB", n as f64 / (1024.0 * 1024.0)),
+        n if n >= 1024 => format!("{} KB", n / 1024),
+        n => format!("{n} B"),
+    }
+}

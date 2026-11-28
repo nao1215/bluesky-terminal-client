@@ -1,15 +1,12 @@
-//! A directory browser for choosing pictures and a video from the user's
-//! disk for a note, as bsky's composer chooses them (ctrl+o). It lists
-//! folders and those files only, and the view previews the selected
-//! picture beside the list. bsky's folder mode (for its settings) is left
-//! out: msky has no settings screen yet.
+//! A directory browser for choosing pictures or a video, with keyboard
+//! navigation, multi-selection and a picture preview shared by the clients.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::tui::app::List;
+mod view;
 
 /// The pictures a note can carry, by extension.
 const PICTURES: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "avif"];
@@ -24,18 +21,18 @@ fn has_extension(name: &str, list: &[&str]) -> bool {
 }
 
 /// Whether `name` is a picture's.
-pub(crate) fn is_picture_name(name: &str) -> bool {
+pub fn is_picture_name(name: &str) -> bool {
     has_extension(name, PICTURES)
 }
 
 /// Whether `name` is a video's.
-pub(crate) fn is_video_name(name: &str) -> bool {
+pub fn is_video_name(name: &str) -> bool {
     has_extension(name, VIDEOS)
 }
 
 /// What an entry of the listing is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum EntryKind {
+enum EntryKind {
     /// `..`, the folder above.
     Parent,
     Dir,
@@ -45,22 +42,16 @@ pub(crate) enum EntryKind {
 
 /// One line of the listing.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Entry {
-    pub name: String,
-    pub path: PathBuf,
-    pub kind: EntryKind,
+struct Entry {
+    name: String,
+    path: PathBuf,
+    kind: EntryKind,
     /// File size, for pictures and videos.
-    pub bytes: u64,
-}
-
-impl crate::tui::app::Keyed for Entry {
-    fn key(&self) -> &str {
-        &self.name
-    }
+    bytes: u64,
 }
 
 /// `path` with a leading `~` as the home folder, as a shell reads it.
-pub(crate) fn expand_home(path: &str) -> PathBuf {
+pub fn expand_home(path: &str) -> PathBuf {
     match path.strip_prefix('~') {
         Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => {
             match dirs::home_dir() {
@@ -74,7 +65,8 @@ pub(crate) fn expand_home(path: &str) -> PathBuf {
 
 /// What the browser asks of whoever opened it.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Action {
+pub enum Action {
+    /// Keep browsing.
     None,
     /// Close without choosing.
     Close,
@@ -84,21 +76,24 @@ pub(crate) enum Action {
 
 /// The browser's state.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Browser {
+pub struct Browser {
+    /// The folder currently shown.
     pub dir: PathBuf,
-    pub list: List<Entry>,
+    items: Vec<Entry>,
+    selected: usize,
+    offset: usize,
     /// Whether names starting with a dot are listed.
-    pub show_hidden: bool,
+    show_hidden: bool,
     /// Why the folder could not be read.
-    pub error: Option<String>,
+    error: Option<String>,
     /// Files marked with space, which Enter chooses together.
-    pub marked: Vec<PathBuf>,
+    marked: Vec<PathBuf>,
     /// How many files may still be chosen.
-    pub room: usize,
+    room: usize,
     /// Whether videos are listed too (not next to pictures attached).
-    pub videos: bool,
+    videos: bool,
     /// A message about the last key, such as "no room for more".
-    pub note: Option<String>,
+    note: Option<String>,
 }
 
 /// `dir` without `..` in it, each taking off the name before it, as going
@@ -120,10 +115,12 @@ fn without_dot_dot(dir: PathBuf) -> PathBuf {
 impl Browser {
     /// Open at `dir`, where at most `room` files, a video among them when
     /// `videos`, may be chosen.
-    pub(crate) fn open(dir: &Path, room: usize, videos: bool) -> Self {
+    pub fn open(dir: &Path, room: usize, videos: bool) -> Self {
         let mut b = Self {
             dir: without_dot_dot(std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf())),
-            list: List::default(),
+            items: Vec::new(),
+            selected: 0,
+            offset: 0,
             show_hidden: false,
             error: None,
             marked: Vec::new(),
@@ -136,8 +133,8 @@ impl Browser {
     }
 
     /// The selected entry.
-    pub(crate) fn current(&self) -> Option<&Entry> {
-        self.list.current()
+    fn current(&self) -> Option<&Entry> {
+        self.items.get(self.selected)
     }
 
     /// List the folder again, selecting `select` (a name) when it is there.
@@ -193,7 +190,9 @@ impl Browser {
             .unwrap_or(usize::from(
                 items.len() > 1 && items[0].kind == EntryKind::Parent,
             ));
-        self.list = List::of(items, selected);
+        self.items = items;
+        self.selected = selected;
+        self.offset = 0;
     }
 
     fn enter(&mut self, dir: PathBuf, select: Option<String>) {
@@ -212,7 +211,11 @@ impl Browser {
     }
 
     fn toggle_mark(&mut self) {
-        let Some(e) = self.list.current().filter(|e| e.kind == EntryKind::Media) else {
+        let Some(e) = self
+            .items
+            .get(self.selected)
+            .filter(|e| e.kind == EntryKind::Media)
+        else {
             return;
         };
         let path = e.path.clone();
@@ -227,7 +230,7 @@ impl Browser {
             ));
             return;
         }
-        self.list.step(1);
+        self.step(1);
     }
 
     /// What Enter on the file at `current` chooses: the marked files and
@@ -244,17 +247,24 @@ impl Browser {
         chosen
     }
 
+    fn step(&mut self, by: isize) {
+        self.selected = self
+            .selected
+            .saturating_add_signed(by)
+            .min(self.items.len().saturating_sub(1));
+    }
+
     /// Handle a key.
-    pub(crate) fn key(&mut self, key: KeyEvent) -> Action {
+    pub fn key(&mut self, key: KeyEvent) -> Action {
         self.note = None;
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => return Action::Close,
-            KeyCode::Char('j') | KeyCode::Down => self.list.step(1),
-            KeyCode::Char('k') | KeyCode::Up => self.list.step(-1),
-            KeyCode::PageDown => self.list.step(10),
-            KeyCode::PageUp => self.list.step(-10),
-            KeyCode::Char('g') | KeyCode::Home => self.list.step(isize::MIN / 2),
-            KeyCode::Char('G') | KeyCode::End => self.list.step(isize::MAX / 2),
+            KeyCode::Char('j') | KeyCode::Down => self.step(1),
+            KeyCode::Char('k') | KeyCode::Up => self.step(-1),
+            KeyCode::PageDown => self.step(10),
+            KeyCode::PageUp => self.step(-10),
+            KeyCode::Char('g') | KeyCode::Home => self.step(isize::MIN / 2),
+            KeyCode::Char('G') | KeyCode::End => self.step(isize::MAX / 2),
             KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => self.up(),
             KeyCode::Char('.') => {
                 self.show_hidden = !self.show_hidden;
@@ -317,7 +327,7 @@ mod tests {
     }
 
     fn names(b: &Browser) -> Vec<&str> {
-        b.list.items.iter().map(|e| e.name.as_str()).collect()
+        b.items.iter().map(|e| e.name.as_str()).collect()
     }
 
     #[test]

@@ -54,6 +54,10 @@ pub(crate) const HELP: &[Section] = &[
             ("r", n!("reply to the selected post")),
             ("l", n!("favourite / take back your favourite")),
             ("b", n!("boost / take back your boost")),
+            ("f", n!("follow / unfollow the account")),
+            ("M B", n!("mute / block the account; y confirms")),
+            ("D", n!("delete your own post; y confirms")),
+            ("!", n!("report the post or account; y confirms")),
             ("v", n!("open the thread with its replies")),
             ("w", n!("show / hide the text behind a content warning")),
             ("o", n!("open the post in the browser")),
@@ -81,14 +85,25 @@ pub(crate) const HELP: &[Section] = &[
         title: n!("Composer"),
         keys: &[
             ("ctrl+s", n!("send the post")),
+            ("ctrl+o", n!("attach pictures or a video")),
+            ("ctrl+x", n!("remove the focused attachment, or the last")),
             ("ctrl+w", n!("add / take off a content warning")),
-            ("tab", n!("between the text and the warning")),
+            ("tab", n!("between text, warning and attachment alt text")),
             (
                 "ctrl+p",
                 n!("who may see it: public, quiet public, followers, mentioned"),
             ),
             ("ctrl+u", n!("clear to the start of the line")),
             ("esc", n!("close without sending")),
+        ],
+    },
+    Section {
+        title: n!("Report"),
+        keys: &[
+            ("tab", n!("optional comment")),
+            ("enter ctrl+enter", n!("ask to send the report")),
+            ("y", n!("confirm")),
+            ("esc", n!("leave comment / close report")),
         ],
     },
     Section {
@@ -146,6 +161,23 @@ fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
 
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
+        Some(Overlay::Confirm(_)) => {
+            return vec![("y", n!("confirm")), (t("any other key"), n!("cancel"))];
+        }
+        Some(Overlay::Report(r)) => {
+            return if r.confirming {
+                vec![("y", n!("confirm")), (t("any other key"), n!("cancel"))]
+            } else {
+                vec![
+                    ("tab", n!("optional comment")),
+                    (
+                        if r.writing { "ctrl+enter" } else { "enter" },
+                        n!("confirm"),
+                    ),
+                    ("esc", n!("close")),
+                ]
+            };
+        }
         Some(Overlay::Help { .. }) => return vec![("j k", n!("scroll")), ("esc", n!("close"))],
         Some(Overlay::Themes { .. }) => {
             return vec![
@@ -162,12 +194,23 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ];
         }
         Some(Overlay::Compose(c)) => {
+            if c.browser.is_some() {
+                return vec![
+                    ("enter", n!("choose")),
+                    ("space", n!("mark")),
+                    ("h", n!("parent folder")),
+                    (".", n!("hidden files")),
+                    ("esc", n!("cancel")),
+                ];
+            }
             let mut v = vec![
                 ("ctrl+s", n!("send")),
+                ("ctrl+o", n!("attach")),
+                ("ctrl+x", n!("remove attachment")),
                 ("ctrl+w", n!("warning")),
                 ("ctrl+p", n!("visibility")),
             ];
-            if c.warning.is_some() {
+            if c.warning.is_some() || !c.media.is_empty() {
                 v.push(("tab", n!("next field")));
             }
             v.push(("esc", n!("cancel")));
@@ -244,6 +287,10 @@ fn view_hints(app: &App) -> Vec<Hint> {
     v.insert(0, ("?", n!("help")));
     v.push(("enter", n!("open profile")));
     v.push(("space", n!("open pictures and videos")));
+    v.push(("f", n!("follow")));
+    v.push(("M B", n!("mute / block")));
+    v.push(("!", n!("report")));
+    v.push(("D", n!("delete")));
     v.push(("q", n!("quit")));
     v
 }
@@ -251,10 +298,47 @@ fn view_hints(app: &App) -> Vec<Hint> {
 /// What `.` offers on the selected status: the keys that act on it, each
 /// saying what it would do now.
 pub(crate) fn actions(app: &App) -> Vec<Hint> {
+    let mut v = Vec::new();
+    if let Some(a) = app.account_target()
+        && !app.own(a)
+    {
+        let r = app.relationships.get(&a.id);
+        v.push((
+            "f",
+            if r.is_some_and(|r| r.following || r.requested) {
+                n!("unfollow / cancel follow request")
+            } else {
+                n!("follow")
+            },
+        ));
+        v.push((
+            "M",
+            if r.is_some_and(|r| r.muting) {
+                n!("unmute")
+            } else {
+                n!("mute")
+            },
+        ));
+        v.push((
+            "B",
+            if r.is_some_and(|r| r.blocking) {
+                n!("unblock")
+            } else {
+                n!("block")
+            },
+        ));
+    }
+    v.push(("!", n!("report")));
     let Some(s) = app.selected() else {
-        return Vec::new();
+        return translated(v);
     };
-    let mut v = status_actions(app, s);
+    // Keep the established status action order for the actions menu.
+    let mut status = status_actions(app, s);
+    status.append(&mut v);
+    v = status;
+    if app.own(&s.account) {
+        v.push(("D", n!("delete")));
+    }
     if app.threads.is_empty() {
         v.push(("v", n!("open the thread")));
     } else {

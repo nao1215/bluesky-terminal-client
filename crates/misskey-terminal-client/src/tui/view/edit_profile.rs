@@ -65,6 +65,6 @@ pub(super) fn draw_edit_profile(
         );
     }
     if let Some(b) = &mut e.browser {
-        compose::draw_browser(frame, area, b, images, t);
+        b.draw(frame, area, images, t, i18n::t);
     }
 }

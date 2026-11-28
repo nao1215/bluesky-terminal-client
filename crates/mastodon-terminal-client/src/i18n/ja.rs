@@ -1,6 +1,106 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("ask to send the report", "通報送信の確認へ"),
+    (
+        "leave comment / close report",
+        "コメント欄から戻る / 通報を閉じる",
+    ),
+    (
+        "enter choose  space mark  h up  . hidden  esc cancel",
+        "enter 決定  space 選択  h 親へ  . 隠しファイル  esc 取消",
+    ),
+    (
+        "no folders, pictures, or videos here",
+        "フォルダー・画像・動画はありません",
+    ),
+    ("enter opens the folder", "enter でフォルダーを開く"),
+    ("Attach pictures (up to {})", "画像を添付（最大 {} 枚）"),
+    (
+        "Attach pictures (up to {}) or a video",
+        "画像（最大 {} 枚）または動画を添付",
+    ),
+    ("no room for more attachments", "これ以上添付できません"),
+    (
+        "attach pictures or one video, not both",
+        "画像または動画 1 本を添付してください（併用不可）",
+    ),
+    (
+        "only your own posts can be deleted",
+        "削除できるのは自分の投稿だけです",
+    ),
+    ("this is your own account", "自分のアカウントです"),
+    ("reported", "通報しました"),
+    ("deleted", "削除しました"),
+    ("cancelled", "取り消しました"),
+    ("not blocked", "ブロックなし"),
+    ("blocked", "ブロック中"),
+    ("not muted", "ミュートなし"),
+    ("muted", "ミュート中"),
+    ("not following", "未フォロー"),
+    ("following", "フォロー中"),
+    ("follow requested", "フォロー申請中"),
+    (
+        "tab comment · enter confirm · esc close",
+        "tab コメント · enter 確認 · esc 閉じる",
+    ),
+    ("sending report…", "通報を送信中…"),
+    ("Report", "通報"),
+    ("Alt", "代替文"),
+    (
+        "y confirms; any other key cancels",
+        "y で確定、それ以外のキーで取消",
+    ),
+    (
+        "Toggle block for this account?",
+        "このアカウントのブロックを切り替えますか？",
+    ),
+    (
+        "Toggle mute for this account?",
+        "このアカウントのミュートを切り替えますか？",
+    ),
+    ("Delete this post?", "この投稿を削除しますか？"),
+    ("mute / block", "ミュート / ブロック"),
+    ("delete", "削除"),
+    ("report", "通報"),
+    ("block", "ブロック"),
+    ("unblock", "ブロック解除"),
+    ("mute", "ミュート"),
+    ("unmute", "ミュート解除"),
+    ("follow", "フォロー"),
+    (
+        "unfollow / cancel follow request",
+        "フォロー解除 / リクエスト取消",
+    ),
+    ("remove attachment", "添付を削除"),
+    ("attach", "添付"),
+    ("hidden files", "隠しファイル"),
+    ("parent folder", "親フォルダー"),
+    ("mark", "選択"),
+    ("optional comment", "コメント（任意）"),
+    ("any other key", "それ以外のキー"),
+    ("confirm", "確定"),
+    (
+        "remove the focused attachment, or the last",
+        "選択中または最後の添付を削除",
+    ),
+    ("attach pictures or a video", "画像または動画を添付"),
+    (
+        "report the post or account; y confirms",
+        "投稿またはアカウントを通報; y で確定",
+    ),
+    (
+        "delete your own post; y confirms",
+        "自分の投稿を削除; y で確定",
+    ),
+    (
+        "mute / block the account; y confirms",
+        "ミュート / ブロック; y で確定",
+    ),
+    (
+        "follow / unfollow the account",
+        "アカウントをフォロー / フォロー解除",
+    ),
     ("(R to retry)", "(R で再試行)"),
     ("1 file", "ファイル 1 件"),
     ("1 picture", "画像 1 枚"),
@@ -47,8 +147,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("asked to follow you", "がフォローをリクエストしました"),
     ("back", "戻る"),
     (
-        "between the text and the warning",
-        "本文と注意書きの間を移動",
+        "between text, warning and attachment alt text",
+        "本文・注意書き・添付の代替テキストの間を移動",
     ),
     (
         "boost / take back your boost",

@@ -32,7 +32,7 @@ mod settings;
 mod tests;
 
 use browse::{draw_profile, draw_search};
-use compose::{draw_browser, draw_compose, draw_reactions};
+use compose::{draw_compose, draw_reactions};
 
 /// Width of the selection marker column.
 const MARK_W: u16 = 2;
@@ -193,7 +193,7 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if let Some(Overlay::Compose(c)) = &mut app.overlay {
         draw_compose(frame, area, c, images, &t);
         if let Some(b) = &mut c.browser {
-            draw_browser(frame, area, b, images, &t);
+            b.draw(frame, area, images, &t, i18n::t);
         }
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {
@@ -1909,14 +1909,7 @@ fn fit(area: Rect, (w, h): (u32, u32), (cw, ch): (u16, u16)) -> Rect {
     }
 }
 
-/// A byte count the way a person reads it.
-fn human_bytes(n: u64) -> String {
-    match n {
-        n if n >= 1024 * 1024 => format!("{:.1} MB", n as f64 / (1024.0 * 1024.0)),
-        n if n >= 1024 => format!("{} KB", n / 1024),
-        n => format!("{n} B"),
-    }
-}
+use terminal_kit::text::human_bytes;
 
 /// A note's files full screen, the one at `index` shown at its own shape,
 /// centered, with its number, name and alt text under it. A file that is

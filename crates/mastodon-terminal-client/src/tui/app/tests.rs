@@ -344,6 +344,7 @@ fn the_composer_sends_the_text_warning_and_visibility() {
     assert_eq!(
         jobs[0].1,
         Job::Post(Box::new(Draft {
+            files: Vec::new(),
             text: "こんにちは 🇯🇵".into(),
             cw: "ネタバレ".into(),
             visibility: Visibility::Unlisted,
@@ -671,6 +672,11 @@ proptest! {
             for (seq, job) in app.handle_key(k) {
                 prop_assert!(seen.insert(seq));
                 let ev = match job {
+                    Job::Identity => Event::Identity(Ok(account("me"))),
+                    Job::Relationship { id } => Event::Relationship { id, result: Err(Error::api("read failed")) },
+                    Job::Relate { id, .. } => Event::Related { id, result: Err(Error::api("write failed")) },
+                    Job::Delete { id } => Event::Deleted { id, result: Ok(()) },
+                    Job::Report { .. } => Event::Reported(Ok(())),
                     Job::Timeline { kind, max_id } => Event::Timeline {
                         kind,
                         max_id,
@@ -970,4 +976,344 @@ fn broken_settings_are_never_written_by_the_language_picker() {
     press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Enter);
     assert!(app.take_settings_save().is_none());
+}
+
+#[test]
+fn account_toggles_restore_the_entire_relationship_on_refusal() {
+    for (key_char, action) in [
+        ('f', RelationAction::Follow),
+        ('M', RelationAction::Mute),
+        ('B', RelationAction::Block),
+    ] {
+        for active in [false, true] {
+            let mut app = with_home(&["one"]);
+            let before = Relationship {
+                id: "id-alice".into(),
+                following: active,
+                requested: active,
+                muting: active,
+                blocking: active,
+            };
+            app.relationships.insert(before.id.clone(), before.clone());
+            let mut jobs = press(&mut app, KeyCode::Char(key_char));
+            if key_char != 'f' {
+                assert!(jobs.is_empty());
+                jobs = press(&mut app, KeyCode::Char('y'));
+            }
+            assert!(
+                matches!(&jobs[0].1, Job::Relate { id, action: a, on } if id == "id-alice" && *a == action && *on != active)
+            );
+            assert_eq!(action.active(&app.relationships["id-alice"]), !active);
+            assert!(
+                press(&mut app, KeyCode::Char(key_char)).is_empty(),
+                "duplicate write"
+            );
+            app.handle_answer(
+                jobs[0].0,
+                Event::Related {
+                    id: "id-alice".into(),
+                    result: Err(Error::api("refused")),
+                },
+            );
+            assert_eq!(app.relationships["id-alice"], before);
+            assert!(app.message.as_ref().unwrap().error);
+            assert!(app.relation_pending.is_empty());
+        }
+    }
+}
+
+#[test]
+fn an_unknown_relationship_is_read_before_toggling_and_a_pending_follow_is_cancelled() {
+    let mut app = with_home(&["one"]);
+    let jobs = press(&mut app, KeyCode::Char('f'));
+    assert!(matches!(&jobs[0].1, Job::Relationship { id } if id == "id-alice"));
+    assert!(press(&mut app, KeyCode::Char('f')).is_empty());
+    let jobs = app.handle_answer(
+        jobs[0].0,
+        Event::Relationship {
+            id: "id-alice".into(),
+            result: Ok(Relationship {
+                id: "id-alice".into(),
+                requested: true,
+                ..Default::default()
+            }),
+        },
+    );
+    assert!(matches!(&jobs[0].1, Job::Relate { on: false, .. }));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Related {
+            id: "id-alice".into(),
+            result: Ok(Relationship {
+                id: "id-alice".into(),
+                ..Default::default()
+            }),
+        },
+    );
+    assert!(!app.relationships["id-alice"].requested);
+}
+
+#[test]
+fn a_failed_relationship_read_never_starts_a_write_and_can_be_retried() {
+    let mut app = with_home(&["one"]);
+    let jobs = press(&mut app, KeyCode::Char('f'));
+    assert!(
+        app.handle_answer(
+            jobs[0].0,
+            Event::Relationship {
+                id: "id-alice".into(),
+                result: Err(Error::api("no scope"))
+            }
+        )
+        .is_empty()
+    );
+    assert!(app.relationships.is_empty());
+    press(&mut app, KeyCode::Esc); // dismiss error
+    assert_eq!(press(&mut app, KeyCode::Char('f')).len(), 1);
+}
+
+#[test]
+fn only_y_confirms_account_actions_and_deletion() {
+    for action in ['M', 'B', 'D'] {
+        for answer in [
+            KeyCode::Char('n'),
+            KeyCode::Char('Y'),
+            KeyCode::Enter,
+            KeyCode::Esc,
+            KeyCode::Char('q'),
+        ] {
+            let mut app = with_home(&["one"]);
+            if action == 'D' {
+                app.timelines[0].items[0].account.id = me().user_id;
+            }
+            assert!(press(&mut app, KeyCode::Char(action)).is_empty());
+            assert!(matches!(app.overlay, Some(Overlay::Confirm(_))));
+            assert!(press(&mut app, answer).is_empty());
+            assert!(app.overlay.is_none());
+            assert!(!app.quit);
+            assert!(app.relation_pending.is_empty());
+            assert!(app.deleting.is_empty());
+        }
+    }
+}
+
+#[test]
+fn account_actions_target_the_profile_and_threads_target_the_selected_author() {
+    let mut app = with_home(&["one"]);
+    app.tab = Tab::Profile;
+    app.profile.account = Some(account("bob"));
+    app.profile.posts.items.push(status("other"));
+    let jobs = press(&mut app, KeyCode::Char('f'));
+    assert!(matches!(&jobs[0].1, Job::Relationship { id } if id == "id-bob"));
+    press(&mut app, KeyCode::Char('v'));
+    let jobs = press(&mut app, KeyCode::Char('f'));
+    assert!(matches!(&jobs[0].1, Job::Relationship { id } if id == "id-alice"));
+}
+
+#[test]
+fn deletion_waits_for_success_and_removes_all_occurrences_including_late_pages() {
+    let mut app = with_home(&["one", "two"]);
+    app.timelines[0].items[0].account.id = me().user_id;
+    let own = app.timelines[0].items[0].clone();
+    app.search.posts.items.push(own.clone());
+    app.profile.posts.items.push(own.clone());
+    app.timelines[1].items.push(Status {
+        id: "boost".into(),
+        reblog: Some(Box::new(own.clone())),
+        ..Default::default()
+    });
+    app.notifications.items.push(Notification {
+        status: Some(own.clone()),
+        ..Default::default()
+    });
+    press(&mut app, KeyCode::Char('v'));
+    press(&mut app, KeyCode::Char('D'));
+    let jobs = press(&mut app, KeyCode::Char('y'));
+    assert!(app.selected().is_some());
+    app.handle_answer(
+        jobs[0].0,
+        Event::Deleted {
+            id: "one".into(),
+            result: Err(Error::api("refused")),
+        },
+    );
+    assert_eq!(app.selected().unwrap().id, "one");
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('D'));
+    let jobs = press(&mut app, KeyCode::Char('y'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Deleted {
+            id: "one".into(),
+            result: Ok(()),
+        },
+    );
+    assert!(app.threads[0].rows.items.is_empty());
+    assert!(app.notifications.items.is_empty());
+    assert!(app.search.posts.items.is_empty());
+    assert!(app.profile.posts.items.is_empty());
+    assert!(app.timelines[1].items.is_empty());
+    assert_eq!(app.timelines[0].items[0].id, "two");
+    press(&mut app, KeyCode::Esc);
+    let jobs = press(&mut app, KeyCode::Char('R'));
+    app.handle_answer(jobs[0].0, page(vec![own, status("two")], Next::End));
+    assert_eq!(app.timelines[0].items.len(), 1);
+}
+
+#[test]
+fn visitors_and_other_peoples_posts_cannot_be_deleted() {
+    let mut app = with_home(&["one"]);
+    assert!(press(&mut app, KeyCode::Char('D')).is_empty());
+    assert!(app.overlay.is_none());
+    app.session = None;
+    for action in ['f', 'M', 'B', 'D', '!'] {
+        assert!(press(&mut app, KeyCode::Char(action)).is_empty());
+        assert!(app.overlay.is_none());
+    }
+}
+
+#[test]
+fn reporting_requires_y_after_confirmation_and_keeps_the_comment_on_refusal() {
+    let mut app = with_home(&["one"]);
+    press(&mut app, KeyCode::Char('!'));
+    press(&mut app, KeyCode::Tab);
+    app.handle_paste("optional comment 🐈");
+    press(&mut app, KeyCode::Tab);
+    for answer in [
+        KeyCode::Enter,
+        KeyCode::Char('n'),
+        KeyCode::Char('Y'),
+        KeyCode::Esc,
+    ] {
+        assert!(press(&mut app, KeyCode::Enter).is_empty());
+        assert!(press(&mut app, answer).is_empty());
+    }
+    press(&mut app, KeyCode::Enter);
+    let jobs = press(&mut app, KeyCode::Char('y'));
+    assert!(
+        matches!(&jobs[0].1, Job::Report { account, status, comment } if account == "id-alice" && status.as_deref() == Some("one") && comment == "optional comment 🐈")
+    );
+    assert!(press(&mut app, KeyCode::Char('y')).is_empty());
+    app.handle_answer(jobs[0].0, Event::Reported(Err(Error::api("refused"))));
+    assert!(
+        matches!(&app.overlay, Some(Overlay::Report(r)) if r.sending.is_none() && r.comment.text() == "optional comment 🐈")
+    );
+    press(&mut app, KeyCode::Esc); // error
+    press(&mut app, KeyCode::Enter);
+    let jobs = press(&mut app, KeyCode::Char('y'));
+    app.handle_answer(jobs[0].0, Event::Reported(Ok(())));
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn a_profile_without_a_selected_post_reports_only_the_account() {
+    let mut app = with_home(&[]);
+    app.tab = Tab::Profile;
+    app.profile.account = Some(account("bob"));
+    press(&mut app, KeyCode::Char('!'));
+    press(&mut app, KeyCode::Enter);
+    let jobs = press(&mut app, KeyCode::Char('y'));
+    assert!(
+        matches!(&jobs[0].1, Job::Report { account, status: None, comment } if account == "id-bob" && comment.is_empty())
+    );
+}
+
+#[test]
+fn switching_accounts_discards_relationship_state_and_old_answers() {
+    let mut app = with_home(&["one"]);
+    let jobs = press(&mut app, KeyCode::Char('f'));
+    app.switched(Session {
+        user_id: "another".into(),
+        ..me()
+    });
+    assert!(
+        app.handle_answer(
+            jobs[0].0,
+            Event::Relationship {
+                id: "id-alice".into(),
+                result: Ok(Relationship {
+                    id: "id-alice".into(),
+                    ..Default::default()
+                })
+            }
+        )
+        .is_empty()
+    );
+    assert!(app.relationships.is_empty());
+}
+
+#[test]
+fn the_shared_browser_returns_to_the_composer_and_tab_edits_alt_text() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("picture.png"), b"test").unwrap();
+    let mut app = with_home(&[]);
+    app.browse_from = Some(dir.path().to_path_buf());
+    press(&mut app, KeyCode::Char('n'));
+    app.handle_key(ctrl('o'));
+    assert!(matches!(&app.overlay, Some(Overlay::Compose(c)) if c.browser.is_some()));
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Tab);
+    app.handle_paste("alt 🐈");
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::Post(d) = &jobs[0].1 else { panic!() };
+    assert!(d.text.is_empty(), "an attachment alone can be posted");
+    assert_eq!(
+        d.files,
+        vec![(dir.path().join("picture.png"), "alt 🐈".into())]
+    );
+    app.handle_answer(jobs[0].0, Event::Posted(Err(Error::api("too large"))));
+    press(&mut app, KeyCode::Esc);
+    assert!(
+        matches!(&app.overlay, Some(Overlay::Compose(c)) if c.media.len() == 1 && c.sending.is_none())
+    );
+    app.handle_key(ctrl('x'));
+    assert!(
+        matches!(&app.overlay, Some(Overlay::Compose(c)) if c.media.is_empty() && c.focus == Field::Text)
+    );
+}
+
+#[test]
+fn browser_cancel_and_mixed_media_never_start_uploads() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.png"), b"test").unwrap();
+    std::fs::write(dir.path().join("b.mp4"), b"test").unwrap();
+    let mut app = with_home(&[]);
+    app.browse_from = Some(dir.path().to_path_buf());
+    press(&mut app, KeyCode::Char('n'));
+    app.handle_key(ctrl('o'));
+    assert!(press(&mut app, KeyCode::Esc).is_empty());
+    assert!(
+        matches!(&app.overlay, Some(Overlay::Compose(c)) if c.browser.is_none() && c.media.is_empty())
+    );
+    app.handle_key(ctrl('o'));
+    press(&mut app, KeyCode::Char(' ')); // a.png, then cursor on b.mp4
+    assert!(press(&mut app, KeyCode::Enter).is_empty());
+    assert!(matches!(&app.overlay, Some(Overlay::Compose(c)) if c.media.is_empty()));
+    assert!(app.message.as_ref().unwrap().error);
+}
+
+#[test]
+fn token_only_sessions_learn_their_identity_before_own_post_deletion() {
+    let (mut app, jobs) = App::new(
+        Some(Session {
+            user_id: String::new(),
+            username: String::new(),
+            ..me()
+        }),
+        "http://127.0.0.1:9",
+    );
+    let identity = jobs.iter().find(|(_, j)| *j == Job::Identity).unwrap().0;
+    app.handle_answer(
+        identity,
+        Event::Identity(Ok(Account {
+            id: "7".into(),
+            username: "me".into(),
+            ..Default::default()
+        })),
+    );
+    let mut own = status("one");
+    own.account.id = "7".into();
+    app.handle_answer(jobs[0].0, page(vec![own], Next::End));
+    press(&mut app, KeyCode::Char('D'));
+    assert!(matches!(&press(&mut app, KeyCode::Char('y'))[0].1, Job::Delete { id } if id == "one"));
 }

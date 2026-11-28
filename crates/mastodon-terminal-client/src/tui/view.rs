@@ -109,6 +109,22 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
         _ => Vec::new(),
     };
     match &mut app.overlay {
+        Some(Overlay::Confirm(c)) => {
+            let title = match c {
+                crate::tui::app::Confirmation::Delete(_) => t("Delete this post?"),
+                crate::tui::app::Confirmation::Relation {
+                    action: crate::tui::worker::RelationAction::Mute,
+                    ..
+                } => t("Toggle mute for this account?"),
+                _ => t("Toggle block for this account?"),
+            };
+            let inner = popup(frame, area, 64, 5, title, &th);
+            frame.render_widget(
+                wrapped(t("y confirms; any other key cancels"), inner.width),
+                inner,
+            );
+        }
+        Some(Overlay::Report(r)) => draw_report(frame, area, r, &th),
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, &th),
         Some(Overlay::Actions { selected }) => {
             draw_choices(frame, body, t("Actions"), &actions, *selected, &th);
@@ -119,6 +135,9 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
         }
         Some(Overlay::Compose(c)) => {
             draw_compose(frame, area, c, counted.unwrap_or((0, 0)), &th);
+            if let Some(b) = &mut c.browser {
+                b.draw(frame, area, images, &th, t);
+            }
         }
         Some(Overlay::Viewer {
             files,
@@ -313,13 +332,24 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
         format!("{} ", t("text"))
     };
     let w = cells(&right) as u16;
-    if let Some(m) = app.message.as_ref().filter(|m| !m.error) {
+    let relationship = app
+        .account_target()
+        .and_then(|a| app.relationships.get(&a.id))
+        .map(App::relationship_label);
+    let message = app
+        .message
+        .as_ref()
+        .filter(|m| !m.error)
+        .map(|m| m.text.as_str());
+    let text = match (relationship, message) {
+        (Some(r), Some(m)) => Some(format!("{r} · {m}")),
+        (Some(r), None) => Some(r),
+        (None, m) => m.map(str::to_owned),
+    };
+    if let Some(text) = text {
         let room = usize::from(area.width.saturating_sub(w + 2));
         frame.render_widget(
-            Line::from(Span::styled(
-                format!(" {}", truncate(&m.text, room)),
-                th.ok(),
-            )),
+            Line::styled(format!(" {}", truncate(&text, room)), th.ok()),
             area,
         );
     }
@@ -1034,8 +1064,22 @@ fn draw_compose(
     }
     let at = lines.len();
     lines.extend(text.lines.iter().map(|l| Line::raw(l.clone())));
-    if c.focus == Field::Text || c.warning.is_none() {
+    if c.focus == Field::Text {
         cursor = Some((at + text.cursor.0, text.cursor.1));
+    }
+    for (i, file) in c.media.iter().enumerate() {
+        lines.push(Line::styled(
+            truncate(&file.path.display().to_string(), inner_w),
+            th.accent(),
+        ));
+        let alt = file.alt.layout(inner_w.saturating_sub(5).max(1));
+        let at = lines.len();
+        for row in &alt.lines {
+            lines.push(Line::raw(format!("{}: {row}", t("Alt"))));
+        }
+        if c.focus == Field::Alt(i) {
+            cursor = Some((at + alt.cursor.0, alt.cursor.1 + cells(t("Alt")) + 2));
+        }
     }
     lines.push(Line::default());
     let count_style = if count > max { th.error() } else { th.dim() };
@@ -1065,6 +1109,7 @@ fn draw_compose(
     frame.render_widget(Paragraph::new(shown), inner);
     if let Some((row, col)) = cursor
         && c.sending.is_none()
+        && c.browser.is_none()
     {
         let row = row.saturating_sub(skip) as u16;
         if row < inner.height {
@@ -1073,6 +1118,55 @@ fn draw_compose(
                 inner.y + row,
             ));
         }
+    }
+}
+
+fn draw_report(frame: &mut Frame, area: Rect, report: &crate::tui::app::Report, th: &Theme) {
+    let inner = popup(
+        frame,
+        area,
+        72,
+        area.height.saturating_sub(4).min(14),
+        t("Report"),
+        th,
+    );
+    let target = match &report.status {
+        Some(id) => format!("{} · {id}", report.shown),
+        None => report.shown.clone(),
+    };
+    let [head, comment, foot] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(1),
+        Constraint::Length(2),
+    ])
+    .areas(inner);
+    frame.render_widget(wrapped(&target, head.width), head);
+    let layout = report.comment.layout(usize::from(comment.width.max(1)));
+    let skip = (layout.cursor.0 + 1).saturating_sub(usize::from(comment.height));
+    frame.render_widget(
+        Paragraph::new(
+            layout
+                .lines
+                .into_iter()
+                .skip(skip)
+                .map(Line::from)
+                .collect::<Vec<_>>(),
+        ),
+        comment,
+    );
+    let hint = if report.sending.is_some() {
+        t("sending report…")
+    } else if report.confirming {
+        t("y confirms; any other key cancels")
+    } else {
+        t("tab comment · enter confirm · esc close")
+    };
+    frame.render_widget(wrapped(hint, foot.width).style(th.accent()), foot);
+    if report.writing && !report.confirming && report.sending.is_none() && comment.height > 0 {
+        frame.set_cursor_position((
+            comment.x + (layout.cursor.1 as u16).min(comment.width.saturating_sub(1)),
+            comment.y + (layout.cursor.0 - skip) as u16,
+        ));
     }
 }
 

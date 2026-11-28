@@ -1,0 +1,723 @@
+# Mocks only. Each write checks method, path and the complete JSON body (DELETE has no body).
+# A distinct process checks declined confirmations. Screens wait after esc to avoid alt-key decoding.
+version: '1'
+suite: {name: tui-actions}
+secrets: [e2e-stage3-fake]
+scenarios:
+- name: follow toggles from a post and from its empty profile
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/follow
+      json: {id: '2', following: true, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/unfollow
+      json: {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: GET
+      path: /api/v1/accounts/2
+      json: {id: '2', acct: bob, username: bob, note: <p>Profile target</p>}
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: f}
+      - expect_screen: {contains: following · not muted · not blocked, not_contains: loading…, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: Profile target, stable_for: 150ms}
+      - {send: f}
+      - expect_screen: {contains: not following · not muted · not blocked, not_contains: loading…, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/follow
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unfollow
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/relationships
+        method: GET
+        count: 1
+        query: {name: 'id[]', equals: '2'}
+- name: follow refusal restores the state
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: true, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/unfollow
+      json: {error: write refused}
+      status: 403
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: f}
+      - expect_screen: {contains: write refused, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: following · not muted · not blocked, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unfollow
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock: {name: api, path: /api/v1/accounts/2/follow, method: POST, count: 0}
+- name: mute toggles from a post and from its empty profile
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/mute
+      json: {id: '2', following: false, requested: false, muting: true, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/unmute
+      json: {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: GET
+      path: /api/v1/accounts/2
+      json: {id: '2', acct: bob, username: bob, note: <p>Profile target</p>}
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: M}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: not following · muted · not blocked, not_contains: loading…, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: Profile target, stable_for: 150ms}
+      - {send: M}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: not following · not muted · not blocked, not_contains: loading…, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/mute
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unmute
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/relationships
+        method: GET
+        count: 1
+        query: {name: 'id[]', equals: '2'}
+- name: mute refusal restores the state
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: true, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/unmute
+      json: {error: write refused}
+      status: 403
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: M}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: write refused, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: not following · muted · not blocked, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unmute
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock: {name: api, path: /api/v1/accounts/2/mute, method: POST, count: 0}
+- name: block toggles from a post and from its empty profile
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/block
+      json: {id: '2', following: false, requested: false, muting: false, blocking: true}
+    - method: POST
+      path: /api/v1/accounts/2/unblock
+      json: {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: GET
+      path: /api/v1/accounts/2
+      json: {id: '2', acct: bob, username: bob, note: <p>Profile target</p>}
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: B}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: not following · not muted · blocked, not_contains: loading…, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: Profile target, stable_for: 150ms}
+      - {send: B}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: not following · not muted · not blocked, not_contains: loading…, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/block
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unblock
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/relationships
+        method: GET
+        count: 1
+        query: {name: 'id[]', equals: '2'}
+- name: block refusal restores the state
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: true}
+    - method: POST
+      path: /api/v1/accounts/2/unblock
+      json: {error: write refused}
+      status: 403
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: B}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: write refused, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: not following · not muted · blocked, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/2/unblock
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock: {name: api, path: /api/v1/accounts/2/block, method: POST, count: 0}
+- name: declining mute block delete and report sends no write
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '7', username: me, acct: me}
+        content: <p>Selected post</p>
+        visibility: public
+      - id: other
+        account: {id: '2', acct: bob, username: bob}
+        content: <p>Other post</p>
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/mute
+      json: {id: '2', following: false, requested: false, muting: true, blocking: false}
+    - method: POST
+      path: /api/v1/accounts/2/block
+      json: {id: '2', following: false, requested: false, muting: false, blocking: true}
+    - method: DELETE
+      path: /api/v1/statuses/s1
+      json: {}
+    - method: POST
+      path: /api/v1/reports
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/2
+      json: {id: '2', acct: bob, username: bob, note: <p>Profile target</p>}
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: D}
+      - expect_screen: {contains: 'Delete this post?', stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {not_contains: 'Delete this post?', stable_for: 150ms}
+      - {send: j}
+      - send: {key: enter}
+      - expect_screen: {contains: Profile target, stable_for: 150ms}
+      - {send: M}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {not_contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: B}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {not_contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: '!'}
+      - expect_screen: {contains: tab comment, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: tab comment, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {not_contains: tab comment, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/accounts/2/mute, method: POST, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/accounts/2/block, method: POST, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/statuses/s1, method: DELETE, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/reports, method: POST, count: 0}
+- name: delete removes the post only after success
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '7', username: me, acct: me}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: DELETE
+      path: /api/v1/statuses/s1
+      json: {}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: D}
+      - expect_screen: {contains: 'Delete this post?', stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: deleted, not_contains: Selected post, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        method: DELETE
+        path: /api/v1/statuses/s1
+        count: 1
+        body: {equals: ''}
+- name: a refused delete keeps the post
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '7', username: me, acct: me}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: DELETE
+      path: /api/v1/statuses/s1
+      json: {error: delete refused}
+      status: 403
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: D}
+      - expect_screen: {contains: 'Delete this post?', stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: delete refused, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        method: DELETE
+        path: /api/v1/statuses/s1
+        count: 1
+        body: {equals: ''}
+- name: report a post with an optional comment
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/reports
+      json: {id: r1}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: '!'}
+      - expect_screen: {contains: tab comment, stable_for: 150ms}
+      - send: {key: tab}
+      - {send: Optional comment}
+      - send: {key: tab}
+      - send: {key: enter}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: reported, not_contains: tab comment, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/reports
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              account_id: '2'
+              comment: Optional comment
+              forward: false
+              status_ids: [s1]
+- name: report the account without a comment
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v1/reports
+      json: {id: r1}
+    - method: GET
+      path: /api/v1/accounts/2
+      json: {id: '2', acct: bob, username: bob, note: <p>Profile target</p>}
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: Profile target, stable_for: 150ms}
+      - {send: '!'}
+      - expect_screen: {contains: tab comment, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: y confirms; any other key cancels, stable_for: 150ms}
+      - {send: y}
+      - expect_screen: {contains: reported, not_contains: tab comment, stable_for: 150ms}
+      - {send: q}
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/reports
+        method: POST
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {account_id: '2', comment: '', forward: false}

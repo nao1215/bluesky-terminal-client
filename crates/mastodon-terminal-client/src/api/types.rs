@@ -320,3 +320,17 @@ mod tests {
         assert_eq!(Limits::from_instance(&json!(null)), Limits::default());
     }
 }
+
+/// The current account's relationship with another account.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+pub(crate) struct Relationship {
+    pub id: String,
+    #[serde(default)]
+    pub following: bool,
+    #[serde(default)]
+    pub requested: bool,
+    #[serde(default)]
+    pub muting: bool,
+    #[serde(default)]
+    pub blocking: bool,
+}
