@@ -159,7 +159,7 @@ fn a_reply_to_another_servers_post_is_fetched_first() {
     let v: Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(
         v,
-        json!({"id": "900", "url": format!("{url}/@me/900"), "uri": "https://m.test/users/me/statuses/900"})
+        json!({"action": "post", "target": null, "id": "900", "url": format!("{url}/@me/900"), "already": false, "uri": "https://m.test/users/me/statuses/900"})
     );
     let log = log.lock().unwrap();
     let s = log.iter().find(|c| c.path() == "/api/v2/search").unwrap();

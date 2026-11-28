@@ -1,0 +1,80 @@
+# The commands, aliases and flags of msky, from its --help.
+# Written by `python3 scripts/rules/cli.py --update`; do not edit by hand.
+# What each is for is in usecases.toml.
+--host
+--json
+accounts
+accounts --use
+author
+author --download
+author --filter
+author --limit (-n)
+author --output (-o)
+author --reposts
+block
+blocks
+blocks --limit (-n)
+chat
+chat --limit (-n)
+delete
+download
+download --output (-o)
+follow
+followers
+followers --limit (-n)
+followers --pending
+follows
+follows --limit (-n)
+follows --pending
+like
+like --reaction
+like [hidden alias react]
+login
+login --timeout
+logout
+logout --all
+mute
+mutes
+mutes --limit (-n)
+note
+notifications
+notifications --limit (-n)
+post
+post --alt
+post --cw
+post --dry-run
+post --image
+post --no-card
+post --quote
+post --reply
+post --video
+post --visibility
+profile
+reactions
+reactions --limit (-n)
+reactions [hidden alias likes]
+renotes
+renotes --limit (-n)
+renotes [hidden alias reposts]
+report
+report --comment
+report --reason
+report --yes (-y)
+repost
+repost [hidden alias renote]
+search
+search --limit (-n)
+servers
+servers --limit (-n)
+thread
+timeline
+timeline --limit (-n)
+timeline --reposts
+unblock
+unfollow
+unlike
+unlike [hidden alias unreact]
+unmute
+unrepost
+unrepost [hidden alias unrenote]
+whoami

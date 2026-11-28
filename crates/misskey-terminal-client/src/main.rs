@@ -200,6 +200,17 @@ mod tests {
         first_paragraph(&e.to_string())
     }
 
+    // -n asks for how many: none is a mistake said before anything is
+    // asked, not an empty answer.
+    #[test]
+    fn a_limit_of_none_is_a_usage_error() {
+        assert_eq!(
+            usage_error(&["msky", "timeline", "-n", "0"]),
+            "invalid value '0' for '--limit <LIMIT>': it is how many to list, so 1 or more"
+        );
+        assert!(Cli::try_parse_from(["msky", "timeline", "-n", "1"]).is_ok());
+    }
+
     // clap names the missing arguments on the lines after the first; the
     // message must keep them, or it tells the user something is missing
     // without saying what.

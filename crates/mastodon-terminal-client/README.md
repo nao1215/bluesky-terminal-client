@@ -102,13 +102,13 @@ For a job with no one at the keyboard, set `MSTDN_TOKEN` to an access token made
 
 ## JSON
 
-`--json` prints one post a line, in the same shape for every command:
+`--json` prints one post a line, in the shape bsky and msky print too ([doc/json.md](https://github.com/nao1215/social-terminal-clients/blob/main/doc/json.md) lists every key):
 
 ```json
-{"content":"<p>山の写真 🏔️</p>","createdAt":"2026-11-26T10:54:49.672Z","cw":null,"favouritesCount":19,"files":[{"description":"a mountain","id":"113","previewUrl":"https://files.example/small/a.jpg","type":"image","url":"https://files.example/original/a.jpg"}],"id":"113562","language":"ja","mentions":[],"poll":null,"reblog":null,"reblogsCount":3,"repliesCount":1,"replyId":null,"sensitive":false,"tags":[],"text":"山の写真 🏔️","uri":"https://mastodon.social/users/alice/statuses/113562","url":"https://mastodon.social/@alice/113562","user":{"host":"mastodon.social","id":"1","name":"Alice","username":"alice"},"visibility":"public"}
+{"content":"<p>山の写真 🏔️</p>","createdAt":"2026-11-26T10:54:49.672Z","cw":null,"files":[{"description":"a mountain","id":"113","mime":null,"previewUrl":"https://files.example/small/a.jpg","type":"image","url":"https://files.example/original/a.jpg"}],"id":"113562","language":"ja","likeCount":19,"mentions":[],"poll":null,"quoteId":null,"repliesCount":1,"replyId":null,"repostCount":3,"repostOf":null,"sensitive":false,"tags":[],"text":"山の写真 🏔️","uri":"https://mastodon.social/users/alice/statuses/113562","url":"https://mastodon.social/@alice/113562","user":{"host":"mastodon.social","id":"1","name":"Alice","username":"alice"},"visibility":"public"}
 ```
 
-`text` is the HTML read as text and `content` the HTML itself. `notifications` prints `{"id", "createdAt", "type", "user", "status"}`, `profile` and `whoami` an account, `post` `{"id", "url", "uri"}`, and `download` one line a file, `{"status", "kind", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
+`text` is the HTML read as text and `content` the HTML itself; `likeCount` counts the favourites and `repostCount` the boosts, and a boost holds the post it boosts in `repostOf`. `notifications` prints `{"id", "createdAt", "type", "user", "postId", "post"}`, a favourite as the `type` `like` and a boost as `repost`; `profile` and `whoami` an account; `post` `{"action", "target", "id", "url", "already", "uri"}`; and `download` one line a file, `{"postId", "type", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
 
 When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more times, after its `Retry-After` or `X-RateLimit-Reset`, or after 1, 2 and 4 seconds. A write is never sent again.
 

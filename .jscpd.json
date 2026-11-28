@@ -1,0 +1,9 @@
+{
+  "path": ["crates/bluesky-terminal-client/src", "crates/misskey-terminal-client/src", "crates/mastodon-terminal-client/src", "crates/terminal-kit/src"],
+  "format": ["rust"],
+  "minTokens": 100,
+  "minLines": 10,
+  "ignore": ["**/tests.rs", "**/tests/**", "**/*_tests.rs", "**/fuzz/**"],
+  "reporters": ["console"],
+  "noTips": true
+}

@@ -51,7 +51,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: '"path":"写真(/|\\\\)299-1 \(1\)\.png","status":"http://127\.0\.0\.1:[0-9]+/@bob@far\.test/299","url":"http://127\.0\.0\.1:[0-9]+/files/original/a\.png"'
+            matches: '"path":"写真(/|\\\\)299-1 \(1\)\.png","postId":"299","type":"image","url":"http://127\.0\.0\.1:[0-9]+/files/original/a\.png"'
       - run:
           command: mstdn download 301 --host ${api.url}
           env:

@@ -1,7 +1,7 @@
 # The Misskey side of the rest of bsky's commands, against an atago mock
 # as the account of MSKY_TOKEN: thread, profile, reactions (bsky's likes),
 # renotes (reposts), like and unlike, repost and unrepost, delete, mute and
-# block with their lists. The token is a throwaway value.
+# block with their lists, and the list of chats. The token is a throwaway value.
 version: "1"
 
 suite:
@@ -92,7 +92,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"id\":\"rn1\",\"uri\":\"${api.url}/notes/rn1\"}\n"
+            equals: "{\"action\":\"repost\",\"already\":false,\"id\":\"rn1\",\"target\":\"n\",\"url\":\"${api.url}/notes/rn1\"}\n"
       - run:
           command: msky delete n --host ${api.url}
           env: *env
@@ -113,7 +113,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"id\":\"u-bob\"}\n"
+            equals: "{\"action\":\"block\",\"already\":false,\"id\":null,\"target\":\"u-bob\",\"url\":null}\n"
       - assert:
           mock:
             name: api
@@ -129,6 +129,144 @@ scenarios:
           exit_code: 0
           stdout:
             equals: "ボブ @bob@x.test  ${api.url}/@bob@x.test\n"
+
+  - name: unlike, unrepost, unmute and unblock take back once each, and renotes and blocks list what they read
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/reactions/delete, status: 204, body: "" }
+          - { method: POST, path: /api/notes/unrenote, status: 204, body: "" }
+          - { method: POST, path: /api/users/show, json: { id: u-bob, username: bob, host: x.test } }
+          - { method: POST, path: /api/mute/delete, status: 204, body: "" }
+          - { method: POST, path: /api/blocking/delete, status: 204, body: "" }
+          - method: POST
+            path: /api/notes/renotes
+            json:
+              - { id: rn1, createdAt: "2026-11-26T12:00:00.000Z", renoteId: n, user: { username: cat } }
+          - method: POST
+            path: /api/blocking/list
+            json:
+              - { id: b1, blockee: { id: u-bob, username: bob, host: x.test, name: "ボブ" } }
+    steps:
+      - run:
+          command: msky unlike n --host ${api.url}
+          env: &env2
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "took back the reaction to ${api.url}/notes/n\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/reactions/delete
+            count: 1
+            body:
+              json: { path: "$.noteId", equals: n }
+      - run:
+          command: msky unrepost n --json --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.deleted", equals: n }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/unrenote
+            count: 1
+            body:
+              json: { path: "$.noteId", equals: n }
+      - run:
+          command: msky unmute @bob@x.test --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "unmuted @bob@x.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/mute/delete
+            count: 1
+            body:
+              json: { path: "$.userId", equals: u-bob }
+      - run:
+          command: msky unblock bob@x.test --json --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"deleted\":\"u-bob\"}\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/blocking/delete
+            count: 1
+            body:
+              json: { path: "$.userId", equals: u-bob }
+      - run:
+          command: msky renotes n --json --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.id", equals: rn1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/renotes
+            body:
+              json: { path: "$.noteId", equals: n }
+      - run:
+          command: msky blocks --host ${api.url}
+          env: *env2
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "ボブ @bob@x.test  ${api.url}/@bob@x.test\n"
+
+  - name: chat lists the latest message of each conversation, newest first, asking for accounts and rooms
+    # A route answers by its path alone, so the rooms are asked for the same
+    # list; what is checked is the order, the lines, and the two requests.
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/chat/history
+            json:
+              - { id: c1, createdAt: "2026-11-26T09:00:00.000Z", fromUserId: u-ann, fromUser: { id: u-ann, username: ann }, toUserId: u-me, text: "こんにちは 👋" }
+              - { id: c2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob, host: x.test }, toUserId: u-me, text: "返事 👨‍👩‍👧" }
+    steps:
+      - run:
+          command: msky chat -n 2 --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0501
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              @bob@x.test · 2026-11-26 10:00
+              返事 👨‍👩‍👧
+              @bob@x.test · 2026-11-26 10:00
+              返事 👨‍👩‍👧
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/history
+            where:
+              body:
+                json: { path: "$.room", equals: false }
+            count: 1
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/history
+            where:
+              body:
+                json: { path: "$.room", equals: true }
+            count: 1
 
   - name: report sends nothing until confirmed, and with --yes reports the note's author with its address
     mock_servers:

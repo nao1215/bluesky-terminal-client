@@ -110,6 +110,49 @@ struct ErrorDetail {
     message: String,
 }
 
+impl ErrorDetail {
+    /// What `text`, the body of an answer with an error status, says.
+    /// Misskey writes `{"error": {"code", "message"}}`; what stands in
+    /// front of it (a proxy, a gateway, a server that is not Misskey)
+    /// writes `{"error": "..."}`, `{"message": "..."}` or a line of text,
+    /// which is said as the message rather than lost behind the status.
+    fn of(text: &str) -> Self {
+        let Ok(v) = serde_json::from_str::<Value>(text) else {
+            let line = text.trim();
+            let plain = !line.is_empty()
+                && !line.starts_with('<')
+                && !line.contains('\n')
+                && line.chars().count() <= 200;
+            return Self {
+                message: if plain {
+                    line.to_string()
+                } else {
+                    String::new()
+                },
+                ..Self::default()
+            };
+        };
+        if let Ok(ErrorBody { error }) = serde_json::from_value::<ErrorBody>(v.clone())
+            && !(error.code.is_empty() && error.message.is_empty())
+        {
+            return error;
+        }
+        let said = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+        };
+        Self {
+            code: String::new(),
+            message: said("error")
+                .or_else(|| said("message"))
+                .unwrap_or_default()
+                .to_string(),
+        }
+    }
+}
+
 /// Waits before a call is tried again; the tests wait without sleeping.
 type Wait = Arc<dyn Fn(Duration, &str) + Send + Sync>;
 
@@ -230,8 +273,8 @@ impl Client {
                     .map(Answer::Took)
                     .map_err(|e| Error::api(format!("{endpoint}: unexpected answer: {e}")));
             }
-            let err: ErrorBody = serde_json::from_str(&text).unwrap_or_default();
-            let limited = status == 429 || err.error.code == "RATE_LIMIT_EXCEEDED";
+            let detail = ErrorDetail::of(&text);
+            let limited = status == 429 || detail.code == "RATE_LIMIT_EXCEEDED";
             let busy = matches!(status, 502..=504);
             if retry && (limited || busy) && attempt < MAX_RETRIES {
                 let wait = retry_after
@@ -242,10 +285,7 @@ impl Client {
                 attempt += 1;
                 continue;
             }
-            return Ok(Answer::Refused(Refusal {
-                status,
-                detail: err.error,
-            }));
+            return Ok(Answer::Refused(Refusal { status, detail }));
         }
     }
 
@@ -946,6 +986,29 @@ fn wait_and_say(wait: Duration, host: &str) {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    // What a server writes with an error status is said, whoever wrote
+    // it: Misskey's own shape, a proxy's `{"error": "..."}` or
+    // `{"message": "..."}`, a line of text; a page of HTML or nothing at
+    // all leaves the status.
+    #[rstest]
+    #[case(
+        r#"{"error":{"code":"NO_SUCH_NOTE","message":"No such note."}}"#,
+        "NO_SUCH_NOTE: No such note."
+    )]
+    #[case(r#"{"error":"Internal Server Error"}"#, "Internal Server Error")]
+    #[case(r#"{"message":"upstream timed out 🕐"}"#, "upstream timed out 🕐")]
+    #[case("Service Unavailable", "Service Unavailable")]
+    #[case("<html><body>502 Bad Gateway</body></html>", "HTTP 500")]
+    #[case("", "HTTP 500")]
+    #[case(r#"{"error":{}}"#, "HTTP 500")]
+    fn a_refusal_says_what_the_server_wrote(#[case] body: &str, #[case] want: &str) {
+        let r = Refusal {
+            status: 500,
+            detail: ErrorDetail::of(body),
+        };
+        assert_eq!(r.said(), want);
+    }
 
     #[rstest]
     #[case("misskey.io", "https://misskey.io")]

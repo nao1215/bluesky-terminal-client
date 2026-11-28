@@ -25,6 +25,16 @@ use crate::error::{Error, Result};
 use crate::i18n::{t, tf};
 use crate::{browser, download, oauth};
 
+/// What `-n` takes: how many to list, one at least. `-n 0` asks for
+/// nothing, which is a mistake to say rather than an empty answer.
+fn at_least_one(s: &str) -> std::result::Result<usize, String> {
+    match s.trim().parse::<usize>() {
+        Ok(0) => Err("it is how many to list, so 1 or more".into()),
+        Ok(n) => Ok(n),
+        Err(_) => Err("it is how many to list, a whole number of 1 or more".into()),
+    }
+}
+
 /// The commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
@@ -35,7 +45,7 @@ pub(crate) enum Command {
     /// posts or the account has no more.
     Author {
         actor: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Which of the account's posts.
         #[arg(long, value_enum, default_value_t = AuthorFilter::WithReplies)]
@@ -68,7 +78,7 @@ pub(crate) enum Command {
     /// and those of accounts that opted in).
     Search {
         query: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// Save the files attached to a post in the download folder.
@@ -94,7 +104,7 @@ pub(crate) enum Command {
     Timeline {
         #[arg(value_enum, default_value_t = TimelineKind::Home)]
         kind: TimelineKind,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Keep the boosts too.
         #[arg(long)]
@@ -103,7 +113,7 @@ pub(crate) enum Command {
     /// Your notifications, newest first.
     #[command(visible_alias = "notif")]
     Notifications {
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// The account logged in on the server.
@@ -728,7 +738,7 @@ fn author(
     if let Some(dir) = save_in {
         let agent = api::agent();
         for s in &statuses {
-            save_files(ctx, out, &agent, client.origin(), s, &dir)?;
+            save_files(ctx, out, &agent, s, &dir)?;
         }
         return Ok(());
     }
@@ -750,24 +760,12 @@ fn print_statuses(ctx: &Ctx, out: &mut dyn Write, origin: &str, statuses: &[Stat
     Ok(())
 }
 
-/// What a file is, as `download --json` says it: `image`, `video`,
-/// `audio`, or `file`; a GIF Mastodon made a video is a video.
-fn kind(m: &str) -> &'static str {
-    match m {
-        "image" => "image",
-        "video" | "gifv" => "video",
-        "audio" => "audio",
-        _ => "file",
-    }
-}
-
 /// Save every file `s` carries (that of the status it boosts, for a boost)
 /// in `dir`, printing each as it is written.
 fn save_files(
     ctx: &Ctx,
     out: &mut dyn Write,
     agent: &ureq::Agent,
-    origin: &str,
     s: &Status,
     dir: &std::path::Path,
 ) -> Result<()> {
@@ -778,8 +776,8 @@ fn save_files(
             json_line(
                 out,
                 &json!({
-                    "status": format::status_url(origin, owner),
-                    "kind": kind(&m.kind),
+                    "postId": owner.id,
+                    "type": format::file_type(&m.kind),
                     "url": m.source(),
                     "path": shown,
                 }),
@@ -909,7 +907,7 @@ fn download_status(
             format::status_url(client.origin(), s.shown())
         )));
     }
-    save_files(ctx, out, &api::agent(), client.origin(), &s, dir)
+    save_files(ctx, out, &api::agent(), &s, dir)
 }
 
 fn timeline(
@@ -1104,7 +1102,7 @@ fn login(
     if ctx.json {
         return json_line(
             out,
-            &json!({"id": saved.user_id, "username": saved.username, "host": host}),
+            &json!({"id": saved.user_id, "username": saved.username, "host": host, "service": saved.service}),
         );
     }
     text(

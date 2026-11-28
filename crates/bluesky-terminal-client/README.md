@@ -118,6 +118,8 @@ bsky download https://bsky.app/profile/alice.bsky.social/post/3l... -o pics
 
 `bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `bsky download` saves a post's pictures and video where `d` in the viewer does, and `bsky author ... --download` saves those of every post it read. `bsky --help` lists them all.
 
+`--json` prints one object a line in the shape msky and mstdn print ([doc/json.md](https://github.com/nao1215/social-terminal-clients/blob/main/doc/json.md) lists every key): a post's `id` and `uri` are its at:// URI and `url` its page on bsky.app. `--raw` prints the server's own objects instead, as `--json` did in 0.15.0 and earlier.
+
 ## Environment
 
 | Variable | Meaning |
