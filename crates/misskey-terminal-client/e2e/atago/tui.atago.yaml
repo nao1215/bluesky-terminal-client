@@ -151,8 +151,12 @@ scenarios:
                 images: *both
                 stable_for: 500ms
             - send: "2"
+            # Held longer than msky waits before reading ahead the thread
+            # of the note the selection rests on: a slow runner rested
+            # there that long anyway and read it, and a fast one did not.
             - expect_screen:
                 contains: "ローカルのノート"
+                stable_for: 1s
             - send: "4"
             - expect_screen:
                 contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
@@ -192,15 +196,16 @@ scenarios:
               json:
                 - { path: "$.untilId", equals: q1 }
       # The first note's thread was read ahead while the pictures were
-      # waited for; v on the renote then read its own.
+      # waited for, v on the renote read its own, and the local note's was
+      # read ahead last, while the Local tab was held.
       - assert:
           mock:
             name: api
             path: /api/notes/show
-            count: 2
+            count: 3
             body:
               json:
-                - { path: "$.noteId", equals: o1 }
+                - { path: "$.noteId", equals: l1 }
       # The renoted note answers nothing and has no replies: nothing more
       # is asked for its thread.
       - assert:
