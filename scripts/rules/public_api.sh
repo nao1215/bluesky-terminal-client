@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-TOOLCHAIN="${PUBLIC_API_TOOLCHAIN:-nightly-2026-09-28}"
+TOOLCHAIN="${RUSTDOC_JSON_NIGHTLY:-nightly-2026-09-28}"
 LIST="$ROOT/crates/terminal-kit/public-api.txt"
 
 if ! command -v cargo-public-api >/dev/null 2>&1; then

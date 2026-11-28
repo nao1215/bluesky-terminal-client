@@ -137,5 +137,5 @@ jobs:
 
       - name: terminal-kit's public API
         env:
-          PUBLIC_API_TOOLCHAIN: nightly-2026-09-28
+          RUSTDOC_JSON_NIGHTLY: nightly-2026-09-28
         run: ./scripts/rules/public_api.sh
