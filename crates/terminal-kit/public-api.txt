@@ -1,10 +1,14 @@
 pub mod terminal_kit
+pub mod terminal_kit::browser
+pub fn terminal_kit::browser::open(&str, &str, core::option::Option<&str>) -> bool
 pub mod terminal_kit::clipboard
 pub fn terminal_kit::clipboard::osc52(&str) -> alloc::string::String
 pub mod terminal_kit::clock
 pub fn terminal_kit::clock::local_time(&str) -> alloc::string::String
 pub mod terminal_kit::columns
 pub fn terminal_kit::columns::visible(ratatui_core::layout::rect::Rect, usize, usize, u16) -> alloc::vec::Vec<(usize, ratatui_core::layout::rect::Rect)>
+pub mod terminal_kit::confirm
+pub fn terminal_kit::confirm::ask(&mut dyn alloc::io::buf_read::BufRead, &mut dyn core::io::write::Write, &str) -> core::io::error::Result<bool>
 pub mod terminal_kit::dwell
 pub struct terminal_kit::dwell::Dwell(_)
 impl terminal_kit::dwell::Dwell
@@ -22,6 +26,7 @@ pub fn terminal_kit::emoji::with_emoji_cells(&str, &mut dyn core::ops::function:
 pub mod terminal_kit::events
 pub struct terminal_kit::events::Input
 impl terminal_kit::events::Input
+pub fn terminal_kit::events::Input::drain(&mut self, usize, core::time::Duration, impl core::ops::function::FnMut(crossterm::event::Event) -> bool) -> core::io::error::Result<usize>
 pub fn terminal_kit::events::Input::new() -> core::io::error::Result<terminal_kit::events::Input>
 pub fn terminal_kit::events::Input::next(&mut self, core::time::Duration) -> core::io::error::Result<core::option::Option<crossterm::event::Event>>
 pub mod terminal_kit::files

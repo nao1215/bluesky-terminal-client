@@ -45,3 +45,7 @@ pub mod media;
 pub mod files;
 
 pub mod locale;
+
+pub mod confirm;
+
+pub mod browser;
