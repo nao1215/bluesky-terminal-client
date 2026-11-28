@@ -6,6 +6,7 @@
 //! in use, as the commands do; as that account, or as a visitor.
 
 pub(crate) mod app;
+pub(crate) mod columns;
 pub(crate) mod keys;
 pub(crate) mod list;
 pub(crate) mod theme;
@@ -84,6 +85,9 @@ pub(crate) fn run(
             app.fail(e.message().to_string());
         }
         None => app.apply_settings(None, depth),
+    }
+    for (seq, job) in app.load_deck() {
+        worker.send(seq, job);
     }
     let default_hook = std::panic::take_hook();
     let setup_failed = |e: io::Error| {
@@ -256,6 +260,12 @@ fn event_loop(
                 worker.send(seq, job);
             }
             dirty = true;
+        }
+        for (seq, job) in app.poll_chat(Instant::now()) {
+            worker.send(seq, job);
+        }
+        for (seq, job) in app.poll_read_ahead(Instant::now()) {
+            worker.send(seq, job);
         }
         if images.poll() {
             dirty = true;

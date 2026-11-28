@@ -11,6 +11,9 @@
 //! (`Retry-After`, else `X-RateLimit-Reset`), a few times; a write is sent
 //! once, and anything else is returned at once.
 
+mod chat;
+mod deck;
+pub(crate) mod profile;
 pub(crate) mod types;
 
 #[cfg(test)]
@@ -621,7 +624,11 @@ impl Client {
         if let Some(d) = description.filter(|d| !d.is_empty()) {
             fields.push(("description", d));
         }
-        let body = multipart(&boundary, &fields, name, mime_of(name, &data), &data);
+        let body = multipart(
+            &boundary,
+            &fields,
+            &[("file", name, mime_of(name, &data), &data)],
+        );
         let answer = self.exchange(path, false, &|| {
             let req = self
                 .agent
@@ -865,29 +872,30 @@ fn mime_of(name: &str, data: &[u8]) -> &'static str {
 fn multipart(
     boundary: &str,
     fields: &[(&str, &str)],
-    name: &str,
-    mime: &str,
-    data: &[u8],
+    files: &[(&str, &str, &str, &[u8])],
 ) -> Vec<u8> {
-    let mut body = Vec::with_capacity(data.len() + 512);
+    let mut body = Vec::new();
     for (k, v) in fields {
         body.extend_from_slice(
             format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n")
                 .as_bytes(),
         );
     }
-    let shown = name
-        .replace('"', "%22")
-        .replace('\r', "%0D")
-        .replace('\n', "%0A");
-    body.extend_from_slice(
+    for (field, name, mime, data) in files {
+        let shown = name
+            .replace('"', "%22")
+            .replace('\r', "%0D")
+            .replace('\n', "%0A");
+        body.extend_from_slice(
         format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{shown}\"\r\nContent-Type: {mime}\r\n\r\n"
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{shown}\"\r\nContent-Type: {mime}\r\n\r\n"
         )
         .as_bytes(),
     );
-    body.extend_from_slice(data);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
     body
 }
 

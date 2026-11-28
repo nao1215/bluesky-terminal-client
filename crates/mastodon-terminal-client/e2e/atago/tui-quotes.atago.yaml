@@ -1,0 +1,238 @@
+version: '1'
+suite:
+  name: mstdn quotes
+scenarios:
+- name: quote with followers approval
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json:
+        version: 4.5.0
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: '10'
+        visibility: public
+        account:
+          acct: alice
+        content: <p>Original post</p>
+        quote_approval:
+          current_user: automatic
+        quote:
+          state: accepted
+          quoted_status:
+            id: '9'
+            content: <p>Nested quote</p>
+            account:
+              acct: bob
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: '20'
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-quote","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Original post
+          - Nested quote
+          stable_for: 500ms
+      - send: Q
+      - expect_screen:
+          contains: Quote post
+      - send: Commentary
+      - send:
+          key: ctrl-q
+      - send:
+          key: ctrl-q
+      - expect_screen:
+          contains: 'Quote approval: followers only'
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: posted
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/statuses
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              status: Commentary
+              visibility: public
+              quoted_status_id: '10'
+              quote_approval_policy: followers
+        header:
+          name: Idempotency-Key
+          matches: ^mstdn-
+- name: cancel quote
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json:
+        version: 4.5.0
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: '10'
+        visibility: public
+        account:
+          acct: alice
+        content: <p>Original post</p>
+        quote_approval:
+          current_user: automatic
+        quote:
+          state: accepted
+          quoted_status:
+            id: '9'
+            content: <p>Nested quote</p>
+            account:
+              acct: bob
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: '20'
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-quote","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Original post
+          - Nested quote
+          stable_for: 500ms
+      - send: Q
+      - expect_screen:
+          contains: Quote post
+      - send: Commentary
+      - send:
+          key: ctrl-q
+      - send:
+          key: ctrl-q
+      - expect_screen:
+          contains: 'Quote approval: followers only'
+      - send:
+          key: esc
+      - expect_screen:
+          not_contains: Quote post
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/statuses
+        count: 0
+- name: older server refuses quotes
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json:
+        version: 4.4.9
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: '10'
+        visibility: public
+        account:
+          acct: alice
+        content: <p>Original post</p>
+        quote_approval:
+          current_user: automatic
+        quote:
+          state: accepted
+          quoted_status:
+            id: '9'
+            content: <p>Nested quote</p>
+            account:
+              acct: bob
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: '20'
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-quote","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 140
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Original post
+          - Nested quote
+          stable_for: 500ms
+      - send: Q
+      - expect_screen:
+          contains: this server does not support quote posts
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/statuses
+        count: 0
