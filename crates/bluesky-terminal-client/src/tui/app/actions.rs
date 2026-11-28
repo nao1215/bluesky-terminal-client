@@ -264,7 +264,7 @@ impl App {
 
     /// Text waiting to go to the terminal's clipboard, taken by the event
     /// loop that owns the terminal.
-    pub fn take_copy(&mut self) -> Option<String> {
+    pub(crate) fn take_copy(&mut self) -> Option<String> {
         self.to_copy.take()
     }
 

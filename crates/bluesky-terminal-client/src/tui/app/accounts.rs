@@ -85,17 +85,17 @@ impl App {
     }
 
     /// Why an account could not be switched to or logged out.
-    pub fn account_error(&mut self, why: String) {
+    pub(crate) fn account_error(&mut self, why: String) {
         self.error(why);
     }
 
     /// The account the list asked to switch to, for the event loop.
-    pub fn take_account_switch(&mut self) -> Option<String> {
+    pub(crate) fn take_account_switch(&mut self) -> Option<String> {
         self.account_switch.take()
     }
 
     /// The account the list asked to log out, for the event loop.
-    pub fn take_account_logout(&mut self) -> Option<String> {
+    pub(crate) fn take_account_logout(&mut self) -> Option<String> {
         self.account_logout.take()
     }
 
@@ -103,7 +103,7 @@ impl App {
     /// before goes, as it does when another account logs in, and the new
     /// one's lists are asked for. The event loop has given the worker the
     /// session already, so nothing is asked of the account before.
-    pub fn switched_to(&mut self, session: Session) -> Vec<Job> {
+    pub(crate) fn switched_to(&mut self, session: Session) -> Vec<Job> {
         let other = self.session.as_ref().is_none_or(|s| s.did != session.did);
         self.remember_account(&session);
         self.info(tf("now @{}", &[&session.handle]));
@@ -124,7 +124,7 @@ impl App {
 
     /// The account `did` was logged out; `next` is the one in use now, if
     /// any is left. Without one, the login form comes back.
-    pub fn logged_out(&mut self, did: &str, next: Option<Session>) -> Vec<Job> {
+    pub(crate) fn logged_out(&mut self, did: &str, next: Option<Session>) -> Vec<Job> {
         let handle = self
             .accounts
             .iter()

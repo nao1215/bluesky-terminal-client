@@ -4,7 +4,7 @@
 
 use crate::api::types::{ChatMessage, Convo, Media, Notification, Post, Profile, ThreadNode};
 
-pub use crate::clock::local_time as time;
+pub(super) use crate::clock::local_time as time;
 use crate::tui::text::drawable;
 
 /// Text someone wrote, as text only: a control character in it would reach
@@ -32,7 +32,7 @@ fn who(p: &Profile) -> String {
 }
 
 /// A post: who and when, its text, what it carries, its counts, its URI.
-pub fn post(p: &Post) -> String {
+pub(super) fn post(p: &Post) -> String {
     post_indented(p, "")
 }
 
@@ -85,7 +85,7 @@ fn post_indented(p: &Post, pad: &str) -> String {
 
 /// A thread: the posts above the one asked for, it, then its replies,
 /// each level of reply indented by two spaces.
-pub fn thread(node: &ThreadNode) -> String {
+pub(super) fn thread(node: &ThreadNode) -> String {
     let mut above = Vec::new();
     let mut cur = match node {
         ThreadNode::Post { parent, .. } => parent.as_deref(),
@@ -127,7 +127,7 @@ fn replies(node: &ThreadNode, depth: usize, out: &mut String) {
 }
 
 /// A notification: who did what, when, and what it is about.
-pub fn notification(n: &Notification, text: Option<&str>) -> String {
+pub(super) fn notification(n: &Notification, text: Option<&str>) -> String {
     let did = match n.reason.as_str() {
         "like" => "liked your post",
         "repost" => "reposted your post",
@@ -154,7 +154,7 @@ pub fn notification(n: &Notification, text: Option<&str>) -> String {
 }
 
 /// One line for an account in a list.
-pub fn account_line(p: &Profile) -> String {
+pub(super) fn account_line(p: &Profile) -> String {
     let following = if p.following_uri().is_some() {
         "  (following)"
     } else {
@@ -165,7 +165,7 @@ pub fn account_line(p: &Profile) -> String {
 
 /// A list: its name, what it is for and how many are in it, its
 /// description, its at:// URI.
-pub fn list(v: &serde_json::Value) -> String {
+pub(super) fn list(v: &serde_json::Value) -> String {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
     let purpose = match s("purpose").rsplit('#').next().unwrap_or("") {
         "curatelist" => "curation list",
@@ -195,7 +195,7 @@ pub fn list(v: &serde_json::Value) -> String {
 }
 
 /// A profile.
-pub fn profile(p: &Profile) -> String {
+pub(super) fn profile(p: &Profile) -> String {
     let mut out = format!("{}\n{}\n", who(p), one_line(&p.did));
     out.push_str(&format!(
         "{} followers  {} following  {} posts\n",
@@ -213,7 +213,7 @@ pub fn profile(p: &Profile) -> String {
 }
 
 /// Who a conversation is with: everyone in it but `me`.
-pub fn convo_with(c: &Convo, me: &str) -> String {
+pub(super) fn convo_with(c: &Convo, me: &str) -> String {
     let others: Vec<String> = c.others(me).iter().map(|p| who(p)).collect();
     if others.is_empty() {
         "(just you)".to_string()
@@ -223,7 +223,7 @@ pub fn convo_with(c: &Convo, me: &str) -> String {
 }
 
 /// A conversation in the list: who, how many unread, its last message.
-pub fn convo(c: &Convo, me: &str) -> String {
+pub(super) fn convo(c: &Convo, me: &str) -> String {
     let unread = if c.unread_count > 0 {
         format!("  ({} new)", c.unread_count)
     } else {
@@ -243,7 +243,7 @@ pub fn convo(c: &Convo, me: &str) -> String {
 }
 
 /// A message: who and when, then its text.
-pub fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
+pub(super) fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
     let who = if m.sender == me {
         "you".to_string()
     } else {
@@ -266,7 +266,7 @@ pub fn message(m: &ChatMessage, me: &str, c: &Convo) -> String {
 
 /// The actor and record key of a bsky.app address of `kind` (`post`,
 /// `feed` or `lists`): `https://bsky.app/profile/<actor>/<kind>/<rkey>`.
-pub fn bsky_app_path(url: &str, kind: &str) -> Option<(String, String)> {
+pub(super) fn bsky_app_path(url: &str, kind: &str) -> Option<(String, String)> {
     let rest = url
         .trim()
         .strip_prefix("https://")
@@ -392,7 +392,10 @@ mod tests {
                 }],
             }),
         ] {
-            assert!(!out.chars().any(|c| c.is_control() && c != '\n'), "{out:?}");
+            assert!(
+                !out.chars().any(|c| c.is_control() && c != '\n'),
+                "a control character reached the output"
+            );
         }
         let first = post(&p);
         assert!(

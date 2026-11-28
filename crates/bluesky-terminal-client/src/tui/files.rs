@@ -17,7 +17,7 @@ use crate::video::is_video_name;
 
 /// What an entry of the listing is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EntryKind {
+pub(crate) enum EntryKind {
     /// `..`, the folder above.
     Parent,
     Dir,
@@ -27,7 +27,7 @@ pub enum EntryKind {
 
 /// One line of the listing.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub name: String,
     pub path: PathBuf,
     pub kind: EntryKind,
@@ -37,7 +37,7 @@ pub struct Entry {
 
 /// What the browser asks of whoever opened it.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Action {
+pub(crate) enum Action {
     None,
     /// Close without choosing.
     Close,
@@ -47,7 +47,7 @@ pub enum Action {
 
 /// The browser's state.
 #[derive(Debug, Clone)]
-pub struct Browser {
+pub(crate) struct Browser {
     pub dir: PathBuf,
     pub list: List<Entry>,
     /// Whether names starting with a dot are listed.
@@ -92,7 +92,7 @@ fn without_dot_dot(dir: PathBuf) -> PathBuf {
 impl Browser {
     /// Open at `dir`, where at most `room` pictures, or a video when
     /// `videos`, may be chosen.
-    pub fn open(dir: &Path, room: usize, videos: bool) -> Self {
+    pub(crate) fn open(dir: &Path, room: usize, videos: bool) -> Self {
         let mut b = Self {
             dir: without_dot_dot(std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf())),
             list: List::default(),
@@ -111,7 +111,7 @@ impl Browser {
     }
 
     /// Open at `dir` to choose a folder.
-    pub fn folder(dir: &Path) -> Self {
+    pub(crate) fn folder(dir: &Path) -> Self {
         let mut b = Self::open(dir, 1, false);
         b.folders = true;
         b.read(None);
@@ -119,12 +119,12 @@ impl Browser {
     }
 
     /// The selected entry.
-    pub fn current(&self) -> Option<&Entry> {
+    pub(crate) fn current(&self) -> Option<&Entry> {
         self.list.current()
     }
 
     /// What the selected file is.
-    pub fn current_info(&self) -> Option<media::Info> {
+    pub(crate) fn current_info(&self) -> Option<media::Info> {
         let e = self.current().filter(|e| e.kind == EntryKind::Media)?;
         self.info.get(&e.path).copied()
     }
@@ -296,7 +296,7 @@ impl Browser {
     }
 
     /// Handle a key.
-    pub fn key(&mut self, key: KeyEvent) -> Action {
+    pub(crate) fn key(&mut self, key: KeyEvent) -> Action {
         self.note = None;
         if self.naming.is_some() {
             self.naming_key(key);

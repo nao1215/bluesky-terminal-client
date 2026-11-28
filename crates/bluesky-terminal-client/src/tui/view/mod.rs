@@ -94,7 +94,7 @@ const MIN_W: u16 = 24;
 const MIN_H: u16 = 8;
 
 /// Draw the whole UI.
-pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
+pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_screen(frame, app, images);
     keep_wide_cells_whole(frame.buffer_mut());
 }

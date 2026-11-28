@@ -17,19 +17,19 @@ use crate::mfm;
 use crate::text::{drawable, one_line};
 
 /// The most characters a content warning may have (`notes/create`'s `cw`).
-pub const MAX_CW_CHARS: usize = 100;
+pub(super) const MAX_CW_CHARS: usize = 100;
 /// The most characters a file's alt text may have (`drive/files/create`'s
 /// `comment`).
-pub const MAX_ALT_CHARS: usize = 512;
+pub(super) const MAX_ALT_CHARS: usize = 512;
 /// The most pictures a post has, as bsky's `post` takes them.
-pub const MAX_IMAGES: usize = 4;
+pub(super) const MAX_IMAGES: usize = 4;
 /// The language the preview is asked in, as Misskey's web client asks for
 /// it when the account sets none.
-pub const PREVIEW_LANG: &str = "ja-JP";
+pub(super) const PREVIEW_LANG: &str = "ja-JP";
 
 /// Who may see a note, by the names `notes/create` takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum Visibility {
+pub(crate) enum Visibility {
     /// Everyone, on every timeline.
     Public,
     /// Everyone, but only on your followers' home timelines.
@@ -40,7 +40,7 @@ pub enum Visibility {
 
 impl Visibility {
     /// Its name, as Misskey's API takes it.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Visibility::Public => "public",
             Visibility::Home => "home",
@@ -51,7 +51,7 @@ impl Visibility {
 
 /// What `msky post` was given.
 #[derive(Debug, Clone)]
-pub struct PostArgs {
+pub(crate) struct PostArgs {
     pub text: String,
     pub images: Vec<PathBuf>,
     pub alts: Vec<String>,
@@ -227,7 +227,12 @@ fn too_long(d: &Draft, max: usize) -> Result<()> {
 }
 
 /// `msky post`.
-pub fn post(ctx: &Ctx, out: &mut dyn Write, a: &PostArgs, stdin: &mut dyn Read) -> Result<()> {
+pub(super) fn post(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    a: &PostArgs,
+    stdin: &mut dyn Read,
+) -> Result<()> {
     let d = draft(a, stdin, &ctx.origin)?;
     let mut needs = vec!["write:notes"];
     if !d.files.is_empty() {
@@ -496,7 +501,7 @@ fn remote(u: &User, host: &str) -> bool {
 }
 
 /// `msky follow` (`on`) and `msky unfollow`.
-pub fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
+pub(super) fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
     let who = parse_user(actor)?;
     if let Some(o) = who.origin.as_deref().filter(|o| *o != ctx.origin) {
         return Err(Error::usage(format!(

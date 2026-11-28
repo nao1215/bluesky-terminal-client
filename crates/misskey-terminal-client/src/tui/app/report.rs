@@ -10,7 +10,7 @@ use crate::tui::input::TextInput;
 
 /// A report being made.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Report {
+pub(crate) struct Report {
     pub user_id: String,
     /// The account, or the account and the note, as the form names them.
     pub shown: String,

@@ -6,11 +6,11 @@ use crate::tui::app::Keyed;
 
 /// Replies deeper than this are drawn at this depth, so a long chain of
 /// replies does not indent the text away.
-pub const MAX_INDENT: u16 = 6;
+pub(crate) const MAX_INDENT: u16 = 6;
 
 /// What a row of the thread shows.
 #[derive(Debug, Clone, PartialEq)]
-pub enum RowKind {
+pub(crate) enum RowKind {
     Post(Box<Post>),
     /// A post the AppView could not find (deleted, or never seen).
     NotFound(String),
@@ -20,7 +20,7 @@ pub enum RowKind {
 
 /// One row of a thread.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ThreadRow {
+pub(crate) struct ThreadRow {
     /// 0 for the opened post and the posts above it, 1 for its replies, and
     /// so on.
     pub depth: u16,
@@ -30,14 +30,14 @@ pub struct ThreadRow {
 }
 
 impl ThreadRow {
-    pub fn post(&self) -> Option<&Post> {
+    pub(crate) fn post(&self) -> Option<&Post> {
         match &self.kind {
             RowKind::Post(p) => Some(p),
             _ => None,
         }
     }
 
-    pub fn post_mut(&mut self) -> Option<&mut Post> {
+    pub(crate) fn post_mut(&mut self) -> Option<&mut Post> {
         match &mut self.kind {
             RowKind::Post(p) => Some(p),
             _ => None,
@@ -72,7 +72,7 @@ fn row(node: ThreadNode, depth: u16, focused: bool) -> Option<(ThreadRow, Vec<Th
 }
 
 /// Lay out a thread. Returns the rows and the index of the opened post.
-pub fn flatten(node: ThreadNode) -> (Vec<ThreadRow>, usize) {
+pub(crate) fn flatten(node: ThreadNode) -> (Vec<ThreadRow>, usize) {
     // The parents come nearest first; they are shown from the top down.
     let (node, mut parents) = take_parents(node);
     parents.reverse();

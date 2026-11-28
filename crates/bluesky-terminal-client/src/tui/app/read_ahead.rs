@@ -79,7 +79,7 @@ impl App {
     /// [`REST`], once while it rests there. The job is not counted as
     /// pending: the screen does not wait for it. Only on a list: the rows
     /// of a thread open are mostly that thread again.
-    pub fn poll_read_ahead(&mut self, now: Instant) -> Vec<Job> {
+    pub(crate) fn poll_read_ahead(&mut self, now: Instant) -> Vec<Job> {
         let shown = if self.overlay.is_none() && self.login.is_none() && self.threads.is_empty() {
             self.shown_post().or_else(|| self.subject_shown())
         } else {
@@ -161,13 +161,13 @@ impl App {
     /// The pictures of the threads read ahead since this was last asked,
     /// for the event loop to download: the thread opens with its pictures
     /// ready, not only its text.
-    pub fn take_pictures_ahead(&mut self) -> Vec<String> {
+    pub(crate) fn take_pictures_ahead(&mut self) -> Vec<String> {
         std::mem::take(&mut self.read_ahead.pictures)
     }
 
     /// The videos of the post the selection has rested on since this was
     /// last asked, for the event loop to read their playlists ahead.
-    pub fn take_videos_ahead(&mut self) -> Vec<String> {
+    pub(crate) fn take_videos_ahead(&mut self) -> Vec<String> {
         std::mem::take(&mut self.read_ahead.videos)
     }
 

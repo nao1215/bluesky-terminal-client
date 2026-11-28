@@ -9,10 +9,10 @@ use crate::tui::worker::Thread;
 
 /// How long the selection rests on a note before its thread is read:
 /// longer than a held j stays on one, so scrolling past reads nothing.
-pub const REST: Duration = Duration::from_millis(400);
+pub(super) const REST: Duration = Duration::from_millis(400);
 /// A thread read ahead this recently is shown as it is; an older one is
 /// shown while it is read again.
-pub const FRESH: Duration = Duration::from_secs(15);
+pub(super) const FRESH: Duration = Duration::from_secs(15);
 /// Threads kept read ahead.
 const KEPT: usize = 8;
 
@@ -27,7 +27,7 @@ struct ReadThread {
 
 /// Where reading ahead is.
 #[derive(Debug, Clone, Default)]
-pub struct ReadAhead {
+pub(crate) struct ReadAhead {
     /// The note the selection is on, since when, and whether its thread
     /// has been asked for while it rests there.
     resting: Option<(String, Instant, bool)>,
@@ -44,14 +44,14 @@ pub struct ReadAhead {
 impl ReadAhead {
     /// The job numbered `seq` writes: what was read before it may not
     /// show it.
-    pub fn wrote(&mut self, seq: u64) {
+    pub(crate) fn wrote(&mut self, seq: u64) {
         self.wrote_at = seq;
         self.threads.clear();
     }
 
     /// How many threads are kept read ahead.
     #[cfg(test)]
-    pub fn kept(&self) -> usize {
+    pub(crate) fn kept(&self) -> usize {
         self.threads.len()
     }
 }
@@ -61,7 +61,7 @@ impl App {
     /// [`REST`], once while it rests there. The job is not counted as
     /// pending: the screen does not wait for it. Only on a list: the rows
     /// of a thread open are mostly that thread again.
-    pub fn poll_read_ahead(&mut self, now: Instant) -> Jobs {
+    pub(crate) fn poll_read_ahead(&mut self, now: Instant) -> Jobs {
         let shown = if self.overlay.is_none() && self.threads.is_empty() && self.session.is_some() {
             self.shown_note().map(|n| n.id.clone())
         } else {

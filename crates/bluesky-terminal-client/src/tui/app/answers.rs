@@ -5,7 +5,7 @@ use super::*;
 impl App {
     /// Number a job as it goes to the worker. The answer comes back with
     /// the same number, which tells what was sent after it.
-    pub fn stamp(&mut self, job: &Job) -> u64 {
+    pub(crate) fn stamp(&mut self, job: &Job) -> u64 {
         self.sent += 1;
         if let Some(s) = &self.session {
             self.sent_as.insert(self.sent, s.did.clone());
@@ -22,7 +22,7 @@ impl App {
     }
 
     /// Handle the answer to the job sent as `seq`.
-    pub fn handle_answer(&mut self, seq: u64, event: Event) -> Vec<Job> {
+    pub(crate) fn handle_answer(&mut self, seq: u64, event: Event) -> Vec<Job> {
         self.answer(Some(seq), event)
     }
 
@@ -968,7 +968,7 @@ impl App {
 
     /// Handle a finished job.
     #[cfg(test)]
-    pub fn handle_event(&mut self, event: Event) -> Vec<Job> {
+    pub(crate) fn handle_event(&mut self, event: Event) -> Vec<Job> {
         // As if asked for just now: nothing sent since can be newer.
         self.answer(None, event)
     }

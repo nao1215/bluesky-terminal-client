@@ -10,18 +10,18 @@ use crate::api::types::DriveFile;
 use crate::error::{Error, Result};
 
 /// Largest file a download saves, as bsky's.
-pub const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
+pub(crate) const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
 
 /// How long one download may take: a video of 200 MB on a slow link takes
 /// minutes, where an API call gets 30 s.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Environment variable naming the folder downloads are saved in.
-pub const DOWNLOAD_DIR_ENV: &str = "MSKY_DOWNLOAD_DIR";
+pub(crate) const DOWNLOAD_DIR_ENV: &str = "MSKY_DOWNLOAD_DIR";
 
 /// Where files are saved: `-o`, else `MSKY_DOWNLOAD_DIR`, else `msky` in the
 /// platform download folder (`~/Downloads/msky`), as bsky keeps its own.
-pub fn download_dir(output: Option<PathBuf>) -> Result<PathBuf> {
+pub(crate) fn download_dir(output: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = output.filter(|d| !d.as_os_str().is_empty()) {
         return Ok(dir);
     }
@@ -104,7 +104,7 @@ const MAX_STEM_BYTES: usize = 100;
 /// note's files from 1, and its extension. Only ASCII letters, digits, `-`
 /// and `_` of the ID are kept, so the name works on every system and never
 /// leaves the folder.
-pub fn file_name(note_id: &str, n: usize, file: &DriveFile) -> String {
+pub(crate) fn file_name(note_id: &str, n: usize, file: &DriveFile) -> String {
     let mut stem: String = note_id
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
@@ -130,7 +130,12 @@ fn megabytes(n: u64) -> u64 {
 }
 
 /// Save `file` in `dir` as `name` (or `name (1)`...), and say where.
-pub fn save(agent: &ureq::Agent, file: &DriveFile, dir: &Path, name: &str) -> Result<PathBuf> {
+pub(crate) fn save(
+    agent: &ureq::Agent,
+    file: &DriveFile,
+    dir: &Path,
+    name: &str,
+) -> Result<PathBuf> {
     let url = file
         .url
         .as_deref()

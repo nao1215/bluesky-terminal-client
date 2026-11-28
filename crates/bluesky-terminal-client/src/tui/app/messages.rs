@@ -171,7 +171,7 @@ impl App {
 
     /// While the Chat tab is shown, read it again every
     /// [`chat::POLL_EVERY`]; nothing is read while another tab is.
-    pub fn poll_chat(&mut self, now: Instant) -> Vec<Job> {
+    pub(crate) fn poll_chat(&mut self, now: Instant) -> Vec<Job> {
         if self.tab != Tab::Chat || self.login.is_some() || self.chat.refused.is_some() {
             return Vec::new();
         }

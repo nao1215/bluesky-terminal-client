@@ -27,7 +27,7 @@ fn fit(w: u32, h: u32, bw: u32, bh: u32) -> (u32, u32) {
 /// The pixel size ratatui-image's `Resize::Scale` makes `(w, h)` for a box
 /// of `area` cells of `cell` pixels: fitted in the box, rounded up to whole
 /// cells, then fitted in those cells.
-pub fn size_in_box(w: u32, h: u32, area: Size, cell: (u16, u16)) -> (u32, u32) {
+fn size_in_box(w: u32, h: u32, area: Size, cell: (u16, u16)) -> (u32, u32) {
     let (cw, ch) = (u32::from(cell.0.max(1)), u32::from(cell.1.max(1)));
     let (fw, fh) = fit(
         w,

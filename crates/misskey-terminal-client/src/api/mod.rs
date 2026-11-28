@@ -8,7 +8,7 @@
 //! tried again after the wait the server asks for, a few times; anything
 //! else is returned at once.
 
-pub mod types;
+pub(crate) mod types;
 
 #[cfg(test)]
 pub(crate) mod stub_tests;
@@ -23,7 +23,7 @@ use crate::error::{Error, Kind, Result};
 use types::{ChatMessage, DriveFile, Note, Notification, Reaction, Relation, User};
 
 /// Server used when neither `--host` nor `MSKY_HOST` is given.
-pub const DEFAULT_HOST: &str = "misskey.io";
+pub(crate) const DEFAULT_HOST: &str = "misskey.io";
 
 const USER_AGENT: &str = concat!("msky/", env!("CARGO_PKG_VERSION"));
 
@@ -43,14 +43,14 @@ const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 
 /// The most characters a note's text may have on a server that does not
 /// say: Misskey's default `maxNoteTextLength`.
-pub const DEFAULT_MAX_NOTE_CHARS: usize = 3000;
+const DEFAULT_MAX_NOTE_CHARS: usize = 3000;
 
 /// The most notes one call asks for: the API's limit.
-pub const MAX_PAGE: usize = 100;
+pub(crate) const MAX_PAGE: usize = 100;
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the error body can be read.
-pub fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(Duration::from_secs(30)))
@@ -68,7 +68,7 @@ pub fn agent() -> ureq::Agent {
 /// host but a slash. The host is put in lower case. A path is refused
 /// rather than left to make every request go to an address that does not
 /// exist.
-pub fn normalize_host(typed: &str) -> Result<String> {
+pub(crate) fn normalize_host(typed: &str) -> Result<String> {
     let typed = typed.trim();
     let invalid = || {
         Error::usage(format!("invalid host {typed:?}"))
@@ -92,7 +92,7 @@ pub fn normalize_host(typed: &str) -> Result<String> {
 }
 
 /// The host (and port) of an origin `normalize_host` made.
-pub fn authority(origin: &str) -> &str {
+pub(crate) fn authority(origin: &str) -> &str {
     origin.split_once("://").map_or(origin, |(_, rest)| rest)
 }
 
@@ -115,7 +115,7 @@ type Wait = Arc<dyn Fn(Duration, &str) + Send + Sync>;
 
 /// A client of one Misskey server. It has no `Debug`: it holds the token.
 #[derive(Clone)]
-pub struct Client {
+pub(crate) struct Client {
     agent: ureq::Agent,
     origin: String,
     wait: Wait,
@@ -125,7 +125,7 @@ pub struct Client {
 
 impl Client {
     /// A client of the server at `origin` (see [`normalize_host`]).
-    pub fn new(origin: &str) -> Self {
+    pub(crate) fn new(origin: &str) -> Self {
         Self::with_wait(origin, Arc::new(wait_and_say))
     }
 
@@ -141,28 +141,28 @@ impl Client {
 
     /// This client, sending `token` with every call.
     #[must_use]
-    pub fn with_token(mut self, token: Option<String>) -> Self {
+    pub(crate) fn with_token(mut self, token: Option<String>) -> Self {
         self.token = token.filter(|t| !t.is_empty());
         self
     }
 
     /// Whether calls are made as an account.
-    pub fn logged_in(&self) -> bool {
+    pub(crate) fn logged_in(&self) -> bool {
         self.token.is_some()
     }
 
     /// The server's origin.
-    pub fn origin(&self) -> &str {
+    pub(crate) fn origin(&self) -> &str {
         &self.origin
     }
 
     /// The server's host, as an account's `@name@host` is written.
-    pub fn host(&self) -> &str {
+    pub(crate) fn host(&self) -> &str {
         authority(&self.origin)
     }
 
     /// Call `endpoint` with `body`; the answer as the server wrote it.
-    pub fn call(&self, endpoint: &str, body: &Value) -> Result<Value> {
+    pub(crate) fn call(&self, endpoint: &str, body: &Value) -> Result<Value> {
         match self.send(endpoint, body)? {
             Answer::Took(v) => Ok(v),
             Answer::Refused(r) => Err(self.refusal(endpoint, r.status, r.detail)),
@@ -271,7 +271,12 @@ impl Client {
     ///
     /// The file goes without its metadata: a photo's EXIF, the place it
     /// was taken among it, and a video's (see [`crate::metadata`]).
-    pub fn upload(&self, name: &str, data: &[u8], comment: Option<&str>) -> Result<DriveFile> {
+    pub(crate) fn upload(
+        &self,
+        name: &str,
+        data: &[u8],
+        comment: Option<&str>,
+    ) -> Result<DriveFile> {
         let data = crate::metadata::strip(name, data)?;
         let data = &data[..];
         let endpoint = "drive/files/create";
@@ -304,7 +309,7 @@ impl Client {
     }
 
     /// `notes/create`: post a note; the note the server made.
-    pub fn create_note(&self, body: &Value) -> Result<Note> {
+    pub(crate) fn create_note(&self, body: &Value) -> Result<Note> {
         let v = self.write("notes/create", body)?;
         v.get("createdNote")
             .cloned()
@@ -315,7 +320,7 @@ impl Client {
 
     /// `notes/reactions/create`: react to note `id` with `reaction` (a
     /// Unicode emoji, or `:name:` for a custom one).
-    pub fn react(&self, id: &str, reaction: &str) -> Result<()> {
+    pub(crate) fn react(&self, id: &str, reaction: &str) -> Result<()> {
         self.write(
             "notes/reactions/create",
             &json!({"noteId": id, "reaction": reaction}),
@@ -324,14 +329,14 @@ impl Client {
     }
 
     /// `notes/reactions/delete`: take back the reaction given to note `id`.
-    pub fn unreact(&self, id: &str) -> Result<()> {
+    pub(crate) fn unreact(&self, id: &str) -> Result<()> {
         self.write("notes/reactions/delete", &json!({"noteId": id}))
             .map(drop)
     }
 
     /// `chat/history`: the latest message of each conversation with an
     /// account, and with `room` of each room.
-    pub fn chat_history(&self, room: bool, limit: usize) -> Result<Vec<ChatMessage>> {
+    pub(crate) fn chat_history(&self, room: bool, limit: usize) -> Result<Vec<ChatMessage>> {
         chat_messages(
             "chat/history",
             self.call(
@@ -344,7 +349,7 @@ impl Client {
     /// The messages with account `user_id` (`chat/messages/user-timeline`)
     /// or in room `room_id` (`chat/messages/room-timeline`), newest first,
     /// older than `until` when given.
-    pub fn chat_timeline(
+    pub(crate) fn chat_timeline(
         &self,
         user_id: Option<&str>,
         room_id: Option<&str>,
@@ -365,7 +370,7 @@ impl Client {
 
     /// Send `text` to account `user_id` (`chat/messages/create-to-user`) or
     /// room `room_id` (`chat/messages/create-to-room`); the message made.
-    pub fn chat_send(
+    pub(crate) fn chat_send(
         &self,
         user_id: Option<&str>,
         room_id: Option<&str>,
@@ -389,7 +394,7 @@ impl Client {
 
     /// `emojis`: the server's custom emoji, each its name and its
     /// picture's address.
-    pub fn emojis(&self) -> Result<Vec<(String, String)>> {
+    pub(crate) fn emojis(&self) -> Result<Vec<(String, String)>> {
         let v = self.call("emojis", &json!({}))?;
         let list = v
             .get("emojis")
@@ -407,7 +412,12 @@ impl Client {
 
     /// `notes/reactions`: a page of who reacted to note `id`, with what,
     /// newest first, older than `until` when given.
-    pub fn reactions(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Reaction>> {
+    pub(crate) fn reactions(
+        &self,
+        id: &str,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Reaction>> {
         let mut body = json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)});
         if let Some(u) = until {
             body["untilId"] = json!(u);
@@ -424,7 +434,7 @@ impl Client {
     }
 
     /// `notes/renotes`: a page of the renotes of note `id`, newest first.
-    pub fn renotes(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Note>> {
+    pub(crate) fn renotes(&self, id: &str, limit: usize, until: Option<&str>) -> Result<Vec<Note>> {
         let mut body = json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)});
         if let Some(u) = until {
             body["untilId"] = json!(u);
@@ -434,43 +444,43 @@ impl Client {
 
     /// A write about account `user_id`: `mute/create`, `mute/delete`,
     /// `blocking/create`, `blocking/delete`.
-    pub fn account_write(&self, endpoint: &str, user_id: &str) -> Result<()> {
+    pub(crate) fn account_write(&self, endpoint: &str, user_id: &str) -> Result<()> {
         self.write(endpoint, &json!({"userId": user_id})).map(drop)
     }
 
     /// `notes/unrenote`: take back every renote of note `id` the account
     /// made.
-    pub fn unrenote(&self, id: &str) -> Result<()> {
+    pub(crate) fn unrenote(&self, id: &str) -> Result<()> {
         self.write("notes/unrenote", &json!({"noteId": id}))
             .map(drop)
     }
 
     /// `notes/delete`: delete note `id`, one of the account's own.
-    pub fn delete_note(&self, id: &str) -> Result<()> {
+    pub(crate) fn delete_note(&self, id: &str) -> Result<()> {
         self.write("notes/delete", &json!({"noteId": id})).map(drop)
     }
 
     /// `notifications/mark-all-as-read`: mark every notification read.
-    pub fn mark_all_read(&self) -> Result<()> {
+    pub(crate) fn mark_all_read(&self) -> Result<()> {
         self.write("notifications/mark-all-as-read", &json!({}))
             .map(drop)
     }
 
     /// `following/create`: follow the account `user_id`.
-    pub fn follow(&self, user_id: &str) -> Result<()> {
+    pub(crate) fn follow(&self, user_id: &str) -> Result<()> {
         self.write("following/create", &json!({"userId": user_id}))
             .map(drop)
     }
 
     /// `following/delete`: stop following the account `user_id`.
-    pub fn unfollow(&self, user_id: &str) -> Result<()> {
+    pub(crate) fn unfollow(&self, user_id: &str) -> Result<()> {
         self.write("following/delete", &json!({"userId": user_id}))
             .map(drop)
     }
 
     /// `following/requests/cancel`: take back the request to follow the
     /// account `user_id`, which approves its followers.
-    pub fn cancel_follow_request(&self, user_id: &str) -> Result<()> {
+    pub(crate) fn cancel_follow_request(&self, user_id: &str) -> Result<()> {
         self.write("following/requests/cancel", &json!({"userId": user_id}))
             .map(drop)
     }
@@ -480,7 +490,7 @@ impl Client {
     /// address in a note's text. A refusal is returned as one: the server
     /// answers 422 for a page it could not read, 403 when it makes no
     /// previews.
-    pub fn url_preview(
+    pub(crate) fn url_preview(
         &self,
         page: &str,
         lang: &str,
@@ -544,14 +554,14 @@ impl Client {
 
     /// `users/show`: the account `username` on `host` (`None` for one of
     /// this server).
-    pub fn user(&self, username: &str, host: Option<&str>) -> Result<User> {
+    pub(crate) fn user(&self, username: &str, host: Option<&str>) -> Result<User> {
         let v = self.call("users/show", &json!({"username": username, "host": host}))?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("users/show: unexpected answer: {e}")))
     }
 
     /// `users/show` by ID: the account `id`.
-    pub fn user_by_id(&self, id: &str) -> Result<User> {
+    pub(crate) fn user_by_id(&self, id: &str) -> Result<User> {
         let v = self.call("users/show", &json!({"userId": id}))?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("users/show: unexpected answer: {e}")))
@@ -559,7 +569,12 @@ impl Client {
 
     /// `users/search`: a page of the accounts that match `query`, from
     /// the `offset`th on (the API pages accounts by offset).
-    pub fn search_users(&self, query: &str, limit: usize, offset: usize) -> Result<Vec<User>> {
+    pub(crate) fn search_users(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<User>> {
         let v = self.call(
             "users/search",
             &json!({"query": query, "limit": limit.clamp(1, MAX_PAGE), "offset": offset, "detail": true}),
@@ -577,7 +592,7 @@ impl Client {
 
     /// `users/notes`: a page of an account's notes, newest first, older
     /// than `until` when given.
-    pub fn user_notes(
+    pub(crate) fn user_notes(
         &self,
         user_id: &str,
         filter: &NoteFilter,
@@ -599,7 +614,12 @@ impl Client {
 
     /// `notes/search`: a page of the notes that match `query`, newest
     /// first, older than `until` when given.
-    pub fn search(&self, query: &str, limit: usize, until: Option<&str>) -> Result<Vec<Note>> {
+    pub(crate) fn search(
+        &self,
+        query: &str,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Note>> {
         let mut body = json!({"query": query, "limit": limit.clamp(1, MAX_PAGE)});
         if let Some(u) = until {
             body["untilId"] = json!(u);
@@ -610,7 +630,7 @@ impl Client {
     /// `i`: the account the token is of.
     /// The notes of an antenna, a list or a channel (`endpoint` with the
     /// ID under `key`), newest first, older than `until` if given.
-    pub fn feed_notes(
+    pub(crate) fn feed_notes(
         &self,
         endpoint: &str,
         key: &str,
@@ -628,7 +648,7 @@ impl Client {
 
     /// The ID and name of each item `endpoint` lists: the account's
     /// antennas, its lists, or the channels it follows or favorites.
-    pub fn named_items(&self, endpoint: &str) -> Result<Vec<(String, String)>> {
+    pub(crate) fn named_items(&self, endpoint: &str) -> Result<Vec<(String, String)>> {
         let v = self.call(endpoint, &json!({"limit": 100}))?;
         let Value::Array(items) = v else {
             return Err(Error::api(format!(
@@ -651,7 +671,7 @@ impl Client {
 
     /// `users/report-abuse`: report account `user_id` to the server's
     /// moderators with `comment`. Sent once, as every write is.
-    pub fn report(&self, user_id: &str, comment: &str) -> Result<()> {
+    pub(crate) fn report(&self, user_id: &str, comment: &str) -> Result<()> {
         self.call(
             "users/report-abuse",
             &json!({"userId": user_id, "comment": comment}),
@@ -662,20 +682,20 @@ impl Client {
     /// `i/update`: change the account's own profile with the fields of
     /// `body` (`name`, `description`, `avatarId`, `bannerId`), and return
     /// it as it now is. Sent once, as every write is.
-    pub fn update_me(&self, body: &Value) -> Result<User> {
+    pub(crate) fn update_me(&self, body: &Value) -> Result<User> {
         let v = self.call("i/update", body)?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("i/update: unexpected answer: {e}")))
     }
 
-    pub fn me(&self) -> Result<User> {
+    pub(crate) fn me(&self) -> Result<User> {
         let v = self.call("i", &json!({}))?;
         serde_json::from_value(v).map_err(|e| Error::api(format!("i: unexpected answer: {e}")))
     }
 
     /// A timeline (`notes/timeline`, `notes/local-timeline`, ...): a page of
     /// notes, newest first, older than `until` when given.
-    pub fn timeline(
+    pub(crate) fn timeline(
         &self,
         endpoint: &str,
         renotes: bool,
@@ -692,7 +712,11 @@ impl Client {
     /// `i/notifications`: a page of the account's notifications, newest
     /// first, older than `until` when given. They are left unread: reading
     /// them here changes nothing on the server.
-    pub fn notifications(&self, limit: usize, until: Option<&str>) -> Result<Vec<Notification>> {
+    pub(crate) fn notifications(
+        &self,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Notification>> {
         let mut body = json!({"limit": limit.clamp(1, MAX_PAGE), "markAsRead": false});
         if let Some(u) = until {
             body["untilId"] = json!(u);
@@ -711,7 +735,10 @@ impl Client {
     /// `miauth/<session>/check`: whether the access asked for with
     /// `session` was given, and the token when it was.
     /// A refusal is returned as one: a server that is told no is a denial.
-    pub fn miauth_check(&self, session: &str) -> Result<std::result::Result<Value, Refusal>> {
+    pub(crate) fn miauth_check(
+        &self,
+        session: &str,
+    ) -> Result<std::result::Result<Value, Refusal>> {
         Ok(
             match self.send(&format!("miauth/{session}/check"), &json!({}))? {
                 Answer::Took(v) => Ok(v),
@@ -722,7 +749,7 @@ impl Client {
 
     /// `notes/children`: the replies to note `id` (and the quotes of it
     /// with text of their own), oldest first as the server lists them.
-    pub fn children(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
+    pub(crate) fn children(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
         notes(self.call(
             "notes/children",
             &json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)}),
@@ -731,7 +758,7 @@ impl Client {
 
     /// `notes/conversation`: the notes note `id` answers, its parent first,
     /// then the parent's, up to `limit` of them.
-    pub fn conversation(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
+    pub(crate) fn conversation(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
         notes(self.call(
             "notes/conversation",
             &json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)}),
@@ -742,7 +769,7 @@ impl Client {
     /// with `body` naming the account, or `following/requests/sent` or
     /// `following/requests/list` for the account logged in; older than
     /// `until` when given.
-    pub fn relations(
+    pub(crate) fn relations(
         &self,
         endpoint: &str,
         mut body: Value,
@@ -768,7 +795,7 @@ impl Client {
     /// (`maxNoteTextLength`), or [`DEFAULT_MAX_NOTE_CHARS`] when the server
     /// does not say: an old version, a fork, or a call that failed, which
     /// `notes/create` then decides.
-    pub fn max_note_chars(&self) -> usize {
+    pub(crate) fn max_note_chars(&self) -> usize {
         self.call("meta", &json!({"detail": false}))
             .ok()
             .and_then(|v| v.get("maxNoteTextLength").and_then(Value::as_u64))
@@ -778,7 +805,7 @@ impl Client {
     }
 
     /// `notes/show`: one note.
-    pub fn note(&self, id: &str) -> Result<Note> {
+    pub(crate) fn note(&self, id: &str) -> Result<Note> {
         let v = self.call("notes/show", &json!({"noteId": id}))?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("notes/show: unexpected answer: {e}")))
@@ -793,14 +820,14 @@ enum Answer {
 
 /// A call the server answered with an error status.
 #[derive(Debug)]
-pub struct Refusal {
+pub(crate) struct Refusal {
     pub status: u16,
     detail: ErrorDetail,
 }
 
 impl Refusal {
     /// The server's code and message, or the status when it wrote neither.
-    pub fn said(&self) -> String {
+    pub(crate) fn said(&self) -> String {
         match (self.detail.code.is_empty(), self.detail.message.is_empty()) {
             (false, false) => format!("{}: {}", self.detail.code, self.detail.message),
             (false, true) => self.detail.code.clone(),
@@ -812,7 +839,7 @@ impl Refusal {
 
 /// Which of an account's notes `users/notes` lists besides its own posts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct NoteFilter {
+pub(crate) struct NoteFilter {
     pub replies: bool,
     pub renotes: bool,
     /// Only notes with files.
@@ -847,7 +874,7 @@ fn chat_messages(endpoint: &str, v: Value) -> Result<Vec<ChatMessage>> {
 /// Whether `e`, from a chat call, says the server has no chat or keeps it
 /// from this account: an endpoint it does not have (a version before
 /// chat), or a role that may not chat.
-pub fn chat_unavailable(e: &Error) -> bool {
+pub(crate) fn chat_unavailable(e: &Error) -> bool {
     let m = e.message();
     m.contains("NO_SUCH_ENDPOINT")
         || m.contains("HTTP 404")

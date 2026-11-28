@@ -10,7 +10,7 @@ use crate::tui::input::TextInput;
 use crate::tui::worker::ChatWith;
 
 /// How often the open tab is read again, as bsky's.
-pub const CHAT_POLL: Duration = Duration::from_secs(15);
+pub(super) const CHAT_POLL: Duration = Duration::from_secs(15);
 
 impl Keyed for ChatMessage {
     fn key(&self) -> &str {
@@ -20,7 +20,7 @@ impl Keyed for ChatMessage {
 
 /// A conversation shown.
 #[derive(Debug, Clone)]
-pub struct OpenChat {
+pub(crate) struct OpenChat {
     pub with: ChatWith,
     /// Who or what it is with, as the list names it.
     pub title: String,
@@ -36,7 +36,7 @@ pub struct OpenChat {
 
 /// The Chat tab.
 #[derive(Debug, Clone, Default)]
-pub struct ChatPane {
+pub(crate) struct ChatPane {
     /// The latest message of each conversation, the newest first.
     pub convos: List<ChatMessage>,
     pub open: Option<OpenChat>,
@@ -47,7 +47,7 @@ pub struct ChatPane {
 impl ChatPane {
     /// The conversations whose newest message, from someone else, is not
     /// read yet, which the tab counts as bsky's does.
-    pub fn unread(&self, me: Option<&str>) -> usize {
+    pub(crate) fn unread(&self, me: Option<&str>) -> usize {
         self.convos
             .items
             .iter()
@@ -57,7 +57,7 @@ impl ChatPane {
 }
 
 /// Whom message `m` is a conversation with, seen from `me`, and its title.
-pub fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
+pub(crate) fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
     if let Some(room) = &m.to_room {
         return (ChatWith::Room(room.id.clone()), format!("# {}", room.name));
     }
@@ -83,7 +83,7 @@ pub fn partner(m: &ChatMessage, me: Option<&str>) -> (ChatWith, String) {
 
 /// The account message `m` is a conversation with, seen from `me`, when
 /// it is with an account and the server sent it.
-pub fn partner_user<'a>(m: &'a ChatMessage, me: Option<&str>) -> Option<&'a User> {
+pub(crate) fn partner_user<'a>(m: &'a ChatMessage, me: Option<&str>) -> Option<&'a User> {
     if m.to_room.is_some() || m.to_room_id.is_some() {
         return None;
     }
@@ -129,7 +129,7 @@ impl App {
 
     /// Every 15 s while the tab is shown: the list, or the conversation
     /// open, read again, as bsky's.
-    pub fn poll_chat(&mut self, now: Instant) -> Jobs {
+    pub(crate) fn poll_chat(&mut self, now: Instant) -> Jobs {
         if self.tab != Tab::Chat || self.session.is_none() || self.overlay.is_some() {
             return Vec::new();
         }

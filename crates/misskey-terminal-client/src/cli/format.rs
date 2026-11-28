@@ -5,11 +5,11 @@
 use serde_json::{Value, json};
 
 use crate::api::types::{DriveFile, Note, Notification, User};
-pub use crate::clock::local_time as time;
+pub(crate) use crate::clock::local_time as time;
 use crate::text::{drawable, one_line};
 
 /// The address of note `id` on the server at `origin`.
-pub fn note_url(origin: &str, id: &str) -> String {
+pub(crate) fn note_url(origin: &str, id: &str) -> String {
     format!("{origin}/notes/{id}")
 }
 
@@ -28,7 +28,7 @@ fn who(u: &User) -> String {
 
 /// A reaction as it reads: a custom emoji of the server asked, `:name@.:`,
 /// as `:name:`; one of another server keeps its host.
-pub fn reaction_label(key: &str) -> String {
+pub(crate) fn reaction_label(key: &str) -> String {
     match key.strip_suffix("@.:") {
         Some(name) => one_line(&format!("{name}:")),
         None => one_line(key),
@@ -70,7 +70,7 @@ fn file_lines(files: &[DriveFile]) -> String {
 /// reactions, its counts, its address. A renote with nothing of its own
 /// shows the note it renotes, under a line that says who renoted it, as
 /// bsky says who reposted a post.
-pub fn note(n: &Note, origin: &str) -> String {
+pub(crate) fn note(n: &Note, origin: &str) -> String {
     let mut out = String::new();
     let shown = n.shown();
     if n.is_pure_renote() {
@@ -155,7 +155,7 @@ fn account_url(u: &User, origin: &str) -> String {
 
 /// Your account, as `whoami` prints it: who, with the server's host, its
 /// address, its counts and what it says about itself.
-pub fn account(u: &User, origin: &str) -> String {
+pub(crate) fn account(u: &User, origin: &str) -> String {
     let mut with_host = u.clone();
     if with_host.host.as_deref().is_none_or(str::is_empty) {
         with_host.host = Some(crate::api::authority(origin).to_string());
@@ -180,7 +180,7 @@ pub fn account(u: &User, origin: &str) -> String {
 
 /// An account on one line, as `follows` and `followers` print it, and as
 /// bsky's do: who, whether you follow it, and its address.
-pub fn account_line(u: &User, origin: &str) -> String {
+pub(crate) fn account_line(u: &User, origin: &str) -> String {
     let mut with_host = u.clone();
     if with_host.host.as_deref().is_none_or(str::is_empty) {
         with_host.host = Some(crate::api::authority(origin).to_string());
@@ -195,7 +195,7 @@ pub fn account_line(u: &User, origin: &str) -> String {
 
 /// Your account as `whoami --json` prints it: a note's `user` with its
 /// address, what it says about itself and its counts.
-pub fn account_json(u: &User, origin: &str) -> Value {
+pub(crate) fn account_json(u: &User, origin: &str) -> Value {
     let mut v = user_json(u, origin);
     v["url"] = json!(account_url(u, origin));
     v["description"] = json!(u.description);
@@ -238,7 +238,7 @@ fn happened(n: &Notification) -> String {
 /// A notification: who did what and when, the note it is about (its
 /// warning and text), and the address to go on from: the note's, else the
 /// account's.
-pub fn notification(n: &Notification, origin: &str) -> String {
+pub(crate) fn notification(n: &Notification, origin: &str) -> String {
     let did = happened(n);
     let mut out = match &n.user {
         Some(u) => format!("{} {did} · {}\n", who(u), time(&n.created_at)),
@@ -266,7 +266,7 @@ pub fn notification(n: &Notification, origin: &str) -> String {
 /// A notification as `notifications --json` prints it: what happened, who
 /// did it (a note's `user`, or null), the reaction, and the note it is
 /// about in the shape every command prints (or null).
-pub fn notification_json(n: &Notification, origin: &str) -> Value {
+pub(crate) fn notification_json(n: &Notification, origin: &str) -> Value {
     json!({
         "id": n.id,
         "createdAt": n.created_at,
@@ -278,7 +278,7 @@ pub fn notification_json(n: &Notification, origin: &str) -> Value {
 }
 
 /// A note as `--json` prints it, its `user` as [`user_json`] puts it.
-pub fn note_json(n: &Note, origin: &str) -> Value {
+pub(crate) fn note_json(n: &Note, origin: &str) -> Value {
     let files: Vec<Value> = n
         .files
         .iter()

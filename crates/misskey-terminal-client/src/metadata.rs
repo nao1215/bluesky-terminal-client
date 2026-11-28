@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 
 /// The kinds of file whose metadata is taken off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Format {
+pub(crate) enum Format {
     Jpeg,
     Png,
     WebP,
@@ -29,7 +29,7 @@ pub enum Format {
 }
 
 /// What `data` is, by its first bytes.
-pub fn format(data: &[u8]) -> Option<Format> {
+pub(crate) fn format(data: &[u8]) -> Option<Format> {
     if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some(Format::Jpeg)
     } else if data.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -48,7 +48,7 @@ pub fn format(data: &[u8]) -> Option<Format> {
 }
 
 /// `data` (the file `name`) without its metadata.
-pub fn strip<'a>(name: &str, data: &'a [u8]) -> Result<Cow<'a, [u8]>> {
+pub(crate) fn strip<'a>(name: &str, data: &'a [u8]) -> Result<Cow<'a, [u8]>> {
     let Some(f) = format(data) else {
         return Ok(Cow::Borrowed(data));
     };
@@ -306,7 +306,7 @@ const CONTAINERS: &[&[u8; 4]] = &[b"moov", b"trak", b"mdia", b"minf", b"edts"];
 /// False when a box cannot be read (smaller than its header, or longer
 /// than what is left of the file or of the box it is in): what comes after
 /// it is not known, and a private box there would go up as it is.
-pub fn mp4(file: &mut [u8]) -> bool {
+pub(crate) fn mp4(file: &mut [u8]) -> bool {
     fn walk(buf: &mut [u8]) -> bool {
         let mut at = 0;
         while at + 8 <= buf.len() {

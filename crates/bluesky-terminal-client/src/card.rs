@@ -34,7 +34,7 @@ const MAX_DESCRIPTION_GRAPHEMES: usize = 1000;
 
 /// The first link in `text`, as its facet links to it: a bare domain such
 /// as `example.com` counts, with `https://` put in front.
-pub fn first_link(text: &str) -> Option<String> {
+fn first_link(text: &str) -> Option<String> {
     facets::detect(text)
         .into_iter()
         .filter_map(|span| match span.target {
@@ -48,7 +48,7 @@ pub fn first_link(text: &str) -> Option<String> {
 /// The card for the first link in `text`, its picture uploaded as the
 /// account `client` is logged in to; `None` when there is no link or its
 /// page gives no card.
-pub fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
+pub(crate) fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
     let uri = first_link(text)?;
     let agent = crate::api::agent();
     let (html, base) = page(&agent, &uri)?;

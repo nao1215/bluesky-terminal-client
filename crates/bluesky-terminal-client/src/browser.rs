@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use crate::error::{Error, Kind, Result};
 
 /// Environment variable naming the program that opens links.
-pub const BROWSER_ENV: &str = "BSKY_BROWSER";
+pub(crate) const BROWSER_ENV: &str = "BSKY_BROWSER";
 
 /// The program and arguments that open `url` here: `program` when one is
 /// named, else the system's opener.
@@ -31,7 +31,7 @@ fn opener(url: &str, program: Option<&str>) -> (String, Vec<String>) {
 
 /// What opens links when `BSKY_BROWSER` is not set, as the settings
 /// screen names it.
-pub fn system_opener() -> &'static str {
+pub(crate) fn system_opener() -> &'static str {
     if cfg!(target_os = "macos") {
         "open"
     } else if cfg!(windows) {
@@ -43,7 +43,7 @@ pub fn system_opener() -> &'static str {
 
 /// Open `url` in the browser, with `program` when one is named. Only web
 /// links are opened, so a post cannot make bsky run a file or a command.
-pub fn open(url: &str, program: Option<&str>) -> Result<()> {
+pub(crate) fn open(url: &str, program: Option<&str>) -> Result<()> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(Error::new(
             Kind::Usage,

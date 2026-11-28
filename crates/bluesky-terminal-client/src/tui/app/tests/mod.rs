@@ -204,8 +204,7 @@ fn settings_on(app: &mut App, name: &str) {
     }
     assert!(
         matches!(app.overlay, Some(Overlay::Settings { selected, .. }) if selected == at),
-        "{:?}",
-        app.overlay
+        "the settings row of that name is selected"
     );
 }
 

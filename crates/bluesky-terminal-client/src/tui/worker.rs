@@ -24,7 +24,7 @@ use crate::timeline;
 
 /// Work for the worker thread.
 #[derive(Debug, Clone)]
-pub enum Job {
+pub(crate) enum Job {
     Login {
         service: String,
         identifier: String,
@@ -153,11 +153,11 @@ pub enum Job {
     },
 }
 
-pub use crate::compose::Attachment;
+pub(crate) use crate::compose::Attachment;
 
 /// One page of a list and where the next page begins.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Page<T> {
+pub(crate) struct Page<T> {
     pub items: Vec<T>,
     pub cursor: Option<String>,
 }
@@ -174,7 +174,7 @@ impl<T> From<Vec<T>> for Page<T> {
 
 /// A list that continues past its first page, named by what it lists.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Feed {
+pub(crate) enum Feed {
     Timeline,
     /// A custom feed, by the URI of its generator.
     Custom(String),
@@ -187,7 +187,7 @@ pub enum Feed {
 
 /// A further page of posts or of accounts.
 #[derive(Debug, Clone, PartialEq)]
-pub enum MorePage {
+pub(crate) enum MorePage {
     Posts(Page<Post>),
     Actors(Page<Profile>),
     Notifications(Page<NotifItem>),
@@ -195,7 +195,7 @@ pub enum MorePage {
 
 /// A notification with the posts it is about.
 #[derive(Debug, Clone, PartialEq)]
-pub struct NotifItem {
+pub(crate) struct NotifItem {
     pub n: Notification,
     /// For a reply, mention, or quote: that post, which can be answered.
     pub post: Option<Post>,
@@ -213,14 +213,14 @@ fn is_post_reason(reason: &str) -> bool {
 
 /// The fields of the account's own profile record.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProfileFields {
+pub(crate) struct ProfileFields {
     pub display_name: String,
     pub description: String,
 }
 
 /// A finished job.
 #[derive(Debug)]
-pub enum Event {
+pub(crate) enum Event {
     LoggedIn(Result<Session>),
     Timeline(Result<Page<Post>>),
     PinnedFeeds(Result<Vec<FeedInfo>>),
@@ -347,7 +347,7 @@ impl Job {
     /// Whether the job only reads, so it may run beside other jobs and out
     /// of order with them. The profile editor's load stays in order: the
     /// save that follows it writes exactly the version it read.
-    pub fn reads(&self) -> bool {
+    pub(crate) fn reads(&self) -> bool {
         matches!(
             self,
             Job::Timeline
@@ -512,7 +512,7 @@ fn guarded(job: Job, run: impl FnOnce(Job) -> Event) -> Event {
 const READERS: usize = 4;
 
 /// Handle to the running worker.
-pub struct Worker {
+pub(crate) struct Worker {
     /// The account the jobs sent from now on act as; each job takes it when
     /// it is sent.
     client: Arc<Mutex<Option<Client>>>,
@@ -528,7 +528,7 @@ impl Worker {
     /// Start the worker. `session` is the account to act as, if any; its
     /// refreshed tokens are saved to its file in `accounts`. Fails when the
     /// system cannot start its threads.
-    pub fn spawn(session: Option<Session>, accounts: AccountStore) -> std::io::Result<Self> {
+    pub(crate) fn spawn(session: Option<Session>, accounts: AccountStore) -> std::io::Result<Self> {
         let client = session.map(|s| {
             let store = accounts.store_for(&s.did);
             Client::new(s, Some(store))
@@ -595,21 +595,21 @@ impl Worker {
     /// Act as `session` from the next job on. Done here, before any job for
     /// the account is sent, rather than as a job: reads run beside each
     /// other, and one could start before a job that switched.
-    pub fn use_account(&self, session: Session) {
+    pub(crate) fn use_account(&self, session: Session) {
         let store = self.accounts.store_for(&session.did);
         *self.client.lock().unwrap_or_else(PoisonError::into_inner) =
             Some(Client::new(session, Some(store)));
     }
 
     /// Act as nobody: every job fails until an account is used or logged in.
-    pub fn use_no_account(&self) {
+    pub(crate) fn use_no_account(&self) {
         *self.client.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
     /// Queue a job; its answer comes back with the same `seq`. It acts as
     /// the account in use now, even when it waits behind a slow write
     /// while another account is switched to.
-    pub fn send(&self, seq: u64, job: Job) {
+    pub(crate) fn send(&self, seq: u64, job: Job) {
         let acting = self
             .client
             .lock()
@@ -631,7 +631,7 @@ impl Worker {
     }
 
     /// A finished job and the `seq` it was sent with, if any.
-    pub fn try_recv(&self) -> Option<(u64, Event)> {
+    pub(crate) fn try_recv(&self) -> Option<(u64, Event)> {
         if let Some(unsent) = self.unsent.borrow_mut().pop_front() {
             return Some(unsent);
         }

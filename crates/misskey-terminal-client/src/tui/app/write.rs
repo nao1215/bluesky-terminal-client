@@ -11,16 +11,16 @@ use crate::tui::files::{Action, Browser, is_video_name};
 use crate::tui::input::TextInput;
 
 /// The reactions `e` offers: Misskey's own default palette.
-pub const REACTIONS: &[&str] = &["👍", "❤", "😆", "🤔", "😮", "🎉", "💢", "😥", "😇", "🍮"];
+pub(super) const REACTIONS: &[&str] = &["👍", "❤", "😆", "🤔", "😮", "🎉", "💢", "😥", "😇", "🍮"];
 
 /// How many recent reactions the picker keeps.
 const RECENT: usize = 10;
 
 /// The reaction `l` gives, as Misskey's like button does.
-pub const LIKE: &str = "❤";
+pub(super) const LIKE: &str = "❤";
 
 /// The most pictures a note carries from the composer, as `msky post`.
-pub const MAX_PICTURES: usize = 4;
+pub(super) const MAX_PICTURES: usize = 4;
 /// The most characters of a content warning and of an alt text, as
 /// `msky post` checks them.
 const MAX_CW_CHARS: usize = 100;
@@ -28,13 +28,13 @@ const MAX_ALT_CHARS: usize = 512;
 
 /// A file attached in the composer, with its alt text.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Attached {
+pub(crate) struct Attached {
     pub path: PathBuf,
     pub alt: TextInput,
 }
 
 impl Attached {
-    pub fn is_video(&self) -> bool {
+    pub(crate) fn is_video(&self) -> bool {
         is_video_name(&self.path.to_string_lossy())
     }
 }
@@ -42,7 +42,7 @@ impl Attached {
 /// A note the composer replies to or quotes: its ID, who wrote it, and the
 /// start of what it says.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     pub id: String,
     pub who: String,
     pub excerpt: String,
@@ -50,7 +50,7 @@ pub struct Target {
 
 /// The composer.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Compose {
+pub(crate) struct Compose {
     pub input: TextInput,
     /// The content warning, when ctrl+w turned it on.
     pub cw: Option<TextInput>,
@@ -67,7 +67,7 @@ pub struct Compose {
 }
 
 impl Compose {
-    pub fn new(reply: Option<Target>, quote: Option<Target>) -> Self {
+    pub(crate) fn new(reply: Option<Target>, quote: Option<Target>) -> Self {
         Self {
             input: TextInput::multi(""),
             cw: None,
@@ -97,13 +97,13 @@ impl Compose {
     }
 
     /// The index of the attachment whose alt text has focus, if one has.
-    pub fn focused_media(&self) -> Option<usize> {
+    pub(crate) fn focused_media(&self) -> Option<usize> {
         let first = 1 + usize::from(self.cw.is_some());
         self.focus.checked_sub(first)
     }
 
     /// Whether the warning field has focus.
-    pub fn cw_focused(&self) -> bool {
+    pub(crate) fn cw_focused(&self) -> bool {
         self.cw.is_some() && self.focus == 1
     }
 }
@@ -404,7 +404,7 @@ impl App {
     }
 
     /// Text pasted: it goes to whichever field has focus, as bsky's.
-    pub fn handle_paste(&mut self, text: &str) {
+    pub(crate) fn handle_paste(&mut self, text: &str) {
         match &mut self.overlay {
             // Not while the note is on its way or the profile loads or is
             // saved: the answer would drop what was pasted.
@@ -482,7 +482,7 @@ impl App {
     /// What the picker offers: the recent reactions and Misskey's default
     /// ones, or, with `query`, the server's custom emoji whose name has
     /// it, those that start with it first.
-    pub fn reaction_choices(&self, query: &str) -> Vec<String> {
+    pub(crate) fn reaction_choices(&self, query: &str) -> Vec<String> {
         let q = query.trim().trim_matches(':').to_ascii_lowercase();
         if q.is_empty() {
             let mut v: Vec<String> = self.recent_reactions.clone();

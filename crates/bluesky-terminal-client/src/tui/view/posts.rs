@@ -367,7 +367,7 @@ pub(super) fn draw_marker(frame: &mut Frame, area: Rect, height: u16, selected: 
 
 /// Something drawn as one entry of a post list: a feed item, or a row of a
 /// thread (indented, possibly a placeholder for a post that cannot be shown).
-pub trait PostRow {
+pub(super) trait PostRow {
     fn post(&self) -> Option<&Post>;
     /// Reply depth, drawn as indentation with guide lines.
     fn indent(&self) -> u16 {

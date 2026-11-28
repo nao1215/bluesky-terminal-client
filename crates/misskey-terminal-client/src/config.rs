@@ -21,15 +21,15 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 
 /// Environment variable that overrides the config directory.
-pub const CONFIG_DIR_ENV: &str = "MSKY_CONFIG_DIR";
+const CONFIG_DIR_ENV: &str = "MSKY_CONFIG_DIR";
 
 /// Environment variable holding an access token to use instead of the
 /// saved logins: one made in the server's settings (Settings, API), for
 /// a run with no one at the keyboard, such as a CI job.
-pub const TOKEN_ENV: &str = "MSKY_TOKEN";
+const TOKEN_ENV: &str = "MSKY_TOKEN";
 
 /// The token `MSKY_TOKEN` holds, if it holds one.
-pub fn env_token() -> Option<String> {
+pub(crate) fn env_token() -> Option<String> {
     std::env::var(TOKEN_ENV)
         .ok()
         .map(|t| t.trim().to_string())
@@ -42,7 +42,7 @@ const ACCOUNTS_FILE: &str = "accounts.json";
 /// An account logged in on one server. Its `Debug` leaves the token out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Session {
+pub(crate) struct Session {
     /// The server's origin, `https://misskey.io`, as `normalize_host` puts it.
     pub service: String,
     /// The account's ID on that server.
@@ -70,13 +70,13 @@ impl std::fmt::Debug for Session {
 
 impl Session {
     /// The server's host (and port), as an account's `@name@host` is written.
-    pub fn host(&self) -> &str {
+    pub(crate) fn host(&self) -> &str {
         crate::api::authority(&self.service)
     }
 }
 
 /// The config directory from the environment.
-pub fn config_dir() -> Result<PathBuf> {
+pub(crate) fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
@@ -90,7 +90,7 @@ pub fn config_dir() -> Result<PathBuf> {
 /// optional, and a key msky does not know is left alone.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct Settings {
+pub(crate) struct Settings {
     /// The color theme, by name (bsky's themes).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -169,7 +169,7 @@ where
 /// What a column of the Home tab shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ColumnSource {
+pub(crate) enum ColumnSource {
     /// The home timeline.
     Home,
     /// An antenna, a list or a channel of the account, by ID, and the name
@@ -200,7 +200,7 @@ pub enum ColumnSource {
 
 impl ColumnSource {
     /// The title of the column.
-    pub fn title(&self) -> String {
+    pub(crate) fn title(&self) -> String {
         use crate::i18n::{t, tf};
         use crate::tui::text::one_line;
         match self {
@@ -219,7 +219,7 @@ const SETTINGS_FILE: &str = "settings.json";
 
 /// The settings in `dir`, and why the file could not be read when it was
 /// there and could not (the defaults are used then).
-pub fn load_settings(dir: &Path) -> (Settings, Option<String>) {
+pub(crate) fn load_settings(dir: &Path) -> (Settings, Option<String>) {
     let path = dir.join(SETTINGS_FILE);
     let data = match fs::read(&path) {
         Ok(d) => d,
@@ -249,7 +249,7 @@ pub fn load_settings(dir: &Path) -> (Settings, Option<String>) {
 }
 
 /// Write `settings` to `settings.json` in `dir`, whole or not at all.
-pub fn save_settings(dir: &Path, settings: &Settings) -> Result<()> {
+pub(crate) fn save_settings(dir: &Path, settings: &Settings) -> Result<()> {
     let path = dir.join(SETTINGS_FILE);
     fs::create_dir_all(dir)
         .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
@@ -293,14 +293,14 @@ struct Current {
 /// The accounts logged in from one config directory: a file per server
 /// under `accounts/`, and `accounts.json` naming the one in use.
 #[derive(Debug, Clone)]
-pub struct AccountStore {
+pub(crate) struct AccountStore {
     dir: PathBuf,
 }
 
 impl AccountStore {
     /// The accounts of the config directory `dir`; nothing is touched
     /// until a read or write.
-    pub fn open(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn open(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
@@ -309,23 +309,23 @@ impl AccountStore {
     }
 
     /// The config directory the accounts are kept in.
-    pub fn dir(&self) -> &Path {
+    pub(crate) fn dir(&self) -> &Path {
         &self.dir
     }
 
     /// The file of the account on `host`.
-    pub fn path_for(&self, host: &str) -> PathBuf {
+    fn path_for(&self, host: &str) -> PathBuf {
         self.accounts_dir()
             .join(format!("{}.json", file_stem(&host.to_ascii_lowercase())))
     }
 
     /// The account logged in on `host`, or `None`.
-    pub fn find(&self, host: &str) -> Result<Option<Session>> {
+    pub(crate) fn find(&self, host: &str) -> Result<Option<Session>> {
         load(&self.path_for(host))
     }
 
     /// Every account, by host.
-    pub fn list(&self) -> Result<Vec<Session>> {
+    pub(crate) fn list(&self) -> Result<Vec<Session>> {
         let mut all = Vec::new();
         for path in self.account_files()? {
             if let Some(s) = load(&path)? {
@@ -337,7 +337,7 @@ impl AccountStore {
     }
 
     /// The account in use: the one `accounts.json` names, else the first.
-    pub fn current(&self) -> Result<Option<Session>> {
+    pub(crate) fn current(&self) -> Result<Option<Session>> {
         if let Some(host) = self.read_current().current
             && let Some(s) = self.find(&host)?
         {
@@ -347,7 +347,7 @@ impl AccountStore {
     }
 
     /// Save an account, making it the one in use.
-    pub fn save(&self, session: &Session) -> Result<()> {
+    pub(crate) fn save(&self, session: &Session) -> Result<()> {
         let dir = self.accounts_dir();
         fs::create_dir_all(&dir)
             .map_err(|e| Error::io(format!("cannot create {}: {e}", dir.display())))?;
@@ -362,20 +362,20 @@ impl AccountStore {
 
     /// Make the account on `host` the one in use, as `msky accounts --use`
     /// and the client's account list do.
-    pub fn set_current(&self, host: &str) -> Result<()> {
+    pub(crate) fn set_current(&self, host: &str) -> Result<()> {
         self.write_current(Some(&host.to_ascii_lowercase()))
     }
 
     /// The host `accounts.json` names as the one in use, without reading
     /// its account's file.
-    pub fn current_host(&self) -> Option<String> {
+    pub(crate) fn current_host(&self) -> Option<String> {
         self.read_current().current
     }
 
     /// Log the account on `host` out: its file goes, one that cannot be
     /// read too. When it was the one in use, the next one by host is.
     /// Returns whether there was a file.
-    pub fn remove(&self, host: &str) -> Result<bool> {
+    pub(crate) fn remove(&self, host: &str) -> Result<bool> {
         let existed = remove_file(&self.path_for(host))?;
         let current = self.read_current().current;
         if current
@@ -391,7 +391,7 @@ impl AccountStore {
     /// Log every account out, one whose file cannot be read too (that is
     /// the way out of it). Each is returned with its host, by host; one that
     /// could not be read is named by its file.
-    pub fn remove_all(&self) -> Result<Vec<(Option<Session>, String)>> {
+    pub(crate) fn remove_all(&self) -> Result<Vec<(Option<Session>, String)>> {
         let mut gone = Vec::new();
         for path in self.account_files()? {
             let was = load(&path).ok().flatten();

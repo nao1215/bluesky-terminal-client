@@ -17,14 +17,14 @@ impl Keyed for User {
 
 /// What the Search tab looks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchMode {
+pub(crate) enum SearchMode {
     Notes,
     Accounts,
 }
 
 /// The Search tab.
 #[derive(Debug, Clone)]
-pub struct Search {
+pub(crate) struct Search {
     pub input: TextInput,
     /// Keys go to the box.
     pub editing: bool,
@@ -52,7 +52,7 @@ impl Default for Search {
 
 /// The Profile tab.
 #[derive(Debug, Clone, Default)]
-pub struct Profile {
+pub(crate) struct Profile {
     /// Whose: the account in use, or another by ID.
     pub who: Option<Who>,
     pub user: Option<User>,
@@ -67,7 +67,7 @@ pub struct Profile {
 
 impl Profile {
     /// Whether it shows the account in use.
-    pub fn own(&self, me: Option<&str>) -> bool {
+    pub(crate) fn own(&self, me: Option<&str>) -> bool {
         matches!(self.who, Some(Who::Me))
             || self
                 .user
@@ -125,7 +125,7 @@ impl App {
 
     /// The account selected: the profile shown, an account found, a
     /// notification's sender, or a note's author.
-    pub fn selected_user_id(&self) -> Option<String> {
+    pub(crate) fn selected_user_id(&self) -> Option<String> {
         if self.threads.is_empty() {
             match self.tab {
                 Tab::Columns => {
@@ -179,7 +179,7 @@ impl App {
         Vec::new()
     }
 
-    pub fn my_user_id(&self) -> Option<&str> {
+    pub(crate) fn my_user_id(&self) -> Option<&str> {
         self.session
             .as_ref()
             .map(|s| s.user_id.as_str())

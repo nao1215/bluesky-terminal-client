@@ -1,6 +1,6 @@
 //! Translations into Simplified Chinese, by the English they translate.
 
-pub const TABLE: &[(&str, &str)] = &[
+pub(super) const TABLE: &[(&str, &str)] = &[
     ("(R to retry)", "（R 重试）"),
     ("(blocked post)", "（已屏蔽的帖子）"),
     ("(deleted)", "（已删除）"),

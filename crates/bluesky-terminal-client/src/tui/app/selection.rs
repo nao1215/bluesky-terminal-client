@@ -6,7 +6,7 @@ impl App {
     /// The notifications shown, when the view is a list of them: the
     /// Notifications tab, or a column of notifications. The keys act on a
     /// notification the same way in both.
-    pub fn shown_notifications(&self) -> Option<&List<NotifItem>> {
+    fn shown_notifications(&self) -> Option<&List<NotifItem>> {
         if !self.threads.is_empty() {
             return None;
         }
@@ -21,7 +21,7 @@ impl App {
     }
 
     /// The post list of the current view, if it shows posts.
-    pub fn current_posts(&mut self) -> Option<&mut List<Post>> {
+    fn current_posts(&mut self) -> Option<&mut List<Post>> {
         match self.tab {
             Tab::Timeline => Some(&mut self.timeline),
             Tab::Search if self.search.mode == SearchMode::Posts => Some(&mut self.search.posts),
@@ -78,7 +78,7 @@ impl App {
     /// The post a notification of a like or a repost is about, when the
     /// selected notification carries no post of its own: what `v`, Space, `o`
     /// and `c` act on there.
-    pub fn subject_shown(&self) -> Option<&Post> {
+    pub(crate) fn subject_shown(&self) -> Option<&Post> {
         let item = self.shown_notifications()?.current()?;
         item.post
             .is_none()
@@ -87,7 +87,7 @@ impl App {
     }
 
     /// The account the keys act on here, without taking a copy of it.
-    pub fn shown_account(&self) -> Option<&Profile> {
+    pub(crate) fn shown_account(&self) -> Option<&Profile> {
         if !self.threads.is_empty() {
             return self.shown_post().map(|p| &p.author);
         }
@@ -103,7 +103,7 @@ impl App {
 
     /// Whether the selected post is the account's own: what `D` deletes,
     /// and what the hint row offers it on.
-    pub fn own_post_selected(&self) -> bool {
+    pub(crate) fn own_post_selected(&self) -> bool {
         let Some(did) = self.session.as_ref().map(|s| s.did.as_str()) else {
             return false;
         };
@@ -112,7 +112,7 @@ impl App {
 
     /// The selected post, without taking a copy of it: what the hint row
     /// asks about while it is drawn.
-    pub fn shown_post(&self) -> Option<&Post> {
+    pub(crate) fn shown_post(&self) -> Option<&Post> {
         if let Some(th) = self.threads.last() {
             return th.list.current().and_then(ThreadRow::post);
         }

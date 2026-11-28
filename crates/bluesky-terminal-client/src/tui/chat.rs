@@ -10,11 +10,11 @@ use crate::tui::input::TextInput;
 
 /// How often the open conversation, or the list, is read again while the
 /// Chat tab is shown.
-pub const POLL_EVERY: std::time::Duration = std::time::Duration::from_secs(15);
+pub(crate) const POLL_EVERY: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The Chat tab.
 #[derive(Debug, Clone, Default)]
-pub struct ChatPane {
+pub(crate) struct ChatPane {
     pub convos: List<Convo>,
     pub open: Option<OpenConvo>,
     /// When the tab last read the server by itself.
@@ -26,7 +26,7 @@ pub struct ChatPane {
 
 impl ChatPane {
     /// Unread messages over every conversation, for the tab's title.
-    pub fn unread(&self) -> u64 {
+    pub(crate) fn unread(&self) -> u64 {
         self.convos
             .items
             .iter()
@@ -38,7 +38,7 @@ impl ChatPane {
 
 /// An open conversation.
 #[derive(Debug, Clone)]
-pub struct OpenConvo {
+pub(crate) struct OpenConvo {
     pub convo: Convo,
     /// Oldest first, as they are read.
     pub messages: Vec<ChatMessage>,
@@ -65,7 +65,7 @@ pub struct OpenConvo {
 }
 
 impl OpenConvo {
-    pub fn new(convo: Convo) -> Self {
+    pub(crate) fn new(convo: Convo) -> Self {
         Self {
             convo,
             messages: Vec::new(),
@@ -85,7 +85,7 @@ impl OpenConvo {
     /// Take the latest messages (newest first, as the server gives them):
     /// the ones not here yet go after the others. Older ones read earlier
     /// stay, so reading again while scrolled up loses nothing.
-    pub fn take_latest(&mut self, newest_first: Vec<ChatMessage>, cursor: Option<String>) {
+    pub(crate) fn take_latest(&mut self, newest_first: Vec<ChatMessage>, cursor: Option<String>) {
         let first = !self.got_latest;
         self.got_latest = true;
         let known: HashSet<String> = self.messages.iter().map(|m| m.id.clone()).collect();
@@ -104,7 +104,7 @@ impl OpenConvo {
 
     /// Take a page of older messages (newest first): they go before the
     /// others.
-    pub fn take_older(
+    pub(crate) fn take_older(
         &mut self,
         requested: &str,
         newest_first: Vec<ChatMessage>,
@@ -126,7 +126,7 @@ impl OpenConvo {
     }
 
     /// A message this account just sent, shown at once.
-    pub fn sent(&mut self, m: ChatMessage) {
+    pub(crate) fn sent(&mut self, m: ChatMessage) {
         if !self.messages.iter().any(|x| x.id == m.id) {
             self.messages.push(m);
         }

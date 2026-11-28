@@ -21,13 +21,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 
 /// Environment variable that overrides the config directory.
-pub const CONFIG_DIR_ENV: &str = "BSKY_CONFIG_DIR";
+const CONFIG_DIR_ENV: &str = "BSKY_CONFIG_DIR";
 
 const SETTINGS_FILE: &str = "settings.json";
 
 /// User preferences.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Settings {
+pub(crate) struct Settings {
     /// Name of the color theme.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -122,7 +122,7 @@ where
 
 impl Settings {
     /// Whether the file turns pictures off.
-    pub fn pictures_off(&self) -> bool {
+    pub(crate) fn pictures_off(&self) -> bool {
         self.pictures.as_deref() == Some("off")
     }
 }
@@ -130,7 +130,7 @@ impl Settings {
 /// What a column shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ColumnSource {
+pub(crate) enum ColumnSource {
     Following,
     /// A custom feed by the URI of its generator, and the name to show.
     Feed {
@@ -151,7 +151,7 @@ pub enum ColumnSource {
 
 impl ColumnSource {
     /// The title of the column.
-    pub fn title(&self) -> String {
+    pub(crate) fn title(&self) -> String {
         use crate::i18n::{t, tf};
         match self {
             ColumnSource::Following => t("Following").into(),
@@ -167,7 +167,7 @@ impl ColumnSource {
 /// A variable set here wins over `settings.json`, and the settings screen
 /// says so rather than fighting it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Environment {
+pub(crate) struct Environment {
     /// `BSKY_GRAPHICS`
     pub graphics: Option<String>,
     /// `BSKY_DOWNLOAD_DIR`
@@ -187,7 +187,7 @@ pub struct Environment {
 
 impl Environment {
     /// The variables as this process sees them; an empty one is not set.
-    pub fn read() -> Self {
+    pub(crate) fn read() -> Self {
         Self::from_vars(|k| std::env::var(k).ok())
     }
 
@@ -213,25 +213,25 @@ fn without_bom(data: &[u8]) -> &[u8] {
 
 /// Reads and writes `settings.json` inside one directory.
 #[derive(Debug, Clone)]
-pub struct SettingsStore {
+pub(crate) struct SettingsStore {
     dir: PathBuf,
 }
 
 impl SettingsStore {
     /// A store rooted at `dir`; nothing is touched until a read or write.
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
     /// Path of the settings file.
-    pub fn path(&self) -> PathBuf {
+    pub(crate) fn path(&self) -> PathBuf {
         self.dir.join(SETTINGS_FILE)
     }
 
     /// Load the settings. A missing file is the defaults; a file that cannot
     /// be read or parsed is the defaults too, with a warning to show, because
     /// a preference is not worth refusing to start over.
-    pub fn load(&self) -> (Settings, Option<String>) {
+    pub(crate) fn load(&self) -> (Settings, Option<String>) {
         let path = self.path();
         match fs::read(&path) {
             Ok(data) => match serde_json::from_slice::<Settings>(without_bom(&data)) {
@@ -259,7 +259,7 @@ impl SettingsStore {
     }
 
     /// Save the settings, creating the directory when needed.
-    pub fn save(&self, settings: &Settings) -> Result<()> {
+    pub(crate) fn save(&self, settings: &Settings) -> Result<()> {
         fs::create_dir_all(&self.dir).map_err(|e| {
             Error::io(crate::i18n::tf(
                 "cannot create {}: {}",
@@ -303,7 +303,7 @@ impl SettingsStore {
 /// out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Session {
+pub(crate) struct Session {
     /// Base URL of the PDS the session belongs to, without a trailing slash.
     pub service: String,
     /// Account DID.
@@ -327,7 +327,7 @@ impl std::fmt::Debug for Session {
 }
 
 /// Resolve the config directory from the environment.
-pub fn config_dir() -> Result<PathBuf> {
+pub(crate) fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
@@ -340,7 +340,7 @@ pub fn config_dir() -> Result<PathBuf> {
 
 /// Where a setting's value comes from, in the order they win.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Source {
+pub(crate) enum Source {
     /// A `BSKY_` variable, for this run.
     Env,
     /// `settings.json`.
@@ -360,12 +360,12 @@ fn pick<'a>(env: &'a Option<String>, file: &'a Option<String>) -> Option<(&'a st
 }
 
 /// Environment variable naming the folder downloads are saved in.
-pub const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
+pub(crate) const DOWNLOAD_DIR_ENV: &str = "BSKY_DOWNLOAD_DIR";
 
 /// Where the viewer's `d` and `bsky download` save pictures and videos:
 /// `BSKY_DOWNLOAD_DIR`, else the settings, else `bsky` in the platform
 /// download folder (`~/Downloads/bsky`).
-pub fn download_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
+pub(crate) fn download_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
     match pick(&env.download_dir, &settings.download_dir) {
         Some((v, from)) => (Some(PathBuf::from(v)), from),
         None => (default_download_dir(), Source::Default),
@@ -374,18 +374,18 @@ pub fn download_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>,
 
 /// The download folder when nothing names another: `bsky` in the platform
 /// download folder.
-pub fn default_download_dir() -> Option<PathBuf> {
+fn default_download_dir() -> Option<PathBuf> {
     dirs::download_dir()
         .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
         .map(|d| d.join("bsky"))
 }
 
 /// Environment variable naming the video service to upload videos to.
-pub const VIDEO_SERVICE_ENV: &str = "BSKY_VIDEO_SERVICE";
+pub(crate) const VIDEO_SERVICE_ENV: &str = "BSKY_VIDEO_SERVICE";
 
 /// The language `settings` name, else the one the environment asks for,
 /// else English.
-pub fn language(settings: &Settings, env: &Environment) -> crate::i18n::Lang {
+pub(crate) fn language(settings: &Settings, env: &Environment) -> crate::i18n::Lang {
     use crate::i18n::Lang;
     settings
         .language
@@ -397,7 +397,7 @@ pub fn language(settings: &Settings, env: &Environment) -> crate::i18n::Lang {
 
 /// The video service: `BSKY_VIDEO_SERVICE`, else the settings, else
 /// Bluesky's.
-pub fn video_service(env: &Environment, settings: &Settings) -> (String, Source) {
+pub(crate) fn video_service(env: &Environment, settings: &Settings) -> (String, Source) {
     match pick(&env.video_service, &settings.video_service) {
         Some((v, from)) => (v.trim_end_matches('/').to_string(), from),
         None => (
@@ -408,11 +408,11 @@ pub fn video_service(env: &Environment, settings: &Settings) -> (String, Source)
 }
 
 /// Environment variable that turns link cards off (`off`) or on.
-pub const LINK_CARDS_ENV: &str = "BSKY_LINK_CARDS";
+pub(crate) const LINK_CARDS_ENV: &str = "BSKY_LINK_CARDS";
 
 /// Whether a post without pictures, video or a quote carries a card for its
 /// first link: not when `BSKY_LINK_CARDS`, else the settings, say `off`.
-pub fn link_cards(env: &Environment, settings: &Settings) -> (bool, Source) {
+pub(crate) fn link_cards(env: &Environment, settings: &Settings) -> (bool, Source) {
     match pick(&env.link_cards, &settings.link_cards) {
         Some((v, from)) => (!v.eq_ignore_ascii_case("off"), from),
         None => (true, Source::Default),
@@ -420,12 +420,12 @@ pub fn link_cards(env: &Environment, settings: &Settings) -> (bool, Source) {
 }
 
 /// Environment variable naming the cache directory; `off` keeps no cache.
-pub const CACHE_DIR_ENV: &str = "BSKY_CACHE_DIR";
+pub(crate) const CACHE_DIR_ENV: &str = "BSKY_CACHE_DIR";
 
 /// Where downloaded pictures are kept between runs, or `None` for no cache:
 /// `BSKY_CACHE_DIR`, else the settings (`off` in either keeps none), else
 /// `bsky` in the platform cache folder.
-pub fn cache_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
+pub(crate) fn cache_dir(env: &Environment, settings: &Settings) -> (Option<PathBuf>, Source) {
     cache_dir_from(env, settings, dirs::cache_dir())
 }
 
@@ -443,7 +443,7 @@ fn cache_dir_from(
 
 /// The program that opens links: `BSKY_BROWSER`, else the settings, else
 /// `None` for the system's own (see [`crate::browser`]).
-pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Source) {
+pub(crate) fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Source) {
     match pick(&env.browser, &settings.browser) {
         Some((v, from)) => (Some(v.to_string()), from),
         None => (None, Source::Default),
@@ -453,7 +453,7 @@ pub fn browser(env: &Environment, settings: &Settings) -> (Option<String>, Sourc
 /// Whether bsky can write into `dir`, creating it when it is not there yet:
 /// a folder chosen for downloads or the cache is tried at once, so a bad one
 /// is refused with the reason rather than at the next download.
-pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
+pub(crate) fn check_writable(dir: &Path) -> std::result::Result<(), String> {
     let fail = |e: std::io::Error| {
         crate::i18n::tf(
             "cannot write to {}: {}",
@@ -490,19 +490,19 @@ pub fn check_writable(dir: &Path) -> std::result::Result<(), String> {
 
 /// Reads and writes the session file inside one directory.
 #[derive(Debug, Clone)]
-pub struct SessionStore {
+pub(crate) struct SessionStore {
     dir: PathBuf,
     file: String,
 }
 
 impl SessionStore {
     /// Path of the session file.
-    pub fn path(&self) -> PathBuf {
+    pub(crate) fn path(&self) -> PathBuf {
         self.dir.join(&self.file)
     }
 
     /// Load the saved session; `Ok(None)` when there is none yet.
-    pub fn load(&self) -> Result<Option<Session>> {
+    pub(crate) fn load(&self) -> Result<Option<Session>> {
         let path = self.path();
         let data = match fs::read(&path) {
             Ok(data) => data,
@@ -529,7 +529,7 @@ impl SessionStore {
 
     /// Save refreshed tokens, only while the file is there: an account
     /// logged out while a load of it was on its way stays logged out.
-    pub fn update(&self, session: &Session) -> Result<()> {
+    pub(crate) fn update(&self, session: &Session) -> Result<()> {
         if !self.path().exists() {
             return Ok(());
         }
@@ -537,7 +537,7 @@ impl SessionStore {
     }
 
     /// Save the session, creating the directory when needed.
-    pub fn save(&self, session: &Session) -> Result<()> {
+    pub(crate) fn save(&self, session: &Session) -> Result<()> {
         fs::create_dir_all(&self.dir).map_err(|e| {
             Error::io(crate::i18n::tf(
                 "cannot create {}: {}",
@@ -556,7 +556,7 @@ impl SessionStore {
     }
 
     /// Remove the saved session. Returns whether a session existed.
-    pub fn clear(&self) -> Result<bool> {
+    pub(crate) fn clear(&self) -> Result<bool> {
         let path = self.path();
         match fs::remove_file(&path) {
             Ok(()) => Ok(true),
@@ -589,14 +589,14 @@ struct Current {
 /// rewrites that file alone: two accounts refreshing at once cannot lose
 /// each other's rotated tokens.
 #[derive(Debug, Clone)]
-pub struct AccountStore {
+pub(crate) struct AccountStore {
     dir: PathBuf,
 }
 
 impl AccountStore {
     /// The accounts of the config directory `dir`; nothing is touched
     /// until a read or write.
-    pub fn open(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn open(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
@@ -606,7 +606,7 @@ impl AccountStore {
 
     /// The session file of the account `did`, for a client to save its
     /// refreshed tokens to.
-    pub fn store_for(&self, did: &str) -> SessionStore {
+    pub(crate) fn store_for(&self, did: &str) -> SessionStore {
         SessionStore {
             dir: self.accounts_dir(),
             file: format!("{}.json", file_stem(did)),
@@ -642,7 +642,7 @@ impl AccountStore {
     /// Log every account out: each account file goes, one that cannot be
     /// read too (that is the way out of it). The accounts that could be read
     /// are returned, to say who was logged out.
-    pub fn remove_all(&self) -> Result<Vec<Session>> {
+    pub(crate) fn remove_all(&self) -> Result<Vec<Session>> {
         let mut gone = Vec::new();
         for store in self.account_files()? {
             if let Ok(Some(s)) = store.load() {
@@ -656,7 +656,7 @@ impl AccountStore {
     }
 
     /// Every account, by handle.
-    pub fn list(&self) -> Result<Vec<Session>> {
+    pub(crate) fn list(&self) -> Result<Vec<Session>> {
         let mut all = Vec::new();
         for store in self.account_files()? {
             if let Some(s) = store.load()? {
@@ -670,7 +670,7 @@ impl AccountStore {
     }
 
     /// The account in use: the one `accounts.json` names, else the first.
-    pub fn current(&self) -> Result<Option<Session>> {
+    pub(crate) fn current(&self) -> Result<Option<Session>> {
         let all = self.list()?;
         let named = self.read_current().current;
         Ok(named
@@ -680,7 +680,7 @@ impl AccountStore {
 
     /// The account `who` names: its DID, its handle, or `@handle`, in any
     /// case.
-    pub fn find(&self, who: &str) -> Result<Option<Session>> {
+    pub(crate) fn find(&self, who: &str) -> Result<Option<Session>> {
         let who = who.trim().trim_start_matches('@');
         Ok(self
             .list()?
@@ -689,19 +689,19 @@ impl AccountStore {
     }
 
     /// Make `did` the account in use.
-    pub fn set_current(&self, did: &str) -> Result<()> {
+    pub(crate) fn set_current(&self, did: &str) -> Result<()> {
         self.write_current(Some(did))
     }
 
     /// Save an account's session, making it the one in use.
-    pub fn save(&self, session: &Session) -> Result<()> {
+    pub(crate) fn save(&self, session: &Session) -> Result<()> {
         self.store_for(&session.did).save(session)?;
         self.set_current(&session.did)
     }
 
     /// Log the account `did` out: its session file goes. When it was the
     /// one in use, the next one by handle is. Returns whether it existed.
-    pub fn remove(&self, did: &str) -> Result<bool> {
+    pub(crate) fn remove(&self, did: &str) -> Result<bool> {
         let existed = self.store_for(did).clear()?;
         if self.read_current().current.as_deref() == Some(did) {
             let next = self.list()?.into_iter().next().map(|s| s.did);

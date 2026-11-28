@@ -119,7 +119,7 @@ fn a_download_started_before_a_switch_still_says_where_it_went() {
         .as_ref()
         .map(|s| s.text.clone())
         .unwrap_or_default();
-    assert!(s.contains("saved"), "status: {s:?}");
+    assert!(s.contains("saved"), "the status says the file was saved");
 }
 
 // A column whose load failed because the session expired is loaded again

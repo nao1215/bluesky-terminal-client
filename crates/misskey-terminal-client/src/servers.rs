@@ -11,19 +11,19 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 
 /// Where Misskey Hub publishes its list of servers.
-pub const HUB_URL: &str = "https://instanceapp.misskey.page/instances.json";
+const HUB_URL: &str = "https://instanceapp.misskey.page/instances.json";
 
 /// Environment variable naming another address for the list, or `off` for
 /// the built-in one alone: the tests' stand-in servers use it, so no test
 /// reaches Misskey Hub.
-pub const SERVERS_URL_ENV: &str = "MSKY_SERVERS_URL";
+const SERVERS_URL_ENV: &str = "MSKY_SERVERS_URL";
 
 /// The largest list read; the Hub's is about 5 MB.
 const MAX_LIST_BYTES: u64 = 32 * 1024 * 1024;
 
 /// A server to log in to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Server {
+pub(crate) struct Server {
     /// Its host, `misskey.io`.
     pub host: String,
     /// Its name, as its `meta` gives it.
@@ -38,7 +38,7 @@ pub struct Server {
 
 /// Large servers that run Misskey itself, with the names their `meta`
 /// gave on 2026-11-27: what is offered when the Hub's list cannot be read.
-pub const BUILTIN: &[(&str, &str)] = &[
+const BUILTIN: &[(&str, &str)] = &[
     ("misskey.io", "Misskey.io"),
     ("misskey-square.net", "みすきーすくえあ！"),
     ("takusuki.com", "TRPGがすきー！"),
@@ -47,7 +47,7 @@ pub const BUILTIN: &[(&str, &str)] = &[
 ];
 
 /// The built-in list.
-pub fn builtin() -> Vec<Server> {
+pub(crate) fn builtin() -> Vec<Server> {
     BUILTIN
         .iter()
         .map(|(host, name)| Server {
@@ -108,7 +108,7 @@ fn from_hub(v: &Value) -> Vec<Server> {
 }
 
 /// The Hub's list, read from `url`.
-pub fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<Server>> {
+pub(crate) fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<Server>> {
     let failed = |e: String| {
         Error::api(format!("cannot read the server list at {url}: {e}"))
             .with_hint("give the server with --host")
@@ -133,7 +133,7 @@ pub fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<Server>> {
 
 /// The servers to offer: the Hub's list (or the one `MSKY_SERVERS_URL`
 /// names), else the built-in one with why the other could not be read.
-pub fn list() -> (Vec<Server>, Option<Error>) {
+pub(crate) fn list() -> (Vec<Server>, Option<Error>) {
     let url = match std::env::var(SERVERS_URL_ENV) {
         Ok(v) if v == "off" => return (builtin(), None),
         Ok(v) if !v.trim().is_empty() => v,

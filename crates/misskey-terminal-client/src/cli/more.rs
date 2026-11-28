@@ -10,11 +10,11 @@ use crate::api::types::User;
 use crate::cli::format;
 
 /// The reaction `like` gives without `--reaction`: Misskey's own like.
-pub const LIKE: &str = "❤";
+pub(crate) const LIKE: &str = "❤";
 
 /// `msky thread NOTE`: what the note answers (the first note first), the
 /// note, and the replies to it.
-pub fn thread(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
+pub(crate) fn thread(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     let (origin, id) = parse_note(note)?;
     let client = ctx.client(origin.as_deref())?;
     let n = client.note(&id)?;
@@ -49,7 +49,7 @@ fn account(ctx: &Ctx, actor: &str) -> Result<(Client, User)> {
 
 /// `msky profile [ACTOR]`: an account as `whoami` prints yours; yours
 /// without ACTOR.
-pub fn profile(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>) -> Result<()> {
+pub(crate) fn profile(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>) -> Result<()> {
     let (client, u) = match actor {
         Some(a) => account(ctx, a)?,
         None => {
@@ -65,7 +65,7 @@ pub fn profile(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>) -> Result<()
 }
 
 /// `msky reactions NOTE` (bsky's `likes`): who reacted, and with what.
-pub fn reactions(ctx: &Ctx, out: &mut dyn Write, note: &str, limit: usize) -> Result<()> {
+pub(crate) fn reactions(ctx: &Ctx, out: &mut dyn Write, note: &str, limit: usize) -> Result<()> {
     let (origin, id) = parse_note(note)?;
     let client = ctx.client(origin.as_deref())?;
     let all = pages(
@@ -105,7 +105,7 @@ impl Paged for crate::api::types::Reaction {
 }
 
 /// `msky renotes NOTE` (bsky's `reposts`): the renotes of a note.
-pub fn renotes(ctx: &Ctx, out: &mut dyn Write, note: &str, limit: usize) -> Result<()> {
+pub(crate) fn renotes(ctx: &Ctx, out: &mut dyn Write, note: &str, limit: usize) -> Result<()> {
     let (origin, id) = parse_note(note)?;
     let client = ctx.client(origin.as_deref())?;
     let all = pages(
@@ -143,7 +143,12 @@ fn did(ctx: &Ctx, out: &mut dyn Write, v: Value, said: String) -> Result<()> {
 
 /// `msky like NOTE` (bsky's `like`): react to the note, ❤ unless
 /// `--reaction` names another; a reaction given before is replaced.
-pub fn like(ctx: &Ctx, out: &mut dyn Write, note: &str, reaction: Option<&str>) -> Result<()> {
+pub(crate) fn like(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    note: &str,
+    reaction: Option<&str>,
+) -> Result<()> {
     let id = own_server_note(ctx, note)?;
     let reaction = reaction
         .map(str::trim)
@@ -175,7 +180,7 @@ pub fn like(ctx: &Ctx, out: &mut dyn Write, note: &str, reaction: Option<&str>) 
 }
 
 /// `msky unlike NOTE`: take back your reaction to the note.
-pub fn unlike(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
+pub(crate) fn unlike(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     let id = own_server_note(ctx, note)?;
     let client = ctx.writer(&["write:reactions"], "react to notes")?;
     client.unreact(&id).map_err(|e| ctx.explained(e))?;
@@ -191,7 +196,7 @@ pub fn unlike(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
 }
 
 /// `msky repost NOTE` (bsky's `repost`): renote the note, public.
-pub fn repost(ctx: &Ctx, out: &mut dyn Write, note: &str, on: bool) -> Result<()> {
+pub(crate) fn repost(ctx: &Ctx, out: &mut dyn Write, note: &str, on: bool) -> Result<()> {
     let id = own_server_note(ctx, note)?;
     let client = ctx.writer(&["write:notes"], "renote")?;
     if on {
@@ -215,7 +220,7 @@ pub fn repost(ctx: &Ctx, out: &mut dyn Write, note: &str, on: bool) -> Result<()
 
 /// `msky delete NOTE`: delete one of your own notes. The server refuses
 /// another's.
-pub fn delete(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
+pub(crate) fn delete(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     let id = own_server_note(ctx, note)?;
     let client = ctx.writer(&["write:notes"], "delete notes")?;
     client.delete_note(&id).map_err(|e| ctx.explained(e))?;
@@ -229,7 +234,7 @@ pub fn delete(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
 
 /// What `mute` and `block` do, and how they say it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Guard {
+pub(crate) enum Guard {
     Mute,
     Block,
 }
@@ -264,7 +269,13 @@ impl Guard {
 }
 
 /// `msky mute ACTOR`, `unmute`, `block`, `unblock`.
-pub fn guard(ctx: &Ctx, out: &mut dyn Write, actor: &str, what: Guard, on: bool) -> Result<()> {
+pub(crate) fn guard(
+    ctx: &Ctx,
+    out: &mut dyn Write,
+    actor: &str,
+    what: Guard,
+    on: bool,
+) -> Result<()> {
     let who = parse_user(actor)?;
     if who.origin.as_deref().is_some_and(|o| o != ctx.origin) {
         return Err(
@@ -297,7 +308,7 @@ pub fn guard(ctx: &Ctx, out: &mut dyn Write, actor: &str, what: Guard, on: bool)
 }
 
 /// `msky mutes`, `msky blocks`: the accounts you muted or blocked.
-pub fn guarded(ctx: &Ctx, out: &mut dyn Write, what: Guard, limit: usize) -> Result<()> {
+pub(crate) fn guarded(ctx: &Ctx, out: &mut dyn Write, what: Guard, limit: usize) -> Result<()> {
     let client = ctx.writer(&[what.permission(false)], "read whom you mute and block")?;
     let endpoint = match what {
         Guard::Mute => "mute/list",
@@ -326,7 +337,7 @@ pub fn guarded(ctx: &Ctx, out: &mut dyn Write, what: Guard, limit: usize) -> Res
 /// Why something is reported, as bsky's `--reason`: Misskey's report has
 /// no kinds, so the reason starts the comment the moderators read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum ReportReason {
+pub(crate) enum ReportReason {
     Spam,
     Violation,
     Misleading,
@@ -336,7 +347,7 @@ pub enum ReportReason {
 }
 
 impl ReportReason {
-    pub const ALL: [ReportReason; 6] = [
+    pub(crate) const ALL: [ReportReason; 6] = [
         ReportReason::Spam,
         ReportReason::Violation,
         ReportReason::Misleading,
@@ -346,7 +357,7 @@ impl ReportReason {
     ];
 
     /// How the comment starts.
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ReportReason::Spam => crate::i18n::n!("Spam"),
             ReportReason::Violation => crate::i18n::n!("Breaks the server's rules or the law"),
@@ -359,12 +370,12 @@ impl ReportReason {
 }
 
 /// The most a report's comment may hold (`users/report-abuse`).
-pub const MAX_REPORT_CHARS: usize = 2048;
+const MAX_REPORT_CHARS: usize = 2048;
 
 /// The comment sent with a report: the reason, the note's address when a
 /// note is reported (as Misskey's own form writes it), and what the user
 /// wrote. Too long is refused before anything is sent.
-pub fn report_comment(
+pub(crate) fn report_comment(
     reason: ReportReason,
     note_url: Option<&str>,
     comment: Option<&str>,
@@ -394,7 +405,7 @@ pub fn report_comment(
     clippy::too_many_arguments,
     reason = "each is one of the command's options, or where it reads and asks"
 )]
-pub fn report(
+pub(crate) fn report(
     ctx: &Ctx,
     out: &mut dyn Write,
     target: &str,
@@ -505,7 +516,7 @@ fn chat_text(m: &crate::api::types::ChatMessage) -> String {
 
 /// `msky chat` (bsky's): the conversations; with ACTOR the messages with
 /// them, oldest first; with TEXT too, send it (`-` reads it from stdin).
-pub fn chat(
+pub(crate) fn chat(
     ctx: &Ctx,
     out: &mut dyn Write,
     actor: Option<&str>,

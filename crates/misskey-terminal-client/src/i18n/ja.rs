@@ -1,6 +1,6 @@
 //! Translations into Japanese, by the English they translate.
 
-pub const TABLE: &[(&str, &str)] = &[
+pub(super) const TABLE: &[(&str, &str)] = &[
     ("Accounts", "アカウント"),
     ("Add a column", "カラムを追加"),
     (

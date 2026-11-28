@@ -6,7 +6,7 @@ use crate::tui::columns::each_list;
 impl App {
     /// The Timeline tab shows the columns when there are any, the timeline
     /// alone when there are none; the columns not asked for yet are loaded.
-    pub fn settle_timeline(&mut self) -> Vec<Job> {
+    pub(crate) fn settle_timeline(&mut self) -> Vec<Job> {
         if !matches!(self.tab, Tab::Timeline | Tab::Columns) {
             return Vec::new();
         }
@@ -30,7 +30,7 @@ impl App {
 
     /// [`Self::settle_timeline`] for the event loop, at the start: the jobs
     /// it returns are counted as out.
-    pub fn show_timeline(&mut self) -> Vec<Job> {
+    pub(crate) fn show_timeline(&mut self) -> Vec<Job> {
         let jobs = self.settle_timeline();
         self.pending += jobs.len();
         jobs
@@ -161,7 +161,7 @@ impl App {
     }
 
     /// What `+` offers: the sources a column can have, the search last.
-    pub fn column_choices(&self) -> Vec<columns::Source> {
+    pub(crate) fn column_choices(&self) -> Vec<columns::Source> {
         let mut v = vec![columns::Source::Following];
         v.extend(self.feeds.iter().map(|f| columns::Source::Feed {
             uri: f.uri.clone(),

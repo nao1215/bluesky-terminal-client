@@ -54,7 +54,7 @@ impl Script {
 /// writes in it: Han is Japanese for a Japanese reader and Chinese
 /// otherwise, Latin is English unless bsky is shown in another language
 /// written with it.
-pub fn guess(text: &str, ui: Lang) -> Option<&'static str> {
+pub(crate) fn guess(text: &str, ui: Lang) -> Option<&'static str> {
     let mut counts: Vec<(Script, usize)> = Vec::new();
     let words = text
         .split_whitespace()

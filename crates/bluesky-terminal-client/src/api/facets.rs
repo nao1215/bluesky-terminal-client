@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 /// What a detected range points at.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
+pub(crate) enum Target {
     /// An `http://` or `https://` URL. A bare domain in the text
     /// (`example.com/a`) links to it with `https://` put in front.
     Link(String),
@@ -21,7 +21,7 @@ pub enum Target {
 
 /// A detected facet: the UTF-8 byte range `[start, end)` and its target.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Span {
+pub(crate) struct Span {
     pub start: usize,
     pub end: usize,
     pub target: Target,
@@ -49,7 +49,7 @@ const LEADING: &[char] = &[
 ];
 
 /// Find every link, mention, and hashtag in `text`.
-pub fn detect(text: &str) -> Vec<Span> {
+pub(crate) fn detect(text: &str) -> Vec<Span> {
     let mut spans: Vec<Span> = Vec::new();
     for (start, token) in tokens(text) {
         let first = spans.len();
@@ -411,7 +411,7 @@ const PUNCTUATION: [(u32, u32); 198] = [
 
 /// The facet JSON for one span. A mention needs its resolved DID; spans of
 /// other kinds ignore `did`.
-pub fn to_json(span: &Span, did: Option<&str>) -> Option<Value> {
+pub(crate) fn to_json(span: &Span, did: Option<&str>) -> Option<Value> {
     let feature = match &span.target {
         Target::Link(uri) => json!({"$type": "app.bsky.richtext.facet#link", "uri": uri}),
         Target::Tag(tag) => json!({"$type": "app.bsky.richtext.facet#tag", "tag": tag}),

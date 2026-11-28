@@ -11,7 +11,7 @@ impl App {
     /// The Home tab shows the columns when there are any, the home
     /// timeline alone when there are none; the columns not asked for yet
     /// are loaded.
-    pub fn settle_timeline(&mut self) -> Jobs {
+    pub(crate) fn settle_timeline(&mut self) -> Jobs {
         if !matches!(self.tab, Tab::Timeline(TimelineKind::Home) | Tab::Columns) {
             return Vec::new();
         }
@@ -46,7 +46,7 @@ impl App {
 
     /// The columns `settings.json` keeps for the account in use, shown on
     /// the Home tab if it is the one shown.
-    pub fn show_columns(&mut self) -> Jobs {
+    pub(crate) fn show_columns(&mut self) -> Jobs {
         let sources = self
             .columns_key()
             .and_then(|k| self.settings.columns.get(&k).cloned())
@@ -167,7 +167,7 @@ impl App {
     }
 
     /// What `+` offers: the sources a column can have, the search last.
-    pub fn column_choices(&self) -> Vec<Source> {
+    pub(crate) fn column_choices(&self) -> Vec<Source> {
         let mut v = vec![Source::Home];
         v.extend(self.column_feeds.iter().cloned());
         v.push(Source::Notifications);

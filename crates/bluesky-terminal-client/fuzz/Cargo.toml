@@ -11,6 +11,11 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+# The files the targets include by path use it (src/api/facets.rs), which cargo-machete
+# does not read.
+[package.metadata.cargo-machete]
+ignored = ["serde_json"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 serde_json = "1"

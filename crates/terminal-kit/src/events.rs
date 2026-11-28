@@ -113,7 +113,7 @@ mod windows {
 
     use super::{Surrogates, is_surrogate};
 
-    pub struct Console {
+    pub(crate) struct Console {
         handle: HANDLE,
         surrogates: Surrogates,
         /// Characters assembled and not yet handed out.
@@ -121,7 +121,7 @@ mod windows {
     }
 
     impl Console {
-        pub fn new() -> io::Result<Console> {
+        pub(crate) fn new() -> io::Result<Console> {
             // SAFETY: GetStdHandle has no preconditions.
             let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
             if handle.is_null() || handle == INVALID_HANDLE_VALUE {
@@ -134,7 +134,7 @@ mod windows {
             })
         }
 
-        pub fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
+        pub(crate) fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
             let deadline = Instant::now() + wait;
             loop {
                 self.take_surrogates()?;

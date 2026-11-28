@@ -22,7 +22,7 @@ pub(crate) fn reply(status: u16, body: &str) -> Reply {
 
 /// The handler gets the request's path and body and the number of the
 /// request (from 0).
-pub(crate) type Handler = Arc<dyn Fn(&str, &str, usize) -> Reply + Send + Sync>;
+type Handler = Arc<dyn Fn(&str, &str, usize) -> Reply + Send + Sync>;
 
 /// The path and the body of each request the server took.
 pub(crate) type Calls = Arc<Mutex<Vec<(String, String)>>>;
