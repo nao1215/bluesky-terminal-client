@@ -81,13 +81,35 @@ def retain_sha_keys(text, expected):
     return text
 
 
-def main(check=False):
+def refresh_workflows(text, expected):
+    """Reuse reviewed dependency metadata when no action pin has changed."""
+    _, dependencies = lock_sections(text)
+    for refs in expected.values():
+        for key in refs:
+            if dependencies.get(key) != key.rsplit('@', 1)[1]:
+                raise ValueError(f'new or changed action pin needs the official generator: {key}')
+    header, rest = text.split('workflows:\n', 1)
+    _, metadata = rest.split('\ndependencies:\n', 1)
+    entries = []
+    for path, refs in sorted(expected.items()):
+        entries.append(f"    '{path}':" + ("" if refs else " []"))
+        entries.extend(f"        - '{ref}'" for ref in sorted(refs))
+    refreshed = header + 'workflows:\n' + '\n'.join(entries) + '\ndependencies:\n' + metadata
+    check_exact_refs(refreshed, expected)
+    return refreshed
+
+
+def main(check=False, refresh=False):
     originals = {path: path.read_bytes() for path in (ROOT/'.github/workflows').glob('*.y*ml')}
     expected = workflow_refs(originals)
     lock = ROOT/'.github/workflows/actions.lock'
     if check:
         check_exact_refs(lock.read_text(), expected)
         print(f'exact SHA lockfile coverage: {len(expected)} workflows')
+        return
+    if refresh:
+        lock.write_text(refresh_workflows(lock.read_text(), expected))
+        print(f'reused locked dependencies for {len(expected)} workflows')
         return
     try:
         subprocess.run(['gh', 'actions-lock'], cwd=ROOT, check=True)
@@ -101,5 +123,8 @@ def main(check=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--check', action='store_true', help='check exact SHA coverage without writes or network')
-    main(check=parser.parse_args().check)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--refresh-workflows', action='store_true', help='update workflow coverage offline using only already locked action pins')
+    mode.add_argument('--check', action='store_true', help='check exact SHA coverage without writes or network')
+    args = parser.parse_args()
+    main(check=args.check, refresh=args.refresh_workflows)
