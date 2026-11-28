@@ -179,6 +179,26 @@ impl core::ops::drop::Drop for terminal_kit::media::images::Images
 pub fn terminal_kit::media::images::Images::drop(&mut self)
 pub const terminal_kit::media::images::CACHE_BYTES: u64
 pub type terminal_kit::media::images::VideoFactory = fn(ratatui_image::picker::Picker, &str, (u16, u16), u32) -> alloc::boxed::Box<dyn terminal_kit::media::player::Video>
+pub mod terminal_kit::media::metadata
+pub enum terminal_kit::media::metadata::Format
+pub terminal_kit::media::metadata::Format::Gif
+pub terminal_kit::media::metadata::Format::Jpeg
+pub terminal_kit::media::metadata::Format::Mp4
+pub terminal_kit::media::metadata::Format::Png
+pub terminal_kit::media::metadata::Format::WebM
+pub terminal_kit::media::metadata::Format::WebP
+impl core::clone::Clone for terminal_kit::media::metadata::Format
+pub fn terminal_kit::media::metadata::Format::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::media::metadata::Format
+impl core::cmp::PartialEq for terminal_kit::media::metadata::Format
+pub fn terminal_kit::media::metadata::Format::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::media::metadata::Format
+pub fn terminal_kit::media::metadata::Format::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for terminal_kit::media::metadata::Format
+impl core::marker::StructuralPartialEq for terminal_kit::media::metadata::Format
+pub fn terminal_kit::media::metadata::format(&[u8]) -> core::option::Option<terminal_kit::media::metadata::Format>
+pub fn terminal_kit::media::metadata::strip<'a>(&str, &'a [u8]) -> core::result::Result<alloc::borrow::Cow<'a, [u8]>, alloc::string::String>
+pub fn terminal_kit::media::metadata::strip_detected<'a>(&str, &'a [u8], core::option::Option<image::io::format::ImageFormat>) -> core::result::Result<alloc::borrow::Cow<'a, [u8]>, alloc::string::String>
 pub mod terminal_kit::media::player
 pub enum terminal_kit::media::player::State
 pub terminal_kit::media::player::State::Ended
@@ -207,6 +227,9 @@ pub fn terminal_kit::media::player::Video::state(&self) -> &terminal_kit::media:
 pub fn terminal_kit::media::player::start_with(ratatui_image::picker::Picker, &str, (u16, u16), u32, terminal_kit::media::player::VideoJob) -> alloc::boxed::Box<dyn terminal_kit::media::player::Video>
 pub fn terminal_kit::media::player::to_rgb(&openh264::decoder::DecodedYUV<'_>) -> core::option::Option<image::images::buffer::RgbImage>
 pub type terminal_kit::media::player::VideoJob = fn(&ratatui_image::picker::Picker, &str, &core::sync::atomic::AtomicBool, &std::sync::poison::mutex::Mutex<(u16, u16)>, &std::sync::mpsc::Sender<alloc::boxed::Box<ratatui_image::protocol::Protocol>>) -> core::result::Result<(), alloc::string::String>
+pub mod terminal_kit::media::transfer
+pub fn terminal_kit::media::transfer::get(&str, u64) -> core::result::Result<alloc::vec::Vec<u8>, alloc::string::String>
+pub fn terminal_kit::media::transfer::put(&str, &str, &str, &[u8], core::time::Duration) -> core::result::Result<alloc::vec::Vec<u8>, alloc::string::String>
 pub mod terminal_kit::scale
 pub fn terminal_kit::scale::pad_to_cells(image::images::dynimage::DynamicImage, ratatui_core::layout::size::Size, (u16, u16)) -> image::images::dynimage::DynamicImage
 pub fn terminal_kit::scale::thumbnail(&image::images::dynimage::DynamicImage, u32, u32) -> image::images::dynimage::DynamicImage
