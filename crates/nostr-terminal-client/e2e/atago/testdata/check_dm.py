@@ -41,7 +41,7 @@ def valid(e):
     assert verify(bytes.fromhex(e['pubkey']),bytes.fromhex(e['id']),bytes.fromhex(e['sig']))
 
 if __name__=='__main__':
-    writes=[json.loads(s)[1] for s in Path('requests.jsonl').read_text().splitlines() if json.loads(s)[0]=='EVENT']
+    writes=[json.loads(s)[1] for s in Path('requests.jsonl').read_text(encoding="utf-8").splitlines() if json.loads(s)[0]=='EVENT']
     wraps=[e for e in writes if e['kind']==1059]
     assert len(wraps)==2, wraps
     assert len({e['pubkey'] for e in wraps})==2

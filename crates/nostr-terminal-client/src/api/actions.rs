@@ -423,31 +423,39 @@ impl Client<'_> {
 }
 
 impl Client<'_> {
-    pub(crate) fn visible(&self, mut out: Outcome<Vec<Event>>) -> Result<Outcome<Vec<Event>>> {
-        let muted = match self.latest(10000) {
-            Ok(out) => out,
-            Err(e) => {
-                out.warnings
-                    .push(format!("mute list unavailable: {}", e.error));
-                return Ok(out);
-            }
-        };
-        if let Some(list) = muted.value {
-            let people: std::collections::HashSet<_> = list.tag_values("p").collect();
-            let events: std::collections::HashSet<_> = list.tag_values("e").collect();
-            let words: Vec<_> = list.tag_values("word").map(str::to_lowercase).collect();
-            let hashtags: std::collections::HashSet<_> = list.tag_values("t").collect();
-            out.value.retain(|e| {
-                !people.contains(e.pubkey.as_str())
-                    && !events.contains(e.id.as_str())
-                    && !e.tag_values("e").any(|id| events.contains(id))
-                    && !words.iter().any(|w| e.content.to_lowercase().contains(w))
-                    && !e.tag_values("t").any(|t| hashtags.contains(t))
-            });
-        }
-        out.warnings.extend(muted.warnings);
-        Ok(out)
+    pub(crate) fn visible(&self, out: Outcome<Vec<Event>>) -> Result<Outcome<Vec<Event>>> {
+        Ok(filter_muted(out, self.latest(10000)))
     }
+}
+
+/// Apply an independently fetched mute list before publishing a page to the UI.
+pub(crate) fn filter_muted(
+    mut out: Outcome<Vec<Event>>,
+    muted: Result<Outcome<Option<Event>>>,
+) -> Outcome<Vec<Event>> {
+    let muted = match muted {
+        Ok(out) => out,
+        Err(e) => {
+            out.warnings
+                .push(format!("mute list unavailable: {}", e.error));
+            return out;
+        }
+    };
+    if let Some(list) = muted.value {
+        let people: std::collections::HashSet<_> = list.tag_values("p").collect();
+        let events: std::collections::HashSet<_> = list.tag_values("e").collect();
+        let words: Vec<_> = list.tag_values("word").map(str::to_lowercase).collect();
+        let hashtags: std::collections::HashSet<_> = list.tag_values("t").collect();
+        out.value.retain(|e| {
+            !people.contains(e.pubkey.as_str())
+                && !events.contains(e.id.as_str())
+                && !e.tag_values("e").any(|id| events.contains(id))
+                && !words.iter().any(|w| e.content.to_lowercase().contains(w))
+                && !e.tag_values("t").any(|t| hashtags.contains(t))
+        });
+    }
+    out.warnings.extend(muted.warnings);
+    out
 }
 
 /// Only render an embedded note after checking its identity and signature.

@@ -236,6 +236,22 @@ fn load(
     count: usize,
     until: Option<u64>,
 ) -> Result<Outcome<Page>> {
+    std::thread::scope(|scope| {
+        // Fetch mutes alongside contacts/posts, but filter before the first draw.
+        // This avoids an extra relay round trip without briefly exposing muted notes.
+        let muted = matches!(target, Target::Tab(Tab::Home | Tab::Notifications))
+            .then(|| scope.spawn(|| Client::new(config).latest(10000)));
+        load_page(config, target, count, until, muted)
+    })
+}
+
+fn load_page(
+    config: &Config,
+    target: Target,
+    count: usize,
+    until: Option<u64>,
+    muted: Option<std::thread::ScopedJoinHandle<'_, Result<Outcome<Option<Event>>>>>,
+) -> Result<Outcome<Page>> {
     let client = Client::new(config);
     let mut warnings = Vec::new();
     let mut prefix = Vec::new();
@@ -330,8 +346,11 @@ fn load(
         .iter()
         .filter(|e| Some(e.created_at) == next_until)
         .count();
-    if matches!(target, Target::Tab(Tab::Home | Tab::Notifications)) {
-        found = client.visible(found)?;
+    if let Some(muted) = muted {
+        let muted = muted
+            .join()
+            .unwrap_or_else(|_| Err(Error::network("mute list worker failed")));
+        found = crate::api::actions::filter_muted(found, muted);
     }
     if let Target::Thread(note) = target {
         found

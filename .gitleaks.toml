@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published NIP-59 example key; provenance is in tests/testdata/README.md"
+paths = ['''^crates/nostr-terminal-client/tests/testdata/nip59\.json$''']

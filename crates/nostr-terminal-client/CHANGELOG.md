@@ -32,3 +32,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Follow notifications alongside mentions, replies, quotes, reactions and reposts.
 - Partial read results remain available when the optional mute-list fetch times out.
 - Thread read-ahead is invalidated after accepted writes so newly sent replies appear when reopening a thread.
+- Home and Notifications fetch mute lists alongside timeline data, shortening startup on slow relays while applying mutes before displaying posts.

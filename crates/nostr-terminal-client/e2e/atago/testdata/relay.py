@@ -263,6 +263,14 @@ class Relay(socketserver.BaseRequestHandler):
         self.log(message)
         if message[0] == "REQ":
             sub, filters = message[1], message[2:]
+            overlap = getattr(self.server, "mute_started", None)
+            if overlap is not None:
+                kinds = {kind for f in filters for kind in f.get("kinds", [])}
+                if 10000 in kinds:
+                    overlap.set()
+                if 3 in kinds and not overlap.wait(4):
+                    self.send(["CLOSED", sub, "mute request did not overlap contacts"])
+                    return
             for f in filters:
                 found = sorted((e for e in self.server.events if matches(f, e)), key=lambda e: -e["created_at"])
                 for event in found[: f.get("limit", len(found))]:
@@ -316,6 +324,7 @@ def main():
     ap.add_argument("--notice", action="store_true")
     ap.add_argument("--pictures", action="store_true")
     ap.add_argument("--parity", action="store_true")
+    ap.add_argument("--overlap-mute", action="store_true", help="wait for concurrent mute lookup before contacts; mute bob")
     ap.add_argument("--pages", action="store_true", help="short notes with a timestamp boundary larger than one page")
     args = ap.parse_args()
 
@@ -324,6 +333,9 @@ def main():
     server.daemon_threads = True
     server.events = store(args)
     server.notice = args.notice
+    if args.overlap_mute:
+        server.mute_started = threading.Event()
+        server.events.append(make(ALICE, T + 2, 10000, [["p", public_of(BOB)]], ""))
     if args.pages:
         server.events += [make(BOB, T + 1000, 1, [], f"boundary {i:02}") for i in range(25)]
         server.events += [make(BOB, T + 900, 1, [], "older page note")]

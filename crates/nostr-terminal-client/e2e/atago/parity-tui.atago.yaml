@@ -59,6 +59,9 @@ scenarios:
           command: nstr
           rows: 20
           cols: 100
+          # ConPTY keeps the first duplicate environment entry; omit inherited LC_ALL.
+          clear_env: true
+          pass_env: [PATH, HOME, USERPROFILE, APPDATA, LOCALAPPDATA]
           env: { NSTR_CONFIG_DIR: "${workdir}/empty", LC_ALL: ja_JP.UTF-8 }
           timeout: 10s
           session:
@@ -104,4 +107,25 @@ scenarios:
       - run: { command: 'python3 "${specdir}/testdata/check_dm.py"' }
       - assert: { exit_code: 0, stdout: { contains: "gift wraps verified independently" } }
       - run: { command: 'python3 "${specdir}/testdata/check_tui.py" profile-chat' }
+      - assert: { exit_code: 0 }
+
+  - name: first page fetches mutes concurrently and never draws muted authors
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --overlap-mute
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 30
+          cols: 120
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+          timeout: 15s
+          session:
+            - expect_screen:
+                contains: "はじめての投稿"
+                not_contains: ["bob の一つ目", "bob の二つ目", "返信です"]
+                stable_for: 500ms
+                timeout: 8s
+            - send: q
       - assert: { exit_code: 0 }

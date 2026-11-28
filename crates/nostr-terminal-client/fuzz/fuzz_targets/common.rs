@@ -8,9 +8,6 @@ mod config {
     include!(concat!(env!("OUT_DIR"), "/config.rs"));
 }
 #[allow(dead_code)]
-#[path = "../../src/api/nip11.rs"]
-mod nip11;
-#[allow(dead_code)]
 mod api {
     pub(crate) use super::{event, nip44};
     pub(crate) mod actions {
