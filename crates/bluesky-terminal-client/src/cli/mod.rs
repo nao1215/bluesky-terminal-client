@@ -2,11 +2,13 @@
 //! the one `-a` names), with the API code, the settings and the post
 //! assembly the client uses. `bsky` with no command opens the client.
 //!
-//! Every command prints text for reading, or with `--json` the server's own
-//! objects (one JSON value per line for a list) and, for a write, what the
-//! server answered. Writes are sent once and never tried again.
+//! Every command prints text for reading, or with `--json` one JSON object
+//! per line in the shape msky and mstdn print (`doc/json.md`), or with
+//! `--raw` the server's own objects. Writes are sent once and never tried
+//! again.
 
 mod format;
+mod json;
 
 use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
@@ -21,20 +23,30 @@ use crate::compose::{Attachment, PostOptions, send_post};
 use crate::config::{AccountStore, Environment, Session, SettingsStore};
 use crate::error::{Error, Kind, Result};
 
+/// What `-n` takes: how many to list, one at least. `-n 0` asks for
+/// nothing, which is a mistake to say rather than an empty answer.
+fn at_least_one(s: &str) -> std::result::Result<usize, String> {
+    match s.trim().parse::<usize>() {
+        Ok(0) => Err("it is how many to list, so 1 or more".into()),
+        Ok(n) => Ok(n),
+        Err(_) => Err("it is how many to list, a whole number of 1 or more".into()),
+    }
+}
+
 /// The commands besides `logout`, which main handles.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// The following timeline, newest first.
     #[command(visible_alias = "tl")]
     Timeline {
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// A custom feed: its at:// URI, its bsky.app address, or the name of a
     /// pinned feed.
     Feed {
         feed: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// An account's posts, newest first.
@@ -43,7 +55,7 @@ pub(crate) enum Command {
     /// more, so none is left out as a search for "from:ACTOR" can.
     Author {
         actor: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Which of the account's posts.
         #[arg(long, value_enum, default_value_t = AuthorFilter::WithReplies)]
@@ -72,7 +84,7 @@ pub(crate) enum Command {
     /// Notifications, newest first.
     #[command(visible_alias = "notif")]
     Notifications {
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Mark them seen, which nothing else here does.
         #[arg(long)]
@@ -83,7 +95,7 @@ pub(crate) enum Command {
         query: String,
         #[arg(long)]
         accounts: bool,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// A profile; your own without ACTOR.
@@ -91,13 +103,13 @@ pub(crate) enum Command {
     /// The accounts that follow ACTOR (you by default).
     Followers {
         actor: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// The accounts ACTOR follows (you by default).
     Follows {
         actor: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Send a post; TEXT `-` reads it from stdin.
@@ -126,25 +138,25 @@ pub(crate) enum Command {
     /// The accounts that liked a post, newest first.
     Likes {
         post: String,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// The accounts that reposted a post, newest first.
     Reposts {
         post: String,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// The lists ACTOR made (you by default).
     Lists {
         actor: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// The members of a list: its at:// URI or its bsky.app address.
     List {
         list: String,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Like a post.
@@ -165,7 +177,7 @@ pub(crate) enum Command {
     Unmute { actor: String },
     /// The accounts you muted.
     Mutes {
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Block an account.
@@ -174,7 +186,7 @@ pub(crate) enum Command {
     Unblock { actor: String },
     /// The accounts you blocked.
     Blocks {
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Delete one of your own posts.
@@ -209,7 +221,7 @@ pub(crate) enum Command {
     Chat {
         actor: Option<String>,
         text: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
 }
@@ -292,6 +304,8 @@ pub(crate) struct Ctx<'a> {
     pub session: Option<Session>,
     pub service: &'a str,
     pub json: bool,
+    /// Print the server's own objects in place of the shape.
+    pub raw: bool,
 }
 
 impl Ctx<'_> {
@@ -475,6 +489,15 @@ fn collect_by(
     Ok(items)
 }
 
+/// Print `raw` with `--raw`, else what `shaped` makes of it.
+fn item(ctx: &Ctx, out: &mut dyn Write, raw: &Value, shaped: impl FnOnce() -> Value) -> Result<()> {
+    if ctx.raw {
+        json_line(out, raw)
+    } else {
+        json_line(out, &shaped())
+    }
+}
+
 fn print_posts<'a>(
     ctx: &Ctx,
     out: &mut dyn Write,
@@ -482,7 +505,7 @@ fn print_posts<'a>(
 ) -> Result<()> {
     for (i, (raw, post)) in items.enumerate() {
         if ctx.json {
-            json_line(out, raw)?;
+            item(ctx, out, raw, || json::post(&post))?;
         } else {
             if i > 0 {
                 text(out, "\n")?;
@@ -556,14 +579,33 @@ fn custom_feed(ctx: &Ctx, out: &mut dyn Write, feed: &str, limit: usize) -> Resu
         "feed",
         limit,
     )?;
-    let posts: Vec<(Value, Post)> = raw
+    let items: Vec<(Value, FeedItem)> = raw
         .into_iter()
         .filter_map(|v| {
             let item = FeedItem::deserialize(&v).ok()?;
-            Some((v, item.post))
+            Some((v, item))
         })
         .collect();
-    print_posts(ctx, out, posts.iter().map(|(v, p)| (v, p.clone())))
+    print_feed(ctx, out, &items)
+}
+
+/// Print the items of a feed: a repost as the repost of its post, under
+/// who reposted it.
+fn print_feed(ctx: &Ctx, out: &mut dyn Write, items: &[(Value, FeedItem)]) -> Result<()> {
+    for (i, (raw, it)) in items.iter().enumerate() {
+        if ctx.json {
+            item(ctx, out, raw, || json::feed_item(it))?;
+            continue;
+        }
+        if i > 0 {
+            text(out, "\n")?;
+        }
+        if let Some(by) = reposted_by(it) {
+            text(out, &format!("⟳ reposted by @{}\n", format::one_line(&by)))?;
+        }
+        text(out, &format::post(&it.post))?;
+    }
+    Ok(())
 }
 
 fn author(
@@ -592,20 +634,7 @@ fn author(
         }
         return Ok(());
     }
-    for (i, (raw, item)) in items.iter().enumerate() {
-        if ctx.json {
-            json_line(out, raw)?;
-            continue;
-        }
-        if i > 0 {
-            text(out, "\n")?;
-        }
-        if let Some(by) = reposted_by(item) {
-            text(out, &format!("⟳ reposted by @{}\n", format::one_line(&by)))?;
-        }
-        text(out, &format::post(&item.post))?;
-    }
-    Ok(())
+    print_feed(ctx, out, &items)
 }
 
 /// The handle that reposted `item` into the feed, if a repost brought it.
@@ -729,7 +758,7 @@ fn save_media(ctx: &Ctx, out: &mut dyn Write, post: &Post, dir: &std::path::Path
         if ctx.json {
             json_line(
                 out,
-                &json!({"post": post.uri, "kind": kind, "url": url, "path": shown}),
+                &json!({"postId": post.uri, "type": kind, "url": url, "path": shown}),
             )?;
         } else {
             text(out, &format!("{shown}\n"))?;
@@ -839,12 +868,44 @@ fn thread(ctx: &Ctx, out: &mut dyn Write, post: &str) -> Result<()> {
         &[("uri", &uri), ("depth", "10"), ("parentHeight", "20")],
     )?;
     let thread = raw.get("thread").cloned().unwrap_or(Value::Null);
-    if ctx.json {
+    if ctx.raw {
         return json_line(out, &thread);
     }
     let node: crate::api::types::ThreadNode = serde_json::from_value(thread)
         .map_err(|e| Error::api(format!("the thread could not be read: {e}")))?;
+    if ctx.json {
+        for p in thread_posts(&node) {
+            json_line(out, &json::post(p))?;
+        }
+        return Ok(());
+    }
     text(out, &format::thread(&node))
+}
+
+/// The posts of a thread in the order `thread --json` prints them: those
+/// above the one asked for, oldest first, it, then each reply before its
+/// own replies. A post the server cannot show is left out.
+fn thread_posts(node: &crate::api::types::ThreadNode) -> Vec<&Post> {
+    use crate::api::types::ThreadNode;
+    let mut above = Vec::new();
+    if let ThreadNode::Post { parent, .. } = node {
+        let mut cur = parent.as_deref();
+        while let Some(ThreadNode::Post { post, parent, .. }) = cur {
+            above.push(post.as_ref());
+            cur = parent.as_deref();
+        }
+    }
+    above.reverse();
+    fn down<'a>(n: &'a ThreadNode, into: &mut Vec<&'a Post>) {
+        if let ThreadNode::Post { post, replies, .. } = n {
+            into.push(post);
+            for r in replies {
+                down(r, into);
+            }
+        }
+    }
+    down(node, &mut above);
+    above
 }
 
 fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Result<()> {
@@ -857,13 +918,17 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Re
         limit,
     )?;
     for (i, v) in raw.iter().enumerate() {
-        if ctx.json {
+        if ctx.raw {
             json_line(out, v)?;
             continue;
         }
         let Ok(n) = Notification::deserialize(v) else {
             continue;
         };
+        if ctx.json {
+            json_line(out, &json::notification(&n, v))?;
+            continue;
+        }
         if i > 0 {
             text(out, "\n")?;
         }
@@ -917,10 +982,14 @@ fn search(ctx: &Ctx, out: &mut dyn Write, q: &str, accounts: bool, limit: usize)
 
 fn print_profiles(ctx: &Ctx, out: &mut dyn Write, raw: &[Value]) -> Result<()> {
     for v in raw {
-        if ctx.json {
+        if ctx.raw {
             json_line(out, v)?;
         } else if let Ok(p) = Profile::deserialize(v) {
-            text(out, &format::account_line(&p))?;
+            if ctx.json {
+                json_line(out, &json::account(&p))?;
+            } else {
+                text(out, &format::account_line(&p))?;
+            }
         }
     }
     Ok(())
@@ -939,10 +1008,16 @@ fn likes(ctx: &Ctx, out: &mut dyn Write, post: &str, limit: usize) -> Result<()>
     // Each like is {actor, createdAt}: the JSON keeps it whole, the text
     // shows who.
     for v in &raw {
-        if ctx.json {
+        if ctx.raw {
             json_line(out, v)?;
         } else if let Some(p) = v.get("actor").and_then(|a| Profile::deserialize(a).ok()) {
-            text(out, &format::account_line(&p))?;
+            if ctx.json {
+                let mut a = json::account(&p);
+                a["likedAt"] = v.get("createdAt").cloned().unwrap_or(Value::Null);
+                json_line(out, &a)?;
+            } else {
+                text(out, &format::account_line(&p))?;
+            }
         }
     }
     Ok(())
@@ -976,7 +1051,7 @@ fn lists(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>, limit: usize) -> R
     )?;
     for (i, v) in raw.iter().enumerate() {
         if ctx.json {
-            json_line(out, v)?;
+            item(ctx, out, v, || json::list(v))?;
         } else {
             if i > 0 {
                 text(out, "\n")?;
@@ -1016,10 +1091,14 @@ fn list_members(ctx: &Ctx, out: &mut dyn Write, list: &str, limit: usize) -> Res
     // Each item is {uri, subject}: the JSON keeps it whole, the text shows
     // the account.
     for v in &raw {
-        if ctx.json {
+        if ctx.raw {
             json_line(out, v)?;
         } else if let Some(p) = v.get("subject").and_then(|a| Profile::deserialize(a).ok()) {
-            text(out, &format::account_line(&p))?;
+            if ctx.json {
+                json_line(out, &json::account(&p))?;
+            } else {
+                text(out, &format::account_line(&p))?;
+            }
         }
     }
     Ok(())
@@ -1031,11 +1110,14 @@ fn profile(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>) -> Result<()> {
         .map(|a| a.trim().trim_start_matches('@').to_string())
         .unwrap_or_else(|| client.did().to_string());
     let raw = client.get_value("app.bsky.actor.getProfile", &[("actor", &actor)])?;
-    if ctx.json {
+    if ctx.raw {
         return json_line(out, &raw);
     }
     let p: Profile = serde_json::from_value(raw)
         .map_err(|e| Error::api(format!("the profile could not be read: {e}")))?;
+    if ctx.json {
+        return json_line(out, &json::account(&p));
+    }
     text(out, &format::profile(&p))
 }
 
@@ -1148,12 +1230,14 @@ fn post(
         &options,
     )?;
     let said = created.uri.clone();
-    wrote(
-        ctx,
-        out,
-        json!({"uri": created.uri, "cid": created.cid}),
-        &said,
-    )
+    let url = Post {
+        uri: created.uri.clone(),
+        ..Post::default()
+    }
+    .web_url();
+    let mut v = json::wrote("post", None, Some(&created.uri), url.as_deref(), false);
+    v["cid"] = json!(created.cid);
+    wrote(ctx, out, v, &said)
 }
 
 fn like(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
@@ -1164,18 +1248,28 @@ fn like(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
             return wrote(
                 ctx,
                 out,
-                json!({"uri": uri, "already": true}),
+                json::wrote("like", Some(&p.uri), Some(uri), None, true),
                 &format!("already liked: {uri}"),
             );
         }
         let uri = client.like(&p.strong_ref())?;
-        wrote(ctx, out, json!({"uri": uri}), &uri)
+        wrote(
+            ctx,
+            out,
+            json::wrote("like", Some(&p.uri), Some(&uri), None, false),
+            &uri,
+        )
     } else {
         let Some(uri) = p.like_uri().map(str::to_string) else {
             return Err(Error::new(Kind::Usage, format!("{} is not liked", p.uri)));
         };
         client.unlike(&uri)?;
-        wrote(ctx, out, json!({"deleted": uri}), &format!("removed {uri}"))
+        wrote(
+            ctx,
+            out,
+            json::wrote("unlike", Some(&p.uri), None, None, false),
+            &format!("removed {uri}"),
+        )
     }
 }
 
@@ -1187,12 +1281,17 @@ fn repost(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
             return wrote(
                 ctx,
                 out,
-                json!({"uri": uri, "already": true}),
+                json::wrote("repost", Some(&p.uri), Some(uri), None, true),
                 &format!("already reposted: {uri}"),
             );
         }
         let uri = client.repost(&p.strong_ref())?;
-        wrote(ctx, out, json!({"uri": uri}), &uri)
+        wrote(
+            ctx,
+            out,
+            json::wrote("repost", Some(&p.uri), Some(&uri), None, false),
+            &uri,
+        )
     } else {
         let Some(uri) = p.repost_uri().map(str::to_string) else {
             return Err(Error::new(
@@ -1201,7 +1300,12 @@ fn repost(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
             ));
         };
         client.unrepost(&uri)?;
-        wrote(ctx, out, json!({"deleted": uri}), &format!("removed {uri}"))
+        wrote(
+            ctx,
+            out,
+            json::wrote("unrepost", Some(&p.uri), None, None, false),
+            &format!("removed {uri}"),
+        )
     }
 }
 
@@ -1214,7 +1318,7 @@ fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             return wrote(
                 ctx,
                 out,
-                json!({"uri": uri, "already": true}),
+                json::wrote("follow", Some(&p.did), Some(&uri), None, true),
                 &format!("already following @{}", p.handle),
             );
         }
@@ -1222,7 +1326,7 @@ fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
         wrote(
             ctx,
             out,
-            json!({"uri": uri}),
+            json::wrote("follow", Some(&p.did), Some(&uri), None, false),
             &format!("following @{}", p.handle),
         )
     } else {
@@ -1236,7 +1340,7 @@ fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
         wrote(
             ctx,
             out,
-            json!({"deleted": uri}),
+            json::wrote("unfollow", Some(&p.did), None, None, false),
             &format!("unfollowed @{}", p.handle),
         )
     }
@@ -1261,7 +1365,7 @@ fn mute(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
         (true, true) => wrote(
             ctx,
             out,
-            json!({"muted": p.did, "already": true}),
+            json::wrote("mute", Some(&p.did), None, None, true),
             &format!("already muted @{}", p.handle),
         ),
         (true, false) => {
@@ -1269,7 +1373,7 @@ fn mute(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             wrote(
                 ctx,
                 out,
-                json!({"muted": p.did}),
+                json::wrote("mute", Some(&p.did), None, None, false),
                 &format!("muted @{}", p.handle),
             )
         }
@@ -1278,7 +1382,7 @@ fn mute(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             wrote(
                 ctx,
                 out,
-                json!({"unmuted": p.did}),
+                json::wrote("unmute", Some(&p.did), None, None, false),
                 &format!("unmuted @{}", p.handle),
             )
         }
@@ -1301,7 +1405,7 @@ fn block(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
         (true, Some(uri)) => wrote(
             ctx,
             out,
-            json!({"uri": uri, "already": true}),
+            json::wrote("block", Some(&p.did), Some(&uri), None, true),
             &format!("already blocking @{}", p.handle),
         ),
         (true, None) => {
@@ -1309,7 +1413,7 @@ fn block(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             wrote(
                 ctx,
                 out,
-                json!({"uri": uri}),
+                json::wrote("block", Some(&p.did), Some(&uri), None, false),
                 &format!("blocked @{}", p.handle),
             )
         }
@@ -1318,7 +1422,7 @@ fn block(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> Result<()> {
             wrote(
                 ctx,
                 out,
-                json!({"deleted": uri}),
+                json::wrote("unblock", Some(&p.did), None, None, false),
                 &format!("unblocked @{}", p.handle),
             )
         }
@@ -1390,7 +1494,14 @@ fn report(
         body["reason"] = json!(c);
     }
     let answer = client.post_value("com.atproto.moderation.createReport", &body)?;
-    wrote(ctx, out, answer, &format!("reported {what}"))
+    let target = body["subject"]
+        .get("uri")
+        .or_else(|| body["subject"].get("did"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let mut v = json::wrote("report", target.as_deref(), None, None, false);
+    v["id"] = answer.get("id").cloned().unwrap_or(Value::Null);
+    wrote(ctx, out, v, &format!("reported {what}"))
 }
 
 fn app_passwords(ctx: &Ctx, out: &mut dyn Write, action: Option<AppPasswordAction>) -> Result<()> {
@@ -1416,7 +1527,13 @@ fn app_passwords(ctx: &Ctx, out: &mut dyn Write, action: Option<AppPasswordActio
                 .unwrap_or_default();
             for p in &items {
                 if ctx.json {
-                    json_line(out, p)?;
+                    item(ctx, out, p, || {
+                        json!({
+                            "name": p.get("name"),
+                            "createdAt": p.get("createdAt"),
+                            "privileged": p.get("privileged").and_then(Value::as_bool).unwrap_or(false),
+                        })
+                    })?;
                 } else {
                     let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or("");
                     let privileged = if p.get("privileged").and_then(Value::as_bool) == Some(true) {
@@ -1444,10 +1561,14 @@ fn app_passwords(ctx: &Ctx, out: &mut dyn Write, action: Option<AppPasswordActio
                 )
                 .map_err(hint)?;
             let password = v.get("password").and_then(Value::as_str).unwrap_or("");
+            let mut made = json::wrote("app-passwords add", None, Some(&name), None, false);
+            for k in ["password", "createdAt", "privileged"] {
+                made[k] = v.get(k).cloned().unwrap_or(Value::Null);
+            }
             wrote(
                 ctx,
                 out,
-                v.clone(),
+                made,
                 &format!("{password}\n(the password of {name:?}; it is not shown again)"),
             )
         }
@@ -1461,7 +1582,7 @@ fn app_passwords(ctx: &Ctx, out: &mut dyn Write, action: Option<AppPasswordActio
             wrote(
                 ctx,
                 out,
-                json!({"revoked": name}),
+                json::wrote("app-passwords revoke", Some(&name), None, None, false),
                 &format!("revoked {name:?}"),
             )
         }
@@ -1479,7 +1600,12 @@ fn delete(ctx: &Ctx, out: &mut dyn Write, post: &str) -> Result<()> {
         ));
     }
     client.delete_post(&uri)?;
-    wrote(ctx, out, json!({"deleted": uri}), &format!("deleted {uri}"))
+    wrote(
+        ctx,
+        out,
+        json::wrote("delete", Some(&uri), None, None, false),
+        &format!("deleted {uri}"),
+    )
 }
 
 fn login(
@@ -1513,7 +1639,7 @@ fn login(
     wrote(
         ctx,
         out,
-        json!({"did": session.did, "handle": session.handle, "service": session.service}),
+        json!({"id": session.did, "username": session.handle, "host": null, "service": session.service}),
         &format!("logged in as @{}", session.handle),
     )
 }
@@ -1598,7 +1724,7 @@ fn accounts(ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         if ctx.json {
             json_line(
                 out,
-                &json!({"did": s.did, "handle": s.handle, "service": s.service, "current": used}),
+                &json!({"id": s.did, "username": s.handle, "host": null, "service": s.service, "current": used}),
             )?;
         } else {
             let mark = if used { "* " } else { "  " };
@@ -1620,10 +1746,14 @@ fn chat(
     let Some(actor) = actor else {
         let convos = collect_chat(&client, "chat.bsky.convo.listConvos", &[], "convos", limit)?;
         for v in &convos {
-            if ctx.json {
+            if ctx.raw {
                 json_line(out, v)?;
             } else if let Ok(c) = crate::api::types::Convo::deserialize(v) {
-                text(out, &format::convo(&c, &me))?;
+                if ctx.json {
+                    json_line(out, &json::convo(&c))?;
+                } else {
+                    text(out, &format::convo(&c, &me))?;
+                }
             }
         }
         return Ok(());
@@ -1660,7 +1790,7 @@ fn chat(
         return wrote(
             ctx,
             out,
-            json!({"id": m.id, "convoId": convo.id, "text": m.text, "sentAt": m.sent_at}),
+            json::message(&m, &convo),
             &format!("sent to {}", format::convo_with(&convo, &me)),
         );
     }
@@ -1674,10 +1804,14 @@ fn chat(
     )?;
     messages.reverse();
     for v in &messages {
-        if ctx.json {
+        if ctx.raw {
             json_line(out, v)?;
         } else if let Some(m) = crate::api::types::ChatMessage::from_value(v) {
-            text(out, &format::message(&m, &me, &convo))?;
+            if ctx.json {
+                json_line(out, &json::message(&m, &convo))?;
+            } else {
+                text(out, &format::message(&m, &me, &convo))?;
+            }
         }
     }
     Ok(())
@@ -1784,6 +1918,7 @@ mod tests {
             }),
             service: "http://127.0.0.1:9",
             json: false,
+            raw: false,
         };
         let mut out = Vec::new();
         let e = chat(
@@ -1819,6 +1954,7 @@ mod tests {
             }),
             service: "http://127.0.0.1:9",
             json: false,
+            raw: false,
         };
         let mut out = Vec::new();
         let e = report(
@@ -2041,6 +2177,7 @@ mod tests {
             session: None,
             service: "http://127.0.0.1:9",
             json: false,
+            raw: false,
         };
         let given = PathBuf::from("写真 👨‍👩‍👧");
         assert_eq!(download_dir(&ctx, Some(given.clone())).unwrap(), given);

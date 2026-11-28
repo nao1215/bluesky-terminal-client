@@ -73,7 +73,7 @@ Run `bsky` or `msky` and log in: bsky with your handle and an [app password](htt
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text. Both clients have 42 themes, columns, several accounts, notifications and direct messages, print JSON from every command with `--json`, and post photos and videos without their location data.
+Other terminals get text. Both clients have 42 themes, columns, several accounts, notifications and direct messages, print JSON in one shape from every command with `--json`, and post photos and videos without their location data.
 
 Only bsky makes link cards and speaks nine languages (msky speaks English and 日本語). Only msky draws custom emoji, keeps MFM's bold, and folds content warnings until `w`. msky is tested against Misskey itself, not its forks.
 
