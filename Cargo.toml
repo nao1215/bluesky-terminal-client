@@ -30,7 +30,7 @@ tempfile = "3"
 unicode-segmentation = "1"
 # ratatui-core 0.1.2 adds 1 to the width of U+FF9E/U+FF9F, and 0.2.3 counts them too, so a half-width kana takes 3 cells; drop the cap once ratatui stops adding its own width.
 unicode-width = ">=0.2, <0.2.3"
-ureq = "3"
+ureq = "3.5.2"
 
 # cargo-llvm-cov sets cfg(coverage); tests that never run under it opt out.
 # unreachable_pub keeps `pub` for what a crate's users can reach: terminal-kit's

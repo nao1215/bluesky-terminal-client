@@ -8,6 +8,7 @@ use serde_json::json;
 
 mod compose;
 mod hints;
+mod inline_video;
 mod languages;
 mod panels;
 mod posts_and_help;

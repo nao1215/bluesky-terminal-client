@@ -1,6 +1,11 @@
 //! Translations into Simplified Chinese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("Play videos in the timeline", "在时间线中播放视频"),
+    (
+        "enter turns timeline playback on or off",
+        "按 Enter 开启或关闭时间线视频播放",
+    ),
     ("(R to retry)", "（R 重试）"),
     ("(blocked post)", "（已屏蔽的帖子）"),
     ("(deleted)", "（已删除）"),

@@ -174,9 +174,10 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     ])
     .areas(area);
     draw_tabs(frame, top, app);
+    let inline = app.inline_video() && app.overlay.is_none();
     if let Some(th) = app.threads.last_mut() {
         let me = app.session.as_ref().map(|s| s.did.as_str());
-        draw_thread(frame, body, th, images, me, &t);
+        draw_thread(frame, body, th, images, PostContext { me, inline }, &t);
     } else {
         draw_tab(frame, body, app, images, &t);
     }
@@ -233,11 +234,21 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         None => {}
     }
-    if !matches!(
+    let viewer_video = matches!(
         &app.overlay,
         Some(Overlay::Viewer { media, index, .. })
             if matches!(media.get(*index), Some(Media::Video { .. }))
-    ) {
+    );
+    // With nothing over the list, the selected post's video plays in its
+    // picture box (posts::draw_posts); moving off it stops it here.
+    let inline_playing = app.inline_video()
+        && app.overlay.is_none()
+        && app.selected_post().is_some_and(|p| {
+            p.embed
+                .as_ref()
+                .is_some_and(|e| e.media().iter().any(|m| matches!(m, Media::Video { .. })))
+        });
+    if !viewer_video && !inline_playing {
         images.stop_video();
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {

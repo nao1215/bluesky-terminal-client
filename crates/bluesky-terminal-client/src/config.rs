@@ -35,6 +35,10 @@ pub(crate) struct Settings {
     /// can) or `"off"`. `BSKY_GRAPHICS` in the environment wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pictures: Option<String>,
+    /// Timeline playback preference; without one it is on for kitty.
+    /// `BSKY_INLINE_VIDEO=0/1` takes precedence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_video: Option<bool>,
     /// Where `d` saves; `BSKY_DOWNLOAD_DIR` wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_dir: Option<String>,
@@ -170,6 +174,8 @@ impl ColumnSource {
 pub(crate) struct Environment {
     /// `BSKY_GRAPHICS`
     pub graphics: Option<String>,
+    /// `BSKY_INLINE_VIDEO`
+    pub inline_video: Option<String>,
     /// `BSKY_DOWNLOAD_DIR`
     pub download_dir: Option<String>,
     /// `BSKY_CACHE_DIR`
@@ -195,6 +201,7 @@ impl Environment {
         let get = |k: &str| get(k).filter(|v| !v.trim().is_empty());
         Self {
             graphics: get(crate::terminal::GRAPHICS_ENV),
+            inline_video: get(INLINE_VIDEO_ENV),
             download_dir: get(DOWNLOAD_DIR_ENV),
             cache_dir: get(CACHE_DIR_ENV),
             video_service: get(VIDEO_SERVICE_ENV),
@@ -409,6 +416,21 @@ pub(crate) fn video_service(env: &Environment, settings: &Settings) -> (String, 
 
 /// Environment variable that turns link cards off (`off`) or on.
 pub(crate) const LINK_CARDS_ENV: &str = "BSKY_LINK_CARDS";
+
+pub(crate) const INLINE_VIDEO_ENV: &str = "BSKY_INLINE_VIDEO";
+
+/// The playback preference, before checking whether pictures are enabled.
+/// Only 0 and 1 override the setting; other values leave it alone.
+pub(crate) fn inline_video(env: &Environment, settings: &Settings, kitty: bool) -> (bool, Source) {
+    match env.inline_video.as_deref().map(str::trim) {
+        Some("0") => (false, Source::Env),
+        Some("1") => (true, Source::Env),
+        _ => match settings.inline_video {
+            Some(on) => (on, Source::File),
+            None => (kitty, Source::Default),
+        },
+    }
+}
 
 /// Whether a post without pictures, video or a quote carries a card for its
 /// first link: not when `BSKY_LINK_CARDS`, else the settings, say `off`.
@@ -935,6 +957,7 @@ mod tests {
 
     fn env(var: &str) -> Environment {
         Environment {
+            inline_video: None,
             download_dir: Some(format!("{var}/downloads")),
             cache_dir: Some(format!("{var}/cache")),
             video_service: Some(format!("https://{var}.example/")),
@@ -1102,6 +1125,57 @@ mod tests {
             link_cards(&var(" "), &on(Some("off"))),
             (false, Source::File)
         );
+    }
+
+    #[rstest::rstest]
+    #[case(true, None, None, true, Source::Default)]
+    #[case(false, None, None, false, Source::Default)]
+    #[case(true, Some(false), None, false, Source::File)]
+    #[case(false, Some(true), None, true, Source::File)]
+    #[case(true, Some(true), Some("0"), false, Source::Env)]
+    #[case(false, Some(false), Some("1"), true, Source::Env)]
+    #[case(true, Some(false), Some("invalid"), false, Source::File)]
+    #[case(true, None, Some(""), true, Source::Default)]
+    fn timeline_video_preference_and_override(
+        #[case] kitty: bool,
+        #[case] setting: Option<bool>,
+        #[case] var: Option<&str>,
+        #[case] on: bool,
+        #[case] source: Source,
+    ) {
+        let env = Environment::from_vars(|key| {
+            (key == INLINE_VIDEO_ENV)
+                .then_some(var)
+                .flatten()
+                .map(str::to_string)
+        });
+        let settings = Settings {
+            inline_video: setting,
+            ..Settings::default()
+        };
+        assert_eq!(inline_video(&env, &settings, kitty), (on, source));
+    }
+
+    #[test]
+    fn timeline_video_is_saved_and_loaded_with_other_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path());
+        fs::write(store.path(), br#"{"theme":"nord","future":1}"#).unwrap();
+        let (mut settings, _) = store.load();
+        assert_eq!(settings.inline_video, None);
+        for on in [false, true] {
+            settings.inline_video = Some(on);
+            store.save(&settings).unwrap();
+            let (loaded, warning) = store.load();
+            assert_eq!(warning, None);
+            assert_eq!(loaded, settings);
+            let json: serde_json::Value =
+                serde_json::from_slice(&fs::read(store.path()).unwrap()).unwrap();
+            assert_eq!(
+                json,
+                serde_json::json!({"theme":"nord", "future":1, "inline_video":on})
+            );
+        }
     }
 
     #[test]

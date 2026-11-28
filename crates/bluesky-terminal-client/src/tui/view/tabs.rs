@@ -223,6 +223,7 @@ pub(super) fn draw_columns(
     images: &mut Images,
     t: &Theme,
 ) {
+    let inline = app.inline_video() && app.overlay.is_none();
     let n = app.columns.items.len();
     // Without columns the Timeline tab shows the timeline instead.
     if n == 0 {
@@ -269,7 +270,10 @@ pub(super) fn draw_columns(
                 l,
                 images,
                 n!("Nothing here yet."),
-                me.as_deref(),
+                PostContext {
+                    me: me.as_deref(),
+                    inline: i == focus && inline,
+                },
                 t,
             ),
             Rows::Notifications(l) => draw_notification_list(frame, list, l, images, t),
@@ -286,13 +290,14 @@ pub(super) fn draw_timeline(
     images: &mut Images,
     t: &Theme,
 ) {
+    let inline = app.inline_video() && app.overlay.is_none();
     draw_posts(
         frame,
         body,
         &mut app.timeline,
         images,
         n!("No posts from accounts you follow yet. Press R to refresh."),
-        None,
+        PostContext { me: None, inline },
         t,
     );
 }
@@ -304,7 +309,7 @@ pub(super) fn draw_thread(
     area: Rect,
     th: &mut ThreadView,
     images: &mut Images,
-    me: Option<&str>,
+    context: PostContext<'_>,
     t: &Theme,
 ) {
     let [title, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
@@ -336,7 +341,7 @@ pub(super) fn draw_thread(
         &mut th.list,
         images,
         n!("The thread is empty."),
-        me,
+        context,
         t,
     );
 }
@@ -420,6 +425,7 @@ pub(super) fn draw_notification_list(
 }
 
 pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
+    let inline = app.inline_video() && app.overlay.is_none();
     let t = &app.theme.clone();
     let [bar, input, _, results] = Layout::vertical([
         Constraint::Length(1),
@@ -485,7 +491,7 @@ pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: 
                     &mut app.search.posts,
                     images,
                     n!("No posts found."),
-                    me,
+                    PostContext { me, inline },
                     t,
                 );
             }
@@ -499,6 +505,7 @@ pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: 
 }
 
 pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
+    let inline = app.inline_video() && app.overlay.is_none();
     let t = &app.theme.clone();
     let Some(p) = app.profile.profile.clone() else {
         let msg = match &app.profile.error {
@@ -636,7 +643,7 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
         &mut app.profile.posts,
         images,
         n!("No posts yet."),
-        None,
+        PostContext { me: None, inline },
         t,
     );
 }

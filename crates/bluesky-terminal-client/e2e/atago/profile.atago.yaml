@@ -676,7 +676,8 @@ scenarios:
             - send: s
             - expect_screen:
                 contains: [" Settings ", "▶ Theme", "Pictures             auto", "Download folder", "Picture cache", "Video service", "Browser", "Account              @me.test", "j k move  enter change  esc close"]
-            # The last row opens the account list A opens; esc comes back.
+            # The Account row opens the list A opens; esc comes back.
+            - send: k
             - send: k
             - send: { key: enter }
             - expect_screen:
@@ -684,6 +685,7 @@ scenarios:
             - send: { key: esc }
             - expect_screen:
                 contains: ["▶ Account              @me.test", "Picture cache"]
+            - send: j
             - send: j
             - send: j
             - send: { key: enter }
@@ -847,7 +849,8 @@ scenarios:
             - send: s
             - expect_screen:
                 contains: ["Language             English", "Account"]
-            # The row above the last, Account.
+            # Language is above Account and timeline playback.
+            - send: k
             - send: k
             - send: k
             - send: { key: enter }

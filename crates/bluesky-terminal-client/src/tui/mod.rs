@@ -199,6 +199,9 @@ fn event_loop(
     for s in accounts.list().unwrap_or_default() {
         app.accounts.push((&s).into());
     }
+    app.kitty_graphics = picker
+        .as_ref()
+        .is_some_and(|p| p.protocol_type() == ratatui_image::picker::ProtocolType::Kitty);
     app.env = env;
     app.apply_settings(loaded, depth, warning);
     // The columns kept for the account, if any, are what the Timeline tab
@@ -216,8 +219,13 @@ fn event_loop(
 
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
     let mut input = events::Input::new().map_err(io_err)?;
+    let video_ahead = player::AheadSession;
     let mut dirty = true;
     while !app.quit {
+        // Update before drawing: a player started by this frame adopts the
+        // same in-flight read instead of issuing three duplicate requests.
+        let videos = app.videos_near_selection(app.inline_video() && images.shows());
+        player::read_ahead(&videos);
         if dirty {
             if let Some(delete) = images.viewer_closed(app.viewer_open()) {
                 write_now(delete).map_err(io_err)?;
@@ -304,12 +312,6 @@ fn event_loop(
         for url in app.take_pictures_ahead() {
             images.warm(&url);
         }
-        // Played only where pictures are shown.
-        for playlist in app.take_videos_ahead() {
-            if images.shows() {
-                player::read_ahead(&playlist);
-            }
-        }
         if images.poll() {
             dirty = true;
         }
@@ -327,6 +329,7 @@ fn event_loop(
             dirty = true;
         }
     }
+    drop(video_ahead);
     // A write sent just before q, such as a like or the notifications
     // marked seen, reaches the server before bsky ends.
     worker.finish_writes(QUIT_WAIT);
