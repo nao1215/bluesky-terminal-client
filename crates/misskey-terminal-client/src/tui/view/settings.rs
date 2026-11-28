@@ -5,30 +5,12 @@ use super::*;
 use crate::i18n::{self, Lang};
 use crate::tui::app::SettingRow;
 use crate::tui::input::TextInput;
+use crate::tui::text::truncate_start;
 use crate::tui::theme::THEMES;
 
 const SETTINGS_W: u16 = 76;
 /// How many themes the list shows at once.
 const THEME_ROWS: usize = 12;
-
-/// The end of `s` in `width` cells: a path's end names the folder.
-fn truncate_start(s: &str, width: usize) -> String {
-    if cells(s) <= width {
-        return s.to_string();
-    }
-    let mut out: Vec<char> = Vec::new();
-    let mut w = 1;
-    for c in s.chars().rev() {
-        let cw = cells(&c.to_string());
-        if w + cw > width {
-            break;
-        }
-        w += cw;
-        out.push(c);
-    }
-    out.reverse();
-    format!("…{}", out.into_iter().collect::<String>())
-}
 
 pub(super) fn draw_settings(
     frame: &mut Frame,
@@ -66,7 +48,7 @@ pub(super) fn draw_settings(
             };
             Line::from(vec![
                 Span::styled(head, t.accent().bold()),
-                Span::styled(truncate_start(&drawable(&r.value), room), style),
+                Span::styled(truncate_start(&r.value, room), style),
             ])
         })
         .collect();

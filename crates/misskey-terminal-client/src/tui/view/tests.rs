@@ -1047,6 +1047,33 @@ fn the_settings_screen_lines_up_in_japanese() {
     assert!(screen.contains("enter 変更"), "{screen}");
 }
 
+// A value too long for the settings screen keeps its end, cut between
+// whole emoji: the start of a family or a skin tone is never left alone.
+#[test]
+fn a_long_setting_is_cut_between_whole_emoji() {
+    let mut app = with_notes(vec![]);
+    app.env.download_dir =
+        Some("/home/me/写真/旅行👨‍👩‍👧👍🏽🇯🇵👨‍👩‍👧👍🏽🇯🇵👨‍👩‍👧👍🏽🇯🇵/家族👨‍👩‍👧👍🏽🇯🇵1️⃣e\u{301}👨‍👩‍👧👍🏽🇯🇵".into());
+    app.overlay = Some(Overlay::Settings {
+        selected: 0,
+        edit: None,
+    });
+    for w in MIN_W..100 {
+        let mut images = Images::none();
+        let mut term = Terminal::new(TestBackend::new(w, 30)).unwrap();
+        term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+        let buf = term.backend().buffer().clone();
+        for y in 0..30 {
+            let mut x = 0;
+            while x < w {
+                let sym = buf[(x, y)].symbol();
+                assert!(!is_fragment(sym), "width {w} row {y}: {sym:?}");
+                x += sym.width().max(1) as u16;
+            }
+        }
+    }
+}
+
 // The theme list shows where it is and its keys in every theme.
 #[test]
 fn the_theme_list_draws_every_theme() {
