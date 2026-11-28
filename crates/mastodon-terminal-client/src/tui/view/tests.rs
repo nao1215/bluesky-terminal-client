@@ -465,3 +465,28 @@ fn stage_four_screens_fit_in_both_languages() {
     }
     crate::i18n::set(crate::i18n::Lang::En);
 }
+
+#[test]
+fn link_cards_follow_the_content_warning_and_open_only_on_explicit_key() {
+    let mut post = status("42", "article");
+    post.spoiler_text = "spoiler".into();
+    post.card = Some(crate::api::types::PreviewCard {
+        url: "https://example.test/article".into(),
+        title: "A card title".into(),
+        description: "Card description".into(),
+        image: Some("https://example.test/card.png".into()),
+    });
+    let mut app = app_with(vec![post]);
+    assert!(!screen(&mut app, 100, 25).contains("A card title"));
+    assert!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::NONE))
+            .is_empty()
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE));
+    let shown = screen(&mut app, 100, 25);
+    assert!(shown.contains("A card title"));
+    assert!(shown.contains("Card description"));
+    assert!(
+        matches!(&app.handle_key(KeyEvent::new(KeyCode::Char('O'),KeyModifiers::NONE))[0].1,crate::tui::worker::Job::OpenLink {url,..} if url=="https://example.test/article")
+    );
+}

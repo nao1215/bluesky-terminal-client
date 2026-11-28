@@ -9,13 +9,21 @@ authors.workspace = true
 description = "Unofficial Mastodon client for the terminal: a full-screen client for the timelines and notifications, and commands that read timelines, posts and accounts, save their files, and post with pictures."
 license.workspace = true
 readme = "README.md"
+homepage = "https://github.com/nao1215/social-terminal-clients/tree/main/crates/mastodon-terminal-client"
 repository = "https://github.com/nao1215/social-terminal-clients"
 keywords = ["mastodon", "fediverse", "cli", "terminal"]
 categories = ["command-line-utilities"]
-# Not published to crates.io.
-publish = false
 # The unit tests read src/testdata, so it ships; the E2E suite and the fuzz targets do not.
-exclude = ["e2e/", "fuzz/"]
+exclude = ["bench/", "doc/", "e2e/", "fuzz/", "justfile"]
+
+# cargo-binstall uses the same archives as release-mstdn.yml.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/mstdn-v{ version }/mstdn-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [[bin]]
 name = "mstdn"

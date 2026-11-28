@@ -189,7 +189,7 @@ jobs:
       - name: Write the third-party licenses
         run: |
           out="${GITHUB_REF_NAME}-THIRD_PARTY_LICENSES.html"
-          cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml crates/misskey-terminal-client/about.hbs -o "${out}"
+          cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml scripts/release/about.hbs -o "${out}"
           test -s "${out}"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

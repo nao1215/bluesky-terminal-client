@@ -233,37 +233,33 @@ fn event_loop(
                 .map_err(io_err)?;
             dirty = false;
         }
-        let mut wait = if images.playing() {
+        let wait = if images.playing() {
             VIDEO_TICK
         } else if app.pending > 0 || images.loading() {
             ANSWER_TICK
         } else {
             TICK
         };
-        for _ in 0..EVENTS_PER_FRAME {
-            if app.quit {
-                break;
-            }
-            let Some(ev) = input.next(wait).map_err(io_err)? else {
-                break;
-            };
-            match ev {
-                TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
-                    for (seq, job) in app.handle_key(k) {
+        let handled = input
+            .drain(EVENTS_PER_FRAME, wait, |ev| {
+                match ev {
+                    TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
+                        for (seq, job) in app.handle_key(k) {
+                            worker.send(seq, job);
+                        }
+                    }
+                    TermEvent::Paste(text) => app.handle_paste(&text),
+                    _ => {}
+                }
+                if let Some(store) = accounts {
+                    for (seq, job) in account_changes(app, worker, store) {
                         worker.send(seq, job);
                     }
                 }
-                TermEvent::Paste(text) => app.handle_paste(&text),
-                _ => {}
-            }
-            if let Some(store) = accounts {
-                for (seq, job) in account_changes(app, worker, store) {
-                    worker.send(seq, job);
-                }
-            }
-            dirty = true;
-            wait = Duration::ZERO;
-        }
+                !app.quit
+            })
+            .map_err(io_err)?;
+        dirty |= handled > 0;
         if let Some(text) = app.take_copy() {
             write_now(&clipboard::osc52(&text)).map_err(io_err)?;
         }

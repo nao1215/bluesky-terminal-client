@@ -246,13 +246,13 @@ scenarios:
     steps:
       - fixture: { file: photo.png, from: testdata/photo.png }
       - run:
-          command: msky post x --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --host ${api.url}
+          command: msky post x --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --image photo.png --host ${api.url}
           env: &env3
             MSKY_TOKEN: e2e-env-token-0001
       - assert:
           exit_code: 1
           stderr:
-            equals: "error: a note can have at most 4 pictures\n"
+            equals: "error: a note can have at most 16 pictures\n"
       - fixture: { file: long.txt, from: testdata/long.txt }
       - run:
           command: msky post - --host ${api.url}

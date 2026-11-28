@@ -50,10 +50,13 @@ Mastodon's multipart writer to avatar/header parts changed the adjacent existing
 retry-notice fingerprint; that unchanged command-line network retry notice does
 not belong in terminal-kit's drawing API. No new implementation copy is retained.
 
-The compatibility stage adds a distinct unsupported kind and help text. This
-changes fingerprints of the existing per-client error constructors, formatting
-and startup code; those unchanged copies retain the earlier exception rather
-than moving application error policy into terminal-kit.
+The local Misskey/Sharkey compatibility work shares Error, Kind and their
+formatting in terminal-kit; bsky, msky and mstdn re-export that implementation,
+and nstr preserves its serializable shape while using the same formatter.
+The msky/mstdn startup match adjacent to --help has a new fingerprint after
+their exit-status text changed. Account selection remains client-specific;
+the removed error implementation fingerprints are dropped. Mastodon's
+unsupported-feature constructor now also lives in the shared Error type.
 
 Routing retry notices through the TUI removed the shared stderr formatting
 match and shifted the existing Client constructor match; neither adds copied

@@ -171,6 +171,7 @@ def matches(f, event):
         and (not f.get("#e") or any(t[:1] == ["e"] and t[1] in f["#e"] for t in event["tags"] if len(t) > 1))
         and (not f.get("authors") or event["pubkey"] in f["authors"])
         and (not f.get("#p") or any(t[:1] == ["p"] and t[1] in f["#p"] for t in event["tags"] if len(t) > 1))
+        and (not f.get("#t") or any(t[:1] == ["t"] and t[1] in f["#t"] for t in event["tags"] if len(t) > 1))
         and ("until" not in f or event["created_at"] <= f["until"])
     )
 
@@ -207,6 +208,13 @@ class Relay(socketserver.BaseRequestHandler):
             if not chunk:
                 raise ConnectionError("closed")
             data += chunk
+        if b"accept: application/nostr+json" in data.lower():
+            body = b'{"supported_nips":[1,11]}'
+            self.request.sendall(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\n"
+                + f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body
+            )
+            return False
         key = ""
         for line in data.decode("latin-1").split("\r\n")[1:]:
             name, _, value = line.partition(":")
@@ -237,7 +245,8 @@ class Relay(socketserver.BaseRequestHandler):
 
     def handle(self):
         try:
-            self.handshake()
+            if self.handshake() is False:
+                return
             for opcode, payload in self.frames():
                 if opcode == 8:
                     self.send_frame(8, payload[:2])

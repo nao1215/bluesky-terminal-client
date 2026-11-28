@@ -1,13 +1,43 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (" (environment)", "（環境変数）"),
+    (
+        "Allow mstdn in your browser.",
+        "ブラウザーで mstdn のアクセスを許可してください。",
+    ),
+    ("Log in", "ログイン"),
+    ("Log out", "ログアウト"),
+    ("Preparing login…", "ログインを準備しています…"),
+    (
+        "Remove the saved login for {}? y confirms",
+        "{} のログイン情報を削除しますか？ y で確定",
+    ),
+    ("Server address", "サーバーのアドレス"),
+    ("add account", "アカウント追加"),
+    ("default", "既定値"),
+    ("log in", "ログイン"),
+    ("log out", "ログアウト"),
+    (
+        "o opens the browser; esc cancels",
+        "o でブラウザーを開く、esc で中止",
+    ),
+    ("open browser", "ブラウザーを開く"),
+    (
+        "set by the environment for this run",
+        "この実行では環境変数で指定されています",
+    ),
+    ("Download folder", "保存先フォルダー"),
+    ("Browser", "ブラウザー"),
+    ("Link cards", "リンクカード"),
+    ("open link card", "リンクカードを開く"),
     (
         "threads read ahead after the selection rests for 400 ms",
         "選択が 400 ms 止まるとスレッドを先読み",
     ),
     (
-        "unread counts notifications newer than those viewed this run",
-        "起動後に確認した通知より新しいものを未読として表示",
+        "unread count and read position sync with the server",
+        "サーバーと未読数・既読位置を同期",
     ),
     ("Chat", "チャット"),
     (
@@ -428,7 +458,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("No accounts found.", "アカウントが見つかりません。"),
     ("No posts found.", "投稿が見つかりません。"),
     (
-        "No saved accounts. Run mstdn login.",
+        "No saved accounts. Press a to log in.",
         "保存済みアカウントがありません。mstdn login を実行してください。",
     ),
     ("Profile", "プロフィール"),

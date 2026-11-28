@@ -686,6 +686,8 @@ scenarios:
             MSKY_CACHE_DIR: "off"
             MSKY_SERVERS_URL: "off"
             LC_ALL: C.UTF-8
+            # This scenario changes the color theme, independent of the caller.
+            NO_COLOR: ""
           timeout: 20s
           session:
             - expect_screen:

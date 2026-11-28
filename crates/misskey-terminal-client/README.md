@@ -117,6 +117,8 @@ msky search Misskey --json | jq -r .url
 
 `msky --help` lists them all. [doc/commands.md](doc/commands.md) covers logging in and its permissions, posting from CI, saving files, the JSON shape and the exit codes.
 
+Exit status 5 means the server does not have the requested feature; a structured `NO_SUCH_ENDPOINT` response names the missing endpoint and server, while authentication, token permissions, role restrictions, disabled search or chat, and network failures remain status 4.
+
 ## Environment
 
 | Variable | Meaning |
@@ -163,6 +165,8 @@ just e2e     # end-to-end tests (atago)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The local Misskey and Sharkey catalog, pinned server versions, measured bounds and remaining limitations are in [COMPAT.md](COMPAT.md).
 
 ## Contributors
 

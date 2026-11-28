@@ -1599,6 +1599,23 @@ scenarios:
     env: MSTDN_NO_QUOTES
 - name: 'usable: quote with the server capability'
   steps:
+  - run:
+      command: 'mstdn --json post "compatibility CLI quote" --quote ${env:MSTDN_SEED_TEXT} --dry-run'
+      timeout: 30s
+  - assert:
+      exit_code: 0
+      stdout: {json: {path: $.post.quoteId, equals: '${env:MSTDN_SEED_TEXT}'}}
+  - run:
+      command: 'mstdn --json post "compatibility CLI quote" --quote ${env:MSTDN_SEED_TEXT}'
+      timeout: 30s
+  - assert: {exit_code: 0}
+  - store: {name: cli_quote, from: {stdout: {json: {path: $.id}}}}
+  - run:
+      command: 'mstdn --json status ${cli_quote}'
+      timeout: 30s
+  - assert:
+      exit_code: 0
+      stdout: {json: {path: $.quoteId, equals: '${env:MSTDN_SEED_TEXT}'}}
   - pty:
       command: mstdn
       graphics: kitty

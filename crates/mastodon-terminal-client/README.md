@@ -4,7 +4,7 @@
 
 # mstdn
 
-A [Mastodon](https://joinmastodon.org) client for the terminal: a full-screen client for the timelines and notifications, and commands that read timelines, posts and accounts, save their files, and post with pictures. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
+A [Mastodon](https://joinmastodon.org) client for the terminal: a full-screen client with timelines, direct conversations, account management and media, and commands for reading, posting, favourites, boosts and moderation. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
 
 ```sh
 mstdn                       # the full-screen client
@@ -48,8 +48,9 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 | `enter`, `i` in Chat | Open a conversation and mark it read, then `i` writes and `enter` sends; `esc` stops writing or returns to the conversation list |
 | `space` | Pictures and videos full screen; `h` `l` or arrows change files, `r` replays video, `esc` closes |
 | `d` | Save the post files in the download folder |
-| `A` | Saved accounts; `j` `k` select, `enter` switches and keeps the account in use |
-| `s` | Settings: theme and language; `enter` chooses, `x` resets to the default |
+| `A` | Saved accounts; `j` `k` select, `enter` switches, `a` logs in through browser OAuth, `x` then `y` removes the selected login; `esc` cancels |
+| `s` | Settings: theme, language, download folder and browser; `enter` edits or chooses, `x` resets, `esc` cancels an edit |
+| `O` | Open the selected post's link card in the browser after its content warning is opened |
 | `l`, `b` | Favourite, boost, or take it back |
 | `f` | Follow or unfollow the selected post author or the profile shown; also cancels a pending follow request |
 | `M`, `B` | Toggle mute or block for that account; `y` confirms, any other key cancels |
@@ -61,7 +62,7 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 | `w` | Show the text behind a content warning |
 | `o`, `c` | Open the post in the browser, copy its address |
 | `.` | What the keys do to the post |
-| `T` | The theme, from the 42 bsky and msky have; kept in `settings.json` |
+| `T` | The theme, from 42 choices; `j`/`k` and `pgdn`/`pgup` preview, `enter` saves, `esc` restores the original |
 | `R` | Refresh |
 | `?`, `q` | The keys, quit |
 
@@ -81,7 +82,7 @@ Quote creation is detected from the documented `quote_approval` field on a succe
 
 Columns keep their own selection and pagination and are saved per account in `settings.json`. Chat reads `/api/v1/conversations` and the context of its latest direct status, refreshing the visible conversation or list every 15 seconds. Only direct statuses with the same participants appear in an open conversation, replies keep direct visibility, and the conversation is marked read after Enter opens it and the messages load. A refused read restores the unread flag; a refused send keeps the input.
 
-Settings are kept in `settings.json`. The language setting takes precedence over `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order, with English as the fallback. Unknown settings are preserved; an unreadable settings file is left untouched. Pictures are cached on disk up to 256 MB and in memory; `MSTDN_CACHE_DIR=off` disables the disk cache.
+Settings are kept in `settings.json`. The download folder and browser can be edited with `s`; nonempty `MSTDN_DOWNLOAD_DIR` and `MSTDN_BROWSER` override these saved choices for the run. The language setting takes precedence over `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order, with English as the fallback. Unknown settings are preserved; an unreadable settings file is left untouched. Pictures are cached on disk up to 256 MB and in memory; `MSTDN_CACHE_DIR=off` disables the disk cache.
 
 ## Commands
 
@@ -98,16 +99,29 @@ https://mastodon.social/@alice/113562
 | Command | What it does |
 |---|---|
 | `timeline [KIND]` (`tl`) | `home` (default), `local` or `public` (`federated`); `--reposts` keeps the boosts |
-| `notifications` (`notif`) | Your notifications |
+| `notifications` (`notif`) | Your notifications; `--seen` saves the newest displayed notification as read |
 | `author ACTOR` | An account's posts; `--filter with-replies\|no-replies\|media\|video\|threads`, `--reposts`, `--download` |
 | `status POST` (`note`), `thread POST` | One post; the post with what it answers and its replies |
-| `search QUERY` | A hashtag's posts, or the posts the server's full-text search finds |
+| `search QUERY` | A hashtag's posts or full-text search results; `--accounts` finds accounts |
 | `profile [ACTOR]`, `whoami` | An account; the one logged in |
-| `post TEXT` | A post: `--image` (up to 4), `--video`, `--alt`, `--reply`, `--cw`, `--sensitive`, `--visibility`, `--dry-run` |
+| `post TEXT` | A post: `--image` (up to 4), `--video`, `--alt`, `--reply`, `--quote` (4.5+), `--cw`, `--sensitive`, `--visibility`, `--dry-run` |
 | `download POST` | Save a post's files (`-o DIR`) |
+| `like POST`, `unlike POST` (`favourite`, `unfavourite`) | Favourite a post or take it back |
+| `repost POST`, `unrepost POST` (`boost`, `unboost`) | Boost a post or take it back |
+| `delete POST` | Delete your own post |
+| `likes POST`, `reposts POST` | Accounts that favourited or boosted a post (`-n`) |
+| `follow ACTOR`, `unfollow ACTOR` | Follow, unfollow, or cancel a pending request |
+| `followers [ACTOR]`, `follows [ACTOR]` (`following`) | Followers or following (`-n`); `followers --pending` lists incoming requests |
+| `mute ACTOR`, `unmute ACTOR`, `mutes` | Mute, unmute, or list muted accounts (`-n`) |
+| `block ACTOR`, `unblock ACTOR`, `blocks` | Block, unblock, or list blocked accounts (`-n`) |
+| `favourites`, `bookmarks` | Your favourite or bookmarked posts (`-n`) |
+| `bookmark POST`, `unbookmark POST` | Save or remove a bookmark |
+| `lists`, `list ID` | Your list IDs and names, or a list's timeline (`-n`) |
+| `report TARGET --reason REASON` | Report a post ID or account; `--comment`, `--yes/-y`; reasons: `spam`, `violation`, `misleading`, `sexual`, `rude`, `other` |
+| `chat [ACTOR] [TEXT]` | Direct conversation summaries, available one-to-one history, or send text (`-` reads stdin); `-n` limits results |
 | `login`, `logout`, `accounts` | Log in with OAuth (`--oob`), log out (`--all`), list or switch accounts (`--use HOST`) |
 
-An account is `name`, `@name@host` or its address; a post is its ID or its address (`https://host/@name/ID`, `https://host/users/name/statuses/ID`). An address is read on its own server. `--host` (or `MSTDN_HOST`) picks the server, else the server of the account in use, else mastodon.social. `-n` sets how many to print (20 by default); mstdn reads up to 40 a page, the next page where the server's `Link` header says.
+An account is `name`, `@name@host` or its address; a post is its ID or its address (`https://host/@name/ID`, `https://host/users/name/statuses/ID`). An address is read on its own server. `--host` (or `MSTDN_HOST`) picks the server, else the server of the account in use, else mastodon.social. `-n` sets how many to print (20 for posts and chat, 50 for account lists and saved posts); mstdn reads up to 40 a page, the next page where the server's `Link` header says.
 
 Mastodon sends a post's text as HTML. mstdn prints the text it reads as: a blank line between paragraphs, a mention or a hashtag as written, a link's address whole, and `the article (https://example.com/a)` for a link whose text is not its address. Custom emoji stay `:shortcode:`.
 
@@ -164,6 +178,8 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | 4 | The server could not be reached or said no, including authentication and permission failures |
 | 5 | The server does not offer the requested feature; the message names the feature and server |
 
+HTTP 501 returns status 5. A 404 on a resource-free endpoint can establish that the feature is absent; optional routes that may hide resources additionally require evidence from an older Mastodon release. Compatibility version strings are not interpreted as Mastodon releases. Missing resources, authentication failures and uncertain checks remain status 4. Quote capability is checked before uploads or posting, including `--dry-run`.
+
 ## Environment
 
 | Variable | Meaning |
@@ -174,7 +190,7 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | `MSTDN_DOWNLOAD_DIR` | Where `download` and `d` save |
 | `MSTDN_CACHE_DIR` | Picture cache folder, else `mstdn` in the platform cache folder; `off` disables it |
 | `MSTDN_GRAPHICS` | Force `kitty`, `sixel` or `iterm2` when the terminal supports it but reports another protocol |
-| `MSTDN_BROWSER` | Program that opens the login page and, in the full-screen client, a post |
+| `MSTDN_BROWSER` | Program that opens login pages, posts and link cards; overrides the saved browser |
 | `LC_ALL` `LC_MESSAGES` `LANG` | English or 日本語; the full-screen language when settings name none, and the login directions |
 | `NO_COLOR` | The full-screen client in `monochrome` |
 | `TZ` | Time zone of the times shown |
@@ -213,3 +229,9 @@ The unit and existing E2E suites send their writes to local stand-ins or atago m
 ## License
 
 [MIT](LICENSE). Not made by or affiliated with the Mastodon project.
+
+Notification unread counts use the server's notification marker and capped unread count (Mastodon 4.3+). Viewing the Notifications tab saves its newest loaded ID. A refused save restores the unread count. Servers without the count endpoint use loaded notifications relative to the marker; if markers cannot be read, the client retains its local count. Link cards use metadata and thumbnails returned by Mastodon, and stay hidden behind content warnings.
+
+Direct posts are addressed to mentioned accounts and are not end-to-end encrypted. `chat ACTOR` reads the available direct contexts for one-to-one conversations; group conversations remain in `chat` summaries. Sending text containing additional mentions can add recipients. CLI history reading leaves conversation read state unchanged. Reports are sent to the current server with `forward=false`; interactive confirmation or `--yes` is required. Logout removes the local saved login; revoke OAuth access in the server's authorized applications settings if needed.
+
+Mastodon has no standard arbitrary emoji reactions, per-post link-card suppression, outgoing follow-request listing, Misskey social timeline or Bluesky feed-generator API. Those commands and flags are omitted. Incoming requests are available through `followers --pending`; `unfollow` cancels an outgoing request when its account is known. Quote posts require Mastodon 4.5 or later.

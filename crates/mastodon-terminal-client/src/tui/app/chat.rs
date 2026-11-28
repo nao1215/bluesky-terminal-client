@@ -237,7 +237,13 @@ impl App {
                 .into_iter()
                 .chain([t.status])
                 .chain(t.descendants)
-                .filter(|s| same_conversation(s, &open.accounts, me))
+                .filter(|s| {
+                    crate::api::same_conversation(
+                        s,
+                        &open.accounts,
+                        me.map(|s| (s.user_id.as_str(), s.username.as_str())),
+                    )
+                })
                 .collect();
             (posts, None)
         });
@@ -294,35 +300,4 @@ impl App {
             Err(e) => self.fail(e.message().to_owned()),
         }
     }
-}
-
-/// Context can contain direct branches addressed to different participants.
-/// Those branches are separate conversations, even though they share a root.
-fn same_conversation(status: &Status, accounts: &[Account], me: Option<&Session>) -> bool {
-    if status.visibility != "direct" {
-        return false;
-    }
-    let other = |id: &str, acct: &str| {
-        !acct.is_empty()
-            && !me.is_some_and(|me| {
-                (!id.is_empty() && id == me.user_id) || acct.eq_ignore_ascii_case(&me.username)
-            })
-    };
-    let expected: HashSet<_> = accounts
-        .iter()
-        .filter(|a| other(&a.id, &a.acct))
-        .map(|a| a.acct.to_ascii_lowercase())
-        .collect();
-    let actual: HashSet<_> =
-        std::iter::once((status.account.id.as_str(), status.account.acct.as_str()))
-            .chain(
-                status
-                    .mentions
-                    .iter()
-                    .map(|m| (m.id.as_str(), m.acct.as_str())),
-            )
-            .filter(|(id, acct)| other(id, acct))
-            .map(|(_, acct)| acct.to_ascii_lowercase())
-            .collect();
-    expected == actual
 }

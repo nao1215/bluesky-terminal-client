@@ -1,56 +1,388 @@
-version: "1"
+version: '1'
 suite:
-  name: mstdn unsupported features
+  name: mstdn shared unsupported errors
 scenarios:
-  - name: absent endpoints are exit 5 with server identity but missing resources and forbidden requests remain exit 4
-    mock_servers:
-      - name: api
-        routes:
-          - method: GET
-            path: /api/v1/timelines/public
-            status: 404
-            json: { error: Not Found }
-          - method: GET
-            path: /api/v1/timelines/home
-            status: 403
-            json: { error: insufficient scope }
-          - method: GET
-            path: /api/v1/statuses/missing
-            status: 404
-            json: { error: Record not found }
-          - method: GET
-            path: /api/v2/instance
-            json: { version: "4.2.0 (compatible; GoToSocial 0.19.0)" }
-          - method: GET
-            path: /.well-known/nodeinfo
-            json:
-              links:
-                - rel: http://nodeinfo.diaspora.software/ns/schema/2.0
-                  href: "${api.url}/nodeinfo/2.0"
-          - method: GET
-            path: /nodeinfo/2.0
-            json: { version: "2.0", software: { name: gotosocial, version: "0.19.0" } }
-    steps:
-      - run:
-          command: mstdn timeline public --json --host ${api.url}
-      - assert:
-          exit_code: 5
-          stdout:
-            json:
-              - { path: "$.status", equals: 5 }
-              - { path: "$.error", equals: "127.0.0.1:${api.port} (gotosocial 0.19.0) does not support v1/timelines/public" }
-      - run:
-          command: mstdn status missing --json --host ${api.url}
-      - assert:
-          exit_code: 4
-          stdout:
-            json: { path: "$.status", equals: 4 }
-      - run:
-          command: mstdn timeline home --json --host ${api.url}
-          env: { MSTDN_TOKEN: fake-compat-token }
-      - assert:
-          exit_code: 4
-          stdout:
-            json: { path: "$.status", equals: 4 }
-      - assert:
-          mock: { name: api, path: /nodeinfo/2.0, count: 1 }
+- name: like returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/favourite
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn like 42 --host ${api.url} --json
+      env: &id001
+        MSTDN_TOKEN: parity-fake-token
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/favourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unlike returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unfavourite
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn unlike 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unfavourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: repost returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/reblog
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn repost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/reblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unrepost returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unreblog
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn unrepost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unreblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: bookmark returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/bookmark
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn bookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/bookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unbookmark returns shared unsupported status for HTTP 501 without retry
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unbookmark
+      json:
+        error: Not Implemented
+      status: 501
+  steps:
+  - run:
+      command: mstdn unbookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+      stderr:
+        contains: does not support
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unbookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: quote on 4.4.3 writes nothing in normal and dry run modes
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      status: 200
+      json:
+        version: 4.4.3
+    - method: GET
+      path: /api/v1/statuses/42
+      json: {id: '42'}
+  steps:
+  - run:
+      command: mstdn post comment --quote 42  --host ${api.url} --json
+      env: &id002
+        MSTDN_TOKEN: parity-fake-token
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0
+  - run:
+      command: mstdn post comment --quote 42 --dry-run --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0
+- name: quote on unknown writes nothing in normal and dry run modes
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      status: 200
+      json:
+        version: unknown
+  steps:
+  - run:
+      command: mstdn post comment --quote 42  --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0
+  - run:
+      command: mstdn post comment --quote 42 --dry-run --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0
+- name: bookmarks 404 on 3.0.6 distinguishes capability from missing resources
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/bookmarks
+      status: 404
+      json:
+        error: Record not found
+    - method: GET
+      path: /api/v2/instance
+      status: 200
+      json:
+        version: 3.0.6
+  steps:
+  - run:
+      command: mstdn bookmarks --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 5
+      stdout:
+        json:
+          path: $.status
+          equals: 5
+- name: bookmarks 404 on 3.1.0 distinguishes capability from missing resources
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/bookmarks
+      status: 404
+      json:
+        error: Record not found
+    - method: GET
+      path: /api/v2/instance
+      status: 200
+      json:
+        version: 3.1.0
+  steps:
+  - run:
+      command: mstdn bookmarks --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+- name: bookmarks 404 on unknown distinguishes capability from missing resources
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/bookmarks
+      status: 404
+      json:
+        error: Record not found
+    - method: GET
+      path: /api/v2/instance
+      status: 200
+      json:
+        version: unknown
+  steps:
+  - run:
+      command: mstdn bookmarks --host ${api.url} --json
+      env: *id002
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+          path: $.status
+          equals: 4
+
+- name: absent endpoints are exit 5 with server identity but missing resources and forbidden requests remain exit 4
+  mock_servers:
+    - name: api
+      routes:
+        - method: GET
+          path: /api/v1/timelines/public
+          status: 404
+          json: { error: Not Found }
+        - method: GET
+          path: /api/v1/timelines/home
+          status: 403
+          json: { error: insufficient scope }
+        - method: GET
+          path: /api/v1/statuses/missing
+          status: 404
+          json: { error: Record not found }
+        - method: GET
+          path: /api/v2/instance
+          json: { version: "4.2.0 (compatible; GoToSocial 0.19.0)" }
+        - method: GET
+          path: /.well-known/nodeinfo
+          json:
+            links:
+              - rel: http://nodeinfo.diaspora.software/ns/schema/2.0
+                href: "${api.url}/nodeinfo/2.0"
+        - method: GET
+          path: /nodeinfo/2.0
+          json: { version: "2.0", software: { name: gotosocial, version: "0.19.0" } }
+  steps:
+    - run:
+        command: mstdn timeline public --json --host ${api.url}
+    - assert:
+        exit_code: 5
+        stdout:
+          json:
+            - { path: "$.status", equals: 5 }
+            - { path: "$.error", equals: "127.0.0.1:${api.port} (gotosocial 0.19.0) does not support v1/timelines/public" }
+    - run:
+        command: mstdn status missing --json --host ${api.url}
+    - assert:
+        exit_code: 4
+        stdout:
+          json: { path: "$.status", equals: 4 }
+    - run:
+        command: mstdn timeline home --json --host ${api.url}
+        env: { MSTDN_TOKEN: fake-compat-token }
+    - assert:
+        exit_code: 4
+        stdout:
+          json: { path: "$.status", equals: 4 }
+    - assert:
+        mock: { name: api, path: /nodeinfo/2.0, count: 1 }

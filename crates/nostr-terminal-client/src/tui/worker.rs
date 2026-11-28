@@ -107,20 +107,26 @@ fn publish(
 ) -> Result<Outcome<usize>> {
     unsigned.created_at =
         u64::try_from(jiff::Timestamp::now().as_second()).map_err(Error::usage)?;
+    let key = if config.bunker.is_none() {
+        Some(config.signing_key()?)
+    } else {
+        None
+    };
     let signed = if let Some(bunker) = &config.bunker {
         bunker.sign_event(&config.public, &unsigned, config.timeout, &|url| {
             if send.send(Answer::Authorize(url.into())).is_err() { /* The client has closed. */ }
         })?
     } else {
         Event::sign(
-            &config.signing_key()?,
+            key.as_ref()
+                .ok_or_else(|| Error::usage("signing key unavailable"))?,
             unsigned.created_at,
             unsigned.kind,
             unsigned.tags,
             unsigned.content,
         )?
     };
-    Client { config }.relays().publish(&signed)
+    Client { config }.relays().publish(&signed, key.as_ref())
 }
 
 fn load(
@@ -143,7 +149,10 @@ fn load(
             warnings.extend(home.warnings);
             filter = home.value;
         }
-        Target::Tab(Tab::Notifications) => filter.mentions = vec![config.public.clone()],
+        Target::Tab(Tab::Notifications) => {
+            filter.mentions = vec![config.public.clone()];
+            filter.kinds = vec![1, 3, 6, 7];
+        }
         Target::Tab(Tab::Profile) => {
             let metadata = client.latest(0)?;
             warnings.extend(metadata.warnings);

@@ -8,6 +8,7 @@ use k256::{
 };
 use serde_json::{Value, json};
 use std::{
+    io::{Read, Write},
     net::TcpListener,
     sync::{
         Arc, Mutex,
@@ -31,6 +32,10 @@ pub(crate) fn event(key: &SigningKey, kind: u16, time: u64, content: &str, tags:
 
 #[derive(Clone, Default)]
 pub(crate) struct Behavior {
+    pub(crate) information: Option<Value>,
+    pub(crate) auth: bool,
+    pub(crate) no_eose: bool,
+    pub(crate) reason: Option<String>,
     pub(crate) page_cap: Option<usize>,
     pub(crate) reject: bool,
     pub(crate) stall: bool,
@@ -65,7 +70,7 @@ impl Relay {
         let (record, stopping) = (log.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
-                let stream = match listener.accept() {
+                let mut stream = match listener.accept() {
                     Ok((s, _)) => s,
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(5));
@@ -78,9 +83,41 @@ impl Relay {
                 stream
                     .set_write_timeout(Some(Duration::from_secs(1)))
                     .unwrap();
+                // Peek without consuming the WebSocket upgrade; HTTP information uses the same port.
+                let mut header = [0; 8192];
+                let count = loop {
+                    let count = stream.peek(&mut header).unwrap();
+                    if count == 0 || header[..count].windows(4).any(|w| w == b"\r\n\r\n") {
+                        break count;
+                    }
+                    thread::sleep(Duration::from_millis(1));
+                };
+                if String::from_utf8_lossy(&header[..count])
+                    .to_ascii_lowercase()
+                    .contains("accept: application/nostr+json")
+                {
+                    stream.read_exact(&mut header[..count]).unwrap();
+                    let info = behavior.information.clone().unwrap_or_else(|| json!({}));
+                    if behavior.information.is_some() {
+                        record.lock().unwrap().push(json!(["NIP11"]));
+                    }
+                    let body = info.to_string();
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                    continue;
+                }
                 let Ok(mut socket) = tungstenite::accept(stream) else {
                     continue;
                 };
+                let mut authenticated = false;
+                if behavior.auth
+                    && socket
+                        .send(Message::Text(
+                            json!(["AUTH", "local challenge"]).to_string().into(),
+                        ))
+                        .is_err()
+                {
+                    continue;
+                }
                 while !stopping.load(Ordering::Relaxed) {
                     let message = match socket.read() {
                         Ok(Message::Text(t)) => serde_json::from_str::<Value>(&t).unwrap(),
@@ -99,7 +136,24 @@ impl Relay {
                         }
                         continue;
                     }
+                    if behavior.auth && !authenticated && message[0] == "EVENT" {
+                        if !send(json!([
+                            "OK",
+                            message[1]["id"],
+                            false,
+                            "auth-required: test"
+                        ])) {
+                            break;
+                        }
+                        continue;
+                    }
                     match message[0].as_str().unwrap() {
+                        "AUTH" => {
+                            authenticated = true;
+                            if !send(json!(["OK", message[1]["id"], true, ""])) {
+                                break;
+                            }
+                        }
                         "REQ" => {
                             let sub = &message[1];
                             if behavior.closed {
@@ -133,6 +187,18 @@ impl Relay {
                                             && filter.get("authors").is_none_or(|a| {
                                                 a.as_array().unwrap().contains(&e["pubkey"])
                                             })
+                                            && filter.get("#t").is_none_or(|tags| {
+                                                e["tags"].as_array().unwrap().iter().any(|t| {
+                                                    t[0] == "t"
+                                                        && tags.as_array().unwrap().contains(&t[1])
+                                                })
+                                            })
+                                            && filter.get("search").is_none_or(|query| {
+                                                e["content"]
+                                                    .as_str()
+                                                    .unwrap()
+                                                    .contains(query.as_str().unwrap())
+                                            })
                                             && filter.get("until").is_none_or(|t| {
                                                 e["created_at"].as_u64().unwrap()
                                                     <= t.as_u64().unwrap()
@@ -159,7 +225,7 @@ impl Relay {
                                     break;
                                 }
                             }
-                            if !send(json!(["EOSE", sub])) {
+                            if !behavior.no_eose && !send(json!(["EOSE", sub])) {
                                 break;
                             }
                         }
@@ -172,8 +238,12 @@ impl Relay {
                             if !send(json!([
                                 "OK",
                                 id,
-                                !behavior.reject,
-                                if behavior.reject { "blocked: test" } else { "" }
+                                !behavior.reject && behavior.reason.is_none(),
+                                behavior.reason.as_deref().unwrap_or(if behavior.reject {
+                                    "blocked: test"
+                                } else {
+                                    ""
+                                })
                             ])) {
                                 break;
                             }

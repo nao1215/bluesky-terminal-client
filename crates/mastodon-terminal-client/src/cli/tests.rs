@@ -461,7 +461,7 @@ fn the_commands_of_an_account_need_one_and_the_others_do_not() {
     let host = api::authority(&url).to_string();
     for e in [
         timeline(&ctx, &mut Vec::new(), TimelineKind::Home, 5, false).unwrap_err(),
-        notifications(&ctx, &mut Vec::new(), 5).unwrap_err(),
+        notifications(&ctx, &mut Vec::new(), 5, false).unwrap_err(),
         whoami(&ctx, &mut Vec::new()).unwrap_err(),
     ] {
         assert_eq!(e.kind(), Kind::Usage);

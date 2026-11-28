@@ -154,6 +154,7 @@ pub(crate) struct Status {
     pub reblog: Option<Box<Status>>,
     pub quote: Option<Quote>,
     pub pleroma: PleromaStatus,
+    pub card: Option<PreviewCard>,
     pub quote_approval: Option<QuoteApproval>,
     pub media_attachments: Vec<Media>,
     pub emojis: Vec<Emoji>,
@@ -213,6 +214,16 @@ impl Status {
             .map(|(i, m)| (s, i + 1, m))
             .collect()
     }
+}
+
+/// Link metadata supplied by Mastodon; never fetch arbitrary page HTML.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct PreviewCard {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub image: Option<String>,
 }
 
 /// A notification.

@@ -104,7 +104,7 @@ scenarios:
             contains: "trying again in 1 s"
             count: 3
 
-  - name: a server that does not let visitors search says so, and an empty query asks nothing
+  - name: a server that disables search says so, and an empty query asks nothing
     mock_servers:
       - name: api
         routes:
@@ -120,7 +120,7 @@ scenarios:
           stderr:
             equals: |
               error: notes/search failed: UNAVAILABLE: Search of notes unavailable.
-              hint: 127.0.0.1:${api.port} does not let visitors search notes; try another --host
+              hint: note search is unavailable for this account on 127.0.0.1:${api.port}; the server's role policy controls search access
       - run:
           command: msky search "  " --host ${api.url}
       - assert:
