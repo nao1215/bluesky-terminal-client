@@ -47,12 +47,20 @@ fn next(rx: &Receiver<(String, std::net::TcpStream)>, path: &str) -> std::net::T
     stream
 }
 
-fn wait(mut condition: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !condition() {
-        assert!(Instant::now() < deadline, "worker did not finish");
-        thread::sleep(Duration::from_millis(2));
-    }
+fn evicted(cache: &Cache) {
+    // Wait for the worker's notification, with a deadline shorter than the
+    // five-second HTTP timeout: timeout expiry cannot pass as cancellation.
+    let (state, _) = cache
+        .0
+        .changed
+        .wait_timeout_while(cache.0.lock(), Duration::from_secs(2), |state| {
+            !state.entries.is_empty()
+        })
+        .unwrap();
+    assert!(
+        state.entries.is_empty(),
+        "cancelled worker did not release its slot"
+    );
 }
 
 const MASTER: &[u8] = b"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv/media.m3u8\n";
@@ -118,21 +126,41 @@ fn playback_reuses_both_playlists_and_first_segment_even_while_reading_and_on_re
     });
 }
 
-#[test]
-fn cancelling_read_ahead_interrupts_the_socket_and_a_late_result_cannot_return() {
+#[rstest::rstest]
+#[case(false)]
+#[case(true)]
+fn cancelling_read_ahead_interrupts_the_socket_and_a_late_result_cannot_return(
+    #[case] in_body: bool,
+) {
     let (base, requests) = server();
     let url = format!("{base}/old.m3u8");
     let cache = Cache::new();
     cache.update(std::slice::from_ref(&url));
     let mut old = next(&requests, "/old.m3u8");
+    if in_body {
+        reply(old, MEDIA);
+        old = next(&requests, "/seg0.ts");
+        old.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\nx")
+            .unwrap();
+    }
     let job = Arc::clone(&cache.0.lock().entries[0].job);
-    // No response headers have arrived. Eviction must wake that read now,
-    // not let it continue to the media playlist or wait for its timeout.
+    // Hold either the response headers or the rest of the segment body.
+    // Eviction must release the read without waiting for its HTTP timeout.
     cache.update(&[]);
     assert!(job.cancelled.load(Ordering::Relaxed));
     old.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    assert_eq!(old.read(&mut [0; 1]).unwrap(), 0);
-    wait(|| cache.0.lock().entries.is_empty());
+    // Shutting down with response bytes still in flight can reset TCP,
+    // rather than close it gracefully. Either must stop the server's read.
+    match old.read(&mut [0; 1]) {
+        Ok(0) => {}
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+            ) => {}
+        other => panic!("cancelled socket is still open: {other:?}"),
+    }
+    evicted(&cache);
     assert!(cache.get(&url, &AtomicBool::new(false)).unwrap().is_none());
     assert!(requests.try_recv().is_err());
     // Returning to the same URL creates a new job, not the cancelled one.
@@ -141,6 +169,49 @@ fn cancelling_read_ahead_interrupts_the_socket_and_a_late_result_cannot_return()
     reply(new, MEDIA);
     reply(next(&requests, "/seg0.ts"), SEGMENT);
     assert!(cache.get(&url, &AtomicBool::new(false)).unwrap().is_some());
+}
+
+#[test]
+fn slow_fragmented_headers_and_body_survive_receive_polls() {
+    let (base, requests) = server();
+    let url = format!("{base}/slow.m3u8");
+    let cache = Cache::new();
+    cache.update(std::slice::from_ref(&url));
+    let mut master = next(&requests, "/slow.m3u8");
+    let (done, finished) = channel();
+    thread::scope(|scope| {
+        scope.spawn(|| done.send(cache.get(&url, &AtomicBool::new(false))).unwrap());
+        master.write_all(b"HTTP/1.1 200").unwrap();
+        assert!(finished.recv_timeout(Duration::from_millis(300)).is_err());
+        write!(
+            master,
+            " OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            MEDIA.len()
+        )
+        .unwrap();
+        master.write_all(MEDIA).unwrap();
+        let mut segment = next(&requests, "/seg0.ts");
+        write!(
+            segment,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+            SEGMENT.len()
+        )
+        .unwrap();
+        segment.write_all(&SEGMENT[..1]).unwrap();
+        assert!(finished.recv_timeout(Duration::from_millis(300)).is_err());
+        segment.write_all(&SEGMENT[1..]).unwrap();
+        let ready = finished
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(ready.first.as_deref(), Some(SEGMENT));
+        assert_eq!(ready.media.as_bytes(), MEDIA);
+        assert!(
+            requests.try_recv().is_err(),
+            "polls must not restart requests"
+        );
+    });
 }
 
 #[test]
@@ -171,7 +242,7 @@ fn count_and_bytes_are_bounded_and_oversized_bodies_are_not_cached() {
             .is_none()
     );
     cache.update(&[]);
-    wait(|| cache.0.lock().entries.is_empty());
+    evicted(&cache);
 
     let url = format!("{base}/large.m3u8");
     cache.update(std::slice::from_ref(&url));

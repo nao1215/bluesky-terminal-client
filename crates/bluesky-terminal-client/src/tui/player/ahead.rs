@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use crate::hls;
 
+mod transport;
+
 const KEPT: usize = 3;
 const PLAYLIST_BYTES: usize = 32 * 1024;
 const SEGMENT_BYTES: usize = 1024 * 1024;
@@ -27,10 +29,11 @@ pub(super) struct Cancelled;
 
 struct Job {
     url: String,
-    // A separate connection pool lets eviction interrupt this job's socket
-    // without shutting down either playback or another video's read-ahead.
+    // A separate pool lets eviction shut down this job's sockets without
+    // affecting playback or another video. Receive polling also checks the
+    // flag: on Windows, shutdown alone does not wake a pending socket read.
     agent: ureq::Agent,
-    cancelled: AtomicBool,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl Job {
@@ -136,17 +139,22 @@ impl Shared {
                         .any(|e| e.job.url == **url && !e.job.cancelled.load(Ordering::Relaxed))
                 })
             {
-                let agent = ureq::Agent::config_builder()
+                let cancelled = Arc::new(AtomicBool::new(false));
+                let config = ureq::Agent::config_builder()
                     .http_status_as_error(false)
                     .timeout_global(Some(Duration::from_secs(5)))
                     .timeout_resolve(Some(Duration::from_secs(2)))
                     .timeout_connect(Some(Duration::from_secs(2)))
-                    .build()
-                    .into();
+                    .build();
+                let agent = ureq::Agent::with_parts(
+                    config,
+                    transport::Connector::new(Arc::clone(&cancelled)),
+                    ureq::unversioned::resolver::DefaultResolver::default(),
+                );
                 let job = Arc::new(Job {
                     url: url.clone(),
                     agent,
-                    cancelled: AtomicBool::new(false),
+                    cancelled,
                 });
                 state.entries.push(Entry {
                     job: Arc::clone(&job),
