@@ -9,12 +9,26 @@ pub(super) struct PostLines {
     pub(super) header: Line<'static>,
     pub(super) body: Vec<Line<'static>>,
     pub(super) images: Vec<String>,
+    /// The HLS playlist of the post's video, played in its picture box
+    /// while the post is selected.
+    pub(super) video: Option<String>,
     /// Rows the images take: enough for the tallest at its box width.
     pub(super) image_rows: u16,
     /// Whether an avatar is drawn beside it, which the row must be tall
     /// enough for.
     pub(super) avatar: bool,
     pub(super) stats: Line<'static>,
+}
+
+/// The replay number the timeline plays a video under, apart from the
+/// viewer's, so space starts the video over in the viewer.
+pub(super) const INLINE_REPLAY: u32 = u32::MAX;
+
+/// Whether the selected post's video plays in the timeline
+/// (BSKY_INLINE_VIDEO=1). A trial, off by default.
+pub(super) fn inline_video() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("BSKY_INLINE_VIDEO").is_some_and(|v| v == "1"))
 }
 
 /// Width in cells of each image box when `n` images share `width` columns.
@@ -74,6 +88,7 @@ impl PostLines {
             .map(Line::from)
             .collect();
         let mut images = Vec::new();
+        let mut video = None;
         let mut rows = 0;
         if let Some(embed) = &post.embed
             && cell.is_none()
@@ -95,6 +110,10 @@ impl PostLines {
                 .max()
                 .unwrap_or(0);
             images = shown.iter().map(|i| i.url.to_string()).collect();
+            video = embed.media().into_iter().find_map(|m| match m {
+                Media::Video { playlist, .. } => Some(playlist),
+                Media::Image { .. } => None,
+            });
         }
         let liked = post.like_uri().is_some();
         let heart = if liked { "♥" } else { "♡" };
@@ -117,6 +136,7 @@ impl PostLines {
             header,
             body,
             images,
+            video,
             image_rows: rows,
             avatar: cell.is_some(),
             stats,
@@ -130,6 +150,7 @@ impl PostLines {
             header: Line::styled(text, t.dim()),
             body: Vec::new(),
             images: Vec::new(),
+            video: None,
             image_rows: 0,
             avatar: false,
             stats: Line::default(),
@@ -519,6 +540,24 @@ pub(super) fn draw_posts<T: PostRow>(
             };
             if whole {
                 draw_image_row(frame, img_area, &pl.images, images);
+                // The selected post's video plays over its thumbnail, from
+                // its first picture on; view::draw stops it when the
+                // selection moves.
+                if i == list.selected
+                    && inline_video()
+                    && let Some(playlist) = &pl.video
+                {
+                    let each = image_box_width(img_area.width, 1);
+                    images.draw_video(
+                        frame,
+                        Rect {
+                            width: each,
+                            ..img_area
+                        },
+                        playlist,
+                        INLINE_REPLAY,
+                    );
+                }
             }
             next += pl.image_rows;
         }

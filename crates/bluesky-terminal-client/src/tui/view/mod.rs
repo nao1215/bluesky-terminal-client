@@ -233,11 +233,21 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
         }
         None => {}
     }
-    if !matches!(
+    let viewer_video = matches!(
         &app.overlay,
         Some(Overlay::Viewer { media, index, .. })
             if matches!(media.get(*index), Some(Media::Video { .. }))
-    ) {
+    );
+    // With nothing over the list, the selected post's video plays in its
+    // picture box (posts::draw_posts); moving off it stops it here.
+    let inline_playing = inline_video()
+        && app.overlay.is_none()
+        && app.selected_post().is_some_and(|p| {
+            p.embed
+                .as_ref()
+                .is_some_and(|e| e.media().iter().any(|m| matches!(m, Media::Video { .. })))
+        });
+    if !viewer_video && !inline_playing {
         images.stop_video();
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {

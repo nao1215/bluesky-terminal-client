@@ -162,6 +162,58 @@ scenarios:
       - assert:
           image: { path: downloads/setup.png, width: 100, height: 100 }
 
+  - name: with BSKY_INLINE_VIDEO=1 the selected post's video plays in the timeline
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v1
+                    cid: cid-v1
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Watch this", createdAt: "2026-09-20T10:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo
+                      playlist: "${api.url}/watch/v1/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v1/thumbnail.png"
+                      alt: "A test pattern"
+                      aspectRatio: { width: 16, height: 9 }
+          - { method: GET, path: /watch/v1/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /watch/v1/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v1/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/cfg
+            BSKY_CACHE_DIR: ${workdir}/cache
+            BSKY_DOWNLOAD_DIR: ${workdir}/downloads
+            BSKY_INLINE_VIDEO: "1"
+            TZ: UTC
+          timeout: 20s
+          session:
+            # No space: the first post is selected, so its video plays in
+            # its picture box, and the viewer never opens.
+            - expect_screen:
+                contains: "Watch this"
+                not_contains: "1/1"
+                images: { min_count: 2 }
+                stable_for: 1500ms
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /watch/v1/v/seg0.ts, min_count: 1 }
+
   - name: space plays a post's video, r plays it again, and esc stops it
     mock_servers:
       - name: api
