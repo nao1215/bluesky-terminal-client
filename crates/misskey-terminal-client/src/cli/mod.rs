@@ -5,7 +5,7 @@
 
 pub(crate) mod format;
 pub(crate) mod more;
-mod post;
+pub(crate) mod post;
 
 pub(crate) use post::{PostArgs, Visibility};
 
@@ -189,7 +189,7 @@ pub(crate) enum Command {
     /// nothing.
     Post {
         text: String,
-        /// A picture to attach, up to four times.
+        /// A picture to attach, up to sixteen times.
         #[arg(long = "image", value_name = "PATH")]
         images: Vec<PathBuf>,
         /// Alt text, one per --image or --video, in the same order.
@@ -518,11 +518,11 @@ impl Ctx {
             return e;
         }
         let host = api::authority(&self.origin);
-        if e.message().contains("AUTHENTICATION_FAILED") {
+        if e.api_code() == Some("AUTHENTICATION_FAILED") {
             e.with_hint(format!(
                 "{host} does not take the token in MSKY_TOKEN; check it, or make a new one in Settings > API"
             ))
-        } else if e.message().contains("PERMISSION_DENIED") {
+        } else if e.api_code() == Some("PERMISSION_DENIED") {
             e.with_hint(format!(
                 "the token in MSKY_TOKEN was not given that permission; make one in Settings > API on {host} with read:account, write:notes, write:drive and write:following"
             ))

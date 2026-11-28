@@ -15,6 +15,9 @@ mod api {
 #[path = "../../src/api/event.rs"]
 mod event;
 #[allow(dead_code)]
+#[path = "../../src/api/nip11.rs"]
+mod nip11;
+#[allow(dead_code)]
 #[path = "../../src/api/nip19.rs"]
 mod nip19;
 #[allow(dead_code)]

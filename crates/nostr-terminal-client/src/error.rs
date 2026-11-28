@@ -1,6 +1,7 @@
 //! Failures use the workspace's usage, local I/O, network and unsupported statuses.
 
 use serde::Serialize;
+use terminal_kit::error::Kind;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Error {
@@ -16,7 +17,7 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: Some("run `nstr --help` for usage".into()),
-            status: 1,
+            status: Kind::Usage.exit_code(),
         }
     }
 
@@ -24,7 +25,7 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: None,
-            status: 3,
+            status: Kind::Io.exit_code(),
         }
     }
 
@@ -40,18 +41,14 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: None,
-            status: 4,
+            status: Kind::Api.exit_code(),
         }
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error: {}", self.error)?;
-        if let Some(next) = &self.hint {
-            write!(f, "\nhint: {next}")?;
-        }
-        Ok(())
+        terminal_kit::error::write_error(f, &self.error, self.hint.as_deref())
     }
 }
 

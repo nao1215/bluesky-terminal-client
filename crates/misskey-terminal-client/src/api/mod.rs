@@ -11,6 +11,8 @@
 pub(crate) mod types;
 
 #[cfg(test)]
+mod compat_tests;
+#[cfg(test)]
 pub(crate) mod stub_tests;
 
 use std::sync::Arc;
@@ -327,6 +329,9 @@ impl Client {
             fields.push(("i", t));
         }
         fields.push(("name", name));
+        // Reusing a drive file by content hash also reuses its old alt text.
+        // A new attachment must preserve the description supplied for this post.
+        fields.push(("force", "true"));
         if let Some(c) = comment.filter(|c| !c.is_empty()) {
             fields.push(("comment", c));
         }
@@ -555,7 +560,14 @@ impl Client {
         let detail = Refusal { status, detail };
         let shown = detail.said();
         let detail = detail.detail;
-        let err = Error::api(format!("{endpoint} failed: {shown}"));
+        // A disabled role or an invalid token does not imply a missing feature.
+        let kind = if detail.code == "NO_SUCH_ENDPOINT" {
+            Kind::Unsupported
+        } else {
+            Kind::Api
+        };
+        let err = Error::new(kind, format!("{endpoint} failed: {shown}"))
+            .with_api_code(detail.code.clone());
         let host = self.host();
         match detail.code.as_str() {
             "RATE_LIMIT_EXCEEDED" => err.with_hint(format!(
@@ -565,7 +577,13 @@ impl Client {
                 "check the name, and that it is on {host} (or pass --host)"
             )),
             "UNAVAILABLE" if endpoint == "notes/search" => err.with_hint(format!(
-                "{host} does not let visitors search notes; try another --host"
+                "note search is unavailable for this account on {host}; the server's role policy controls search access"
+            )),
+            "NO_SUCH_ENDPOINT" => err.with_hint(format!(
+                "{host} does not provide {endpoint}"
+            )),
+            "CHAT_UNAVAILABLE" => err.with_hint(format!(
+                "chat is unavailable for this account on {host}"
             )),
             "SIGNIN_REQUIRED" | "CREDENTIAL_REQUIRED" => err.with_hint(format!(
                 "{host} shows this only to accounts that are logged in; run `msky login --host {host}`"
@@ -575,6 +593,9 @@ impl Client {
             )),
             "PERMISSION_DENIED" => err.with_hint(format!(
                 "the token msky has for {host} was not given that permission; run `msky login --host {host}` again"
+            )),
+            "ROLE_PERMISSION_DENIED" => err.with_hint(format!(
+                "the account's role on {host} does not allow {endpoint}"
             )),
             "NO_SUCH_REPLY_TARGET" | "NO_SUCH_RENOTE_TARGET" => err.with_hint(format!(
                 "check the note given to --reply or --quote, and that it is on {host}"
@@ -787,13 +808,23 @@ impl Client {
         )
     }
 
-    /// `notes/children`: the replies to note `id` (and the quotes of it
-    /// with text of their own), oldest first as the server lists them.
+    /// A bounded page of direct replies and quotes, newest first.
     pub(crate) fn children(&self, id: &str, limit: usize) -> Result<Vec<Note>> {
-        notes(self.call(
-            "notes/children",
-            &json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)}),
-        )?)
+        self.children_page(id, limit, None)
+    }
+
+    /// Continue `notes/children` before the last ID of the previous page.
+    pub(crate) fn children_page(
+        &self,
+        id: &str,
+        limit: usize,
+        until: Option<&str>,
+    ) -> Result<Vec<Note>> {
+        let mut body = json!({"noteId": id, "limit": limit.clamp(1, MAX_PAGE)});
+        if let Some(until) = until {
+            body["untilId"] = json!(until);
+        }
+        notes(self.call("notes/children", &body)?)
     }
 
     /// `notes/conversation`: the notes note `id` answers, its parent first,
@@ -831,6 +862,24 @@ impl Client {
             .collect())
     }
 
+    /// Optional configured alt limit advertised in public NodeInfo metadata.
+    /// An absent field keeps the standard API's 512-code-point limit.
+    pub(crate) fn max_alt_chars(&self) -> Option<usize> {
+        let url = format!("{}/nodeinfo/2.1", self.origin);
+        let Answer::Took(value) = self
+            .exchange("nodeinfo/2.1", true, &|| self.agent.get(&url).call())
+            .ok()?
+        else {
+            return None;
+        };
+        value
+            .get("metadata")?
+            .get("maxAltTextLength")?
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| *n > 0)
+    }
+
     /// `meta`: the most characters a note's text may have on this server
     /// (`maxNoteTextLength`), or [`DEFAULT_MAX_NOTE_CHARS`] when the server
     /// does not say: an old version, a fork, or a call that failed, which
@@ -847,6 +896,12 @@ impl Client {
     /// `notes/show`: one note.
     pub(crate) fn note(&self, id: &str) -> Result<Note> {
         let v = self.call("notes/show", &json!({"noteId": id}))?;
+        if v.get("isHidden").and_then(Value::as_bool) == Some(true) {
+            return Err(Error::api(format!(
+                "notes/show: {} does not allow this account to read note {id}",
+                self.host()
+            )));
+        }
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("notes/show: unexpected answer: {e}")))
     }
@@ -911,16 +966,10 @@ fn chat_messages(endpoint: &str, v: Value) -> Result<Vec<ChatMessage>> {
         .collect())
 }
 
-/// Whether `e`, from a chat call, says the server has no chat or keeps it
-/// from this account: an endpoint it does not have (a version before
-/// chat), or a role that may not chat.
+/// Only an explicit capability refusal hides chat. A proxy's 404, a bad
+/// token or a missing permission says nothing about endpoint support.
 pub(crate) fn chat_unavailable(e: &Error) -> bool {
-    let m = e.message();
-    m.contains("NO_SUCH_ENDPOINT")
-        || m.contains("HTTP 404")
-        || m.contains("CHAT_UNAVAILABLE")
-        || m.contains("PERMISSION_DENIED")
-        || m.contains("ROLE_PERMISSION_DENIED")
+    matches!(e.api_code(), Some("NO_SUCH_ENDPOINT" | "CHAT_UNAVAILABLE"))
 }
 
 fn transport(endpoint: &str, e: &ureq::Error) -> Error {

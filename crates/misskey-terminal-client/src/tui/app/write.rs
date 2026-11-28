@@ -20,11 +20,10 @@ const RECENT: usize = 10;
 pub(super) const LIKE: &str = "❤";
 
 /// The most pictures a note carries from the composer, as `msky post`.
-pub(super) const MAX_PICTURES: usize = 4;
+pub(super) const MAX_PICTURES: usize = crate::cli::post::MAX_IMAGES;
 /// The most characters of a content warning and of an alt text, as
 /// `msky post` checks them.
 const MAX_CW_CHARS: usize = 100;
-const MAX_ALT_CHARS: usize = 512;
 
 /// A file attached in the composer, with its alt text.
 #[derive(Debug, Clone, PartialEq)]
@@ -135,16 +134,6 @@ fn problem(c: &Compose) -> Option<String> {
             ));
         }
     }
-    if let Some(a) = c
-        .media
-        .iter()
-        .find(|a| a.alt.text().chars().count() > MAX_ALT_CHARS)
-    {
-        return Some(format!(
-            "an alt text is {} characters; the limit is {MAX_ALT_CHARS}",
-            a.alt.text().chars().count()
-        ));
-    }
     media_problem(&c.media)
 }
 
@@ -152,7 +141,7 @@ fn problem(c: &Compose) -> Option<String> {
 fn media_problem(media: &[Attached]) -> Option<String> {
     let videos = media.iter().filter(|a| a.is_video()).count();
     if videos > 0 && media.len() > 1 {
-        Some("a note can have up to 4 pictures or one video, not both".into())
+        Some("a note can have up to 16 pictures or one video, not both".into())
     } else if media.len() > MAX_PICTURES {
         Some(format!("a note can have at most {MAX_PICTURES} pictures"))
     } else {

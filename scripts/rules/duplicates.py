@@ -50,6 +50,14 @@ Mastodon's multipart writer to avatar/header parts changed the adjacent existing
 retry-notice fingerprint; that unchanged command-line network retry notice does
 not belong in terminal-kit's drawing API. No new implementation copy is retained.
 
+The local Misskey/Sharkey compatibility work shares Error, Kind and their
+formatting in terminal-kit; bsky, msky and mstdn re-export that implementation,
+and nstr preserves its serializable shape while using the same formatter.
+The adjacent msky/mstdn --help exit-status paragraphs now have a matching
+fingerprint: they intentionally document the shared exit contract in each
+client's own help, not a second implementation of it. This incidental prose
+match is retained; the removed error implementation fingerprints are dropped.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 
