@@ -153,6 +153,7 @@ pub(crate) struct Status {
     /// The status this one boosts, for a boost.
     pub reblog: Option<Box<Status>>,
     pub quote: Option<Quote>,
+    pub card: Option<PreviewCard>,
     pub quote_approval: Option<QuoteApproval>,
     pub media_attachments: Vec<Media>,
     pub emojis: Vec<Emoji>,
@@ -196,6 +197,16 @@ impl Status {
             .map(|(i, m)| (s, i + 1, m))
             .collect()
     }
+}
+
+/// Link metadata supplied by Mastodon; never fetch arbitrary page HTML.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct PreviewCard {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub image: Option<String>,
 }
 
 /// A notification.
@@ -281,7 +292,10 @@ impl Limits {
                 .filter(|n| *n > 0)
         };
         Limits {
-            quotes: supports_quotes(v["version"].as_str().unwrap_or_default()),
+            quotes: v["api_versions"]["mastodon"]
+                .as_u64()
+                .is_some_and(|n| n >= 7)
+                || release(v).is_some_and(|v| v >= (4, 5)),
             max_characters: n(&c["statuses"]["max_characters"])
                 // An old version or a fork says it at the top.
                 .or_else(|| n(&v["max_toot_chars"]))
@@ -302,12 +316,10 @@ impl Limits {
     }
 }
 
-/// Mastodon 4.5 introduced quote creation; unknown versions stay disabled.
-fn supports_quotes(version: &str) -> bool {
-    let mut parts = version.split('.');
-    let major = parts.next().and_then(|s| s.parse::<u32>().ok());
-    let minor = parts.next().and_then(|s| s.parse::<u32>().ok());
-    matches!((major, minor), (Some(5..), Some(_)) | (Some(4), Some(5..)))
+/// The advertised release; suffixes such as `4.5.0+glitch` are accepted.
+pub(super) fn release(instance: &serde_json::Value) -> Option<(u32, u32)> {
+    let mut parts = instance["version"].as_str()?.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
 #[cfg(test)]

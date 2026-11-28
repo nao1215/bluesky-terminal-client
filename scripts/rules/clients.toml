@@ -11,7 +11,7 @@ tui = true
 
 [mstdn]
 crate = "crates/mastodon-terminal-client"
-tui = false
+tui = true
 
 [nstr]
 crate = "crates/nostr-terminal-client"

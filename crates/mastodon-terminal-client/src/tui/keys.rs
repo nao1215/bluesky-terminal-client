@@ -106,7 +106,7 @@ pub(crate) const HELP: &[Section] = &[
             ("R", n!("load new notifications")),
             (
                 "",
-                n!("unread counts notifications newer than those viewed this run"),
+                n!("unread count and read position sync with the server"),
             ),
         ],
     },
@@ -181,6 +181,28 @@ pub(crate) const HELP: &[Section] = &[
         title: n!("Help"),
         keys: &[("j k pgdn pgup", n!("scroll")), ("esc q ?", n!("close"))],
     },
+    Section {
+        title: n!("Accounts"),
+        keys: &[
+            ("A", n!("switch accounts")),
+            ("a", n!("add account")),
+            ("x then y", n!("log out")),
+            ("enter", n!("choose")),
+            ("esc", n!("cancel")),
+        ],
+    },
+    Section {
+        title: n!("Log in"),
+        keys: &[
+            ("enter", n!("log in")),
+            ("o", n!("open browser")),
+            ("esc", n!("cancel")),
+        ],
+    },
+    Section {
+        title: n!("Link cards"),
+        keys: &[("O", n!("open link card"))],
+    },
 ];
 
 /// The help in the language in use.
@@ -205,6 +227,25 @@ fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
 
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
+        Some(Overlay::Login { waiting: true, .. }) => {
+            return vec![("o", n!("open browser")), ("esc", n!("cancel"))];
+        }
+        Some(Overlay::Login { waiting: false, .. }) => {
+            return vec![("enter", n!("log in")), ("esc", n!("cancel"))];
+        }
+        Some(Overlay::Logout { .. }) => return vec![("y", n!("log out")), ("esc", n!("cancel"))],
+        Some(Overlay::SettingText { .. }) => {
+            return vec![("enter", n!("save")), ("esc", n!("cancel"))];
+        }
+        Some(Overlay::Accounts { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("choose")),
+                ("a", n!("add account")),
+                ("x", n!("log out")),
+                ("esc", n!("close")),
+            ];
+        }
         Some(Overlay::CloseColumn(_)) => {
             return vec![("y", n!("confirm")), (t("any other key"), n!("cancel"))];
         }
@@ -290,7 +331,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("esc", n!("close")),
             ];
         }
-        Some(Overlay::Languages { .. } | Overlay::Accounts { .. }) => {
+        Some(Overlay::Languages { .. }) => {
             return vec![
                 ("j k", n!("move")),
                 ("enter", n!("choose")),
@@ -359,6 +400,12 @@ fn view_hints(app: &App) -> Vec<Hint> {
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
     v.insert(0, ("?", n!("help")));
+    if app
+        .selected()
+        .is_some_and(|s| s.card.is_some() && app.text_shown(s))
+    {
+        v.insert(1, ("O", n!("open link card")));
+    }
     if app.tab == Tab::Profile && app.profile.account.as_ref().is_some_and(|a| app.own(a)) {
         v.push(("e", n!("edit your own profile")));
     }
@@ -437,6 +484,9 @@ pub(crate) fn actions(app: &App) -> Vec<Hint> {
     if !s.media_attachments.is_empty() {
         v.push(("space", n!("open pictures and videos")));
         v.push(("d", n!("save the post files")));
+    }
+    if s.card.is_some() && app.text_shown(s) {
+        v.push(("O", n!("open link card")));
     }
     v.push(("o", n!("open it in the web browser")));
     v.push(("c", n!("copy its address")));

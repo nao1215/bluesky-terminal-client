@@ -71,7 +71,7 @@ there, and posts as that account. A post is its ID or its address
 read on its own server, whatever --host says.
 
 Exit status: 0 success, 1 usage error, 2 terminal error, 3 local file
-error, 4 network or server error.";
+error, 4 network or server error, 5 unsupported server feature.";
 
 fn run(cli: Cli) -> Result<()> {
     let accounts = config::config_dir().map(config::AccountStore::open);

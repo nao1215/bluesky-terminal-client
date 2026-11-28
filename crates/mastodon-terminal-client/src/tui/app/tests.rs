@@ -632,6 +632,7 @@ fn c_copies_and_o_opens_the_posts_page() {
     assert_eq!(
         press(&mut app, KeyCode::Char('o'))[0].1,
         Job::OpenLink {
+            program: None,
             url: "https://m.test/@alice/1".into()
         }
     );
@@ -674,6 +675,8 @@ proptest! {
             for (seq, job) in app.handle_key(k) {
                 prop_assert!(seen.insert(seq));
                 let ev = match job {
+                    Job::NotificationState => Event::NotificationState(Ok((None, Some(0)))),
+                    Job::MarkNotifications { id } => Event::NotificationsMarked { id, result: Ok(()) },
                     Job::Conversations { next } => Event::Conversations { first:next.is_none(),result:Err(Error::api("read failed")) },
                     Job::ChatThread { .. } => Event::ChatThread(Err(Error::api("read failed"))),
                     Job::ReadConversation { .. } => Event::ConversationRead(Err(Error::api("write failed"))),
@@ -912,7 +915,7 @@ fn media_viewer_respects_warning_steps_replays_downloads_and_closes() {
         })
     ));
     let (seq, job) = press(&mut app, KeyCode::Char('d')).remove(0);
-    assert!(matches!(job, Job::Download { files, id } if files.len() == 2 && id == "1"));
+    assert!(matches!(job, Job::Download { files, id, .. } if files.len() == 2 && id == "1"));
     app.handle_answer(seq, Event::Downloaded(Err(Error::io("disk full"))));
     assert!(app.message.as_ref().unwrap().error);
     press(&mut app, KeyCode::Esc); // dismiss error
@@ -1744,4 +1747,236 @@ fn writing_while_an_adopted_thread_loads_reloads_after_the_write_finishes() {
     );
     assert!(matches!(&reload[0].1,Job::Thread { id } if id == "s"));
     assert_eq!(app.threads[0].rows.waiting, Some(reload[0].0));
+}
+
+#[test]
+fn login_cancel_logout_decline_and_account_removal_are_isolated() {
+    let mut app = with_home(&["1"]);
+    app.accounts = vec![me()];
+    press(&mut app, KeyCode::Char('A'));
+    press(&mut app, KeyCode::Char('a'));
+    app.handle_paste("http://127.0.0.1:9");
+    assert!(press(&mut app, KeyCode::Enter).is_empty());
+    assert_eq!(app.take_login().as_deref(), Some("http://127.0.0.1:9"));
+    assert!(app.login_active());
+    app.login_url("http://127.0.0.1:9/oauth/authorize".into());
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.login_active());
+    assert!(app.session.is_some());
+    press(&mut app, KeyCode::Char('x'));
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.take_logout().is_none());
+    assert_eq!(app.accounts.len(), 1);
+    press(&mut app, KeyCode::Char('A'));
+    press(&mut app, KeyCode::Char('x'));
+    press(&mut app, KeyCode::Char('y'));
+    let host = app.take_logout().unwrap();
+    let old = app.job(Job::Identity).0;
+    let jobs = app.logged_out(&host);
+    assert!(app.session.is_none());
+    assert!(app.accounts.is_empty());
+    assert!(app.timelines[0].items.is_empty());
+    assert!(jobs.iter().all(|(seq, _)| *seq > old));
+    app.handle_answer(
+        old,
+        Event::Identity(Ok(Account {
+            id: "stale".into(),
+            ..Default::default()
+        })),
+    );
+    assert!(app.session.is_none());
+}
+
+#[test]
+fn login_refusal_keeps_server_for_retry_and_success_selects_new_account() {
+    let mut app = with_home(&[]);
+    press(&mut app, KeyCode::Char('A'));
+    press(&mut app, KeyCode::Char('a'));
+    app.handle_paste("http://127.0.0.1:9");
+    press(&mut app, KeyCode::Enter);
+    app.login_failed(&Error::api("access denied"));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Login { waiting: false, .. })
+    ));
+    assert!(!app.login_active());
+    app.message = None;
+    press(&mut app, KeyCode::Enter);
+    assert!(app.login_active());
+    app.logged_in(me());
+    assert_eq!(app.take_switch(), Some(me()));
+}
+
+#[test]
+fn settings_cancel_reset_and_save_affect_only_the_selected_row() {
+    let mut app = with_home(&[]);
+    app.apply_settings(Some(Settings::default()), ColorDepth::TrueColor);
+    press(&mut app, KeyCode::Char('s'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    app.handle_paste("/tmp/mstdn-downloads");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.take_settings_save().is_none());
+    press(&mut app, KeyCode::Enter);
+    app.handle_paste("/tmp/mstdn-downloads");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.take_settings_save().unwrap().download_dir.as_deref(),
+        Some("/tmp/mstdn-downloads")
+    );
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    app.handle_paste("firefox");
+    press(&mut app, KeyCode::Enter);
+    let saved = app.take_settings_save().unwrap();
+    assert_eq!(saved.browser.as_deref(), Some("firefox"));
+    assert!(saved.download_dir.is_some());
+    press(&mut app, KeyCode::Char('x'));
+    assert!(app.take_settings_save().unwrap().browser.is_none());
+}
+
+#[test]
+fn server_markers_survive_restart_and_failed_read_writes_restore_unread_count() {
+    let mut app = with_home(&[]);
+    let now = Instant::now();
+    let jobs = app.poll_read_ahead(now);
+    let read = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::NotificationState))
+        .unwrap()
+        .0;
+    app.handle_answer(
+        read,
+        Event::NotificationState(Ok((Some("8".into()), Some(42)))),
+    );
+    assert_eq!(app.unread, 42);
+    let page = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::Notifications { .. }))
+        .unwrap()
+        .0;
+    app.handle_answer(
+        page,
+        Event::Notifications {
+            max_id: None,
+            result: Ok(Page {
+                items: vec![Notification {
+                    id: "10".into(),
+                    ..Default::default()
+                }],
+                next: Next::End,
+            }),
+        },
+    );
+    assert_eq!(app.unread, 42);
+    press(&mut app, KeyCode::Char('4'));
+    let jobs = app.poll_read_ahead(now);
+    let mark = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::MarkNotifications { .. }))
+        .unwrap()
+        .0;
+    assert_eq!(app.unread, 0);
+    app.handle_answer(
+        mark,
+        Event::NotificationsMarked {
+            id: "10".into(),
+            result: Err(Error::api("refused")),
+        },
+    );
+    assert_eq!(app.unread, 42);
+    assert!(
+        !app.poll_read_ahead(now)
+            .iter()
+            .any(|(_, j)| matches!(j, Job::MarkNotifications { .. }))
+    );
+    app.switched(me());
+    app.handle_answer(
+        mark,
+        Event::NotificationsMarked {
+            id: "10".into(),
+            result: Ok(()),
+        },
+    );
+    assert_eq!(app.unread, 0);
+}
+
+#[test]
+fn successful_marker_save_clears_unread_and_old_sync_cannot_restore_it() {
+    let mut app = with_home(&[]);
+    let now = Instant::now();
+    let jobs = app.poll_read_ahead(now);
+    let read = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::NotificationState))
+        .unwrap()
+        .0;
+    app.handle_answer(read, Event::NotificationState(Ok((None, Some(1)))));
+    let page = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::Notifications { .. }))
+        .unwrap()
+        .0;
+    app.handle_answer(
+        page,
+        Event::Notifications {
+            max_id: None,
+            result: Ok(Page {
+                items: vec![Notification {
+                    id: "10".into(),
+                    ..Default::default()
+                }],
+                next: Next::End,
+            }),
+        },
+    );
+    press(&mut app, KeyCode::Char('4'));
+    let jobs = app.poll_read_ahead(now);
+    let mark = jobs
+        .iter()
+        .find(|(_, j)| matches!(j, Job::MarkNotifications { .. }))
+        .unwrap()
+        .0;
+    app.handle_answer(
+        mark,
+        Event::NotificationsMarked {
+            id: "10".into(),
+            result: Ok(()),
+        },
+    );
+    assert_eq!(app.unread, 0);
+    app.handle_answer(read, Event::NotificationState(Ok((None, Some(1)))));
+    assert_eq!(app.unread, 0);
+}
+
+#[test]
+fn theme_page_keys_preview_and_escape_restores_the_original_theme() {
+    let mut app = with_home(&[]);
+    let original = app.theme_index;
+    press(&mut app, KeyCode::Char('T'));
+    press(&mut app, KeyCode::Home);
+    press(&mut app, KeyCode::PageDown);
+    assert_eq!(app.theme_index, PAGE_STEP);
+    press(&mut app, KeyCode::PageUp);
+    assert_eq!(app.theme_index, 0);
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.theme_index, original);
+}
+
+#[test]
+fn saved_browser_and_download_folder_are_carried_with_the_jobs() {
+    let mut app = with_home(&["1"]);
+    app.timelines[0].items[0].media_attachments = vec![Media::default()];
+    app.timelines[0].items[0].url = Some("http://127.0.0.1:9/@alice/1".into());
+    let mut settings = Settings::default();
+    settings.browser = Some("test-browser".into());
+    settings.download_dir = Some("test-downloads".into());
+    app.apply_settings(Some(settings), ColorDepth::TrueColor);
+    assert!(
+        matches!(&press(&mut app, KeyCode::Char('o'))[0].1, Job::OpenLink { program: Some(program), .. } if program == "test-browser")
+    );
+    assert!(
+        matches!(&press(&mut app, KeyCode::Char('d'))[0].1, Job::Download { directory: Some(directory), .. } if directory == "test-downloads")
+    );
 }

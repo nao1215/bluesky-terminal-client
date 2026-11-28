@@ -11,9 +11,49 @@ pub(super) struct ReadAhead {
     kept: Vec<(String, Instant, Thread)>,
     notifications_at: Option<Instant>,
     seen: Option<String>,
+    server_count: Option<usize>,
+    marker_ready: bool,
+    syncing: Option<u64>,
+    marking: Option<(u64, String)>,
+    failed_mark: Option<String>,
 }
 
 impl App {
+    pub(super) fn notification_state(
+        &mut self,
+        seq: u64,
+        result: Result<(Option<String>, Option<usize>)>,
+    ) {
+        if self.read_ahead.syncing != Some(seq) {
+            return;
+        }
+        self.read_ahead.syncing = None;
+        if let Ok((marker, count)) = result {
+            self.read_ahead.marker_ready = true;
+            self.read_ahead.seen = marker;
+            self.read_ahead.server_count = count;
+        }
+        self.count_notifications();
+    }
+
+    pub(super) fn notifications_marked(&mut self, seq: u64, id: String, result: Result<()>) {
+        if self.read_ahead.marking.as_ref().map(|(s, _)| *s) != Some(seq) {
+            return;
+        }
+        self.read_ahead.marking = None;
+        match result {
+            Ok(()) => {
+                self.read_ahead.seen = Some(id);
+                self.read_ahead.server_count = None;
+            }
+            Err(e) => {
+                self.read_ahead.failed_mark = Some(id);
+                self.fail(e.message().to_string());
+            }
+        }
+        self.count_notifications();
+    }
+
     /// Background reads do not put a spinner on the selected timeline.
     pub(crate) fn poll_read_ahead(&mut self, now: Instant) -> Jobs {
         self.count_notifications();
@@ -27,6 +67,37 @@ impl App {
         {
             self.read_ahead.notifications_at = Some(now);
             jobs.extend(self.load_tab(Tab::Notifications, false));
+            if self.read_ahead.syncing.is_none() && self.read_ahead.marking.is_none() {
+                let job = self.job(Job::NotificationState);
+                self.read_ahead.syncing = Some(job.0);
+                self.read_ahead.failed_mark = None;
+                jobs.push(job);
+            }
+        }
+        if self.read_ahead.marker_ready
+            && self.read_ahead.syncing.is_none()
+            && self.read_ahead.marking.is_none()
+            && self.tab == Tab::Notifications
+            && self.overlay.is_none()
+            && self.threads.is_empty()
+            && let Some(id) = self
+                .notifications
+                .items
+                .iter()
+                .map(|n| &n.id)
+                .max_by(|a, b| id_order(a, b))
+                .cloned()
+            && self
+                .read_ahead
+                .seen
+                .as_ref()
+                .is_none_or(|s| id_order(&id, s).is_gt())
+            && self.read_ahead.failed_mark.as_ref() != Some(&id)
+        {
+            let job = self.job(Job::MarkNotifications { id: id.clone() });
+            self.read_ahead.marking = Some((job.0, id));
+            self.unread = 0;
+            jobs.push(job);
         }
         let selected = (self.overlay.is_none()
             && self.threads.is_empty()
@@ -113,7 +184,8 @@ impl App {
             .map(|n| &n.id)
             .max_by(|a, b| id_order(a, b))
             .cloned();
-        if self.tab == Tab::Notifications
+        if !self.read_ahead.marker_ready
+            && self.tab == Tab::Notifications
             && self.overlay.is_none()
             && self.threads.is_empty()
             && let Some(newest) = newest
@@ -124,6 +196,14 @@ impl App {
                 .is_none_or(|seen| id_order(&newest, seen).is_gt())
         {
             self.read_ahead.seen = Some(newest);
+        }
+        if self.read_ahead.marking.is_some() {
+            self.unread = 0;
+            return;
+        }
+        if let Some(count) = self.read_ahead.server_count {
+            self.unread = count;
+            return;
         }
         self.unread = self
             .notifications
