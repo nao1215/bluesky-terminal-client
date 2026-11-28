@@ -29,7 +29,7 @@ More keys:
 
 - bsky: `cid`, `quoteCount`, `langs`.
 - msky: `reactions` (each reaction with how many gave it), `visibility`.
-- nstr: `kind`, `tags`, `sig`, `note`, `nevent`; `id` is the hex event ID, `uri` is `nostr:note...`, `url` and unqueried counts are `null`, and `files` is empty. Embedded users have the hex public key as `id`, npub as `username`, and `null` for `host` and `name`.
+- nstr: `kind`, `tags`, `sig`, `note`, `nevent`; `id` is the hex event ID, `uri` is `nostr:note...`, `url` and unqueried counts are `null`, and `files` contains recognized media (see the Nostr shapes below). Embedded users have the hex public key as `id`, npub as `username`, `null` for `host` and a fetched display name when available.
 - mstdn: `content` (the HTML), `sensitive`, `visibility`, `language`, `mentions`, `tags`, `poll`.
 
 ## User
@@ -82,7 +82,7 @@ More keys: msky `name`, `size`, `isSensitive`.
 | `postId` | The `id` of the post it is about, or `null` |
 | `post` | That post, whole, when the server sent it; else `null` |
 
-A Misskey reaction is a `like`, with the reaction in `reaction`. Mastodon's `favourite` is a `like`, its `reblog` a `repost`. A Bluesky notification carries the post of a reply, a mention or a quote without its counts, so they are `null` there; a like or a repost names the post in `postId` alone. More keys: bsky `isRead`, msky `reaction`. Nostr notifications are kind-1 notes tagging the configured public key; a note with a NIP-10 reply reference is a `reply`, otherwise a `mention`. Both `postId` and `post` identify the triggering note.
+A Misskey reaction is a `like`, with the reaction in `reaction`. Mastodon's `favourite` is a `like`, its `reblog` a `repost`. A Bluesky notification carries the post of a reply, a mention or a quote without its counts, so they are `null` there; a like or a repost names the post in `postId` alone. More keys: bsky `isRead`, msky `reaction`. Nostr notifications include mentions, replies, quotes, reactions, reposts and follows. A reaction has type `like` and carries its content in `reaction`; a kind-3 follow has type `follow` and null `postId` and `post`. Notes identify the triggering post; reactions and reposts identify their target in `postId`. A verified repost embeds its original in `post`; unavailable targets are null. `isRead` is local to the selected public key.
 
 ## Thread
 
@@ -155,3 +155,17 @@ bsky 0.15.0 and earlier printed the server's own objects. `bsky --raw` still pri
 `mstdn chat` without an actor prints `id`, `members` (users), `lastMessage` (a message or null), `unread` (the server's boolean), `unreadCount: null` and `muted: null`: Mastodon conversations do not supply a message count or muted flag. `chat ACTOR` and `chat ACTOR TEXT` print common messages; `text` is converted from the direct status HTML. History is limited to available one-to-one conversation contexts, ordered oldest first within the most recent requested messages.
 
 Mastodon `follow` adds `requested` for pending approval. `report` adds the submitted `comment`. Idempotent Mastodon action endpoints do not expose whether they changed state, so their write object uses `already: false`, `id: null` and `url: null`; this means an action was accepted, not that its previous state was known. `quoteId` is the embedded quoted status ID when supplied by the server, including inside `repostOf`; unavailable or withheld quotes remain null.
+
+## Nostr additions
+
+`nstr note`, `author`, `thread` and `search` emit the shared post shape. A repost has empty `text` and `files`. A verified embedded kind-1 event in a kind-6/16 repost becomes `repostOf`; absent or invalid embedded events leave it null. `files` normalizes NIP-92 imeta into `id`, `type`, `mime`, `url`, `previewUrl` and `description`, with optional `sha256`, `size` and `dimensions`. Recognized image/video URLs in the content are also included, deduplicated by URL. Unknown values and network-wide counts remain null. A content-warning tag without a reason produces an empty `cw` string.
+
+Nostr notifications classify kind 7 as `like`, kind 6/16 as `repost`, q-tagged notes as `quote`, and other tagged notes as `reply` or `mention`. `isRead` uses locally stored IDs for the selected public key; `notifications --seen` updates those IDs. A public deletion request is an action result, not a guarantee of removal from relays.
+
+New Nostr writes retain `action`, `target`, `id`, `url` and `already`, adding `acceptedRelays` when published. `unlike` and `unrepost` return `already: true` with a null ID when no active observed event needs deletion. Declined confirmations emit no result and send no event. `post --dry-run` emits `action`, `dryRun`, `text`, `replyId`, `quoteId`, `cw` and local `files` paths; it performs no signing, upload or relay request.
+
+`nstr chat ACTOR` emits messages with `id`, `createdAt`, `user`, `text` and `recipients`; IDs and timestamps belong to the inner unsigned rumor. Without an actor, `chat` emits conversations with `id`, `members`, `lastMessage` and `unreadCount`. Opening an actor's history marks the returned rumor IDs read locally. A send emits the shared action result with action `chat`. Ciphertexts, seal signatures and private key material are omitted from the message shape. `upload` emits an `imeta` array ready to attach to a note. `download` emits `postId`, `type`, `url`, `path` and `size` for each saved file.
+
+`nstr accounts` and `login` identify configurations with `id`, `username`, `host`, `service: "nostr"` and their saved `name`. The configuration name is local; it is not the account's profile name. `--account NAME` selects a saved configuration independently of the default.
+
+Exit status 5 means an unavailable capability or missing event, including a missing search relay, Blossom server or kind-10050 DM relay list. Error JSON retains `error`, `hint` and `status`.

@@ -39,7 +39,7 @@ scenarios:
       - run: { command: nstr notifications -n 2000 --json, env: *env, timeout: 30s }
       - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 806 } }
       - assert:
-          stdout: { contains: ['"type":"reaction"', '"type":"repost"', '"type":"follow"', '"type":"reply"', '"type":"mention"'] }
+          stdout: { contains: ['"type":"like"', '"type":"repost"', '"type":"follow"', '"type":"reply"', '"type":"mention"'] }
 
   - name: "heavy: fifty-deep ancestry and two hundred direct replies are stored"
     steps:
@@ -121,7 +121,7 @@ scenarios:
             - send: q
       - assert: { exit_code: 0 }
 
-  - name: "heavy: video profile stays responsive and names unsupported playback"
+  - name: "heavy: video profile stays responsive and plays supported media"
     steps:
       - pty:
           command: nstr
@@ -135,9 +135,11 @@ scenarios:
           session:
             - expect_screen: { contains: "compat reply", timeout: 10s }
             - send: "3"
-            - expect_screen: { contains: ["compat-videos", "playback unsupported"], timeout: 10s }
+            - expect_screen: { contains: ["compat-videos", "space to play"], timeout: 10s }
             - send: " "
-            - expect_screen: { contains: "unsupported: video playback in nstr", timeout: 2s }
+            - expect_screen: { contains: ["Pictures", "pattern.mp4"], images: { min_count: 1 }, timeout: 10s }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Pictures", stable_for: 300ms }
             - send: { key: down, times: 10 }
             - expect_screen: { contains: "video 09", timeout: 2s }
             - send: g
@@ -161,9 +163,11 @@ scenarios:
             - send: v
             - expect_screen: { contains: ["Thread", "compat reply"], not_contains: "Loading…", timeout: 10s }
             - send: k
+            - expect_screen: { contains: "Content warning", not_contains: "compat own note", timeout: 2s }
+            - send: w
             - expect_screen: { contains: "compat own note", timeout: 2s }
             - send: { key: esc }
-            - expect_screen: { not_contains: "Thread", timeout: 2s }
+            - expect_screen: { not_contains: "Thread", stable_for: 300ms, timeout: 2s }
             - send: l
             - expect_screen: { contains: "Sent", timeout: 10s }
             - send: b
@@ -176,7 +180,7 @@ scenarios:
             - send: v
             - expect_screen: { contains: ["Thread", "catalog live reply"], not_contains: "Loading…", timeout: 10s }
             - send: { key: esc }
-            - expect_screen: { not_contains: "Thread", timeout: 2s }
+            - expect_screen: { not_contains: "Thread", stable_for: 300ms, timeout: 2s }
             - send: n
             - expect_screen: { contains: "New note", timeout: 2s }
             - send: "catalog live composition"
@@ -192,7 +196,7 @@ scenarios:
       - run: { command: nstr notifications -n 100 --json, env: *pictures }
       - assert:
           exit_code: 0
-          stdout: { contains: ['"type":"reaction"', '"type":"repost"', '"text":"catalog live reply"'] }
+          stdout: { contains: ['"type":"like"', '"type":"repost"', '"text":"catalog live reply"'] }
 
   - name: "speed: timeline 100"
     steps:

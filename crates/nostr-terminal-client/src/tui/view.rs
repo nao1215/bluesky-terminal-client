@@ -15,51 +15,7 @@ use terminal_kit::{
     theme::THEMES,
 };
 
-pub(super) const HELP: &[(&str, &str, &str)] = &[
-    (
-        "1 2 3 / tab",
-        "Home / Notifications / Profile",
-        "ホーム / 通知 / プロフィール",
-    ),
-    ("j k / ↓ ↑", "move the selection", "選択を移動"),
-    ("g G / home end", "first / last note", "最初 / 最後のノート"),
-    (
-        "pgdn pgup",
-        "move five notes; more loads near the end",
-        "5件移動・末尾近くで続きを取得",
-    ),
-    ("R F5", "refresh", "再読み込み"),
-    ("v / esc", "open thread / back", "スレッド / 戻る"),
-    ("n / r", "new note / reply", "新規ノート / 返信"),
-    ("ctrl+s", "send from composer", "投稿画面から送信"),
-    (
-        "ctrl+u / esc",
-        "clear line / cancel composer",
-        "行頭まで削除 / 投稿を中止",
-    ),
-    ("l", "send a + reaction", "＋リアクションを送信"),
-    ("b", "repost", "リポスト"),
-    (
-        "c",
-        "copy nostr:nevent identifier",
-        "nostr:nevent 識別子をコピー",
-    ),
-    ("space", "open pictures", "画像を開く"),
-    (
-        "h l / ← →",
-        "previous / next picture in viewer",
-        "画像ビューアで前 / 次の画像",
-    ),
-    ("s / T", "settings / themes", "設定 / テーマ"),
-    (
-        "j k / enter",
-        "choose a setting or theme",
-        "設定やテーマを選択・決定",
-    ),
-    ("x", "reset the selected setting", "選択中の設定を初期化"),
-    ("? / esc", "help / close", "ヘルプ / 閉じる"),
-    ("q ctrl+c", "quit", "終了"),
-];
+pub(super) use super::keys::HELP;
 
 pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     let area = frame.area();
@@ -85,6 +41,8 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
         (Tab::Home, app.t("1 Home", "1 ホーム")),
         (Tab::Notifications, app.t("2 Notifications", "2 通知")),
         (Tab::Profile, app.t("3 Profile", "3 プロフィール")),
+        (Tab::Search, app.t("4 Search", "4 検索")),
+        (Tab::Chat, app.t("5 Chat", "5 チャット")),
     ];
     let spans = labels
         .into_iter()
@@ -103,15 +61,7 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
         })
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(Line::from(spans)), tabs);
-    let hint = match app.overlay {
-        Some(Overlay::Compose { .. }) => app.t("ctrl+s send   esc cancel", "ctrl+s 送信   esc 中止"),
-        Some(Overlay::Themes { .. }) => app.t("j k preview   enter apply   esc cancel", "j k プレビュー   enter 適用   esc 中止"),
-        Some(Overlay::Settings(_)) => app.t("j k move   enter choose   x reset   esc close", "j k 移動   enter 選択   x 初期化   esc 閉じる"),
-        Some(Overlay::Languages(_)) => app.t("j k move   enter choose   esc close", "j k 移動   enter 選択   esc 閉じる"),
-        Some(Overlay::Pictures { .. }) => app.t("h l previous / next   esc close", "h l 前 / 次   esc 閉じる"),
-        Some(Overlay::Help(_)) => app.t("j k scroll   esc close", "j k スクロール   esc 閉じる"),
-        None => app.t("? help   j k move   tab next tab   n post   r reply   l like   b repost   v thread   c copy   s settings   T themes   q quit", "? ヘルプ   j k 移動   tab タブ   n 投稿   r 返信   l リアクション   b リポスト   v スレッド   c コピー   s 設定   T テーマ   q 終了"),
-    };
+    let hint = super::keys::hint(app);
     frame.render_widget(Paragraph::new(hint).style(app.theme.dim()), hints);
     frame.render_widget(
         Paragraph::new(format!(
@@ -130,16 +80,112 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
         .style(app.theme.dim()),
         status,
     );
-    if let Some(overlay) = &app.overlay {
+    if let Some(browser) = &app.extra.browser {
+        browser.clone().draw(
+            frame,
+            body,
+            images,
+            &app.theme,
+            if app.language == "ja" {
+                super::keys::browser_ja
+            } else {
+                |s| s
+            },
+        );
+    } else if let Some(dialog) = &app.extra.dialog {
+        draw_dialog(frame, body, app, dialog);
+    } else if app.tab == Tab::Chat && app.overlay.is_none() {
+        let text = app
+            .extra
+            .messages
+            .iter()
+            .enumerate()
+            .skip(app.extra.chat_selected)
+            .map(|(i, row)| {
+                let m = if row.get("lastMessage").is_some() {
+                    &row["lastMessage"]
+                } else {
+                    row
+                };
+                format!(
+                    "{} {} · {} · {}\n{}",
+                    if i == app.extra.chat_selected {
+                        "›"
+                    } else {
+                        " "
+                    },
+                    m["user"]["username"].as_str().unwrap_or(""),
+                    m["createdAt"].as_str().unwrap_or(""),
+                    row["unreadCount"].as_u64().unwrap_or(0),
+                    m["text"].as_str().unwrap_or("")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        frame.render_widget(
+            Paragraph::new(drawable(&text)).block(Block::bordered().title(app.t(
+                "Chat · m recipient · i message · ctrl+s send",
+                "チャット · m 宛先 · i 入力 · ctrl+s 送信",
+            ))),
+            body,
+        );
+    } else if let Some(overlay) = &app.overlay {
         draw_overlay(frame, body, app, overlay, images);
     } else {
-        draw_notes(frame, body, app, images);
+        if app.tab == Tab::Search
+            && let Some(focus) = app.extra.column
+        {
+            for (i, area) in
+                terminal_kit::columns::visible(body, app.extra.columns.len(), focus, 40)
+            {
+                frame.render_widget(
+                    Paragraph::new(drawable(&app.extra.columns[i])).style(if i == focus {
+                        app.theme.selected()
+                    } else {
+                        app.theme.dim()
+                    }),
+                    Rect {
+                        height: 1.min(area.height),
+                        ..area
+                    },
+                );
+                draw_notes(
+                    frame,
+                    Rect {
+                        y: area.y + 1,
+                        height: area.height.saturating_sub(1),
+                        ..area
+                    },
+                    app,
+                    images,
+                    app.extra.column_lists.get(i),
+                );
+            }
+        } else {
+            draw_notes(frame, body, app, images, None);
+        }
     }
 }
 
-fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images) {
+fn draw_notes(
+    frame: &mut Frame,
+    mut area: Rect,
+    app: &App,
+    images: &mut Images,
+    list: Option<&super::app::List>,
+) {
+    let unread = app.lists[1]
+        .notes
+        .iter()
+        .filter(|n| !app.extra.seen.contains(&n.id))
+        .count();
+    let summary = format!(
+        "{}: {unread} · {}",
+        app.t("Unread", "未読"),
+        app.extra.columns.join(" | ")
+    );
     let title = if app.threads.is_empty() {
-        ""
+        summary.as_str()
     } else {
         app.t("Thread", "スレッド")
     };
@@ -149,11 +195,51 @@ fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images)
     area = inner;
     if app.tab == Tab::Profile && app.threads.is_empty() {
         let value: serde_json::Value = serde_json::from_str(&app.profile).unwrap_or_default();
-        let text = ["display_name", "name", "about"]
+        if images.shows() && area.height >= 10 {
+            let height = (area.height / 4).clamp(3, 6);
+            for (field, x, width) in [
+                ("picture", area.x, 12.min(area.width)),
+                (
+                    "banner",
+                    area.x + 12.min(area.width),
+                    area.width.saturating_sub(12),
+                ),
+            ] {
+                if width > 0
+                    && let Some(url) = value[field]
+                        .as_str()
+                        .filter(|u| crate::api::media::valid_url(u))
+                {
+                    images.draw(frame, Rect::new(x, area.y, width, height), url);
+                }
+            }
+            area.y += height;
+            area.height -= height;
+        }
+        let mut text = ["display_name", "name", "about"]
             .iter()
             .filter_map(|key| value[*key].as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        if let Some((author, follow, mute)) = &app.extra.relationship
+            && app.extra.author.as_ref() == Some(author)
+        {
+            text.push_str(&format!(
+                "\n{}: {} · {}: {}",
+                app.t("Following", "フォロー中"),
+                if *follow {
+                    app.t("yes", "はい")
+                } else {
+                    app.t("no", "いいえ")
+                },
+                app.t("Muted", "ミュート"),
+                if *mute {
+                    app.t("yes", "はい")
+                } else {
+                    app.t("no", "いいえ")
+                }
+            ));
+        }
         let lines = wrap(&text, usize::from(area.width));
         let height = (lines.len() as u16).min(area.height / 2);
         frame.render_widget(
@@ -163,7 +249,7 @@ fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images)
         area.y += height;
         area.height -= height;
     }
-    let list = app.list();
+    let list = list.unwrap_or_else(|| app.list());
     if list.notes.is_empty() {
         frame.render_widget(
             Paragraph::new(app.t(
@@ -190,17 +276,86 @@ fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images)
             .and_then(|s| jiff::Timestamp::from_second(s).ok())
             .map(|t| terminal_kit::text::format_time(&t.to_string()))
             .unwrap_or_default();
-        let author = &note.pubkey[..note.pubkey.len().min(12)];
+        let metadata: serde_json::Value = app
+            .extra
+            .metadata
+            .get(&note.pubkey)
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let author = metadata["display_name"]
+            .as_str()
+            .or_else(|| metadata["name"].as_str())
+            .unwrap_or(&note.pubkey[..note.pubkey.len().min(12)]);
+        let hidden = app.hidden(note);
+        let embedded = crate::api::actions::reposted(note);
+        let shown = embedded.as_ref().unwrap_or(note);
         let mut lines = vec![format!(
             "{} {} · {}",
             if selected { "›" } else { " " },
             author,
             timestamp
         )];
-        lines.extend(wrap(
-            &note.content,
-            usize::from(area.width.saturating_sub(2)),
-        ));
+        if embedded.is_some() {
+            lines.push(format!("⟳ {}", &shown.pubkey[..12]));
+        }
+        let mut emoji_urls = Vec::new();
+        let content = if hidden {
+            format!(
+                "{}: {} · w {}",
+                app.t("Content warning", "閲覧注意"),
+                shown.tag_values("content-warning").next().unwrap_or(""),
+                app.t("open", "開く")
+            )
+        } else if matches!(note.kind, 6 | 16) && embedded.is_none() {
+            app.t(
+                "Repost (original unavailable)",
+                "リポスト（元の投稿を取得できません）",
+            )
+            .into()
+        } else if images.shows() {
+            terminal_kit::emoji::with_emoji_cells(
+                &shown.content,
+                &mut |name| {
+                    shown
+                        .tags
+                        .iter()
+                        .find(|t| {
+                            t.first().is_some_and(|s| s == "emoji")
+                                && t.get(1).is_some_and(|s| s == name)
+                        })
+                        .and_then(|t| t.get(2))
+                        .filter(|u| crate::api::media::valid_url(u))
+                        .cloned()
+                },
+                &mut emoji_urls,
+            )
+        } else {
+            shown.content.clone()
+        };
+        lines.extend(wrap(&content, usize::from(area.width.saturating_sub(2))));
+        if !hidden && let Some(id) = shown.tag_values("q").next() {
+            lines.push(format!(
+                "↪ {} · V {}",
+                &id[..id.len().min(12)],
+                app.t("open quote", "引用を開く")
+            ));
+            if let Some(quote) = app.extra.references.get(id) {
+                let body = if app.hidden(quote) {
+                    app.t(
+                        "Content warning · V to open quote",
+                        "閲覧注意 · V で引用を開く",
+                    )
+                } else {
+                    &quote.content
+                };
+                lines.extend(
+                    wrap(body, usize::from(area.width.saturating_sub(4)))
+                        .into_iter()
+                        .take(4)
+                        .map(|s| format!("│ {s}")),
+                );
+            }
+        }
         let liked = app.marks.contains(&(note.id.clone(), 7));
         let reposted = app.marks.contains(&(note.id.clone(), 6));
         lines.push(format!(
@@ -208,24 +363,28 @@ fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images)
             if liked { "♥ +" } else { "♡" },
             if reposted { "⟳ +" } else { "⟳" }
         ));
-        let urls = note::pictures(note);
+        let urls = if hidden { vec![] } else { note::pictures(note) };
         if !urls.is_empty() {
             lines.push(format!("▣ {} {}", urls.len(), app.t("pictures", "画像")));
         }
-        if note::has_video(note) {
-            lines.push("▶ video · playback unsupported".into());
+        if !hidden && note::has_video(note) {
+            lines.push(
+                app.t("▶ video · space to play", "▶ 動画 · space で再生")
+                    .into(),
+            );
         }
         let height = (lines.len() as u16).min(area.height);
         frame.render_widget(
             Paragraph::new(lines.join("\n")).style(style),
             Rect { height, ..area },
         );
+        terminal_kit::emoji::draw_emoji_cells(frame, Rect { height, ..area }, &emoji_urls, images);
         area.y += height;
         area.height -= height;
         if images.shows() && !urls.is_empty() && area.height >= 4 {
             let height = area.height.min(6);
             let width = (area.width / urls.len().min(4) as u16).max(1);
-            for (i, url) in urls.iter().take(4).enumerate() {
+            for (i, url) in urls.iter().filter(|u| !note::video(u)).take(4).enumerate() {
                 images.draw(
                     frame,
                     Rect::new(area.x + i as u16 * width, area.y, width, height),
@@ -260,6 +419,24 @@ fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, ima
     frame.render_widget(block, area);
     match overlay {
         Overlay::Compose { text, .. } => {
+            frame.render_widget(
+                Paragraph::new(format!(
+                    "{} {} · CW: {} · ctrl+o {} · tab alt",
+                    app.extra.attachments.len(),
+                    app.t("attachments", "添付"),
+                    app.extra.cw.as_deref().unwrap_or(""),
+                    app.t("attach", "添付")
+                )),
+                Rect {
+                    height: 1.min(inner.height),
+                    ..inner
+                },
+            );
+            let inner = Rect {
+                y: inner.y.saturating_add(1),
+                height: inner.height.saturating_sub(1),
+                ..inner
+            };
             let layout = text.layout(usize::from(inner.width));
             let offset = layout
                 .cursor
@@ -317,11 +494,21 @@ fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, ima
                 },
             );
             if inner.height > 1 {
-                images.draw(
-                    frame,
-                    Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1),
-                    url,
-                );
+                let area = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1);
+                if super::note::video(url)
+                    || app.selected().is_some_and(|e| {
+                        crate::api::media::files(e)
+                            .iter()
+                            .any(|f| f["url"] == *url && f["type"] == "video")
+                    })
+                {
+                    let state = images.draw_video(frame, area, url, app.extra.replay);
+                    if let terminal_kit::media::player::State::Warning(w) = state {
+                        frame.render_widget(Paragraph::new(drawable(&w)), area);
+                    }
+                } else {
+                    images.draw(frame, area, url);
+                }
             }
         }
     }
@@ -345,4 +532,114 @@ fn menu(frame: &mut Frame, area: Rect, app: &App, choices: &[&str], selected: us
         })
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras::Dialog) {
+    use super::{
+        extras::{Dialog, Purpose},
+        keys::ACTIONS,
+    };
+    let (title, text) = match dialog {
+        Dialog::Profile(editor) => (
+            app.t(
+                "Edit profile · tab field · ctrl+o picture · ctrl+s save",
+                "プロフィール編集 · tab 項目 · ctrl+o 画像 · ctrl+s 保存",
+            ),
+            format!(
+                "{}\n{}",
+                editor.summary(app.language == "ja"),
+                app.extra
+                    .profile_files
+                    .iter()
+                    .map(|(field, path)| format!(
+                        "{field}: {}",
+                        path.file_name()
+                            .unwrap_or(path.as_os_str())
+                            .to_string_lossy()
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        ),
+        Dialog::Confirm { .. } => (
+            app.t(
+                "Confirm · y yes / n no · esc cancel",
+                "確認 · y 実行 / n 中止 · esc 戻る",
+            ),
+            app.t(
+                "Publish this request? Relays decide what they honor.",
+                "この要求を公開しますか？対応の判断はリレーによります。",
+            )
+            .to_owned(),
+        ),
+        Dialog::Input { purpose, text } => {
+            let title = match purpose {
+                Purpose::AddAccount => app.t(
+                    "Add account: name JSON · enter",
+                    "アカウント追加: 名前 JSON · enter",
+                ),
+                Purpose::Search => app.t("Search · enter", "検索 · enter"),
+                Purpose::ChatPeer => app.t("Recipient public key · enter", "宛先の公開鍵 · enter"),
+                Purpose::ChatMessage => {
+                    app.t("Private message · ctrl+s", "非公開メッセージ · ctrl+s")
+                }
+                Purpose::Reaction => app.t("Reaction · enter", "リアクション · enter"),
+                Purpose::Report => app.t(
+                    "Report: reason comment · enter",
+                    "通報: 理由 コメント · enter",
+                ),
+                Purpose::Warning => app.t("Content warning · enter", "閲覧注意文 · enter"),
+                Purpose::Alt => app.t("Attachment alt text · tab next · shift+tab previous · ctrl+x remove · enter done", "添付の代替テキスト · tab 次 · shift+tab 前 · ctrl+x 除去 · enter 完了"),
+            };
+            let body = if matches!(purpose, Purpose::Alt) {
+                format!(
+                    "{}/{} {}\n{}",
+                    app.extra.attachment + 1,
+                    app.extra.attachments.len(),
+                    app.extra
+                        .attachments
+                        .get(app.extra.attachment)
+                        .and_then(|(p, _)| p.file_name())
+                        .unwrap_or_default()
+                        .to_string_lossy(),
+                    text.text()
+                )
+            } else {
+                text.text()
+            };
+            (title, body)
+        }
+        Dialog::Actions(selected) => (
+            app.t("Actions", "操作一覧"),
+            ACTIONS
+                .iter()
+                .enumerate()
+                .map(|(i, (_, en, ja))| {
+                    format!(
+                        "{} {}",
+                        if i == *selected { "›" } else { " " },
+                        app.t(en, ja)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Dialog::Accounts { names, selected } => (
+            app.t(
+                "Saved accounts · enter switch · a add · x remove",
+                "保存済みアカウント · enter 切替 · a 追加 · x 削除",
+            ),
+            names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| format!("{} {n}", if i == *selected { "›" } else { " " }))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+    };
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(drawable(&text)).block(Block::bordered().title(title)),
+        area,
+    );
 }

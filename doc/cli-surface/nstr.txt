@@ -1,12 +1,72 @@
 # The commands, aliases and flags of nstr, from its --help.
 # Written by `python3 scripts/rules/cli.py --update`; do not edit by hand.
 # What each is for is in usecases.toml.
+--account (-a)
 --json
+accounts
+accounts --use
+author
+author --limit (-n)
+chat
+chat --limit (-n)
+delete
+delete --yes (-y)
+dm-relays
+download
+download --output (-o)
+follow
+followers
+followers --limit (-n)
+follows
+like
+like --reaction
+likes
+likes --limit (-n)
+login
+login --bunker
+login --key-file
+login --public-key
+login --relay
+logout
+logout --yes (-y)
+mute
+mute [hidden alias block]
+mutes
+mutes [hidden alias blocks]
+note
 notifications
 notifications --limit (-n)
+notifications --seen
+notifications [hidden alias notif]
 post
+post --alt
+post --cw
+post --dry-run
+post --image
+post --quote
+post --reply
+post --video
+profile
+profile-update
+report
+report --comment
+report --reason
+report --yes (-y)
+repost
+reposts
+reposts --limit (-n)
 search
 search --limit (-n)
+thread
+thread --limit (-n)
 timeline
 timeline --limit (-n)
+timeline [hidden alias tl]
+unfollow
+unlike
+unmute
+unmute [hidden alias unblock]
+unrepost
+upload
+upload --alt
 whoami

@@ -146,7 +146,7 @@ def prepare(directory, relays):
         for i, name in enumerate(["", "pictures", "videos"]):
             target = directory / name
             target.mkdir(mode=0o700, exist_ok=True)
-            config = {"publicKey": standin.public_of(keys[i]), "relays": relays, "timeoutSeconds": 20}
+            config = {"publicKey": standin.public_of(keys[i]), "relays": relays, "searchRelays": relays, "timeoutSeconds": 20}
             if i == 0:
                 config["keyFile"] = "key"
             (target / "config.json").write_text(json.dumps(config), encoding="utf-8")

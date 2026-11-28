@@ -8,13 +8,13 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
-# The included client files use these dependencies: config.rs (dirs, url,
+# The included client files use these dependencies: config.rs (url,
 # zeroize), event.rs (jiff, serde), nip44.rs (chacha20, hmac, zeroize),
-# error.rs (terminal-kit), nip11.rs (serde, ureq, url),
-# relay.rs (serde, tungstenite, url), and the generated NIP-46 parser
-# (serde, url, zeroize). cargo-machete does not follow those source paths.
+# error.rs (terminal-kit), relay.rs/nip11.rs (serde, tungstenite, ureq, url),
+# and the generated NIP-46 parser (serde, url, zeroize). cargo-machete does not
+# follow those source paths.
 [package.metadata.cargo-machete]
-ignored = ["chacha20", "dirs", "hmac", "jiff", "serde", "terminal-kit", "tungstenite", "ureq", "zeroize"]
+ignored = ["chacha20", "hmac", "jiff", "serde", "terminal-kit", "tungstenite", "ureq", "zeroize"]
 
 [dependencies]
 libfuzzer-sys = "0.4"
@@ -22,7 +22,6 @@ base64 = "0.22"
 bech32 = "0.11"
 chacha20 = { version = "0.9", features = ["zeroize"] }
 hmac = "0.13"
-dirs = "6"
 hex = "0.4"
 jiff = "1"
 k256 = { version = "0.14", default-features = false, features = ["schnorr", "std"] }
