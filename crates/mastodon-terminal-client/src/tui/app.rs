@@ -7,7 +7,7 @@
 //! longer waits for (the list was refreshed meanwhile) is dropped, so a
 //! slow old page never lands on top of a new one.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -15,6 +15,8 @@ use terminal_kit::input::TextInput;
 
 use crate::api::types::{Account, Limits, Media, Notification, Status};
 mod browse;
+mod write;
+use crate::api::types::Relationship;
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::{Session, Settings};
 use crate::error::Result;
@@ -22,8 +24,10 @@ use crate::i18n::{n, t, tf};
 use crate::tui::keys;
 use crate::tui::list::{List, Row, ThreadView};
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
+use crate::tui::worker::RelationAction;
 use crate::tui::worker::{Draft, Event, Job, next_of};
 pub(crate) use browse::{Profile, Search};
+pub(crate) use write::{Attached, Confirmation, Report};
 
 /// The jobs a key or an answer starts, each with its number.
 pub(crate) type Jobs = Vec<(u64, Job)>;
@@ -101,11 +105,14 @@ fn timeline_index(kind: TimelineKind) -> usize {
 pub(crate) enum Field {
     Text,
     Warning,
+    Alt(usize),
 }
 
 /// The composer, for a new status or a reply.
 #[derive(Debug, Clone)]
 pub(crate) struct Compose {
+    pub media: Vec<Attached>,
+    pub browser: Option<terminal_kit::files::Browser>,
     pub text: TextInput,
     /// The content warning, when one is added.
     pub warning: Option<TextInput>,
@@ -133,6 +140,8 @@ impl Compose {
             _ => String::new(),
         };
         Self {
+            media: Vec::new(),
+            browser: None,
             text: TextInput::multi(&mentions),
             // A reply keeps the warning of the status it answers, as
             // Mastodon's own composer does.
@@ -150,6 +159,7 @@ impl Compose {
     fn field(&mut self) -> &mut TextInput {
         match (self.focus, &mut self.warning) {
             (Field::Warning, Some(w)) => w,
+            (Field::Alt(i), _) => &mut self.media[i].alt,
             _ => &mut self.text,
         }
     }
@@ -188,6 +198,8 @@ pub(crate) fn visibility_label(v: Visibility) -> &'static str {
 /// A box over the screen.
 #[derive(Debug, Clone)]
 pub(crate) enum Overlay {
+    Confirm(Confirmation),
+    Report(Box<Report>),
     /// The `?` help, scrolled this far.
     Help {
         scroll: u16,
@@ -235,6 +247,12 @@ enum Act {
 
 /// The client's state.
 pub(crate) struct App {
+    pub relationships: HashMap<String, Relationship>,
+    relation_pending: HashMap<String, RelationAction>,
+    relation_before: HashMap<String, Relationship>,
+    deleting: HashSet<String>,
+    deleted: HashSet<String>,
+    browse_from: Option<std::path::PathBuf>,
     /// The account it reads as; a visitor without one.
     pub session: Option<Session>,
     /// The server it reads.
@@ -285,6 +303,12 @@ impl App {
             Tab::Local
         };
         let mut app = Self {
+            relationships: HashMap::new(),
+            relation_pending: HashMap::new(),
+            relation_before: HashMap::new(),
+            deleting: HashSet::new(),
+            deleted: HashSet::new(),
+            browse_from: None,
             session,
             origin: origin.to_string(),
             tab,
@@ -315,6 +339,9 @@ impl App {
         let mut jobs = app.load_tab(tab, false);
         if app.session.is_some() {
             jobs.push(app.job(Job::Limits));
+            if app.session.as_ref().is_some_and(|s| s.user_id.is_empty()) {
+                jobs.push(app.job(Job::Identity));
+            }
         }
         (app, jobs)
     }
@@ -731,11 +758,19 @@ impl App {
 
     /// Text pasted: into the composer's field, when it is open.
     pub(crate) fn handle_paste(&mut self, text: &str) {
+        if let Some(Overlay::Report(r)) = &mut self.overlay
+            && r.writing
+            && !r.confirming
+            && r.sending.is_none()
+        {
+            r.comment.insert_str(text);
+        }
         if self.overlay.is_none() && self.tab == Tab::Search && self.search.editing {
             self.search.input.insert_str(text);
         }
         if let Some(Overlay::Compose(c)) = &mut self.overlay
             && c.sending.is_none()
+            && c.browser.is_none()
         {
             c.field().insert_str(text);
         }
@@ -809,6 +844,17 @@ impl App {
                 self.toggle_warning();
                 Vec::new()
             }
+            KeyCode::Char('f') => self.relation_key(RelationAction::Follow),
+            KeyCode::Char('M') => self.relation_key(RelationAction::Mute),
+            KeyCode::Char('B') => self.relation_key(RelationAction::Block),
+            KeyCode::Char('D') => {
+                self.delete_key();
+                Vec::new()
+            }
+            KeyCode::Char('!') => {
+                self.open_report();
+                Vec::new()
+            }
             KeyCode::Char('l') => self.favourite(),
             KeyCode::Char('b') => self.boost(),
             KeyCode::Char('r') => {
@@ -834,7 +880,7 @@ impl App {
                 Vec::new()
             }
             KeyCode::Char('.') => {
-                if self.selected().is_some() {
+                if self.account_target().is_some() {
                     self.overlay = Some(Overlay::Actions { selected: 0 });
                 }
                 Vec::new()
@@ -856,6 +902,8 @@ impl App {
 
     fn overlay_key(&mut self, overlay: Overlay, key: KeyEvent) -> Jobs {
         match overlay {
+            Overlay::Confirm(c) => self.confirm_key(c, key),
+            Overlay::Report(r) => self.report_key(r, key),
             Overlay::Help { scroll } => {
                 self.overlay = match key.code {
                     KeyCode::Esc | KeyCode::Char('q' | '?') => None,
@@ -966,6 +1014,10 @@ impl App {
             }
             return Vec::new();
         }
+        if self.attachment_key(&mut c, key) {
+            self.overlay = Some(Overlay::Compose(c));
+            return Vec::new();
+        }
         match key.code {
             KeyCode::Esc => return Vec::new(),
             KeyCode::Char('s') if ctrl => return self.send(c),
@@ -978,11 +1030,19 @@ impl App {
                 }
             }
             KeyCode::Char('p') if ctrl => c.visibility = next_visibility(c.visibility),
-            KeyCode::Tab | KeyCode::BackTab if c.warning.is_some() => {
-                c.focus = match c.focus {
-                    Field::Text => Field::Warning,
-                    Field::Warning => Field::Text,
+            KeyCode::Tab | KeyCode::BackTab => {
+                let mut fields = vec![Field::Text];
+                if c.warning.is_some() {
+                    fields.push(Field::Warning);
+                }
+                fields.extend((0..c.media.len()).map(Field::Alt));
+                let index = fields.iter().position(|f| *f == c.focus).unwrap_or(0);
+                let next = if key.code == KeyCode::Tab {
+                    index + 1
+                } else {
+                    index + fields.len() - 1
                 };
+                c.focus = fields[next % fields.len()];
             }
             _ => {
                 c.field().handle_key(key);
@@ -1006,7 +1066,7 @@ impl App {
     /// Send what the composer holds.
     fn send(&mut self, mut c: Box<Compose>) -> Jobs {
         let text = c.text.text();
-        if text.trim().is_empty() {
+        if text.trim().is_empty() && c.media.is_empty() {
             self.say(t("write something first"));
             self.overlay = Some(Overlay::Compose(c));
             return Vec::new();
@@ -1021,6 +1081,11 @@ impl App {
             return Vec::new();
         }
         let draft = Draft {
+            files: c
+                .media
+                .iter()
+                .map(|a| (a.path.clone(), a.alt.text()))
+                .collect(),
             text,
             cw: c.warning.as_ref().map(TextInput::text).unwrap_or_default(),
             visibility: c.visibility,
@@ -1039,6 +1104,19 @@ impl App {
             return Vec::new();
         }
         match ev {
+            Event::Identity(result) => match result {
+                Ok(a) => {
+                    if let Some(session) = &mut self.session {
+                        session.user_id = a.id;
+                        session.username = a.username;
+                    }
+                }
+                Err(e) => self.fail(e.message().to_string()),
+            },
+            Event::Relationship { id, result } => return self.relation_loaded(id, result),
+            Event::Related { id, result } => self.related(id, result),
+            Event::Deleted { id, result } => self.deleted(id, result),
+            Event::Reported(result) => self.reported(seq, result),
             Event::Search { next, result } => self.search_answer(seq, next.is_none(), result),
             Event::Profile { more, result } => self.profile_answer(seq, !more, result),
             Event::Downloaded(result) => match result {
@@ -1136,6 +1214,7 @@ impl App {
                 }
             }
         }
+        self.hide_deleted();
         Vec::new()
     }
 }

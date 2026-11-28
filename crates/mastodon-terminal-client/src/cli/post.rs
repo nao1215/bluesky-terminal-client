@@ -367,14 +367,45 @@ pub(super) fn post(
             &limits,
         );
     }
+    let made = submit(
+        &client,
+        a,
+        &d,
+        reply.as_ref().map(|r| r.id.as_str()),
+        clock,
+        |e| ctx.explained(e),
+    )?;
+    let url = format::status_url(client.origin(), &made);
+    if ctx.json {
+        return json_line(
+            out,
+            &json!({"action": "post", "target": null, "id": made.id, "url": url, "already": false, "uri": made.uri}),
+        );
+    }
+    text(out, &format!("{url}\n"))
+}
+
+/// The same validation, uploads, processing wait and post used by the composer.
+pub(crate) fn composed(client: &Client, a: &PostArgs) -> Result<Status> {
+    let d = draft(a, &mut a.text.as_bytes())?;
+    too_much(&d, &client.limits(), client.host())?;
+    submit(client, a, &d, a.reply.as_deref(), &mut WallClock, |e| e)
+}
+
+fn submit(
+    client: &Client,
+    a: &PostArgs,
+    d: &Draft,
+    reply: Option<&str>,
+    clock: &mut dyn Clock,
+    explain: impl Fn(Error) -> Error,
+) -> Result<Status> {
     let mut ids = Vec::new();
     for f in &d.files {
         let alt = (!f.alt.is_empty()).then_some(f.alt.as_str());
-        let (ready, m) = client
-            .upload(&f.name, &f.data, alt)
-            .map_err(|e| ctx.explained(e))?;
+        let (ready, m) = client.upload(&f.name, &f.data, alt).map_err(&explain)?;
         if !ready {
-            wait_processed(&client, &m.id, &f.path, clock)?;
+            wait_processed(client, &m.id, &f.path, clock)?;
         }
         ids.push(m.id);
     }
@@ -385,15 +416,15 @@ pub(super) fn post(
     if a.sensitive {
         body["sensitive"] = json!(true);
     }
-    if let Some(r) = &reply {
-        body["in_reply_to_id"] = json!(r.id);
+    if let Some(id) = reply {
+        body["in_reply_to_id"] = json!(id);
     }
     if !ids.is_empty() {
         body["media_ids"] = json!(ids);
     }
     let key = api::random_hex("mstdn-")?;
-    let made = client.create_status(&body, &key).map_err(|e| {
-        let e = ctx.explained(e);
+    client.create_status(&body, &key).map_err(|e| {
+        let e = explain(e);
         if ids.is_empty() {
             e
         } else {
@@ -402,15 +433,7 @@ pub(super) fn post(
                 "{hint}the files uploaded for it are not attached to anything, and the server removes them in a day"
             ))
         }
-    })?;
-    let url = format::status_url(client.origin(), &made);
-    if ctx.json {
-        return json_line(
-            out,
-            &json!({"action": "post", "target": null, "id": made.id, "url": url, "already": false, "uri": made.uri}),
-        );
-    }
-    text(out, &format!("{url}\n"))
+    })
 }
 
 /// Ask every second (then less often) whether the server has processed

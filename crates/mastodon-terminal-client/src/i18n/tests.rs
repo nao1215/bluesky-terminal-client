@@ -77,6 +77,9 @@ fn marked() -> BTreeSet<String> {
             }
         }
     }
+    let browser = Path::new(env!("CARGO_MANIFEST_DIR")).join("../terminal-kit/src/files/view.rs");
+    let text = std::fs::read_to_string(browser).unwrap();
+    found.extend(literals_marked(&text.replace("translate(", "t(")));
     found
 }
 

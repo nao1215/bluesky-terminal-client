@@ -1,0 +1,361 @@
+# Mocks only. cwd holds exactly one file: Enter chooses it, Tab selects its alt text.
+# Random multipart boundaries are matched by shape; all fields and headers are pinned.
+# Metadata must be stripped, and the status JSON is checked in full.
+version: '1'
+suite: {name: tui-attachments}
+secrets: [e2e-stage3-fake]
+scenarios:
+- name: composer strips picture metadata and uploads its alt text
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v2/media
+      json: {id: m1, type: image, url: null}
+      status: 202
+    - method: GET
+      path: /api/v1/media/m1
+      json: {url: '${api.url}/files/gps.jpg'}
+    - method: POST
+      path: /api/v1/statuses
+      json: {id: new}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - fixture: {file: media/gps.jpg, from: testdata/gps.jpg}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen:
+          contains: [Attach pictures, gps.jpg]
+          stable_for: 150ms
+      - send: {key: enter}
+      - expect_screen: {contains: 'Alt:', stable_for: 150ms}
+      - send: {key: tab}
+      - {send: Attachment description}
+      - send: {key: ctrl-s}
+      - expect_screen: {contains: posted, not_contains: New post, stable_for: 150ms}
+      - {send: q}
+      cwd: ${workdir}/media
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v2/media
+        count: 1
+        body:
+          contains: ["name=\"description\"\r\n\r\nAttachment description\r\n", "name=\"file\"; filename=\"gps.jpg\"\r\nContent-Type:\
+              \ image/jpeg\r\n"]
+          not_contains: [SecretCam, Taro Secret]
+          matches: '(?s)^--mstdn-[0-9a-f]{32}\r?\nContent-Disposition: form-data; name="description"\r?\n\r?\nAttachment description\r?\n--mstdn-[0-9a-f]{32}\r?\nContent-Disposition:
+            form-data; name="file"; filename="gps\.jpg"\r?\nContent-Type: image/jpeg\r?\n\r?\n.+\r?\n--mstdn-[0-9a-f]{32}--\r?\n$'
+        header: {name: Content-Type, matches: '^multipart/form-data; boundary=mstdn-[0-9a-f]{32}$'}
+  - assert:
+      mock: {name: api, path: /api/v1/media/m1, method: GET, count: 1}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 1
+        header: {name: Idempotency-Key, matches: '^mstdn-[0-9a-f]{32}$'}
+        body:
+          json:
+          - path: $
+            equals:
+              status: ''
+              visibility: public
+              media_ids: [m1]
+- name: composer uploads a video
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v2/media
+      json: {id: m1, type: video, url: null}
+      status: 202
+    - method: GET
+      path: /api/v1/media/m1
+      json: {url: '${api.url}/files/gps.mp4'}
+    - method: POST
+      path: /api/v1/statuses
+      json: {id: new}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - fixture: {file: media/gps.mp4, from: testdata/gps.mp4}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen:
+          contains: [Attach pictures, gps.mp4]
+          stable_for: 150ms
+      - send: {key: enter}
+      - expect_screen: {contains: 'Alt:', stable_for: 150ms}
+      - send: {key: tab}
+      - {send: Attachment description}
+      - send: {key: ctrl-s}
+      - expect_screen: {contains: posted, not_contains: New post, stable_for: 150ms}
+      - {send: q}
+      cwd: ${workdir}/media
+  - assert: {exit_code: 0}
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v2/media
+        count: 1
+        body:
+          contains: ["name=\"description\"\r\n\r\nAttachment description\r\n", "name=\"file\"; filename=\"gps.mp4\"\r\nContent-Type:\
+              \ video/mp4\r\n"]
+          not_contains: [SecretCam, Taro Secret]
+          matches: '(?s)^--mstdn-[0-9a-f]{32}\r?\nContent-Disposition: form-data; name="description"\r?\n\r?\nAttachment description\r?\n--mstdn-[0-9a-f]{32}\r?\nContent-Disposition:
+            form-data; name="file"; filename="gps\.mp4"\r?\nContent-Type: video/mp4\r?\n\r?\n.+\r?\n--mstdn-[0-9a-f]{32}--\r?\n$'
+        header: {name: Content-Type, matches: '^multipart/form-data; boundary=mstdn-[0-9a-f]{32}$'}
+  - assert:
+      mock: {name: api, path: /api/v1/media/m1, method: GET, count: 1}
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 1
+        header: {name: Idempotency-Key, matches: '^mstdn-[0-9a-f]{32}$'}
+        body:
+          json:
+          - path: $
+            equals:
+              status: ''
+              visibility: public
+              media_ids: [m1]
+- name: cancelled attachments are never uploaded
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v2/media
+      json: {id: m1}
+    - method: POST
+      path: /api/v1/statuses
+      json: {id: new}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - fixture: {file: media/photo.png, from: testdata/photo.png}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen: {contains: Attach pictures, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: New post, not_contains: Attach pictures, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen: {contains: Attach pictures, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: 'Alt:', stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {not_contains: New post, stable_for: 150ms}
+      - {send: q}
+      cwd: ${workdir}/media
+  - assert: {exit_code: 0}
+  - assert:
+      mock: {name: api, path: /api/v2/media, method: POST, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/statuses, method: POST, count: 0}
+- name: server image size limit stops upload and keeps the draft
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json:
+        configuration:
+          media_attachments: {image_size_limit: 1}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v2/media
+      json: {id: m1}
+    - method: POST
+      path: /api/v1/statuses
+      json: {id: new}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - fixture: {file: media/photo.png, from: testdata/photo.png}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen: {contains: Attach pictures, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: 'Alt:', stable_for: 150ms}
+      - send: {key: ctrl-s}
+      - expect_screen: {contains: takes files up to 1 bytes, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {not_contains: New post, stable_for: 150ms}
+      - {send: q}
+      cwd: ${workdir}/media
+  - assert: {exit_code: 0}
+  - assert:
+      mock: {name: api, path: /api/v2/media, method: POST, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/statuses, method: POST, count: 0}
+- name: server alt length limit stops upload and keeps the draft
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: s1
+        account: {id: '2', username: bob, acct: bob}
+        content: <p>Selected post</p>
+        visibility: public
+      header: {Link: '<${api.url}/api/v1/timelines/home>; rel="prev"'}
+    - method: GET
+      path: /api/v2/instance
+      json:
+        configuration:
+          media_attachments: {description_limit: 2}
+    - method: GET
+      path: /api/v1/accounts/relationships
+      json:
+      - {id: '2', following: false, requested: false, muting: false, blocking: false}
+    - method: POST
+      path: /api/v2/media
+      json: {id: m1}
+    - method: POST
+      path: /api/v1/statuses
+      json: {id: new}
+  steps:
+  - fixture: {file: 'cfg/accounts/127.0.0.1_${api.port}.json', content: '{"service": "${api.url}", "userId": "7", "username": "me",
+        "token": "e2e-stage3-fake", "scopes": ["read", "write"]}'}
+  - fixture: {file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}'}
+  - fixture: {file: media/photo.png, from: testdata/photo.png}
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      env: {MSTDN_CONFIG_DIR: '${workdir}/cfg', MSTDN_CACHE_DIR: 'off', MSTDN_TOKEN: '', LC_ALL: C.UTF-8}
+      timeout: 30s
+      session:
+      - expect_screen: {contains: Selected post, stable_for: 150ms}
+      - {send: n}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: ctrl-o}
+      - expect_screen: {contains: Attach pictures, stable_for: 150ms}
+      - send: {key: enter}
+      - expect_screen: {contains: 'Alt:', stable_for: 150ms}
+      - send: {key: tab}
+      - {send: long alt}
+      - send: {key: ctrl-s}
+      - expect_screen: {contains: takes up to 2, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {contains: New post, stable_for: 150ms}
+      - send: {key: esc}
+      - expect_screen: {not_contains: New post, stable_for: 150ms}
+      - {send: q}
+      cwd: ${workdir}/media
+  - assert: {exit_code: 0}
+  - assert:
+      mock: {name: api, path: /api/v2/media, method: POST, count: 0}
+  - assert:
+      mock: {name: api, path: /api/v1/statuses, method: POST, count: 0}

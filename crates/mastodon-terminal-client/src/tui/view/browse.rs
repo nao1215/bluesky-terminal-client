@@ -125,7 +125,7 @@ pub(super) fn draw_browse(
             draw_needs_login(frame, area, app.host(), &ctx.t);
             return;
         }
-        let header = match &app.profile.account {
+        let mut header = match &app.profile.account {
             Some(a) => format!(
                 "{} {}\n{}\n{}",
                 display_name(a),
@@ -142,6 +142,15 @@ pub(super) fn draw_browse(
             ),
             None => t("loading…").into(),
         };
+        if let Some(r) = app
+            .profile
+            .account
+            .as_ref()
+            .and_then(|a| app.relationships.get(&a.id))
+        {
+            header.push('\n');
+            header.push_str(&App::relationship_label(r));
+        }
         let lines = wrap(&header, usize::from(area.width.max(1)));
         let h = (lines.len() as u16 + 1).min(area.height / 2);
         let [head, body] =

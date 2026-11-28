@@ -121,6 +121,7 @@ fn a_post_sends_the_draft_once_with_a_key() {
         w.send(
             1,
             Job::Post(Box::new(Draft {
+                files: Vec::new(),
                 text: "こんにちは 🇯🇵".into(),
                 cw: cw.into(),
                 visibility: Visibility::Unlisted,
@@ -137,12 +138,14 @@ fn a_post_sends_the_draft_once_with_a_key() {
         );
     }
     let log = log.lock().unwrap();
-    let first: serde_json::Value = serde_json::from_str(&log[0].body).unwrap();
+    let writes: Vec<_> = log.iter().filter(|c| c.method == "POST").collect();
+    assert_eq!(writes.len(), 2);
+    let first: serde_json::Value = serde_json::from_str(&writes[0].body).unwrap();
     assert_eq!(first["status"], "こんにちは 🇯🇵");
     assert_eq!(first["spoiler_text"], "ネタバレ");
     assert_eq!(first["visibility"], "unlisted");
     assert_eq!(first["in_reply_to_id"], "100");
-    let second: serde_json::Value = serde_json::from_str(&log[1].body).unwrap();
+    let second: serde_json::Value = serde_json::from_str(&writes[1].body).unwrap();
     assert!(second.get("spoiler_text").is_none(), "{second}");
     assert!(second.get("in_reply_to_id").is_none(), "{second}");
     let keys: Vec<&str> = log
@@ -223,6 +226,7 @@ fn a_write_on_its_way_is_finished_before_quitting() {
 fn only_writes_change_the_server() {
     assert!(
         Job::Post(Box::new(Draft {
+            files: Vec::new(),
             text: String::new(),
             cw: String::new(),
             visibility: Visibility::Public,
@@ -239,6 +243,33 @@ fn only_writes_change_the_server() {
     );
     assert!(!Job::Thread { id: "1".into() }.changes_server());
     assert!(!Job::Limits.changes_server());
+    assert!(!Job::Identity.changes_server());
+    assert!(!Job::Relationship { id: "2".into() }.changes_server());
+    for action in [
+        RelationAction::Follow,
+        RelationAction::Mute,
+        RelationAction::Block,
+    ] {
+        for on in [false, true] {
+            assert!(
+                Job::Relate {
+                    id: "2".into(),
+                    action,
+                    on
+                }
+                .changes_server()
+            );
+        }
+    }
+    assert!(Job::Delete { id: "1".into() }.changes_server());
+    assert!(
+        Job::Report {
+            account: "2".into(),
+            status: None,
+            comment: String::new()
+        }
+        .changes_server()
+    );
     assert!(!Job::OpenLink { url: String::new() }.changes_server());
 }
 

@@ -39,6 +39,12 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 | `A` | Saved accounts; `j` `k` select, `enter` switches and keeps the account in use |
 | `s` | Settings: theme and language; `enter` chooses, `x` resets to the default |
 | `l`, `b` | Favourite, boost, or take it back |
+| `f` | Follow or unfollow the selected post author or the profile shown; also cancels a pending follow request |
+| `M`, `B` | Toggle mute or block for that account; `y` confirms, any other key cancels |
+| `D` | Delete your own selected post; `y` confirms |
+| `!` | Report the selected post or an account without a selected post; `tab` edits an optional comment, `enter` asks for confirmation, `y` sends |
+| `ctrl+o` in the composer | Browse for pictures or a video; `space` marks files, `enter` chooses, `h` goes up, `.` shows hidden files, `esc` returns |
+| `tab`, `shift+tab` in the composer | Move between text, content warning and attachment alt text; `ctrl+x` removes the focused attachment or the last |
 | `n`, `r` | A new post, a reply; `ctrl+s` sends, `ctrl+w` adds a content warning, `ctrl+p` changes who may see it |
 | `w` | Show the text behind a content warning |
 | `o`, `c` | Open the post in the browser, copy its address |
@@ -49,7 +55,11 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 
 Pictures and video thumbnails are drawn in the lists with kitty graphics, sixel or iTerm2 inline images, detected from the terminal. `space` opens the original pictures and plays MP4/H.264 videos without sound. Other codecs show a reason; `d` saves the files and `o` opens the post. On a terminal without graphics, the files and their alt text appear as text. A content warning hides its pictures until `w` opens it. Custom emoji remain `:shortcode:`.
 
-Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for a favourite, a boost or a post still on its way.
+Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for writes still on their way.
+
+Favourites, boosts, follows, mutes and blocks show their new state immediately and restore it if the server refuses the write. Account actions read the relationship before the first toggle; the resulting state appears in the status line, the profile and the actions menu. Mute, block, deletion and reports require `y`; any other answer sends nothing. Deletion removes the post from the lists only after the server accepts it. Reports go to the current server's moderators and are not forwarded to another server.
+
+The composer attaches up to four pictures or one video with alt text, checked against the same instance limits as `mstdn post`. Files upload only on `ctrl+s`, with their metadata stripped, and the post waits for processing to finish. Cancelling the browser or closing the draft uploads nothing. A refused post keeps the draft for editing.
 
 Settings are kept in `settings.json`. The language setting takes precedence over `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order, with English as the fallback. Unknown settings are preserved; an unreadable settings file is left untouched. Pictures are cached on disk up to 256 MB and in memory; `MSTDN_CACHE_DIR=off` disables the disk cache.
 

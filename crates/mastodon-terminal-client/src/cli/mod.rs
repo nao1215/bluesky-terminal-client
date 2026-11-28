@@ -6,7 +6,7 @@
 //! and bsky give them, where Mastodon has the same thing.
 
 pub(crate) mod format;
-mod post;
+pub(crate) mod post;
 
 pub(crate) use post::{PostArgs, Visibility, counted};
 

@@ -672,6 +672,43 @@ impl Client {
             .ok_or_else(|| Error::api("v1/statuses: the answer has no status in it"))
     }
 
+    pub(crate) fn relationship(&self, id: &str) -> Result<types::Relationship> {
+        let page: Page<types::Relationship> =
+            self.get_list("v1/accounts/relationships", &[("id[]", id.into())])?;
+        page.items
+            .into_iter()
+            .find(|r| r.id == id)
+            .ok_or_else(|| Error::api("the server returned no relationship for the account"))
+    }
+
+    pub(crate) fn relate(&self, id: &str, action: &str) -> Result<types::Relationship> {
+        let path = format!("v1/accounts/{}/{action}", path_part(id));
+        let (_, value) = self.post(&path, &json!({}), None)?;
+        serde_json::from_value::<types::Relationship>(value)
+            .ok()
+            .filter(|r| r.id == id)
+            .ok_or_else(|| Error::api("the server returned no relationship for the account"))
+    }
+
+    pub(crate) fn delete_status(&self, id: &str) -> Result<()> {
+        let path = format!("v1/statuses/{}", path_part(id));
+        let url = format!("{}/api/{path}", self.origin);
+        match self.exchange(&path, false, &|| {
+            self.signed(self.agent.delete(&url)).call()
+        })? {
+            Answer::Took { .. } => Ok(()),
+            Answer::Refused(r) => Err(self.refusal(&path, r)),
+        }
+    }
+
+    pub(crate) fn report(&self, account: &str, status: Option<&str>, comment: &str) -> Result<()> {
+        let mut body = json!({"account_id": account, "comment": comment, "forward": false});
+        if let Some(id) = status {
+            body["status_ids"] = json!([id]);
+        }
+        self.post("v1/reports", &body, None).map(drop)
+    }
+
     /// `POST /api/v1/statuses/:id/<action>`: `favourite`, `unfavourite`,
     /// `reblog` or `unreblog` the status `id`. Sent once, as every write is.
     pub(crate) fn act_on(&self, id: &str, action: &str) -> Result<()> {

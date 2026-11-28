@@ -341,3 +341,37 @@ fn search_scrolls_long_input_and_places_the_cursor_at_the_edit_position() {
     term.draw(|f| draw(f, &mut app)).unwrap();
     assert_eq!(term.get_cursor_position().unwrap(), (1, 2).into());
 }
+
+#[test]
+fn confirmation_and_report_draw_their_target_and_keys_in_both_languages() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    for (lang, confirm, comment, title) in [
+        (
+            crate::i18n::Lang::En,
+            "y confirms; any other key cancels",
+            "optional comment",
+            "Report",
+        ),
+        (
+            crate::i18n::Lang::Ja,
+            "y で確定、それ以外のキーで取消",
+            "コメント（任意）",
+            "通報",
+        ),
+    ] {
+        crate::i18n::set(lang);
+        let mut app = app_with(vec![status("s1", "post")]);
+        app.handle_key(KeyEvent::from(KeyCode::Char('M')));
+        assert!(screen(&mut app, 100, 30).contains(confirm));
+        app.handle_key(KeyEvent::from(KeyCode::Char('n')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('!')));
+        let drawn = screen(&mut app, 100, 30);
+        assert!(
+            drawn.contains(title) && drawn.contains("@alice · s1") && drawn.contains(comment),
+            "{drawn}"
+        );
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(screen(&mut app, 100, 30).contains(confirm));
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
+}
