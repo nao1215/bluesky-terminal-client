@@ -38,3 +38,5 @@ pub mod text;
 pub mod theme;
 
 pub mod media;
+
+pub mod files;

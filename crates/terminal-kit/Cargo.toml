@@ -13,6 +13,7 @@ keywords = ["tui", "ratatui", "terminal", "unicode", "theme"]
 categories = ["command-line-interface"]
 
 [dependencies]
+dirs.workspace = true
 crossterm.workspace = true
 fast_image_resize.workspace = true
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }

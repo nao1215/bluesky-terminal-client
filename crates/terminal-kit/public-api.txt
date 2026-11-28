@@ -8,6 +8,35 @@ pub struct terminal_kit::events::Input
 impl terminal_kit::events::Input
 pub fn terminal_kit::events::Input::new() -> core::io::error::Result<terminal_kit::events::Input>
 pub fn terminal_kit::events::Input::next(&mut self, core::time::Duration) -> core::io::error::Result<core::option::Option<crossterm::event::Event>>
+pub mod terminal_kit::files
+pub enum terminal_kit::files::Action
+pub terminal_kit::files::Action::Choose(alloc::vec::Vec<std::path::PathBuf>)
+pub terminal_kit::files::Action::Close
+pub terminal_kit::files::Action::None
+impl core::clone::Clone for terminal_kit::files::Action
+pub fn terminal_kit::files::Action::clone(&self) -> Self
+impl core::cmp::PartialEq for terminal_kit::files::Action
+pub fn terminal_kit::files::Action::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::files::Action
+pub fn terminal_kit::files::Action::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::files::Action
+pub struct terminal_kit::files::Browser
+pub terminal_kit::files::Browser::dir: std::path::PathBuf
+impl terminal_kit::files::Browser
+pub fn terminal_kit::files::Browser::draw(&mut self, &mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &mut terminal_kit::media::images::Images, &terminal_kit::theme::Theme, fn(&str) -> &str)
+impl terminal_kit::files::Browser
+pub fn terminal_kit::files::Browser::key(&mut self, crossterm::event::KeyEvent) -> terminal_kit::files::Action
+pub fn terminal_kit::files::Browser::open(&std::path::Path, usize, bool) -> Self
+impl core::clone::Clone for terminal_kit::files::Browser
+pub fn terminal_kit::files::Browser::clone(&self) -> Self
+impl core::cmp::PartialEq for terminal_kit::files::Browser
+pub fn terminal_kit::files::Browser::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::files::Browser
+pub fn terminal_kit::files::Browser::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::files::Browser
+pub fn terminal_kit::files::expand_home(&str) -> std::path::PathBuf
+pub fn terminal_kit::files::is_picture_name(&str) -> bool
+pub fn terminal_kit::files::is_video_name(&str) -> bool
 pub mod terminal_kit::inflight
 pub struct terminal_kit::inflight::InFlight(_)
 impl terminal_kit::inflight::InFlight
@@ -143,6 +172,7 @@ pub fn terminal_kit::text::drawable(&str) -> alloc::borrow::Cow<'_, str>
 pub fn terminal_kit::text::fit_hints(&str, usize) -> alloc::string::String
 pub fn terminal_kit::text::format_time(&str) -> alloc::string::String
 pub fn terminal_kit::text::graphemes(&str) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &str)>
+pub fn terminal_kit::text::human_bytes(u64) -> alloc::string::String
 pub fn terminal_kit::text::one_line(&str) -> alloc::string::String
 pub fn terminal_kit::text::truncate(&str, usize) -> alloc::string::String
 pub fn terminal_kit::text::truncate_start(&str, usize) -> alloc::string::String

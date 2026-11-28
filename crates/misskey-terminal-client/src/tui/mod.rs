@@ -8,7 +8,7 @@
 
 pub(crate) mod app;
 pub(crate) mod columns;
-pub(crate) mod files;
+pub(crate) use terminal_kit::files;
 pub(crate) mod images;
 pub(crate) mod keys;
 pub(crate) mod player;

@@ -2889,6 +2889,7 @@ name = "terminal-kit"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "dirs",
  "fast_image_resize",
  "image",
  "jiff",

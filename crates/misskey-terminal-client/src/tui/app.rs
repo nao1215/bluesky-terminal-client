@@ -240,16 +240,6 @@ impl<T> List<T> {
         self.items.get(self.selected)
     }
 
-    /// A list of `items`, loaded, the one at `selected` selected.
-    pub(crate) fn of(items: Vec<T>, selected: usize) -> Self {
-        Self {
-            items,
-            selected,
-            loaded: true,
-            ..Self::default()
-        }
-    }
-
     /// Keep the items `keep` says to. The selection and the scroll stay on
     /// the item they were on, or the next one when it went, as bsky's.
     fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {

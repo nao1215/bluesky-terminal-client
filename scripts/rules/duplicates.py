@@ -23,6 +23,14 @@ stays in each event loop because its App, jobs, account switch and persistence
 have different contracts. These matches are recorded in the baseline, without
 changing the token or line thresholds.
 
+The composer browser now lives in terminal-kit and is used by msky and
+mstdn. Its remaining matches with bsky are relocated existing copies:
+bsky's browser also chooses and creates download folders, and has its own
+translation and folder-name editor. Moving those modes is outside this
+Mastodon stage; expanding the shared API for them is deferred. The existing
+bsky/msky viewer fit calculation also has a new fingerprint after moving
+the adjacent byte-count formatter. None of these entries adds copied code.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 
