@@ -206,6 +206,8 @@
 "whoami" = { usecase = "", without = "" }
 
 [nstr]
+"search" = { usecase = "find hashtagged notes and query relays that advertise NIP-50", without = "relay capability differences cannot be reported to a caller searching for notes" }
+"search --limit (-n)" = { usecase = "bound search results and page through the local relay catalog", without = "search cannot request the seeded catalog count or a bounded result set" }
 "--json" = { usecase = "read profiles, notes, notifications and posting results with the workspace's JSON-lines consumers", without = "scripts would parse text intended for people" }
 "whoami" = { usecase = "check the configured public identity and its latest profile before posting", without = "the user would need another Nostr client to verify the posting identity" }
 "timeline" = { usecase = "read the account's own notes and the authors in its current contact list from configured relays", without = "the home timeline would need a separate Nostr client" }
