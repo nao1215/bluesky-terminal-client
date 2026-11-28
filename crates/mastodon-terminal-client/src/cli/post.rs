@@ -273,9 +273,11 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
         .iter()
         .find(|f| graphemes(&f.alt) > l.description_limit)
     {
+        // A file is named as it is uploaded: the full-screen client picks
+        // files by absolute path, and a long one buries the limit.
         return Err(Error::usage(format!(
-            "the --alt of {} is {} characters; {host} takes up to {}",
-            f.path.display(),
+            "the alt text of {} is {} characters; {host} takes up to {}",
+            f.name,
             graphemes(&f.alt),
             l.description_limit
         )));
@@ -291,7 +293,7 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
         {
             return Err(Error::usage(format!(
                 "{} is {} bytes; {host} takes files up to {max} bytes",
-                f.path.display(),
+                f.name,
                 f.data.len()
             )));
         }

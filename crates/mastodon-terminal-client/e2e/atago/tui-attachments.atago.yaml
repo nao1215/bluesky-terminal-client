@@ -350,7 +350,7 @@ scenarios:
       - {send: long alt}
       - expect_screen: {contains: 'Alt: long alt', stable_for: 150ms}
       - send: {key: ctrl-s}
-      - expect_screen: {contains: takes up to 2, stable_for: 150ms}
+      - expect_screen: {contains: 'the alt text of photo.png is 8 characters', stable_for: 150ms}
       - send: {key: esc}
       - expect_screen: {contains: New post, stable_for: 150ms}
       - send: {key: esc}
