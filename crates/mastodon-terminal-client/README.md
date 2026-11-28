@@ -18,6 +18,27 @@ mstdn post "hello" --image cat.jpg --alt "a cat"
 
 Without a command, mstdn opens the full-screen client; each command prints its result and exits, as plain lines or as JSON.
 
+## Demo
+
+![federated accounts, a protocol walkthrough, a content warning, a poll and a boost](doc/demo/demo.gif)
+
+From the repository root, record the fictional timeline on an X11 desktop:
+
+```sh
+./crates/mastodon-terminal-client/doc/record-demo.sh
+```
+
+The script builds `mstdn` and needs Python 3, kitty, xdotool, xwininfo and ffmpeg. It writes `doc/demo/demo.gif` inside this crate. The client and kitty use a temporary HOME and configuration, and the mock listens only on `127.0.0.1`. All media is served locally; no real account or public server is used. `Space` opens the picture and plays the H.264 video. Media sources are listed in [doc/demo/SOURCES.md](doc/demo/SOURCES.md).
+
+Verify the demo in a PTY without an X11 display or a recording, with atago installed:
+
+```sh
+cargo build --locked -p mastodon-terminal-client
+PATH="$PWD/target/debug:$PATH" atago run crates/mastodon-terminal-client/doc/verify-demo.atago.yaml
+```
+
+With `CARGO_TARGET_DIR` set, put its `debug` directory on PATH instead.
+
 ## Install
 
 ```sh

@@ -1,14 +1,12 @@
 # Changelog
 
-All notable changes to mstdn (the mastodon-terminal-client crate) will be documented in this file.
+All notable changes to mstdn (the mastodon-terminal-client crate) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-
-- `/` opens a search box. Results replace the timeline, and Esc restores its selection and scroll position without refetching. The Search tab is gone; Profile and Chat are now tabs 5 and 6.
+First release of mstdn.
 
 ### Added
 
@@ -26,26 +24,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `-n 0` is a usage error (exit 1), as in bsky and msky.
 - `mstdn` without a command opens a full-screen client: the home, local and federated timelines and the notifications, the next page loaded near the end, a post's thread with its replies, favourites and boosts shown at once and taken back when the server refuses them, a composer for posts and replies with a content warning and who may see it, content warnings folded until `w`, `o` and `c` for a post's address, `.` for what the keys do, the 42 themes of bsky and msky kept in `settings.json`, and `?` for the keys, in English or Japanese. A visitor reads the local and federated timelines. `q` waits up to 3 seconds for a write still on its way, and a terminal it cannot run in exits with status 2.
 - The full-screen client draws pictures and video thumbnails in the lists with kitty graphics, sixel or iTerm2 images, and lists the files with their alt text in other terminals. `space` shows a post's pictures full screen and plays MP4/H.264 videos without sound, and `d` saves its files as `mstdn download` does. Pictures are cached on disk unless `MSTDN_CACHE_DIR` is `off`, and `MSTDN_GRAPHICS` picks the protocol.
-- Search (`/`) reads a hashtag's posts as a visitor and, with a login, finds posts or accounts. Profile (`5`) shows the account in use and its posts, and `enter` opens the profile of a post's author or of an account found.
+- Search (`/`) opens a box for a hashtag as a visitor or posts and accounts with a login. Results replace the timeline; Esc restores its selection and scroll position without refetching. Profile (`5`) shows the account in use and its posts, and `enter` opens the profile of a post's author or of an account found.
 - `A` switches between the saved accounts, and `s` opens the settings: the theme and the language, kept in `settings.json`, the language before `LC_ALL`, `LC_MESSAGES` and `LANG`.
 - `f`, `M` and `B` follow, mute and block the selected post author or the profile shown, toggle those states back, and restore the previous state when the server refuses; mute and block require `y`.
 - `D` deletes your own selected post after `y` confirms, removing it from the lists when the server accepts it.
 - `!` reports a post or account to the current server's moderators with an optional comment; nothing is sent until `y` confirms.
 - `ctrl+o` in the composer opens a file browser for up to four pictures or one video, with alt text edited using `tab` and attachments removed using `ctrl+x`; sending checks the instance limits, strips metadata and waits for uploads to finish processing.
-- The selected post's thread is read ahead after 400 ms, and Notifications shows the count newer than the latest notification viewed during the current run.
+- The selected post's thread is read ahead after 400 ms.
 - `e` on your own Profile edits the name, bio, profile fields, locked, bot and discoverable settings, avatar and header, saving only changes and stripping picture metadata.
-- `Q` creates quote posts on Mastodon 4.5 or later, with quote approval chosen using `ctrl+q`; received quotes are shown on any server that supplies them.
+- `Q` creates quotes where the server exposes quote support, with approval chosen using `ctrl+q` where supported. Capability fields determine support; received quotes are shown on any server that supplies them, including the Akkoma and Pleroma quote format.
 - Custom emoji are drawn as pictures in posts, display names, profiles and notifications on terminals with graphics, with shortcodes kept on other terminals.
 - `+` adds list, hashtag, notification and search columns beside Home; `H` and `L` focus columns, `<` and `>` move them, and `x` then `y` closes one. Columns are saved per account.
 - Chat (`6`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.
-
-- Commands now favourite and boost posts, take those actions back, delete posts, follow, mute and block accounts, and list their related accounts. Favourites, bookmarks and Mastodon lists can be read from the command line.
-- `report` accepts a reason and comment with explicit confirmation; `chat` lists direct conversations, reads one-to-one history and sends direct posts. `search --accounts` finds accounts and `post --quote` quotes posts on Mastodon 4.5 or later.
-- JSON posts now expose the quoted post ID. New commands use the common account, message and action JSON shapes; `notifications --seen` saves the newest displayed notification as read.
+- Commands favourite and boost posts, take those actions back, delete posts, follow, mute and block accounts, and list their related accounts. Favourites, bookmarks and Mastodon lists can be read from the command line.
+- `report` accepts a reason and comment with explicit confirmation; `chat` lists direct conversations, reads one-to-one history and sends direct posts. `search --accounts` finds accounts and `post --quote` quotes posts where the server exposes the required capability.
+- JSON posts expose the quoted post ID. New commands use the common account, message and action JSON shapes; `notifications --seen` saves the newest displayed notification as read.
 - The account picker adds browser OAuth login and confirmed local logout. Settings include the download folder and browser, with environment overrides preserved.
 - The full-screen client displays link cards and opens their URLs with `O`, and synchronizes notification markers and unread counts with the server. A rejected read-marker save restores the unread count.
+- Poll options and vote counts appear in post text; content warnings hide text and media until opened.
+- Instance limits include the characters counted per URL and multipart upload limits reported by Akkoma and Pleroma.
+- Local API demos, small media derived from the author's files, a kitty recording script and a PTY verification spec reproduce the README timeline with isolated account configuration.
+- Unit, property, state-transition and local E2E tests, compatibility fixtures for Mastodon, GoToSocial, Akkoma and Pleroma, fuzz targets and himorime benchmarks cover protocol, terminal and command behavior.
+- Release packaging scripts and workflows produce archives, checksums, signatures, provenance, build attestations and third-party license texts for this crate.
 
 ### Fixed
 
-- Unsupported server features now return exit status 5 and JSON `status: 5`, while authentication failures and missing resources remain API errors.
+- Unsupported server features return exit status 5 and JSON `status: 5`, while authentication failures and missing resources remain API errors.
 - Quote posts check server support before uploading or publishing, preventing older servers from silently publishing an ordinary post instead.
+- Moving beyond the last loaded post while the next page is pending keeps the requested movement when the page arrives.
+- Uploads exactly at the server's media size limit are accepted by local validation, and retry notices no longer overwrite the full-screen layout.
+- Wide emoji keep adjacent counts aligned, and search footers follow the active search state.

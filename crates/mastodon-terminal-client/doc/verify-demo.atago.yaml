@@ -1,0 +1,43 @@
+version: "1"
+suite:
+  name: mstdn README demo
+scenarios:
+  - name: fictional federation CW poll boost pictures and decoded video
+    services:
+      - name: demo
+        command: python3 "${specdir}/demo-server.py" "${workdir}/port"
+        ready: { file: port, timeout: 30s }
+    steps:
+      - run: { command: 'mkdir -p "${workdir}/home"' }
+      - pty:
+          command: >-
+            sh -c 'exec env -i PATH="$PATH" HOME="${workdir}/home" XDG_CONFIG_HOME="${workdir}/home" XDG_CACHE_HOME="${workdir}/home" MSTDN_CONFIG_DIR="${workdir}/cfg" MSTDN_CACHE_DIR=off MSTDN_BROWSER=/bin/false MSTDN_GRAPHICS=kitty TERM=xterm-kitty LANG=C.UTF-8 TZ=UTC mstdn'
+          graphics: kitty
+          rows: 42
+          cols: 120
+          timeout: 60s
+          session:
+            - expect_screen: { stable_for: 300ms, contains: ["Inspecting an ISO 8583", "@inez@protocols.example", "#CLI"], images: { min_count: 1 } }
+            - send: " "
+            - expect_screen: { stable_for: 300ms, contains: "ISO 8583 message fields", images: { min_count: 1 } }
+            - send: { key: esc }
+            - expect_screen: { stable_for: 300ms, contains: "Inspecting an ISO 8583" }
+            - send: j
+            - expect_screen: { contains: "short iso8583tool walkthrough", stable_for: 300ms }
+            - send: " "
+            - expect_screen: { stable_for: 300ms, contains: "playing", images: { min_count: 1 } }
+            - expect_screen: { stable_for: 300ms, contains: "ended  r plays it again" }
+            - send: { key: esc }
+            - expect_screen: { stable_for: 300ms, contains: "short iso8583tool walkthrough" }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: "Staging incident postmortem", not_contains: "The staging certificate expired" }
+            - send: w
+            - expect_screen: { stable_for: 300ms, contains: "The staging certificate expired" }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: ["Restore from backup (24)", "Rotate signing keys (12)", "Inspect delivery queues (6)"] }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: ["boosted", "tested restore procedure", "@leonie@federation.example"] }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: ["Federation debugging", "#ActivityPub"] }
+            - send: q
+      - assert: { exit_code: 0 }
