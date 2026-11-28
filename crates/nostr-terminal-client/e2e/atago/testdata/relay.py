@@ -27,6 +27,8 @@ import base64
 import hashlib
 import json
 import os
+import http.server
+import zlib
 import socket
 import socketserver
 import struct
@@ -165,6 +167,8 @@ def store(args):
 def matches(f, event):
     return (
         event["kind"] in f.get("kinds", [])
+        and (not f.get("ids") or event["id"] in f["ids"])
+        and (not f.get("#e") or any(t[:1] == ["e"] and t[1] in f["#e"] for t in event["tags"] if len(t) > 1))
         and (not f.get("authors") or event["pubkey"] in f["authors"])
         and (not f.get("#p") or any(t[:1] == ["p"] and t[1] in f["#p"] for t in event["tags"] if len(t) > 1))
         and ("until" not in f or event["created_at"] <= f["until"])
@@ -253,6 +257,8 @@ class Relay(socketserver.BaseRequestHandler):
                 found = sorted((e for e in self.server.events if matches(f, e)), key=lambda e: -e["created_at"])
                 for event in found[: f.get("limit", len(found))]:
                     self.send(["EVENT", sub, event])
+            if self.server.notice:
+                self.send(["NOTICE", "fixture relay warning"])
             self.send(["EOSE", sub])
         elif message[0] == "EVENT":
             event = message[1]
@@ -263,9 +269,31 @@ class Relay(socketserver.BaseRequestHandler):
             if self.server.reject:
                 self.send(["OK", event["id"], False, self.server.reject])
                 return
-            Path("published.tmp").write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
-            Path("published.tmp").replace("published.json")
+            with self.lock:
+                Path("published.tmp").write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
+                Path("published.tmp").replace("published.json")
+                self.server.events.append(event)
             self.send(["OK", event["id"], True, ""])
+
+
+
+class Pictures(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        data = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 32, 8, 2, 0, 0, 0))
+        data += chunk(b"IDAT", zlib.compress((b"\0" + b"\xff\x40\x20" * 32) * 32)) + chunk(b"IEND", b"")
+        with Relay.lock:
+            with open("images.jsonl", "a", encoding="utf-8") as out:
+                out.write(json.dumps(self.path) + "\n")
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
 
 def main():
@@ -275,12 +303,25 @@ def main():
     ap.add_argument("--no-contacts", action="store_true", help="store no kind-3 contact list")
     ap.add_argument("--no-key", action="store_true", help="leave keyFile out of the config")
     ap.add_argument("--many", action="store_true", help="store 120 more long notes by bob")
+    ap.add_argument("--notice", action="store_true")
+    ap.add_argument("--pictures", action="store_true")
+    ap.add_argument("--pages", action="store_true", help="short notes with a timestamp boundary larger than one page")
     args = ap.parse_args()
 
     socketserver.ThreadingTCPServer.allow_reuse_address = False
     server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Relay)
     server.daemon_threads = True
     server.events = store(args)
+    server.notice = args.notice
+    if args.pages:
+        server.events += [make(BOB, T + 1000, 1, [], f"boundary {i:02}") for i in range(25)]
+        server.events += [make(BOB, T + 900, 1, [], "older page note")]
+    if args.pictures:
+        media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Pictures)
+        threading.Thread(target=media.serve_forever, daemon=True).start()
+        origin = f"http://127.0.0.1:{media.server_address[1]}"
+        server.events.append(make(BOB, T + 700, 1, [["imeta", f"url {origin}/imeta", "m image/png"]], f"local picture {origin}/picture.png"))
+    Path("seed.json").write_text(json.dumps(server.events, ensure_ascii=False), encoding="utf-8")
     server.reject = args.reject
     relays = [f"ws://127.0.0.1:{server.server_address[1]}/"]
     if args.dead:

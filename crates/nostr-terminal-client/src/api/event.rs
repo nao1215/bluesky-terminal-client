@@ -122,3 +122,12 @@ impl Event {
             .map(|t| t[1].as_str())
     }
 }
+
+/// Exact fields authorized by the user before signing.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct Unsigned {
+    pub(crate) created_at: u64,
+    pub(crate) kind: u16,
+    pub(crate) tags: Vec<Vec<String>>,
+    pub(crate) content: String,
+}

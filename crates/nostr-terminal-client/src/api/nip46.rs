@@ -78,6 +78,30 @@ impl Bunker {
         text: &str,
         timeout: Duration,
     ) -> Result<Event> {
+        self.sign_event(
+            public,
+            &super::event::Unsigned {
+                created_at: time,
+                kind: 1,
+                tags: vec![],
+                content: text.into(),
+            },
+            timeout,
+            &|url| {
+                crate::diagnostics(&format!(
+                    "Remote signer authorization required. Open this URL yourself: {url}"
+                ))
+            },
+        )
+    }
+
+    pub(crate) fn sign_event(
+        &self,
+        public: &str,
+        unsigned: &super::event::Unsigned,
+        timeout: Duration,
+        authorize: &(impl Fn(&str) + Sync),
+    ) -> Result<Event> {
         let key = SigningKey::generate();
         let client_public = hex::encode(key.verifying_key().to_bytes());
         let conversation = nip44::conversation_key(&key, &bytes(&self.public)?)?;
@@ -139,9 +163,7 @@ impl Bunker {
                     match reply {
                         Reply::Auth(url) => {
                             if !auth_shown {
-                                crate::diagnostics(&format!(
-                                    "Remote signer authorization required. Open this URL yourself: {url}"
-                                ));
+                                authorize(&url);
                                 auth_shown = true;
                             }
                         }
@@ -158,7 +180,7 @@ impl Bunker {
                     vec![
                         self.public.clone(),
                         self.secret.as_deref().map_or("", String::as_str).into(),
-                        "sign_event:1".into(),
+                        format!("sign_event:{}", unsigned.kind),
                         json!({"name":"nstr"}).to_string(),
                     ],
                 )?;
@@ -170,9 +192,9 @@ impl Bunker {
                         "remote signer public key does not match publicKey",
                     ));
                 }
-                let unsigned = json!({"kind":1, "content":text, "tags":[], "created_at":time});
-                let signed = rpc("sign_event", vec![unsigned.to_string()])?;
-                validate_note(&signed, public, time, text)
+                let request = serde_json::to_string(unsigned).map_err(Error::usage)?;
+                let signed = rpc("sign_event", vec![request])?;
+                validate_event(&signed, public, unsigned)
             })();
             drop(outgoing);
             drop(incoming);
@@ -181,15 +203,29 @@ impl Bunker {
     }
 }
 
+#[cfg(test)]
 fn validate_note(signed: &str, public: &str, time: u64, text: &str) -> Result<Event> {
+    validate_event(
+        signed,
+        public,
+        &super::event::Unsigned {
+            created_at: time,
+            kind: 1,
+            tags: vec![],
+            content: text.into(),
+        },
+    )
+}
+
+fn validate_event(signed: &str, public: &str, unsigned: &super::event::Unsigned) -> Result<Event> {
     let event: Event = serde_json::from_str(signed)
         .map_err(|_invalid| Error::network("remote signer returned an invalid event"))?;
     event.verify()?;
     if event.pubkey != public
-        || event.created_at != time
-        || event.kind != 1
-        || !event.tags.is_empty()
-        || event.content != text
+        || event.created_at != unsigned.created_at
+        || event.kind != unsigned.kind
+        || event.tags != unsigned.tags
+        || event.content != unsigned.content
     {
         return Err(Error::network("remote signer changed the requested event"));
     }

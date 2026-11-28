@@ -15,7 +15,7 @@
 
 # social-terminal-clients
 
-Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mastodon](https://joinmastodon.org) and [Nostr](https://nostr.com) clients for the terminal: `bsky`, `msky`, `mstdn` and `nstr`. bsky, msky and mstdn open a full-screen client that draws pictures and videos in place, and each also has commands. nstr has only commands.
+Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mastodon](https://joinmastodon.org) and [Nostr](https://nostr.com) clients for the terminal: `bsky`, `msky`, `mstdn` and `nstr`. All four open a full-screen client and also have commands. bsky, msky and mstdn draw pictures and videos in place; nstr draws pictures.
 
 <table>
   <tr>
@@ -76,7 +76,7 @@ gh attestation verify <archive> --repo <repo>
 
 Run `bsky` or `msky` and log in: bsky with your handle and an [app password](https://bsky.app/settings/app-passwords), msky in the browser with MiAuth, so it never sees your password (`esc` reads a server as a visitor). mstdn logs in with `mstdn login`, by OAuth in the browser, and never sees the password either; `mstdn` without a login reads the local and federated timelines as a visitor. `?` lists every key, `.` what they do to the selected post.
 
-nstr reads `config.json` in its config folder: your public key, one to sixteen relays you choose, and, for posting, a key file you place yourself (`chmod 600` on Unix). It has no default relay, checks the ID and signature of every event it reads, and opens the key file only for `nstr post`.
+nstr reads `config.json` in its config folder: your public key, one to sixteen relays you choose, and, for posting, a key file you place yourself (`chmod 600` on Unix). It has no default relay, checks the ID and signature of every event it reads, and opens the key file only for writes.
 
 | Pictures with | Terminals |
 |---|---|
@@ -135,7 +135,7 @@ msky's screens and bsky's chat and accounts show made-up data served by each cli
 | `A` `T` `s` | Accounts, themes, settings | Accounts, themes, settings | Accounts, themes, settings |
 | `?` `q` | Help, quit | Help, quit | Help, quit |
 
-nstr has no full-screen client.
+nstr opens Home, Notifications and Profile with `1`, `2` and `3`. `j` and `k` move through notes, with more loading near the end; `v` opens the thread, `n` composes a new note and `r` replies, with Ctrl+S to send. `l` sends a `+` reaction, `b` reposts, `c` copies a `nostr:nevent1...` identifier, and Space opens pictures. `s` opens theme and language settings, `T` previews themes, `?` shows help and `q` quits. Theme and language are kept in `settings.json` beside `config.json`; the status row shows relay response counts and warnings. Writes use the configured key file or NIP-46 bunker.
 
 ## Commands
 
@@ -176,7 +176,7 @@ nstr notifications --json | jq -r .uri
 | Video upload service | `BSKY_VIDEO_SERVICE` | | | |
 | `off` for posts without a link card | `BSKY_LINK_CARDS` | | | |
 
-`LANG` picks the language unless one is chosen in the settings (mstdn reads `LC_ALL` and `LC_MESSAGES` before it), and `NO_COLOR` turns color off.
+`LANG` picks the language unless one is chosen in the settings (mstdn and nstr read `LC_ALL` and `LC_MESSAGES` before it), and `NO_COLOR` turns color off.
 
 ## Other terminal clients
 

@@ -15,4 +15,4 @@ tui = false
 
 [nstr]
 crate = "crates/nostr-terminal-client"
-tui = false
+tui = true

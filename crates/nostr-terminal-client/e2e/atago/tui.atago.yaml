@@ -1,0 +1,223 @@
+# Every relay and key is generated locally by the fixture. CRLF is folded
+# to LF by atago. Esc is followed by a screen wait to avoid Alt-key parsing.
+version: "1"
+suite:
+  name: nstr full-screen client
+scenarios:
+  - name: tabs thread help settings and cancellation never publish
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --notice --dead
+        ready: { file: ready.txt, store: relay }
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 40
+          cols: 120
+          env: &env
+            NSTR_CONFIG_DIR: ${workdir}/cfg
+            LC_ALL: en_US.UTF-8
+            TZ: UTC
+          timeout: 30s
+          session:
+            - expect_screen:
+                contains: ["1 Home   2 Notifications   3 Profile", "返信です", "relays 1/2", "fixture relay warning"]
+            - send: "2"
+            - expect_screen: { contains: "@alice こんにちは" }
+            - send: "3"
+            - expect_screen: { contains: ["Alice 🐈‍⬛", "テスト用のアカウントです", "はじめての投稿 🐈‍⬛"] }
+            - send: "1"
+            - expect_screen: { contains: "返信です" }
+            - send: v
+            - expect_screen: { contains: ["Thread", "返信です"], not_contains: "Loading…", stable_for: 500ms }
+            # The focal note is selected; k exposes the parent above it.
+            - send: k
+            - expect_screen: { contains: "はじめての投稿 🐈‍⬛" }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Thread" }
+            - send: n
+            - expect_screen: { contains: "New note" }
+            - send: "never publish"
+            - send: { key: enter }
+            - send: "q l b"
+            - expect_screen: { contains: ["never publish", "q l b"] }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "New note" }
+            - send: r
+            - expect_screen: { contains: "Reply" }
+            - send: "also unsent"
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Reply" }
+            - send: c
+            - expect_screen: { contains: "Copied note identifier" }
+            - send: "?"
+            - expect_screen: { contains: ["Help", "copy nostr:nevent identifier", "send from composer"] }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "send from composer" }
+            - send: T
+            - expect_screen: { contains: "Themes" }
+            # terminal is index 3; j selects the first editor theme.
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { not_contains: "Themes" }
+            - send: s
+            - expect_screen: { contains: "Settings" }
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: ["English", "日本語"] }
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: ["設定", "言語"], stable_for: 300ms }
+            - send: { key: esc }
+            # The tab bar, the status row and the key hints show these with the
+            # settings still open; x 初期化 is only in the settings hints.
+            - expect_screen: { contains: ["1 ホーム", "リレー 1/2"], not_contains: "x 初期化", stable_for: 300ms }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" none' }
+      - assert: { exit_code: 0, stdout: { contains: "checked none" } }
+      - assert:
+          file:
+            path: cfg/settings.json
+            contains: '"language": "ja"'
+      - assert: { file: { path: cfg/settings.json, contains: '"theme": "ayu-dark"' } }
+      # Saved language beats LC_ALL on the next run.
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "1 ホーム" }
+            - send: q
+      - assert: { exit_code: 0 }
+
+  - name: ctrl+s sends new note and nested reply and l b send exact signed events
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready: { file: ready.txt, store: relay }
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 35
+          cols: 120
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "返信です" }
+            - send: n
+            - expect_screen: { contains: "New note" }
+            - send: "new note"
+            - send: { key: enter }
+            - send: "second line"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Sent", not_contains: "New note" }
+            # Posting leaves the selected home note unchanged: Bob's reply.
+            - send: r
+            - expect_screen: { contains: "Reply" }
+            - send: "reply from tui"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Sent", not_contains: "Reply" }
+            - send: l
+            - expect_screen: { contains: "♥ +" }
+            - send: b
+            - expect_screen: { contains: "⟳ +" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" writes' }
+      - assert: { exit_code: 0, stdout: { contains: "checked writes" } }
+
+  - name: rejected writes roll back their marks and keep the composer text
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --reject "blocked by fixture"
+        ready: { file: ready.txt, store: relay }
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 35
+          cols: 120
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "返信です" }
+            - send: l
+            - expect_screen: { contains: "blocked by fixture", not_contains: "♥ +" }
+            - send: b
+            - expect_screen: { contains: "blocked by fixture", not_contains: "⟳ +", stable_for: 500ms }
+            - send: n
+            - expect_screen: { contains: "New note" }
+            - send: "keep this draft"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: ["blocked by fixture", "New note", "keep this draft"], not_contains: "Sending…", stable_for: 500ms }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "New note" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" reject' }
+      - assert: { exit_code: 0, stdout: { contains: "checked reject" } }
+
+  - name: inclusive timestamp boundary paging reaches older notes and thread parents
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --pages
+        ready: { file: ready.txt, store: relay }
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 35
+          cols: 120
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "boundary" }
+            - send: G
+            - expect_screen: { contains: "boundary", not_contains: "Loading…", stable_for: 500ms }
+            - send: G
+            - expect_screen: { contains: "はじめての投稿 🐈‍⬛" }
+            # Notifications have no boundary notes. First is Bob's reply.
+            - send: "2"
+            - expect_screen: { contains: "返信です" }
+            - send: v
+            - expect_screen: { contains: "Thread", not_contains: "Loading…", stable_for: 500ms }
+            - send: k
+            - expect_screen: { contains: "はじめての投稿 🐈‍⬛" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" pages' }
+      - assert: { exit_code: 0, stdout: { contains: "checked pages" } }
+
+  - name: content URLs and imeta pictures use terminal graphics
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --pictures
+        ready: { file: ready.txt, store: relay }
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 40
+          cols: 120
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: ["local picture", "▣ 2 pictures"], stable_for: 1s }
+            - send: " "
+            - expect_screen: { contains: ["Pictures", "/picture.png"], stable_for: 1s }
+            - send: l
+            - expect_screen: { contains: "/imeta", stable_for: 1s }
+            - send: { key: esc }
+            - expect_screen: { contains: "local picture", not_contains: "Pictures", stable_for: 300ms }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { file: { path: images.jsonl, contains: '"/picture.png"' } }
+      - assert: { file: { path: images.jsonl, contains: '"/imeta"' } }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" none' }
+      - assert: { exit_code: 0 }
