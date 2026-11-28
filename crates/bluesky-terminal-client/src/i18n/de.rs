@@ -1,6 +1,14 @@
 //! Translations into German, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (
+        "Play videos in the timeline",
+        "Videos in der Timeline abspielen",
+    ),
+    (
+        "enter turns timeline playback on or off",
+        "Enter schaltet die Videowiedergabe in der Timeline ein oder aus",
+    ),
     ("(R to retry)", "(R zum Wiederholen)"),
     ("(blocked post)", "(blockierter Beitrag)"),
     ("(deleted)", "(gelöscht)"),

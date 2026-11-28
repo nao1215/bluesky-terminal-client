@@ -481,7 +481,9 @@ scenarios:
           graphics: kitty
           rows: 40
           cols: 100
-          env: *env
+          env:
+            <<: *env
+            BSKY_INLINE_VIDEO: "0"
           timeout: 20s
           session:
             # Long enough for the selection to rest on the post.
@@ -497,12 +499,12 @@ scenarios:
               count: 1
               contains:
                 - { width: 320, height: 240, similar_to: testdata/expected/photo-320x240.png, max_diff: 0.01 }
-      # The thumbnail is fetched, and the playlist is read ahead once the
-      # selection rests on the post; nothing of the video itself is.
+      # Without BSKY_INLINE_VIDEO, only the thumbnail is fetched, even
+      # after the selection rests on the post.
       - assert:
           mock: { name: api, path: /img/thumb.png, count: 1 }
       - assert:
-          mock: { name: api, path: /video/playlist.m3u8, count: 1 }
+          mock: { name: api, path: /video/playlist.m3u8, count: 0 }
 
   - name: a video longer than three minutes is refused with its length, before anything is sent
     # testdata/too-long.mp4 is a header that says 180.4 seconds: over the

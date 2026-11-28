@@ -58,6 +58,8 @@ Run `bsky` and log in. An [app password](https://bsky.app/settings/app-passwords
 
 Other terminals get text, and `Space` opens a post in the browser. Photos and videos are posted without their location data.
 
+By default, bsky plays only the selected post's video in the timeline, without sound, when kitty graphics and pictures are enabled. It reads the neighbouring videos' playlists and first segments ahead, and brings back the thumbnail when the selection leaves a video. Turn off Play videos in the timeline in Settings (`s` on your profile), or set `BSKY_INLINE_VIDEO=0`. `BSKY_INLINE_VIDEO=0/1` overrides the saved setting. `Space` still opens pictures and videos in the viewer.
+
 A post without pictures, video or a quote gets a card for its first link, built from the page's title, description and picture as Bluesky's app does. bsky fetches the page from your computer and skips a picture hosted on your own network. The Link cards setting, `bsky post --no-card` and `BSKY_LINK_CARDS=off` turn cards off.
 
 bsky speaks English, 日本語, 简体中文, 한국어, Русский, Español, Français, Deutsch and Português: the language of your system, or the one chosen in the settings (`s` on your profile).
@@ -75,6 +77,10 @@ bsky speaks English, 日本語, 简体中文, 한국어, Русский, Españo
 | ![a conversation](doc/img/chat.png) | ![the account list](doc/img/accounts.png) |
 | `s`: settings | text only |
 | ![the settings screen](doc/img/settings.png) | ![the timeline without pictures](doc/img/text.png) |
+
+Only the selected post's video plays in the timeline, and its thumbnail comes back when the selection moves on
+
+![two video posts in the timeline, each playing while selected](doc/img/timeline-video.gif)
 
 `+` on the timeline: your pinned feeds, notifications or a search in columns beside it
 
@@ -129,6 +135,7 @@ bsky download https://bsky.app/profile/alice.bsky.social/post/3l... -o pics
 | `BSKY_CACHE_DIR` | Picture cache; `off` for none |
 | `BSKY_DOWNLOAD_DIR` | Where `d` saves |
 | `BSKY_GRAPHICS` | `kitty`, `sixel` or `iterm2` |
+| `BSKY_INLINE_VIDEO` | Override timeline playback: `0` off, `1` on |
 | `BSKY_BROWSER` | Program that opens links |
 | `BSKY_SERVICE` | PDS to log in to (also `--service`) |
 | `BSKY_VIDEO_SERVICE` | Video upload service |

@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use super::{App, ThreadView, thread_rows};
-use crate::api::types::{Media, ThreadNode};
+use crate::api::types::ThreadNode;
 use crate::error::Error;
 use crate::tui::images::small_avatar;
 use crate::tui::worker::Job;
@@ -46,9 +46,6 @@ pub(super) struct ReadAhead {
     /// Pictures of the threads read ahead, to download before they are
     /// shown.
     pictures: Vec<String>,
-    /// Videos of the posts the selection rested on, whose playlists are to
-    /// be read before they are played.
-    videos: Vec<String>,
     /// Threads being read ahead now.
     reading: Vec<String>,
     /// Threads being read ahead that `v` opened meanwhile: the view waits
@@ -85,18 +82,6 @@ impl App {
         } else {
             None
         };
-        let videos: Vec<String> = shown
-            .and_then(|p| p.embed.as_ref())
-            .map(|e| {
-                e.media()
-                    .into_iter()
-                    .filter_map(|m| match m {
-                        Media::Video { playlist, .. } => Some(playlist),
-                        Media::Image { .. } => None,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         let Some(uri) = shown.map(|p| p.uri.clone()) else {
             self.read_ahead.resting = None;
             return Vec::new();
@@ -107,7 +92,6 @@ impl App {
                     return Vec::new();
                 }
                 *asked = true;
-                self.read_ahead.videos.extend(videos);
                 if self.read_ahead.reading.contains(&uri) {
                     return Vec::new();
                 }
@@ -163,12 +147,6 @@ impl App {
     /// ready, not only its text.
     pub(crate) fn take_pictures_ahead(&mut self) -> Vec<String> {
         std::mem::take(&mut self.read_ahead.pictures)
-    }
-
-    /// The videos of the post the selection has rested on since this was
-    /// last asked, for the event loop to read their playlists ahead.
-    pub(crate) fn take_videos_ahead(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.read_ahead.videos)
     }
 
     /// Fill `view` from the thread read ahead for its post, if there is one:

@@ -4,6 +4,13 @@ use super::*;
 use crate::i18n::Lang;
 
 impl App {
+    /// Recomputed from the current setting on every frame, so a toggle
+    /// stops playback and read-ahead without restarting the client.
+    pub(crate) fn inline_video(&self) -> bool {
+        self.pictures
+            && crate::config::inline_video(&self.env, &self.settings, self.kitty_graphics).0
+    }
+
     /// Take the saved settings and the terminal's color depth into account.
     /// A warning (a settings file that could not be used) is shown.
     pub(crate) fn apply_settings(
@@ -242,6 +249,8 @@ impl App {
         let (video, video_from) = config::video_service(&self.env, &self.settings);
         let (browser, browser_from) = config::browser(&self.env, &self.settings);
         let (cards, cards_from) = config::link_cards(&self.env, &self.settings);
+        let (inline, inline_from) =
+            config::inline_video(&self.env, &self.settings, self.kitty_graphics);
         let link_cards = SettingRow {
             name: n!("Link cards"),
             value: crate::i18n::t(if cards { n!("on") } else { n!("off") }).into(),
@@ -309,6 +318,17 @@ impl App {
                 ),
                 note: n!("enter switches, adds or logs out an account, as A does").into(),
                 editable: true,
+                resettable: false,
+            },
+            SettingRow {
+                name: n!("Play videos in the timeline"),
+                value: crate::i18n::t(if inline { "on" } else { "off" }).into(),
+                note: if inline_from == Source::Env {
+                    fixed(config::INLINE_VIDEO_ENV)
+                } else {
+                    n!("enter turns timeline playback on or off").into()
+                },
+                editable: inline_from != Source::Env,
                 resettable: false,
             },
         ]
@@ -414,6 +434,14 @@ impl App {
                 self.settings.link_cards = (!on).then(|| "off".to_string());
                 let value = if on { n!("on") } else { n!("off") };
                 self.save_settings(tf("link cards: {}", &[crate::i18n::t(value)]));
+                return;
+            }
+            "Play videos in the timeline" => {
+                let on =
+                    !crate::config::inline_video(&self.env, &self.settings, self.kitty_graphics).0;
+                self.settings.inline_video = Some(on);
+                let value = crate::i18n::t(if on { "on" } else { "off" });
+                self.save_settings(format!("{}: {value}", crate::i18n::t(row.name)));
                 return;
             }
             "Download folder" => SettingEdit::Folder(Box::new(Browser::folder(

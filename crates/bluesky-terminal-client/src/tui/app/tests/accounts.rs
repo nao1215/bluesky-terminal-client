@@ -245,15 +245,22 @@ fn a_write_the_first_account_made_changes_nothing_of_the_second_ones() {
     assert!(matches!(app.handle_key(key('l'))[..], [Job::Like { .. }]));
 }
 
-// The settings screen has the accounts too: its last row opens the list A
+// The settings screen has the accounts too: its Account row opens the list A
 // opens, esc goes back to the settings, and a switch closes both.
 #[test]
 fn the_settings_screen_switches_accounts_as_a_does() {
     let mut app = two_accounts();
     app.handle_key(key('5'));
     app.handle_key(key('s'));
-    app.handle_key(key('k'));
-    let row = app.settings_rows().pop().unwrap();
+    let account = app
+        .settings_rows()
+        .iter()
+        .position(|row| row.name == "Account")
+        .unwrap();
+    for _ in 0..account {
+        app.handle_key(key('j'));
+    }
+    let row = app.settings_rows().remove(account);
     assert_eq!((row.name, row.value.as_str()), ("Account", "@me.test"));
     app.handle_key(code(KeyCode::Enter));
     assert!(matches!(

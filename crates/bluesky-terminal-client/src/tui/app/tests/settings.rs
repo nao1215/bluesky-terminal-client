@@ -1,6 +1,50 @@
 use super::*;
 
 #[test]
+fn timeline_playback_changes_immediately_and_requires_pictures() {
+    let mut app = logged_in();
+    app.kitty_graphics = true;
+    assert!(app.inline_video());
+    settings_on(&mut app, "Play videos in the timeline");
+    app.handle_key(code(KeyCode::Enter));
+    assert!(!app.inline_video());
+    assert_eq!(app.take_settings_save().unwrap().inline_video, Some(false));
+    app.handle_key(code(KeyCode::Enter));
+    assert!(app.inline_video());
+    assert_eq!(app.take_settings_save().unwrap().inline_video, Some(true));
+    app.pictures = false;
+    assert!(!app.inline_video());
+    app.env.inline_video = Some("1".into());
+    assert!(
+        !app.inline_video(),
+        "an override cannot draw pictures on a text terminal"
+    );
+}
+
+#[test]
+fn the_environment_fixes_timeline_playback_without_overwriting_the_setting() {
+    for (var, on) in [("0", false), ("1", true)] {
+        let mut app = logged_in();
+        app.kitty_graphics = true;
+        app.settings.inline_video = Some(!on);
+        app.env.inline_video = Some(var.into());
+        settings_on(&mut app, "Play videos in the timeline");
+        let rows = app.settings_rows();
+        let row = rows
+            .iter()
+            .find(|r| r.name == "Play videos in the timeline")
+            .unwrap();
+        assert_eq!(row.value, if on { "on" } else { "off" });
+        assert!(row.note.contains("BSKY_INLINE_VIDEO"));
+        assert!(!row.editable);
+        app.handle_key(code(KeyCode::Enter));
+        assert_eq!(app.inline_video(), on);
+        assert_eq!(app.settings.inline_video, Some(!on));
+        assert!(app.take_settings_save().is_none());
+    }
+}
+
+#[test]
 fn enter_in_the_picker_saves_the_theme_and_keeps_other_settings() {
     let mut app = logged_in();
     let mut settings = Settings::default();
@@ -89,7 +133,8 @@ fn the_settings_screen_names_every_setting() {
             "Link cards",
             "Browser",
             "Language",
-            "Account"
+            "Account",
+            "Play videos in the timeline"
         ]
     );
     app.handle_key(key('5'));
@@ -98,7 +143,7 @@ fn the_settings_screen_names_every_setting() {
     app.handle_key(key('k'));
     assert!(matches!(
         app.overlay,
-        Some(Overlay::Settings { selected: 8, .. })
+        Some(Overlay::Settings { selected: 9, .. })
     ));
     app.handle_key(key('j'));
     assert!(matches!(

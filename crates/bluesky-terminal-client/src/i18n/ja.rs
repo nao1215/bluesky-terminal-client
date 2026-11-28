@@ -1,6 +1,11 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("Play videos in the timeline", "タイムラインで動画を再生"),
+    (
+        "enter turns timeline playback on or off",
+        "Enter でタイムラインの動画再生を切り替えます",
+    ),
     ("(R to retry)", "(R で再試行)"),
     ("(blocked post)", "(ブロックされた投稿)"),
     ("(deleted)", "(削除済み)"),

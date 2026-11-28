@@ -1,6 +1,11 @@
 //! Translations into Korean, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("Play videos in the timeline", "타임라인에서 동영상 재생"),
+    (
+        "enter turns timeline playback on or off",
+        "Enter로 타임라인 동영상 재생을 켜거나 끕니다",
+    ),
     ("(R to retry)", "(R로 다시 시도)"),
     ("(blocked post)", "(차단된 게시물)"),
     ("(deleted)", "(삭제됨)"),

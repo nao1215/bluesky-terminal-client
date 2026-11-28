@@ -513,6 +513,10 @@ impl Images {
     /// Play the video at `playlist` in `area`, starting it (again, for a new
     /// `generation`) when needed. Draws nothing until its first picture;
     /// returns where playback is.
+    ///
+    /// Draw a fallback thumbnail only afterwards, when [`Self::video_shown`]
+    /// is false. Rendering it first can consume kitty's one-time transmission
+    /// without sending it: the video overwrites it in the frame buffer.
     pub fn draw_video(
         &mut self,
         frame: &mut Frame,
@@ -543,7 +547,10 @@ impl Images {
         v.state().clone()
     }
 
-    /// Stop the video, when the viewer no longer shows it.
+    /// Stop the video when it is no longer selected or shown in the viewer.
+    /// This drops the decoder; it does not delete cached terminal images.
+    /// Drawing the thumbnail replaces kitty's Unicode placeholders, or
+    /// overwrites the video pixels for sixel and iTerm2.
     pub fn stop_video(&mut self) {
         self.video = None;
     }

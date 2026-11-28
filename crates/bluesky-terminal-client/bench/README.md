@@ -25,3 +25,12 @@ On a pull request, `.github/workflows/bench.yml` runs `himorime ci bench`: the b
 `first_post.py` is the measured process of the last benchmark: it starts the client on a pseudo-terminal, answers the client's questions about what the terminal can draw after the given delay, serves the stand-in data after its own delay, and presses `q` when the first post is drawn. Its own start-up (Python) is in the numbers; compare revisions, not the absolute values.
 
 Numbers from different machines are not comparable; compare revisions on one machine, as `himorime compare` and CI do.
+
+`inline_video.py` measures selection-to-video latency separately. It starts on a text post with a video below it, waits one second, presses `j`, and times the first complete kitty video frame at the PTY. A local server delays each video request by 150 ms. The JSON output includes each sample, the median, and video request counts before and after the key. Save a binary of each revision and run both with the same build profile and arguments:
+
+```console
+$ cargo build --profile e2e --locked -p bluesky-terminal-client
+$ python3 bench/inline_video.py ../../target/e2e/bsky --delay-ms 150 --runs 5
+```
+
+The one-second pause lets read-ahead finish; `--dwell-ms 0` also measures moving onto a video before its data is ready. The PTY answers graphics queries but does not measure a physical terminal's painting time. The script requires Unix PTYs.

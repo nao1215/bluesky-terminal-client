@@ -9,6 +9,9 @@ pub(super) struct PostLines {
     pub(super) header: Line<'static>,
     pub(super) body: Vec<Line<'static>>,
     pub(super) images: Vec<String>,
+    /// The HLS playlist of the post's video, played in its picture box
+    /// while the post is selected.
+    pub(super) video: Option<String>,
     /// Rows the images take: enough for the tallest at its box width.
     pub(super) image_rows: u16,
     /// Whether an avatar is drawn beside it, which the row must be tall
@@ -16,6 +19,10 @@ pub(super) struct PostLines {
     pub(super) avatar: bool,
     pub(super) stats: Line<'static>,
 }
+
+/// The replay number the timeline plays a video under, apart from the
+/// viewer's, so space starts the video over in the viewer.
+pub(super) const INLINE_REPLAY: u32 = u32::MAX;
 
 /// Width in cells of each image box when `n` images share `width` columns.
 pub(super) fn image_box_width(width: u16, n: u16) -> u16 {
@@ -74,6 +81,7 @@ impl PostLines {
             .map(Line::from)
             .collect();
         let mut images = Vec::new();
+        let mut video = None;
         let mut rows = 0;
         if let Some(embed) = &post.embed
             && cell.is_none()
@@ -95,6 +103,10 @@ impl PostLines {
                 .max()
                 .unwrap_or(0);
             images = shown.iter().map(|i| i.url.to_string()).collect();
+            video = embed.media().into_iter().find_map(|m| match m {
+                Media::Video { playlist, .. } => Some(playlist),
+                Media::Image { .. } => None,
+            });
         }
         let liked = post.like_uri().is_some();
         let heart = if liked { "♥" } else { "♡" };
@@ -117,6 +129,7 @@ impl PostLines {
             header,
             body,
             images,
+            video,
             image_rows: rows,
             avatar: cell.is_some(),
             stats,
@@ -130,6 +143,7 @@ impl PostLines {
             header: Line::styled(text, t.dim()),
             body: Vec::new(),
             images: Vec::new(),
+            video: None,
             image_rows: 0,
             avatar: false,
             stats: Line::default(),
@@ -413,13 +427,19 @@ pub(super) fn row_lines<T: PostRow>(
     }
 }
 
+/// Which account is viewing this list, and whether it owns keyboard focus.
+pub(super) struct PostContext<'a> {
+    pub(super) me: Option<&'a str>,
+    pub(super) inline: bool,
+}
+
 pub(super) fn draw_posts<T: PostRow>(
     frame: &mut Frame,
     area: Rect,
     list: &mut List<T>,
     images: &mut Images,
     empty: &str,
-    me: Option<&str>,
+    context: PostContext<'_>,
     t: &Theme,
 ) {
     if !list.loaded {
@@ -442,7 +462,15 @@ pub(super) fn draw_posts<T: PostRow>(
     list.offset = scroll_offset(selected, list.offset, list.items.len(), area.height, |i| {
         lines
             .entry(i)
-            .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, me, t))
+            .or_insert_with(|| {
+                row_lines(
+                    &items[i],
+                    content_width(content, &items[i]),
+                    cell,
+                    context.me,
+                    t,
+                )
+            })
             .height()
     });
 
@@ -454,7 +482,7 @@ pub(super) fn draw_posts<T: PostRow>(
         }
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, context.me, t));
         let h = pl.height();
         let visible = (area.bottom() - y).min(h);
         let row = Rect {
@@ -518,7 +546,10 @@ pub(super) fn draw_posts<T: PostRow>(
                 ..content
             };
             if whole {
-                draw_image_row(frame, img_area, &pl.images, images);
+                let playlist = (i == list.selected && context.inline)
+                    .then_some(pl.video.as_deref())
+                    .flatten();
+                draw_post_media(frame, img_area, &pl.images, playlist, images);
             }
             next += pl.image_rows;
         }
@@ -537,7 +568,7 @@ pub(super) fn draw_posts<T: PostRow>(
     for (i, item) in list.items.iter().enumerate().skip(below).take(PREFETCH) {
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, context.me, t));
         if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref()) {
             images.prefetch(&small_avatar(url), AVATAR.0, AVATAR.1);
         }
@@ -576,6 +607,31 @@ pub(super) fn draw_lines<'a>(
     for (y, line) in (area.top()..area.bottom()).zip(lines) {
         buf.set_line(area.x, y, line, area.width);
     }
+}
+
+/// The selected video's picture, or the post's thumbnails.
+pub(super) fn draw_post_media(
+    frame: &mut Frame,
+    area: Rect,
+    urls: &[String],
+    playlist: Option<&str>,
+    images: &mut Images,
+) {
+    if let Some(playlist) = playlist {
+        let width = image_box_width(area.width, 1);
+        // Keep the thumbnail ready for when selection leaves this post,
+        // without rendering it underneath the video. Kitty marks its first
+        // transmission as sent when rendered into the buffer; overwriting
+        // that cell with video would lose the only copy of its pixels.
+        for url in urls {
+            images.prefetch(url, width, area.height);
+        }
+        images.draw_video(frame, Rect { width, ..area }, playlist, INLINE_REPLAY);
+        if images.video_shown() {
+            return;
+        }
+    }
+    draw_image_row(frame, area, urls, images);
 }
 
 pub(super) fn draw_image_row(frame: &mut Frame, area: Rect, urls: &[String], images: &mut Images) {

@@ -3,6 +3,54 @@
 use super::*;
 
 impl App {
+    /// Only the selected post and its immediate neighbours are worth
+    /// fetching video bytes for. Keep this separate from thread read-ahead:
+    /// videos must be ready before the next j/k, without waiting for REST.
+    pub(crate) fn videos_near_selection(&self, inline: bool) -> Vec<String> {
+        if !inline || !self.pictures || self.login.is_some() || self.overlay.is_some() {
+            return Vec::new();
+        }
+        fn videos<'a, T>(
+            list: &'a List<T>,
+            post: impl Fn(&'a T) -> Option<&'a Post>,
+        ) -> Vec<String> {
+            if list.items.is_empty() {
+                return Vec::new();
+            }
+            let selected = list.selected.min(list.items.len() - 1);
+            [
+                Some(selected),
+                selected.checked_sub(1),
+                selected.checked_add(1),
+            ]
+            .into_iter()
+            .flatten()
+            .filter_map(|i| post(list.items.get(i)?))
+            .filter_map(|p| p.embed.as_ref())
+            .filter_map(|e| {
+                e.media().into_iter().find_map(|m| match m {
+                    Media::Video { playlist, .. } => Some(playlist),
+                    Media::Image { .. } => None,
+                })
+            })
+            .collect()
+        }
+        if let Some(thread) = self.threads.last() {
+            return videos(&thread.list, ThreadRow::post);
+        }
+        let list = match self.tab {
+            Tab::Timeline => Some(&self.timeline),
+            Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
+            Tab::Profile => Some(&self.profile.posts),
+            Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
+                Some(Rows::Posts(list)) => Some(list),
+                _ => None,
+            },
+            _ => None,
+        };
+        list.map(|list| videos(list, Some)).unwrap_or_default()
+    }
+
     /// The notifications shown, when the view is a list of them: the
     /// Notifications tab, or a column of notifications. The keys act on a
     /// notification the same way in both.
