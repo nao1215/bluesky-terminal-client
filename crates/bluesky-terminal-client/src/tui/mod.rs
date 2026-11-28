@@ -1,20 +1,20 @@
 //! The interactive client: terminal setup, the event loop, and teardown.
 
-pub mod app;
-pub mod chat;
-pub mod columns;
-pub mod files;
-pub mod images;
-pub mod keys;
-pub mod player;
-pub mod theme;
-pub mod thread;
-pub mod view;
-pub mod worker;
+pub(crate) mod app;
+pub(crate) mod chat;
+pub(crate) mod columns;
+pub(crate) mod files;
+pub(crate) mod images;
+pub(crate) mod keys;
+pub(crate) mod player;
+pub(crate) mod theme;
+pub(crate) mod thread;
+pub(crate) mod view;
+pub(crate) mod worker;
 
 // The drawing helpers that know nothing of Bluesky, shared with other
 // terminal clients; at these paths so the rest of bsky reads them as before.
-pub use terminal_kit::{clipboard, events, input, scale, text};
+pub(crate) use terminal_kit::{clipboard, events, input, scale, text};
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -36,7 +36,7 @@ use worker::Worker;
 /// of bsky's threads it was. Unlike `thread::spawn` it returns the failure
 /// of a system out of threads rather than panicking with it: a panic here
 /// on the UI thread took the whole client down.
-pub fn spawn<T: Send + 'static>(
+pub(crate) fn spawn<T: Send + 'static>(
     name: &str,
     f: impl FnOnce() -> T + Send + 'static,
 ) -> io::Result<std::thread::JoinHandle<T>> {
@@ -58,7 +58,7 @@ const EVENTS_PER_FRAME: usize = 64;
 /// Run the client until the user quits.
 /// `session` is the account to start as, if any; `accounts` holds every
 /// logged-in one.
-pub fn run(
+pub(crate) fn run(
     accounts: AccountStore,
     session: Option<Session>,
     settings: SettingsStore,
@@ -211,7 +211,7 @@ fn init_terminal() -> io::Result<Term> {
 /// one that does not ignores the marks. Through stdout's own buffer a
 /// frame went out 1 KB at a time, and the terminal could show the screen
 /// half drawn: the old posts below the new ones while scrolling.
-pub struct FrameWriter<W: io::Write = io::Stdout> {
+struct FrameWriter<W: io::Write = io::Stdout> {
     out: W,
     /// [`BEGIN_UPDATE`], then the frame written so far.
     frame: Vec<u8>,
@@ -222,7 +222,7 @@ const BEGIN_UPDATE: &[u8] = b"\x1b[?2026h";
 const END_UPDATE: &[u8] = b"\x1b[?2026l";
 
 impl<W: io::Write> FrameWriter<W> {
-    pub fn new(out: W) -> Self {
+    pub(crate) fn new(out: W) -> Self {
         let mut frame = Vec::with_capacity(64 * 1024);
         frame.extend_from_slice(BEGIN_UPDATE);
         Self { out, frame }

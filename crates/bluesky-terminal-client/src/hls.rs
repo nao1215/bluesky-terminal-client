@@ -11,7 +11,7 @@
 /// Reference resolution as RFC 3986 section 5.2 defines it, so that the
 /// scheme-relative, absolute-path, query-only and dot-segment forms a
 /// playlist may use all point at the same file a browser would fetch.
-pub fn resolve(base: &str, rel: &str) -> String {
+pub(crate) fn resolve(base: &str, rel: &str) -> String {
     if has_scheme(rel) {
         return rel.to_string();
     }
@@ -150,7 +150,7 @@ fn remove_dot_segments(path: &str) -> String {
 /// The stream to play from a master playlist: the one with the least
 /// bandwidth, which is plenty for a terminal. `None` when `text` is already
 /// a media playlist.
-pub fn pick_variant(text: &str, base: &str) -> Option<String> {
+pub(crate) fn pick_variant(text: &str, base: &str) -> Option<String> {
     variants(text, base)
         .into_iter()
         .min_by_key(|(b, _)| if *b == 0 { u64::MAX } else { *b })
@@ -159,7 +159,7 @@ pub fn pick_variant(text: &str, base: &str) -> Option<String> {
 
 /// The stream to save from a master playlist: the one with the most
 /// bandwidth. `None` when `text` is already a media playlist.
-pub fn pick_best_variant(text: &str, base: &str) -> Option<String> {
+pub(crate) fn pick_best_variant(text: &str, base: &str) -> Option<String> {
     variants(text, base)
         .into_iter()
         .max_by_key(|(b, _)| *b)
@@ -189,7 +189,7 @@ fn variants(text: &str, base: &str) -> Vec<(u64, String)> {
 }
 
 /// The segments of a media playlist, in order.
-pub fn segments(text: &str, base: &str) -> Vec<String> {
+pub(crate) fn segments(text: &str, base: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
@@ -200,7 +200,7 @@ pub fn segments(text: &str, base: &str) -> Vec<String> {
 /// One frame's worth of H.264 (Annex B), with its presentation time in
 /// 90 kHz ticks when the stream gave one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccessUnit {
+pub(crate) struct AccessUnit {
     pub pts: Option<u64>,
     pub data: Vec<u8>,
 }
@@ -211,7 +211,7 @@ const H264: u8 = 0x1b;
 /// Pulls the H.264 stream out of MPEG transport stream bytes, fed in any
 /// pieces; the state carries from one segment to the next.
 #[derive(Debug, Default)]
-pub struct Demuxer {
+pub(crate) struct Demuxer {
     pmt_pid: Option<u16>,
     video_pid: Option<u16>,
     /// The program's video stream is of a type bsky cannot decode.
@@ -223,12 +223,12 @@ pub struct Demuxer {
 }
 
 impl Demuxer {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Read more of the stream.
-    pub fn feed(&mut self, data: &[u8]) {
+    pub(crate) fn feed(&mut self, data: &[u8]) {
         self.pending.extend_from_slice(data);
         let mut at = 0;
         while self.pending.len() - at >= 188 {
@@ -248,12 +248,12 @@ impl Demuxer {
     }
 
     /// The access units read so far.
-    pub fn take(&mut self) -> Vec<AccessUnit> {
+    pub(crate) fn take(&mut self) -> Vec<AccessUnit> {
         std::mem::take(&mut self.out)
     }
 
     /// The end of the stream: the last access unit is complete.
-    pub fn finish(&mut self) -> Vec<AccessUnit> {
+    pub(crate) fn finish(&mut self) -> Vec<AccessUnit> {
         self.flush();
         self.take()
     }

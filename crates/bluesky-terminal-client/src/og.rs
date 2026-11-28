@@ -8,7 +8,7 @@
 
 /// The card a page describes. Empty strings where the page says nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Page {
+pub(crate) struct Page {
     pub title: String,
     pub description: String,
     /// An absolute `http://` or `https://` URL.
@@ -20,14 +20,14 @@ pub struct Page {
 
 impl Page {
     /// Whether the page gave nothing to show.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.title.is_empty() && self.description.is_empty() && self.image.is_none()
     }
 }
 
 /// Read the card of the page at `url` from its HTML. `og:` properties come
 /// first, then `twitter:` ones, then the plain `description` and `<title>`.
-pub fn parse(html: &str, url: &str) -> Page {
+pub(crate) fn parse(html: &str, url: &str) -> Page {
     let head = head_of(html);
     let mut metas: Vec<(String, String)> = Vec::new();
     let mut title = None;
@@ -124,7 +124,7 @@ pub fn parse(html: &str, url: &str) -> Page {
 }
 
 /// The `charset=` parameter of a media type such as `text/html; charset=UTF-8`.
-pub fn charset_of(content_type: &str) -> Option<String> {
+pub(crate) fn charset_of(content_type: &str) -> Option<String> {
     content_type.split(';').skip(1).find_map(|param| {
         let (name, value) = param.split_once('=')?;
         name.trim()

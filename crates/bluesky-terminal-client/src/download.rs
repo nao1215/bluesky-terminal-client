@@ -116,7 +116,7 @@ fn candidate_path(dir: &std::path::Path, name: &str, i: usize) -> PathBuf {
 
 /// Save a picture (full size) or a video (its best variant, the segments
 /// joined into one MPEG transport stream, which players play as it is).
-pub fn save(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
+pub(crate) fn save(media: &Media, dir: Option<&std::path::Path>) -> Result<PathBuf> {
     let dir = dir.ok_or_else(|| {
         Error::io(crate::i18n::t("there is no download folder")).with_hint(crate::i18n::t(
             "choose one on the settings screen (s on your Profile tab)",

@@ -12,7 +12,7 @@ use crate::tui::theme::{ColorDepth, THEMES};
 
 /// One row of the settings screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingRow {
+pub(crate) struct SettingRow {
     pub name: &'static str,
     pub value: String,
     /// What enter does, or why it cannot.
@@ -24,15 +24,15 @@ pub struct SettingRow {
 }
 
 /// The rows, by their place on the screen.
-pub const ROW_THEME: usize = 0;
-pub const ROW_LANGUAGE: usize = 1;
-pub const ROW_DOWNLOAD: usize = 2;
-pub const ROW_BROWSER: usize = 3;
-pub const ROWS: usize = 4;
+pub(super) const ROW_THEME: usize = 0;
+pub(super) const ROW_LANGUAGE: usize = 1;
+pub(super) const ROW_DOWNLOAD: usize = 2;
+pub(super) const ROW_BROWSER: usize = 3;
+pub(super) const ROWS: usize = 4;
 
 /// The environment variables that, set, decide a setting for the run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Environment {
+pub(crate) struct Environment {
     pub download_dir: Option<String>,
     pub browser: Option<String>,
     /// `LC_ALL`, `LC_MESSAGES` or `LANG`, the first set.
@@ -41,7 +41,7 @@ pub struct Environment {
 
 impl Environment {
     /// The environment as `var` reads it.
-    pub fn read(var: impl Fn(&str) -> Option<String>) -> Self {
+    pub(crate) fn read(var: impl Fn(&str) -> Option<String>) -> Self {
         let get = |k: &str| var(k).filter(|v| !v.trim().is_empty());
         Environment {
             download_dir: get(crate::download::DOWNLOAD_DIR_ENV),
@@ -53,7 +53,7 @@ impl Environment {
 
 /// The language `settings` name, else the one the environment asks for,
 /// else English, as bsky's.
-pub fn language(settings: &Settings, env: &Environment) -> Lang {
+pub(super) fn language(settings: &Settings, env: &Environment) -> Lang {
     settings
         .language
         .as_deref()
@@ -67,7 +67,7 @@ impl App {
     /// account: the language first, so that what is said from here on is
     /// in it, then the theme and the reactions given lately. A warning (a
     /// settings file that could not be used) is shown.
-    pub fn apply_settings(
+    pub(crate) fn apply_settings(
         &mut self,
         settings: Settings,
         depth: ColorDepth,
@@ -109,12 +109,12 @@ impl App {
     }
 
     /// Settings to write, for the event loop.
-    pub fn take_settings_save(&mut self) -> Option<Settings> {
+    pub(crate) fn take_settings_save(&mut self) -> Option<Settings> {
         self.settings_to_save.take()
     }
 
     /// The outcome of writing the settings.
-    pub fn settings_saved(&mut self, result: crate::error::Result<()>) {
+    pub(crate) fn settings_saved(&mut self, result: crate::error::Result<()>) {
         let note = self.save_note.take();
         match result {
             Ok(()) => {
@@ -155,7 +155,7 @@ impl App {
 
     /// The folder `d` saves in when the settings name one and
     /// `MSKY_DOWNLOAD_DIR` does not decide it.
-    pub fn download_dir(&self) -> Option<std::path::PathBuf> {
+    pub(crate) fn download_dir(&self) -> Option<std::path::PathBuf> {
         if self.env.download_dir.is_some() {
             return None;
         }
@@ -168,7 +168,7 @@ impl App {
 
     /// The program links open with when the settings name one and
     /// `MSKY_BROWSER` does not decide it.
-    pub fn browser(&self) -> Option<String> {
+    pub(crate) fn browser(&self) -> Option<String> {
         if self.env.browser.is_some() {
             return None;
         }
@@ -179,7 +179,7 @@ impl App {
     }
 
     /// The language the client is shown in now.
-    pub fn language(&self) -> Lang {
+    pub(crate) fn language(&self) -> Lang {
         language(&self.settings, &self.env)
     }
 
@@ -217,7 +217,7 @@ impl App {
     }
 
     /// What the settings screen lists, in order.
-    pub fn settings_rows(&self) -> Vec<SettingRow> {
+    pub(crate) fn settings_rows(&self) -> Vec<SettingRow> {
         let fixed = |var: &str| tf("set by {} for this run", &[var]);
         let theme = SettingRow {
             name: n!("Theme"),

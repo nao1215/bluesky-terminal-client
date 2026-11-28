@@ -15,7 +15,7 @@ use crate::tui::worker::ProfileChange;
 
 /// The profile editor.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EditProfile {
+pub(crate) struct EditProfile {
     /// The name, the description, a new avatar's path, a new banner's.
     pub fields: [TextInput; 4],
     pub focus: usize,
@@ -32,7 +32,7 @@ pub struct EditProfile {
 }
 
 impl EditProfile {
-    pub const LABELS: [&'static str; 4] = [
+    pub(crate) const LABELS: [&'static str; 4] = [
         n!("Name"),
         n!("Description"),
         n!("New avatar (a path, or ctrl+o to choose; optional)"),
@@ -56,7 +56,7 @@ impl EditProfile {
     }
 
     /// What saving changes: the fields not left as they came.
-    pub fn change(&self) -> ProfileChange {
+    pub(crate) fn change(&self) -> ProfileChange {
         let name = self.fields[0].text();
         let description = self.fields[1].text();
         ProfileChange {

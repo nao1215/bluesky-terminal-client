@@ -81,7 +81,7 @@ fn readable_items<'de, D: Deserializer<'de>, T: DeserializeOwned>(
 /// `app.bsky.actor.defs#viewerState`: follows, mutes and blocks.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ActorViewer {
+pub(crate) struct ActorViewer {
     /// AT-URI of the viewer's follow record for this actor, when following.
     #[serde(deserialize_with = "any_opt_string")]
     pub following: Option<String>,
@@ -102,7 +102,7 @@ pub struct ActorViewer {
 /// `app.bsky.graph.defs#listViewBasic`, as far as it is shown.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ListBasic {
+pub(crate) struct ListBasic {
     #[serde(deserialize_with = "any_string")]
     pub uri: String,
     #[serde(deserialize_with = "any_string")]
@@ -115,7 +115,7 @@ pub struct ListBasic {
 /// so one struct covers them all.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Profile {
+pub(crate) struct Profile {
     #[serde(deserialize_with = "any_string")]
     pub did: String,
     #[serde(deserialize_with = "any_string")]
@@ -140,7 +140,7 @@ pub struct Profile {
 
 impl Profile {
     /// Display name when set and non-blank, otherwise the handle.
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         match self.display_name.as_deref().map(str::trim) {
             Some(name) if !name.is_empty() => name,
             _ => &self.handle,
@@ -148,47 +148,47 @@ impl Profile {
     }
 
     /// The viewer's follow record URI for this actor.
-    pub fn following_uri(&self) -> Option<&str> {
+    pub(crate) fn following_uri(&self) -> Option<&str> {
         self.viewer.as_ref()?.following.as_deref()
     }
 
     /// Whether the viewer has muted this actor themselves: what `M` and
     /// `bsky unmute` undo. The server says `muted` of a mute by a list too,
     /// which only taking the actor off the list undoes.
-    pub fn muted(&self) -> bool {
+    pub(crate) fn muted(&self) -> bool {
         self.viewer
             .as_ref()
             .is_some_and(|v| v.muted && v.muted_by_list.is_none())
     }
 
     /// The name of the mute list this actor is muted by, if any.
-    pub fn muting_list(&self) -> Option<&str> {
+    pub(crate) fn muting_list(&self) -> Option<&str> {
         Some(self.viewer.as_ref()?.muted_by_list.as_ref()?.name.as_str())
     }
 
     /// The viewer's block record URI for this actor.
-    pub fn blocking_uri(&self) -> Option<&str> {
+    pub(crate) fn blocking_uri(&self) -> Option<&str> {
         self.viewer.as_ref()?.blocking.as_deref()
     }
 }
 
 /// A `{uri, cid}` strong reference to a record.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StrongRef {
+pub(crate) struct StrongRef {
     pub uri: String,
     pub cid: String,
 }
 
 /// `app.bsky.feed.post#replyRef`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplyRef {
+pub(crate) struct ReplyRef {
     pub root: StrongRef,
     pub parent: StrongRef,
 }
 
 /// The fields of an `app.bsky.feed.post` record bsky shows.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PostRecord {
+pub(crate) struct PostRecord {
     pub text: String,
     pub created_at: Option<String>,
     pub reply: Option<ReplyRef>,
@@ -197,7 +197,7 @@ pub struct PostRecord {
 /// `app.bsky.feed.defs#viewerState` for a post.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct PostViewer {
+pub(crate) struct PostViewer {
     /// AT-URI of the viewer's like record, when liked.
     #[serde(deserialize_with = "any_opt_string")]
     pub like: Option<String>,
@@ -209,7 +209,7 @@ pub struct PostViewer {
 /// `app.bsky.embed.defs#aspectRatio`: width and height in any unit.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
-pub struct AspectRatio {
+pub(crate) struct AspectRatio {
     #[serde(deserialize_with = "any_size")]
     pub width: u32,
     #[serde(deserialize_with = "any_size")]
@@ -219,7 +219,7 @@ pub struct AspectRatio {
 /// One image of an `app.bsky.embed.images#view`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ImageView {
+pub(crate) struct ImageView {
     #[serde(deserialize_with = "any_string")]
     pub thumb: String,
     #[serde(deserialize_with = "any_string")]
@@ -232,7 +232,7 @@ pub struct ImageView {
 
 /// An image an embed wants drawn inline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EmbedImage<'a> {
+pub(crate) struct EmbedImage<'a> {
     pub url: &'a str,
     /// Width and height when the AppView reported them; both are non-zero.
     pub aspect: Option<(u32, u32)>,
@@ -246,7 +246,7 @@ fn aspect(r: Option<AspectRatio>) -> Option<(u32, u32)> {
 /// `app.bsky.embed.external#viewExternal`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ExternalView {
+pub(crate) struct ExternalView {
     #[serde(deserialize_with = "any_string")]
     pub uri: String,
     #[serde(deserialize_with = "any_string")]
@@ -260,7 +260,7 @@ pub struct ExternalView {
 /// The embed kinds bsky renders. Anything else is [`Embed::Other`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "$type")]
-pub enum Embed {
+pub(crate) enum Embed {
     #[serde(rename = "app.bsky.embed.images#view")]
     Images {
         #[serde(default, deserialize_with = "readable_items")]
@@ -303,7 +303,7 @@ pub enum Embed {
 
 impl Embed {
     /// Thumbnails worth drawing inline, in display order.
-    pub fn images(&self) -> Vec<EmbedImage<'_>> {
+    pub(crate) fn images(&self) -> Vec<EmbedImage<'_>> {
         match self {
             Embed::Images { images } => images
                 .iter()
@@ -371,7 +371,7 @@ impl Embed {
     /// The post (or feed, or list) this embed quotes, as the server sent
     /// it. A quote with a picture keeps it beside the media, so both a
     /// plain quote and that one answer here.
-    pub fn quoted(&self) -> Option<&Value> {
+    pub(crate) fn quoted(&self) -> Option<&Value> {
         match self {
             Embed::Record { record, .. } => Some(record),
             Embed::RecordWithMedia { record, .. } => record.get("record"),
@@ -382,7 +382,7 @@ impl Embed {
 
 /// Something of a post the viewer opens full screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Media {
+pub(crate) enum Media {
     Image {
         /// The full-size picture.
         url: String,
@@ -403,7 +403,7 @@ pub enum Media {
 
 impl Embed {
     /// The pictures and videos of the post, in order, for the viewer.
-    pub fn media(&self) -> Vec<Media> {
+    pub(crate) fn media(&self) -> Vec<Media> {
         match self {
             Embed::Images { images } => images
                 .iter()
@@ -445,7 +445,7 @@ impl Embed {
 /// `app.bsky.feed.defs#postView`.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Post {
+pub(crate) struct Post {
     #[serde(deserialize_with = "any_string")]
     pub uri: String,
     #[serde(deserialize_with = "any_string")]
@@ -477,7 +477,7 @@ pub struct Post {
 /// AppView says instead when it cannot show it.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "$type")]
-pub enum RefPost {
+pub(crate) enum RefPost {
     #[serde(rename = "app.bsky.feed.defs#postView")]
     Post(Box<Post>),
     #[serde(rename = "app.bsky.feed.defs#notFoundPost")]
@@ -496,7 +496,7 @@ pub enum RefPost {
 
 impl RefPost {
     /// The referenced post's URI, when known.
-    pub fn uri(&self) -> Option<&str> {
+    pub(crate) fn uri(&self) -> Option<&str> {
         match self {
             RefPost::Post(p) => Some(&p.uri),
             RefPost::NotFound { uri } | RefPost::Blocked { uri } => Some(uri),
@@ -508,7 +508,7 @@ impl RefPost {
 /// `app.bsky.feed.defs#replyRef` in a feed: the posts a reply belongs under.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FeedReply {
+pub(crate) struct FeedReply {
     pub root: RefPost,
     pub parent: RefPost,
     #[serde(default)]
@@ -517,7 +517,7 @@ pub struct FeedReply {
 
 /// What is shown above a reply in a feed, so it reads in context.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReplyContext {
+pub(crate) struct ReplyContext {
     /// The thread's first post, when the reply is not directly under it.
     pub root: Option<RefPost>,
     /// Whether posts sit between the root and the parent, shown as a gap.
@@ -528,7 +528,7 @@ pub struct ReplyContext {
 
 impl ReplyContext {
     /// The context for a reply, from the feed's reply references.
-    pub fn from_reply(reply: FeedReply) -> Self {
+    pub(crate) fn from_reply(reply: FeedReply) -> Self {
         let root_uri = reply.root.uri().map(str::to_string);
         let same = root_uri.is_some() && root_uri.as_deref() == reply.parent.uri();
         // The parent answers something other than the root: there is more
@@ -552,7 +552,7 @@ impl ReplyContext {
 /// `app.bsky.feed.defs#threadViewPost` and the placeholders a thread can hold.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "$type")]
-pub enum ThreadNode {
+pub(crate) enum ThreadNode {
     #[serde(rename = "app.bsky.feed.defs#threadViewPost")]
     Post {
         post: Box<Post>,
@@ -589,7 +589,7 @@ where
 
 /// `app.bsky.feed.getPostThread` output.
 #[derive(Debug, Clone, Deserialize)]
-pub struct PostThread {
+pub(crate) struct PostThread {
     pub thread: ThreadNode,
 }
 
@@ -610,7 +610,7 @@ impl Post {
     /// Each field is read on its own: any client writes records and the
     /// AppView passes them on as written, so a reply without its CIDs or a
     /// time that is not a string leaves the text shown, not a blank post.
-    pub fn record(&self) -> PostRecord {
+    pub(crate) fn record(&self) -> PostRecord {
         let r = &self.raw_record;
         let text = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
         PostRecord {
@@ -621,7 +621,7 @@ impl Post {
     }
 
     /// The post on bsky.app, for `at://<did>/app.bsky.feed.post/<rkey>`.
-    pub fn web_url(&self) -> Option<String> {
+    pub(crate) fn web_url(&self) -> Option<String> {
         let rest = self.uri.strip_prefix("at://")?;
         let (did, rkey) = rest.split_once("/app.bsky.feed.post/")?;
         (!did.is_empty() && !rkey.is_empty() && !rkey.contains('/'))
@@ -630,7 +630,7 @@ impl Post {
 
     /// The web links of the post, in order: its link card, then the links in
     /// its text. Only http(s) links; each once.
-    pub fn links(&self) -> Vec<String> {
+    pub(crate) fn links(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         let mut add = |u: &str| {
             if (u.starts_with("https://") || u.starts_with("http://"))
@@ -667,7 +667,7 @@ impl Post {
     }
 
     /// Strong reference to this post.
-    pub fn strong_ref(&self) -> StrongRef {
+    pub(crate) fn strong_ref(&self) -> StrongRef {
         StrongRef {
             uri: self.uri.clone(),
             cid: self.cid.clone(),
@@ -675,18 +675,18 @@ impl Post {
     }
 
     /// The viewer's like record URI, when liked.
-    pub fn like_uri(&self) -> Option<&str> {
+    pub(crate) fn like_uri(&self) -> Option<&str> {
         self.viewer.as_ref()?.like.as_deref()
     }
 
     /// The viewer's repost record URI, when reposted.
-    pub fn repost_uri(&self) -> Option<&str> {
+    pub(crate) fn repost_uri(&self) -> Option<&str> {
         self.viewer.as_ref()?.repost.as_deref()
     }
 
     /// The `reply` field for a new post answering this one: the thread root
     /// stays the root of this post's thread, and this post becomes the parent.
-    pub fn reply_ref(&self) -> ReplyRef {
+    pub(crate) fn reply_ref(&self) -> ReplyRef {
         let parent = self.strong_ref();
         let root = self
             .record()
@@ -700,7 +700,7 @@ impl Post {
 /// `app.bsky.feed.defs#feedViewPost`.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct FeedItem {
+pub(crate) struct FeedItem {
     pub post: Post,
     /// Present when the item is in the feed because of a repost.
     pub reason: Option<Value>,
@@ -712,7 +712,7 @@ pub struct FeedItem {
 /// `app.bsky.feed.getTimeline` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Timeline {
+pub(crate) struct Timeline {
     #[serde(deserialize_with = "readable_items")]
     pub feed: Vec<FeedItem>,
     pub cursor: Option<String>,
@@ -720,7 +720,7 @@ pub struct Timeline {
 
 /// `app.bsky.actor.getPreferences` output.
 #[derive(Debug, Deserialize)]
-pub struct Preferences {
+pub(crate) struct Preferences {
     #[serde(default)]
     pub preferences: Vec<Value>,
 }
@@ -729,7 +729,7 @@ pub struct Preferences {
 /// returns it (only what bsky shows).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FeedGenerator {
+pub(crate) struct FeedGenerator {
     pub uri: String,
     #[serde(default, deserialize_with = "any_string")]
     pub display_name: String,
@@ -738,25 +738,25 @@ pub struct FeedGenerator {
 /// `app.bsky.feed.getFeedGenerators` output. A feed the server describes
 /// oddly (no address) is left out, not the whole list.
 #[derive(Debug, Deserialize)]
-pub struct FeedGenerators {
+pub(crate) struct FeedGenerators {
     #[serde(default, deserialize_with = "readable_items")]
     pub feeds: Vec<FeedGenerator>,
 }
 
 /// A pinned custom feed: where it is and what it is called.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FeedInfo {
+pub(crate) struct FeedInfo {
     pub uri: String,
     pub name: String,
 }
 
 /// `app.bsky.feed.getAuthorFeed` output (same shape as the timeline).
-pub type AuthorFeed = Timeline;
+pub(crate) type AuthorFeed = Timeline;
 
 /// `app.bsky.feed.searchPosts` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct SearchPosts {
+pub(crate) struct SearchPosts {
     #[serde(deserialize_with = "readable_items")]
     pub posts: Vec<Post>,
     pub cursor: Option<String>,
@@ -765,7 +765,7 @@ pub struct SearchPosts {
 /// `app.bsky.actor.searchActors` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct SearchActors {
+pub(crate) struct SearchActors {
     #[serde(deserialize_with = "readable_items")]
     pub actors: Vec<Profile>,
     pub cursor: Option<String>,
@@ -774,7 +774,7 @@ pub struct SearchActors {
 /// `app.bsky.notification.listNotifications#notification`.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Notification {
+pub(crate) struct Notification {
     /// The record that caused it: the like, the follow, the reply post, ...
     #[serde(deserialize_with = "any_string")]
     pub uri: String,
@@ -797,7 +797,7 @@ pub struct Notification {
 /// `app.bsky.notification.listNotifications` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Notifications {
+pub(crate) struct Notifications {
     #[serde(deserialize_with = "readable_items")]
     pub notifications: Vec<Notification>,
     pub cursor: Option<String>,
@@ -806,7 +806,7 @@ pub struct Notifications {
 /// `app.bsky.feed.getPosts` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Posts {
+pub(crate) struct Posts {
     #[serde(deserialize_with = "readable_items")]
     pub posts: Vec<Post>,
 }
@@ -815,7 +815,7 @@ pub struct Posts {
 /// `Debug` leaves the tokens out.
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionTokens {
+pub(crate) struct SessionTokens {
     pub did: String,
     pub handle: String,
     pub access_jwt: String,
@@ -833,7 +833,7 @@ impl std::fmt::Debug for SessionTokens {
 
 /// `com.atproto.repo.createRecord` output.
 #[derive(Debug, Clone, Deserialize)]
-pub struct CreatedRecord {
+pub(crate) struct CreatedRecord {
     pub uri: String,
     #[serde(default)]
     pub cid: String,
@@ -841,28 +841,28 @@ pub struct CreatedRecord {
 
 /// `com.atproto.repo.getRecord` output.
 #[derive(Debug, Clone, Deserialize)]
-pub struct Record {
+pub(crate) struct Record {
     pub cid: Option<String>,
     pub value: Value,
 }
 
 /// `com.atproto.identity.resolveHandle` output.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ResolvedHandle {
+pub(crate) struct ResolvedHandle {
     pub did: String,
 }
 
 /// `com.atproto.repo.uploadBlob` output; the blob is kept verbatim so it can
 /// be embedded in a record unchanged.
 #[derive(Debug, Clone, Deserialize)]
-pub struct UploadedBlob {
+pub(crate) struct UploadedBlob {
     pub blob: Value,
 }
 
 /// The error body every XRPC endpoint returns.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct XrpcError {
+pub(crate) struct XrpcError {
     // Read leniently: a `"message": null` failed the whole body, and the
     // error name with it (an ExpiredToken was then not refreshed).
     #[serde(deserialize_with = "any_string")]
@@ -874,7 +874,7 @@ pub struct XrpcError {
 /// A message of a conversation, `chat.bsky.convo.defs#messageView`, or one
 /// that was deleted or is the service's own note, read the same way.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ChatMessage {
+pub(crate) struct ChatMessage {
     pub id: String,
     /// Empty for a deleted message.
     pub text: String,
@@ -889,7 +889,7 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     /// Read one message of any kind; `None` for what is not one at all.
-    pub fn from_value(v: &Value) -> Option<Self> {
+    pub(crate) fn from_value(v: &Value) -> Option<Self> {
         let kind = v.get("$type").and_then(Value::as_str).unwrap_or("");
         let text = |k: &str| {
             v.get(k)
@@ -926,7 +926,7 @@ impl<'de> Deserialize<'de> for ChatMessage {
 /// A conversation, `chat.bsky.convo.defs#convoView`.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Convo {
+pub(crate) struct Convo {
     #[serde(deserialize_with = "any_string")]
     pub id: String,
     #[serde(deserialize_with = "readable_items")]
@@ -941,7 +941,7 @@ pub struct Convo {
 
 impl Convo {
     /// Everyone in it but `me`: the other person of a one-to-one chat.
-    pub fn others(&self, me: &str) -> Vec<&Profile> {
+    pub(crate) fn others(&self, me: &str) -> Vec<&Profile> {
         self.members.iter().filter(|m| m.did != me).collect()
     }
 }
@@ -953,7 +953,7 @@ fn lenient_message<'de, D: Deserializer<'de>>(de: D) -> Result<Option<ChatMessag
 /// `chat.bsky.convo.listConvos` output.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Convos {
+pub(crate) struct Convos {
     #[serde(deserialize_with = "readable_items")]
     pub convos: Vec<Convo>,
     pub cursor: Option<String>,
@@ -962,7 +962,7 @@ pub struct Convos {
 /// `chat.bsky.convo.getMessages` output: newest first.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Messages {
+pub(crate) struct Messages {
     #[serde(deserialize_with = "readable_items")]
     pub messages: Vec<ChatMessage>,
     pub cursor: Option<String>,

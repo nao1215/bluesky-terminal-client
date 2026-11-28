@@ -38,7 +38,7 @@ mod tests;
 /// The top-level views. `Columns` is the Timeline tab showing columns side
 /// by side, once one has been added with `+`; it is not a tab of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
+pub(crate) enum Tab {
     Timeline,
     Search,
     Profile,
@@ -49,7 +49,7 @@ pub enum Tab {
 
 impl Tab {
     /// The tabs, in the order of their keys 1 to 5.
-    pub const ALL: [Tab; 5] = [
+    pub(crate) const ALL: [Tab; 5] = [
         Tab::Timeline,
         Tab::Chat,
         Tab::Search,
@@ -57,7 +57,7 @@ impl Tab {
         Tab::Profile,
     ];
 
-    pub fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         use crate::i18n::n;
         match self.shown_as() {
             Tab::Search => n!("Search"),
@@ -69,7 +69,7 @@ impl Tab {
     }
 
     /// The tab this view belongs to: the columns are the Timeline tab's.
-    pub fn shown_as(self) -> Tab {
+    pub(crate) fn shown_as(self) -> Tab {
         match self {
             Tab::Columns => Tab::Timeline,
             t => t,
@@ -88,7 +88,7 @@ impl Tab {
     }
 
     /// The tab `delta` places away, wrapping around.
-    pub fn next(self, delta: isize) -> Tab {
+    pub(crate) fn next(self, delta: isize) -> Tab {
         let n = Self::ALL.len() as isize;
         Self::ALL[(self.index() as isize + delta).rem_euclid(n) as usize]
     }
@@ -96,14 +96,14 @@ impl Tab {
 
 /// What the search box looks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchMode {
+pub(crate) enum SearchMode {
     Posts,
     Accounts,
 }
 
 /// Items that are the same item when their keys are equal: posts by URI,
 /// accounts by DID. A further page can repeat what the last one ended with.
-pub trait Keyed {
+pub(crate) trait Keyed {
     fn key(&self) -> &str;
 }
 
@@ -141,7 +141,7 @@ const MORE_AHEAD: usize = 25;
 
 /// A scrollable list with a selection.
 #[derive(Debug, Clone)]
-pub struct List<T> {
+pub(crate) struct List<T> {
     pub items: Vec<T>,
     pub selected: usize,
     /// First item drawn; kept by the view so the selection stays visible.
@@ -321,7 +321,7 @@ impl<T> List<T> {
         self.items.insert(0, item);
     }
 
-    pub fn current(&self) -> Option<&T> {
+    pub(crate) fn current(&self) -> Option<&T> {
         self.items.get(self.selected)
     }
 
@@ -357,7 +357,7 @@ impl<T> List<T> {
 
 /// State of the search tab.
 #[derive(Debug, Clone)]
-pub struct Search {
+pub(crate) struct Search {
     pub input: TextInput,
     pub editing: bool,
     pub mode: SearchMode,
@@ -371,7 +371,7 @@ pub struct Search {
 
 /// State of the profile tab.
 #[derive(Debug, Clone, Default)]
-pub struct ProfilePane {
+pub(crate) struct ProfilePane {
     /// The actor being shown; `None` is the logged-in account.
     pub actor: Option<String>,
     pub profile: Option<Profile>,
@@ -387,7 +387,7 @@ pub struct ProfilePane {
 
 /// A thread opened with `v`, shown over the current tab.
 #[derive(Debug, Clone, Default)]
-pub struct ThreadView {
+pub(crate) struct ThreadView {
     /// The post it was opened on.
     pub uri: String,
     pub list: List<ThreadRow>,
@@ -396,7 +396,7 @@ pub struct ThreadView {
 
 /// The post composer.
 #[derive(Debug, Clone)]
-pub struct Compose {
+pub(crate) struct Compose {
     pub input: TextInput,
     /// Reply target, the handle being answered, and an excerpt of the post.
     pub reply: Option<(ReplyRef, String, String)>,
@@ -444,7 +444,7 @@ impl Compose {
 
 /// A picture or video attached in the composer.
 #[derive(Debug, Clone)]
-pub struct Attached {
+pub(crate) struct Attached {
     pub path: PathBuf,
     /// A description for people who cannot see it.
     pub alt: TextInput,
@@ -453,7 +453,7 @@ pub struct Attached {
 }
 
 impl Attached {
-    pub fn new(path: PathBuf) -> Self {
+    pub(crate) fn new(path: PathBuf) -> Self {
         Self {
             info: media::inspect(&path),
             path,
@@ -483,7 +483,7 @@ fn media_problem(attached: &[Attached]) -> Option<String> {
 
 /// The profile editor.
 #[derive(Debug, Clone)]
-pub struct EditProfile {
+pub(crate) struct EditProfile {
     /// Display name, description, avatar path.
     pub fields: [TextInput; 3],
     pub focus: usize,
@@ -502,7 +502,7 @@ pub struct EditProfile {
 }
 
 impl EditProfile {
-    pub const LABELS: [&'static str; 3] = [
+    pub(crate) const LABELS: [&'static str; 3] = [
         crate::i18n::n!("Display name"),
         crate::i18n::n!("Description"),
         crate::i18n::n!("New avatar (path, or ctrl+o to browse; optional)"),
@@ -511,7 +511,7 @@ impl EditProfile {
 
 /// The login screen.
 #[derive(Debug, Clone)]
-pub struct LoginForm {
+pub(crate) struct LoginForm {
     /// Service URL, identifier, password (an app password or the account's).
     pub fields: [TextInput; 3],
     pub focus: usize,
@@ -523,7 +523,7 @@ pub struct LoginForm {
 }
 
 impl LoginForm {
-    pub const LABELS: [&'static str; 3] = [
+    pub(crate) const LABELS: [&'static str; 3] = [
         crate::i18n::n!("Service"),
         crate::i18n::n!("Handle or email"),
         crate::i18n::n!("Password"),
@@ -548,7 +548,7 @@ impl LoginForm {
 /// its file: the one in use is read again when it is switched to, since a
 /// refresh may have rotated them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Account {
+pub(crate) struct Account {
     pub did: String,
     pub handle: String,
 }
@@ -564,7 +564,7 @@ impl From<&Session> for Account {
 
 /// A window drawn over the current tab.
 #[derive(Debug, Clone)]
-pub enum Overlay {
+pub(crate) enum Overlay {
     Compose(Compose),
     EditProfile(EditProfile),
     /// The key reference, scrolled `scroll` lines down (the view clamps it).
@@ -618,7 +618,7 @@ pub enum Overlay {
 /// One row of the settings screen: what the setting is, what it is set to,
 /// and where that comes from or what Enter does to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingRow {
+pub(crate) struct SettingRow {
     pub name: &'static str,
     pub value: String,
     pub note: String,
@@ -630,7 +630,7 @@ pub struct SettingRow {
 
 /// A setting being changed on the settings screen.
 #[derive(Debug, Clone)]
-pub enum SettingEdit {
+pub(crate) enum SettingEdit {
     /// A folder, chosen in the folder browser.
     Folder(Box<Browser>),
     /// A line of text: a web address, or a program.
@@ -641,21 +641,21 @@ pub enum SettingEdit {
 /// [`STATUS_TTL`] ([`ERROR_TTL`] for an error), and the key hints have a row
 /// of their own, so a message never hides them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Status {
+pub(crate) struct Status {
     pub text: String,
     pub error: bool,
     pub at: Instant,
 }
 
 /// How long a status message stays on screen.
-pub const STATUS_TTL: Duration = Duration::from_secs(5);
+pub(crate) const STATUS_TTL: Duration = Duration::from_secs(5);
 /// How long an error stays on screen; longer, since it may explain a failure
 /// the user did not see happen.
-pub const ERROR_TTL: Duration = Duration::from_secs(10);
+pub(crate) const ERROR_TTL: Duration = Duration::from_secs(10);
 
 /// All UI state.
 #[derive(Debug, Clone)]
-pub struct App {
+pub(crate) struct App {
     pub session: Option<Session>,
     pub login: Option<LoginForm>,
     pub tab: Tab,
@@ -761,7 +761,7 @@ pub struct App {
 
 /// A question that takes a `y`, and what it is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Confirm {
+pub(crate) enum Confirm {
     /// `D`: the post to delete. Deleting cannot be undone.
     Delete(String),
     /// `B`: the account to block.
@@ -889,7 +889,7 @@ impl Written {
 impl App {
     /// A new UI. Without a session it opens on the login screen; with one it
     /// asks for the timeline right away (the returned jobs).
-    pub fn new(session: Option<Session>, service: &str) -> (Self, Vec<Job>) {
+    pub(crate) fn new(session: Option<Session>, service: &str) -> (Self, Vec<Job>) {
         let login = session.is_none().then(|| LoginForm::new(service));
         let mut app = Self {
             session,
@@ -983,13 +983,13 @@ impl App {
     }
 
     /// Whether pictures or a video are shown full screen.
-    pub fn viewer_open(&self) -> bool {
+    pub(crate) fn viewer_open(&self) -> bool {
         matches!(self.overlay, Some(Overlay::Viewer { .. }))
     }
 
     /// Clear a status message older than [`STATUS_TTL`]. Returns whether the
     /// screen changed.
-    pub fn expire_status(&mut self, now: Instant) -> bool {
+    pub(crate) fn expire_status(&mut self, now: Instant) -> bool {
         let changed = self.expire_message(now);
         // A question lasts while its prompt is on screen: gone (its time up,
         // or another message in its place), a y pressed later answers
@@ -1021,7 +1021,7 @@ impl App {
 
     /// Handle a key press. A key also closes an error on screen, and still
     /// does what it does, so the box never stands in the way.
-    pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Job> {
+    pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Vec<Job> {
         if self.status.as_ref().is_some_and(|s| s.error) {
             self.status = None;
             // Esc that closes the box over the composer or the profile
@@ -1043,7 +1043,7 @@ impl App {
     }
 
     /// Handle pasted text: it goes to whichever field has focus.
-    pub fn handle_paste(&mut self, text: &str) {
+    pub(crate) fn handle_paste(&mut self, text: &str) {
         if let Some(form) = &mut self.login {
             form.fields[form.focus].insert_str(text);
             return;
@@ -1110,7 +1110,7 @@ impl App {
     /// What still says it waits for the server: once every job has been
     /// answered, a flag left on is a spinner that never stops or a key that
     /// never works again.
-    pub fn stuck(&self) -> Vec<String> {
+    pub(crate) fn stuck(&self) -> Vec<String> {
         let mut out = Vec::new();
         if self.pending != 0 {
             out.push(format!("pending {}", self.pending));

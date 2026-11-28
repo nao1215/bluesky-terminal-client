@@ -34,7 +34,7 @@ const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Where the playback is.
 #[derive(Debug, Clone, PartialEq)]
-pub enum State {
+pub(crate) enum State {
     Loading,
     Playing,
     Ended,
@@ -48,7 +48,7 @@ enum Msg {
 }
 
 /// A video being played.
-pub struct Player {
+pub(crate) struct Player {
     playlist: String,
     /// The replay this player is for.
     pub generation: u32,
@@ -62,7 +62,7 @@ pub struct Player {
 
 impl Player {
     /// Start playing `playlist` in boxes of `size` cells.
-    pub fn start(picker: Picker, playlist: &str, size: (u16, u16), generation: u32) -> Self {
+    pub(crate) fn start(picker: Picker, playlist: &str, size: (u16, u16), generation: u32) -> Self {
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let shared = Arc::new(Mutex::new(size));
@@ -98,19 +98,19 @@ impl Player {
     }
 
     /// Whether this plays `playlist` for replay `generation`.
-    pub fn is(&self, playlist: &str, generation: u32) -> bool {
+    pub(crate) fn is(&self, playlist: &str, generation: u32) -> bool {
         self.playlist == playlist && self.generation == generation
     }
 
     /// Make the next pictures for a box of `size` cells.
-    pub fn resize(&self, size: (u16, u16)) {
+    pub(crate) fn resize(&self, size: (u16, u16)) {
         if let Ok(mut s) = self.size.lock() {
             *s = size;
         }
     }
 
     /// Take what the thread has sent. Returns whether anything changed.
-    pub fn poll(&mut self) -> bool {
+    pub(crate) fn poll(&mut self) -> bool {
         let mut changed = false;
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
@@ -128,7 +128,7 @@ impl Player {
     }
 
     /// The newest picture, if one has arrived.
-    pub fn frame(&self) -> Option<&Protocol> {
+    pub(crate) fn frame(&self) -> Option<&Protocol> {
         self.frame.as_deref()
     }
 }
@@ -317,7 +317,7 @@ fn read_playlists(agent: &ureq::Agent, playlist: &str) -> Result<(String, String
 /// rests on then waits only for the first segment. It also opens the
 /// connection to the video server. A video read ahead or played already is
 /// not read again.
-pub fn read_ahead(playlist: &str) {
+pub(crate) fn read_ahead(playlist: &str) {
     let (lock, done) = ahead();
     {
         let Ok(mut a) = lock.lock() else { return };

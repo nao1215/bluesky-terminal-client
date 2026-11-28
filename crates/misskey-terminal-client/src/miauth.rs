@@ -13,7 +13,7 @@ use crate::api::types::User;
 use crate::error::{Error, Kind, Result};
 
 /// The name the server shows on the page that asks for the access.
-pub const APP_NAME: &str = "msky";
+const APP_NAME: &str = "msky";
 
 /// What msky asks to do. The home and social timelines and the
 /// notifications need an account to read; the reactions and the accounts
@@ -23,7 +23,7 @@ pub const APP_NAME: &str = "msky";
 /// notes and marks the notifications read; `mute`, `block` and their
 /// lists read and change whom you mute and block. Nothing else is asked:
 /// msky changes no setting and deletes no account.
-pub const PERMISSIONS: &[&str] = &[
+pub(crate) const PERMISSIONS: &[&str] = &[
     "read:account",
     "read:notifications",
     "read:following",
@@ -44,19 +44,19 @@ pub const PERMISSIONS: &[&str] = &[
 ];
 
 /// How long `msky login` waits for the access by default.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// How long msky waits between two checks.
-pub const INTERVAL: Duration = Duration::from_secs(2);
+pub(crate) const INTERVAL: Duration = Duration::from_secs(2);
 
 /// Environment variable naming the session ID to use instead of a random
 /// one: the E2E suite's stand-in server answers one known address.
-pub const SESSION_ENV: &str = "MSKY_MIAUTH_SESSION";
+const SESSION_ENV: &str = "MSKY_MIAUTH_SESSION";
 
 /// The session ID: the one `MSKY_MIAUTH_SESSION` names, else a new random
 /// one. A named one goes in the address as it is, so it is letters, digits
 /// and `-` only.
-pub fn session() -> Result<String> {
+pub(crate) fn session() -> Result<String> {
     match std::env::var(SESSION_ENV) {
         Ok(v) if !v.is_empty() => named_session(&v),
         _ => new_session(),
@@ -74,7 +74,7 @@ fn named_session(v: &str) -> Result<String> {
 }
 
 /// A new session ID: a random (version 4) UUID.
-pub fn new_session() -> Result<String> {
+fn new_session() -> Result<String> {
     let mut b = [0u8; 16];
     getrandom::fill(&mut b).map_err(|e| {
         Error::new(
@@ -101,7 +101,7 @@ fn uuid_v4(mut b: [u8; 16]) -> String {
 }
 
 /// The page on the server at `origin` that asks for the access.
-pub fn auth_url(origin: &str, session: &str) -> String {
+pub(crate) fn auth_url(origin: &str, session: &str) -> String {
     format!(
         "{origin}/miauth/{session}?name={APP_NAME}&permission={}",
         PERMISSIONS.join(",")
@@ -110,14 +110,14 @@ pub fn auth_url(origin: &str, session: &str) -> String {
 
 /// The token the server gave and the account it is of. No `Debug`: it holds
 /// the token.
-pub struct Access {
+pub(crate) struct Access {
     pub token: String,
     pub user: User,
 }
 
 /// The login to save for the access given on `client`'s server: the
 /// account the check named, else the one the server says the token is of.
-pub fn session_of(client: &Client, access: Access) -> Result<crate::config::Session> {
+pub(crate) fn session_of(client: &Client, access: Access) -> Result<crate::config::Session> {
     let me = if access.user.id.is_empty() || access.user.username.is_empty() {
         Client::new(client.origin())
             .with_token(Some(access.token.clone()))
@@ -135,17 +135,17 @@ pub fn session_of(client: &Client, access: Access) -> Result<crate::config::Sess
 }
 
 /// Time as `wait_for_access` sees it, so the tests wait without sleeping.
-pub trait Clock {
+pub(crate) trait Clock {
     /// How long it has been since the wait began.
     fn elapsed(&self) -> Duration;
     fn sleep(&mut self, d: Duration);
 }
 
 /// The clock on the wall.
-pub struct WallClock(std::time::Instant);
+pub(crate) struct WallClock(std::time::Instant);
 
 impl WallClock {
-    pub fn start() -> Self {
+    pub(crate) fn start() -> Self {
         Self(std::time::Instant::now())
     }
 }
@@ -163,7 +163,7 @@ impl Clock for WallClock {
 /// hands over the token or `timeout` has gone by. A server that turns the
 /// check down has been told no; that, and a wait that runs out, is exit 1
 /// with what to do, and nothing is saved.
-pub fn wait_for_access(
+pub(crate) fn wait_for_access(
     client: &Client,
     session: &str,
     timeout: Duration,

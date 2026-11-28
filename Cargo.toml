@@ -33,8 +33,12 @@ unicode-width = ">=0.2, <0.2.3"
 ureq = "3"
 
 # cargo-llvm-cov sets cfg(coverage); tests that never run under it opt out.
+# unreachable_pub keeps `pub` for what a crate's users can reach: terminal-kit's
+# API. The clients are binaries, so what another of their modules uses is
+# pub(crate), and the rest stays private to its module.
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+unreachable_pub = "warn"
 
 # An error is returned, shown, or kept with the reason it can be ignored: a
 # panic on the UI thread leaves the terminal in raw mode, and a swallowed

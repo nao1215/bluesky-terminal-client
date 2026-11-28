@@ -12,13 +12,13 @@
 
 /// A sample of the video track: its NAL units as Annex B, and the time it
 /// is shown at, in 90 kHz ticks as the player's clock counts them.
-pub struct Sample {
+pub(crate) struct Sample {
     pub data: Vec<u8>,
     pub pts: u64,
 }
 
 /// The video track of an MP4.
-pub struct Track {
+pub(crate) struct Track {
     /// The SPS and PPS as Annex B, to go before the first sample.
     pub config: Vec<u8>,
     pub samples: Vec<Sample>,
@@ -88,7 +88,7 @@ fn child<'a>(buf: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
 }
 
 /// The video track of the MP4 file `file`, or why it cannot be played.
-pub fn video_track(file: &[u8]) -> Result<Track, String> {
+pub(crate) fn video_track(file: &[u8]) -> Result<Track, String> {
     let (top, broken) = boxes_checked(file);
     if top.iter().any(|(k, _)| k == b"moof") {
         return Err("the video is a fragmented MP4, which msky cannot play yet".into());

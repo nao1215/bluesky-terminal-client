@@ -33,17 +33,17 @@ pub(crate) use n;
 
 /// A language the client can be shown in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lang {
+pub(crate) enum Lang {
     En,
     Ja,
 }
 
 impl Lang {
     /// Every language, in the order the settings list them.
-    pub const ALL: [Lang; 2] = [Lang::En, Lang::Ja];
+    pub(crate) const ALL: [Lang; 2] = [Lang::En, Lang::Ja];
 
     /// The code `settings.json` keeps: `en`, `ja`, `zh`...
-    pub fn code(self) -> &'static str {
+    pub(crate) fn code(self) -> &'static str {
         match self {
             Lang::En => "en",
             Lang::Ja => "ja",
@@ -51,7 +51,7 @@ impl Lang {
     }
 
     /// The language's name in itself, as the settings list shows it.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Lang::En => "English",
             Lang::Ja => "日本語",
@@ -60,7 +60,7 @@ impl Lang {
 
     /// The language a code names: `ja`, and a locale such as `ja_JP.UTF-8`
     /// or `pt-BR`, whatever its case.
-    pub fn from_code(code: &str) -> Option<Lang> {
+    pub(crate) fn from_code(code: &str) -> Option<Lang> {
         let head = code
             .split(['_', '-', '.', '@'])
             .next()
@@ -97,21 +97,21 @@ thread_local! {
 
 /// Show everything from now on in `lang`: on this thread, and, outside
 /// tests, on every thread.
-pub fn set(lang: Lang) {
+pub(crate) fn set(lang: Lang) {
     CURRENT.with(|c| c.set(Some(lang)));
     #[cfg(not(test))]
     PROCESS.store(lang.index(), Ordering::Relaxed);
 }
 
 /// The language in use on this thread: its own choice, else the process's.
-pub fn current() -> Lang {
+pub(crate) fn current() -> Lang {
     CURRENT
         .with(Cell::get)
         .unwrap_or_else(|| Lang::ALL[PROCESS.load(Ordering::Relaxed).min(Lang::ALL.len() - 1)])
 }
 
 /// `s` in the language in use, or `s` itself when it has no translation.
-pub fn t(s: &str) -> &str {
+pub(crate) fn t(s: &str) -> &str {
     match current() {
         Lang::En => s,
         lang => lang.lookup().get(s).copied().unwrap_or(s),
@@ -120,7 +120,7 @@ pub fn t(s: &str) -> &str {
 
 /// [`t`] of `template`, with `{}` in it filled by `args` in order, or `{0}`
 /// `{1}`... by position, which a translation may reorder.
-pub fn tf(template: &str, args: &[&str]) -> String {
+pub(crate) fn tf(template: &str, args: &[&str]) -> String {
     fill(t(template), args)
 }
 

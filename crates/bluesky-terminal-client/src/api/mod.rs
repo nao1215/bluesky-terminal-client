@@ -6,8 +6,8 @@
 //! finds expired is refreshed once and the request retried. The new tokens
 //! are persisted.
 
-pub mod facets;
-pub mod types;
+pub(crate) mod facets;
+pub(crate) mod types;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -24,13 +24,13 @@ use crate::error::{Error, Kind, Result};
 use types::*;
 
 /// PDS used when neither `--service` nor `BSKY_SERVICE` is given.
-pub const DEFAULT_SERVICE: &str = "https://bsky.social";
+pub(crate) const DEFAULT_SERVICE: &str = "https://bsky.social";
 
 /// Longest post the AppView accepts, in grapheme clusters.
-pub const MAX_POST_GRAPHEMES: usize = 300;
+pub(crate) const MAX_POST_GRAPHEMES: usize = 300;
 
 /// Largest avatar the PDS accepts, in bytes.
-pub const MAX_AVATAR_BYTES: usize = 1_000_000;
+pub(crate) const MAX_AVATAR_BYTES: usize = 1_000_000;
 
 const USER_AGENT: &str = concat!("bsky/", env!("CARGO_PKG_VERSION"));
 
@@ -110,7 +110,7 @@ const MENTIONS_AT_ONCE: usize = 4;
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the XRPC error body can be read.
-pub fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     agent_config().into()
 }
 
@@ -144,7 +144,7 @@ fn agent_config() -> ureq::config::Config {
 /// lower case and without a trailing slash. A PDS answers XRPC at the root
 /// of its host, so a path, a query, or a fragment is refused rather than
 /// left to make every request go to an address that does not exist.
-pub fn normalize_service(url: &str) -> Result<String> {
+pub(crate) fn normalize_service(url: &str) -> Result<String> {
     let typed = url.trim();
     let invalid = || {
         Error::new(Kind::Usage, format!("invalid service URL {typed:?}")).with_hint(
@@ -163,14 +163,14 @@ pub fn normalize_service(url: &str) -> Result<String> {
 }
 
 /// Bluesky's Discover feed, shown when the account pinned no feed.
-pub const DISCOVER_FEED: &str =
+const DISCOVER_FEED: &str =
     "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
 
 /// The URIs of the custom feeds pinned in the saved-feeds preference, in
 /// order: `savedFeedsPrefV2` items of type `feed` that are pinned, or the
 /// `pinned` list of the older `savedFeedsPref` when there is no V2. The
 /// following timeline and lists are not feeds bsky shows here.
-pub fn pinned_feed_uris(preferences: &[Value]) -> Vec<String> {
+fn pinned_feed_uris(preferences: &[Value]) -> Vec<String> {
     let of_type = |t: &str| {
         preferences
             .iter()
@@ -200,23 +200,23 @@ pub fn pinned_feed_uris(preferences: &[Value]) -> Vec<String> {
 }
 
 /// Count grapheme clusters the way the AppView limits post length.
-pub fn grapheme_len(text: &str) -> usize {
+pub(crate) fn grapheme_len(text: &str) -> usize {
     text.graphemes(true).count()
 }
 
 /// Longest post the lexicon accepts, in UTF-8 bytes. Plain text reaches
 /// [`MAX_POST_GRAPHEMES`] first; emoji, up to 25 bytes a character, reach
 /// this.
-pub const MAX_POST_BYTES: usize = 3000;
+pub(crate) const MAX_POST_BYTES: usize = 3000;
 
 /// Most graphemes and bytes a direct message may have.
-pub const MAX_MESSAGE_GRAPHEMES: usize = 1000;
-pub const MAX_MESSAGE_BYTES: usize = 10000;
+const MAX_MESSAGE_GRAPHEMES: usize = 1000;
+const MAX_MESSAGE_BYTES: usize = 10000;
 
 /// Why `text` is over a lexicon's limits, `graphemes` and `bytes`, or
 /// `None` when it fits. Both are checked: emoji reach the byte limit well
 /// under the grapheme one. The templates take the count and the limit.
-pub fn length_problem(
+pub(crate) fn length_problem(
     text: &str,
     (graphemes, bytes): (usize, usize),
     (graphemes_template, bytes_template): (&'static str, &'static str),
@@ -237,7 +237,7 @@ pub fn length_problem(
 }
 
 /// Why `text` is too long for a direct message, if it is.
-pub fn message_length_problem(text: &str) -> Option<String> {
+pub(crate) fn message_length_problem(text: &str) -> Option<String> {
     length_problem(
         text,
         (MAX_MESSAGE_GRAPHEMES, MAX_MESSAGE_BYTES),
@@ -250,15 +250,15 @@ pub fn message_length_problem(text: &str) -> Option<String> {
 
 /// Most graphemes and bytes `app.bsky.actor.profile` allows in the display
 /// name and the description.
-pub const MAX_DISPLAY_NAME_GRAPHEMES: usize = 64;
-pub const MAX_DISPLAY_NAME_BYTES: usize = 640;
-pub const MAX_DESCRIPTION_GRAPHEMES: usize = 256;
-pub const MAX_DESCRIPTION_BYTES: usize = 2560;
+const MAX_DISPLAY_NAME_GRAPHEMES: usize = 64;
+const MAX_DISPLAY_NAME_BYTES: usize = 640;
+pub(crate) const MAX_DESCRIPTION_GRAPHEMES: usize = 256;
+const MAX_DESCRIPTION_BYTES: usize = 2560;
 
 /// Why a display name or description is too long for the profile record,
 /// if one is. Measured as saved, without the spaces around it: the PDS
 /// refuses the whole record for either field, so the editor checks first.
-pub fn profile_length_problem(display_name: &str, description: &str) -> Option<String> {
+pub(crate) fn profile_length_problem(display_name: &str, description: &str) -> Option<String> {
     length_problem(
         display_name.trim(),
         (MAX_DISPLAY_NAME_GRAPHEMES, MAX_DISPLAY_NAME_BYTES),
@@ -281,7 +281,7 @@ pub fn profile_length_problem(display_name: &str, description: &str) -> Option<S
 
 /// Why `text` is too long to post, by either limit of the post lexicon, or
 /// `None` when it fits.
-pub fn post_length_problem(text: &str) -> Option<String> {
+pub(crate) fn post_length_problem(text: &str) -> Option<String> {
     length_problem(
         text,
         (MAX_POST_GRAPHEMES, MAX_POST_BYTES),
@@ -296,7 +296,7 @@ pub fn post_length_problem(text: &str) -> Option<String> {
 
 /// The latest of some RFC 3339 timestamps, as it was written. Ones that do
 /// not parse are skipped.
-pub fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
+pub(crate) fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
     times
         .filter_map(|t| t.parse::<Timestamp>().ok().map(|d| (d, t)))
         .max_by_key(|(d, _)| *d)
@@ -304,7 +304,7 @@ pub fn newest<'a>(times: impl Iterator<Item = &'a str>) -> Option<String> {
 }
 
 /// The current time as the AT Protocol writes it.
-pub fn now() -> String {
+pub(crate) fn now() -> String {
     format!("{:.3}", Timestamp::now())
 }
 
@@ -386,7 +386,7 @@ fn login_identifier(typed: &str) -> &str {
 }
 
 /// Log in with an identifier (handle, DID, or email) and an app password.
-pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session> {
+pub(crate) fn login(service: &str, identifier: &str, password: &str) -> Result<Session> {
     let service = normalize_service(service)?;
     let nsid = "com.atproto.server.createSession";
     let resp = agent()
@@ -406,12 +406,12 @@ pub fn login(service: &str, identifier: &str, password: &str) -> Result<Session>
 
 /// Bluesky's video service, which takes uploaded videos (and animated
 /// GIFs) and prepares them for playback.
-pub const DEFAULT_VIDEO_SERVICE: &str = "https://video.bsky.app";
+pub(crate) const DEFAULT_VIDEO_SERVICE: &str = "https://video.bsky.app";
 
 /// An authenticated client bound to one session. Clones share the tokens,
 /// so requests can run on several threads and one refresh serves them all.
 #[derive(Clone)]
-pub struct Client {
+pub(crate) struct Client {
     agent: ureq::Agent,
     did: String,
     service: String,
@@ -431,7 +431,7 @@ pub struct Client {
 }
 
 /// Where the PDS sends the `chat.bsky.*` calls: Bluesky's chat service.
-pub const CHAT_PROXY: &str = "did:web:api.bsky.chat#bsky_chat";
+const CHAT_PROXY: &str = "did:web:api.bsky.chat#bsky_chat";
 
 #[derive(Deserialize)]
 struct ServiceAuth {
@@ -551,7 +551,7 @@ enum Payload<'a> {
 
 impl Client {
     /// A client for `session`; refreshed tokens are saved to `store`.
-    pub fn new(session: Session, store: Option<SessionStore>) -> Self {
+    pub(crate) fn new(session: Session, store: Option<SessionStore>) -> Self {
         Self {
             agent: agent(),
             did: session.did.clone(),
@@ -653,7 +653,7 @@ impl Client {
     /// Upload a video (or an animated GIF) through the video service and
     /// wait until it is processed; returns the blob to embed. The service
     /// is authorized with a short-lived token the PDS issues for it.
-    pub fn upload_video(
+    pub(crate) fn upload_video(
         &self,
         video_service: &str,
         bytes: &[u8],
@@ -735,7 +735,7 @@ impl Client {
     /// token is refreshed, and then each opened its own connection, a TCP
     /// and a TLS handshake after the refresh; opened meanwhile, they only
     /// wait for their answers. Nothing is asked of the account.
-    pub fn preconnect(&self, n: usize) {
+    pub(crate) fn preconnect(&self, n: usize) {
         let url = xrpc_url(&self.service, "_health");
         for _ in 0..n {
             let (agent, url) = (self.agent.clone(), url.clone());
@@ -756,7 +756,7 @@ impl Client {
     }
 
     /// The DID of the account.
-    pub fn did(&self) -> &str {
+    pub(crate) fn did(&self) -> &str {
         &self.did
     }
 
@@ -930,13 +930,13 @@ impl Client {
     }
 
     /// Any read, answered as the server wrote it: what `--json` prints.
-    pub fn get_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
+    pub(crate) fn get_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
         self.get(nsid, query)
     }
 
     /// A procedure's answer as the server sent it, for the commands that
     /// print it. A write: sent once, as every write is.
-    pub fn post_value(&self, nsid: &str, body: &Value) -> Result<Value> {
+    pub(crate) fn post_value(&self, nsid: &str, body: &Value) -> Result<Value> {
         self.post(nsid, body)
     }
 
@@ -989,7 +989,7 @@ impl Client {
     }
 
     /// `chat.bsky.convo.listConvos`: the conversations, newest first.
-    pub fn convos(&self, cursor: Option<&str>) -> Result<Convos> {
+    pub(crate) fn convos(&self, cursor: Option<&str>) -> Result<Convos> {
         let mut q = vec![("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -999,7 +999,7 @@ impl Client {
 
     /// `chat.bsky.convo.getMessages`: a page of a conversation, newest
     /// first; the cursor goes further back.
-    pub fn messages(&self, convo_id: &str, cursor: Option<&str>) -> Result<Messages> {
+    pub(crate) fn messages(&self, convo_id: &str, cursor: Option<&str>) -> Result<Messages> {
         let mut q = vec![("convoId", convo_id), ("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -1008,13 +1008,13 @@ impl Client {
     }
 
     /// Any chat read, as the server wrote it.
-    pub fn chat_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
+    pub(crate) fn chat_value(&self, nsid: &str, query: &[(&str, &str)]) -> Result<Value> {
         self.chat().get(nsid, query)
     }
 
     /// `chat.bsky.convo.sendMessage`, with the facets a post would have.
     /// Sent once: a failure is returned, not tried again.
-    pub fn send_message(&self, convo_id: &str, text: &str) -> Result<ChatMessage> {
+    pub(crate) fn send_message(&self, convo_id: &str, text: &str) -> Result<ChatMessage> {
         let text = text.trim_end();
         if text.trim().is_empty() {
             return Err(Error::new(
@@ -1038,7 +1038,7 @@ impl Client {
 
     /// `chat.bsky.convo.getConvoForMembers`: the conversation with `did`,
     /// started when there is none (the server always gives the same one).
-    pub fn convo_for(&self, did: &str) -> Result<Convo> {
+    pub(crate) fn convo_for(&self, did: &str) -> Result<Convo> {
         #[derive(Deserialize)]
         struct Out {
             convo: Convo,
@@ -1051,7 +1051,7 @@ impl Client {
 
     /// `chat.bsky.convo.updateRead`: the conversation is read up to
     /// `message_id` (or all of it).
-    pub fn update_read(&self, convo_id: &str, message_id: Option<&str>) -> Result<()> {
+    pub(crate) fn update_read(&self, convo_id: &str, message_id: Option<&str>) -> Result<()> {
         let mut body = json!({ "convoId": convo_id });
         if let Some(m) = message_id {
             body["messageId"] = json!(m);
@@ -1061,7 +1061,7 @@ impl Client {
     }
 
     /// `app.bsky.feed.getTimeline`.
-    pub fn timeline(&self, cursor: Option<&str>) -> Result<Timeline> {
+    pub(crate) fn timeline(&self, cursor: Option<&str>) -> Result<Timeline> {
         let mut q = vec![("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -1070,7 +1070,7 @@ impl Client {
     }
 
     /// `app.bsky.feed.getFeed`: a page of the custom feed `uri`.
-    pub fn feed(&self, uri: &str, cursor: Option<&str>) -> Result<Timeline> {
+    pub(crate) fn feed(&self, uri: &str, cursor: Option<&str>) -> Result<Timeline> {
         let mut q = vec![("feed", uri), ("limit", "50")];
         if let Some(c) = cursor {
             q.push(("cursor", c));
@@ -1082,7 +1082,7 @@ impl Client {
     /// saved-feeds preference the official app keeps, and Discover when
     /// none is pinned. The following timeline is not among them; bsky
     /// always shows it first.
-    pub fn pinned_feeds(&self) -> Result<Vec<FeedInfo>> {
+    pub(crate) fn pinned_feeds(&self) -> Result<Vec<FeedInfo>> {
         let prefs: Preferences = self.get("app.bsky.actor.getPreferences", &[])?;
         let mut uris = pinned_feed_uris(&prefs.preferences);
         if uris.is_empty() {
@@ -1103,7 +1103,7 @@ impl Client {
     }
 
     /// `app.bsky.feed.getAuthorFeed` for one actor, without replies.
-    pub fn author_feed(&self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
+    pub(crate) fn author_feed(&self, actor: &str, cursor: Option<&str>) -> Result<AuthorFeed> {
         let mut q = vec![
             ("actor", actor),
             ("limit", "30"),
@@ -1115,7 +1115,7 @@ impl Client {
 
     /// `app.bsky.feed.getPostThread`: the post, the posts above it, and its
     /// replies ten levels deep.
-    pub fn post_thread(&self, uri: &str) -> Result<ThreadNode> {
+    pub(crate) fn post_thread(&self, uri: &str) -> Result<ThreadNode> {
         let r: PostThread = self.get(
             "app.bsky.feed.getPostThread",
             &[("uri", uri), ("depth", "10"), ("parentHeight", "20")],
@@ -1124,14 +1124,14 @@ impl Client {
     }
 
     /// `app.bsky.notification.listNotifications`.
-    pub fn notifications(&self, cursor: Option<&str>) -> Result<Notifications> {
+    pub(crate) fn notifications(&self, cursor: Option<&str>) -> Result<Notifications> {
         let mut q = vec![("limit", "30")];
         q.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.notification.listNotifications", &q)
     }
 
     /// `app.bsky.feed.getPosts`, in batches of the 25 the endpoint allows.
-    pub fn posts(&self, uris: &[String]) -> Result<Vec<Post>> {
+    pub(crate) fn posts(&self, uris: &[String]) -> Result<Vec<Post>> {
         let mut out = Vec::new();
         for chunk in uris.chunks(25) {
             let q: Vec<(&str, &str)> = chunk.iter().map(|u| ("uris", u.as_str())).collect();
@@ -1143,7 +1143,7 @@ impl Client {
 
     /// `app.bsky.notification.updateSeen`: notifications up to `seen_at`
     /// have been seen.
-    pub fn update_seen(&self, seen_at: &str) -> Result<()> {
+    pub(crate) fn update_seen(&self, seen_at: &str) -> Result<()> {
         let _: Value = self.post(
             "app.bsky.notification.updateSeen",
             &json!({"seenAt": seen_at}),
@@ -1152,26 +1152,26 @@ impl Client {
     }
 
     /// `app.bsky.actor.getProfile`.
-    pub fn profile(&self, actor: &str) -> Result<Profile> {
+    pub(crate) fn profile(&self, actor: &str) -> Result<Profile> {
         self.get("app.bsky.actor.getProfile", &[("actor", actor)])
     }
 
     /// `app.bsky.feed.searchPosts`.
-    pub fn search_posts(&self, q: &str, cursor: Option<&str>) -> Result<SearchPosts> {
+    pub(crate) fn search_posts(&self, q: &str, cursor: Option<&str>) -> Result<SearchPosts> {
         let mut query = vec![("q", q), ("limit", "30")];
         query.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.feed.searchPosts", &query)
     }
 
     /// `app.bsky.actor.searchActors`.
-    pub fn search_actors(&self, q: &str, cursor: Option<&str>) -> Result<SearchActors> {
+    pub(crate) fn search_actors(&self, q: &str, cursor: Option<&str>) -> Result<SearchActors> {
         let mut query = vec![("q", q), ("limit", "30")];
         query.extend(cursor.map(|c| ("cursor", c)));
         self.get("app.bsky.actor.searchActors", &query)
     }
 
     /// `com.atproto.identity.resolveHandle`.
-    pub fn resolve_handle(&self, handle: &str) -> Result<String> {
+    pub(crate) fn resolve_handle(&self, handle: &str) -> Result<String> {
         let r: ResolvedHandle =
             self.get("com.atproto.identity.resolveHandle", &[("handle", handle)])?;
         Ok(r.did)
@@ -1191,7 +1191,7 @@ impl Client {
 
     /// Publish a post, optionally as a reply, with link/mention/tag facets
     /// and uploaded pictures or a video. A post with media may have no text.
-    pub fn create_post(
+    pub(crate) fn create_post(
         &self,
         text: &str,
         reply: Option<&ReplyRef>,
@@ -1259,7 +1259,7 @@ impl Client {
     }
 
     /// Like a post; returns the like record's URI.
-    pub fn like(&self, subject: &StrongRef) -> Result<String> {
+    pub(crate) fn like(&self, subject: &StrongRef) -> Result<String> {
         let record = json!({"$type": "app.bsky.feed.like", "subject": subject, "createdAt": now()});
         Ok(self.create_record("app.bsky.feed.like", record)?.uri)
     }
@@ -1267,65 +1267,65 @@ impl Client {
     /// Delete one of the account's own posts. The URI must name a post in
     /// the account's own repo; `own_rkey` refuses anything else, so a URI
     /// from somewhere on the screen cannot delete another record.
-    pub fn delete_post(&self, uri: &str) -> Result<()> {
+    pub(crate) fn delete_post(&self, uri: &str) -> Result<()> {
         self.delete_record("app.bsky.feed.post", uri)
     }
 
     /// Remove a like by its record URI.
-    pub fn unlike(&self, like_uri: &str) -> Result<()> {
+    pub(crate) fn unlike(&self, like_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.feed.like", like_uri)
     }
 
     /// Repost a post; returns the repost record's URI.
-    pub fn repost(&self, subject: &StrongRef) -> Result<String> {
+    pub(crate) fn repost(&self, subject: &StrongRef) -> Result<String> {
         let record =
             json!({"$type": "app.bsky.feed.repost", "subject": subject, "createdAt": now()});
         Ok(self.create_record("app.bsky.feed.repost", record)?.uri)
     }
 
     /// Remove a repost by its record URI.
-    pub fn unrepost(&self, repost_uri: &str) -> Result<()> {
+    pub(crate) fn unrepost(&self, repost_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.feed.repost", repost_uri)
     }
 
     /// Follow an account; returns the follow record's URI.
-    pub fn follow(&self, did: &str) -> Result<String> {
+    pub(crate) fn follow(&self, did: &str) -> Result<String> {
         let record = json!({"$type": "app.bsky.graph.follow", "subject": did, "createdAt": now()});
         Ok(self.create_record("app.bsky.graph.follow", record)?.uri)
     }
 
     /// Remove a follow by its record URI.
-    pub fn unfollow(&self, follow_uri: &str) -> Result<()> {
+    pub(crate) fn unfollow(&self, follow_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.graph.follow", follow_uri)
     }
 
     /// Mute an account: its posts leave your timeline, feeds, and
     /// notifications. Only you know; it is not a record.
-    pub fn mute(&self, did: &str) -> Result<()> {
+    pub(crate) fn mute(&self, did: &str) -> Result<()> {
         let _: Value = self.post("app.bsky.graph.muteActor", &json!({"actor": did}))?;
         Ok(())
     }
 
-    pub fn unmute(&self, did: &str) -> Result<()> {
+    pub(crate) fn unmute(&self, did: &str) -> Result<()> {
         let _: Value = self.post("app.bsky.graph.unmuteActor", &json!({"actor": did}))?;
         Ok(())
     }
 
     /// Block an account; returns the block record's URI. A block is public,
     /// and neither of you sees the other's posts.
-    pub fn block(&self, did: &str) -> Result<String> {
+    pub(crate) fn block(&self, did: &str) -> Result<String> {
         let record = json!({"$type": "app.bsky.graph.block", "subject": did, "createdAt": now()});
         Ok(self.create_record("app.bsky.graph.block", record)?.uri)
     }
 
     /// Remove a block by its record URI.
-    pub fn unblock(&self, block_uri: &str) -> Result<()> {
+    pub(crate) fn unblock(&self, block_uri: &str) -> Result<()> {
         self.delete_record("app.bsky.graph.block", block_uri)
     }
 
     /// The account's own `app.bsky.actor.profile` record, or `None` when the
     /// account has never saved one.
-    pub fn own_profile_record(&self) -> Result<Option<Record>> {
+    pub(crate) fn own_profile_record(&self) -> Result<Option<Record>> {
         let did = self.did.clone();
         let result = self.get(
             "com.atproto.repo.getRecord",
@@ -1343,7 +1343,7 @@ impl Client {
     }
 
     /// Upload an image blob.
-    pub fn upload_blob(&self, bytes: &[u8], mime: &str) -> Result<Value> {
+    pub(crate) fn upload_blob(&self, bytes: &[u8], mime: &str) -> Result<Value> {
         let r: UploadedBlob = self.call(
             "com.atproto.repo.uploadBlob",
             &[],
@@ -1359,7 +1359,7 @@ impl Client {
     /// The write is guarded by `base`'s CID: if another client changed the
     /// profile after the editor read it, the PDS refuses the write instead of
     /// the edit silently discarding that change.
-    pub fn update_profile(&self, base: Option<&Record>, edit: &ProfileEdit) -> Result<()> {
+    pub(crate) fn update_profile(&self, base: Option<&Record>, edit: &ProfileEdit) -> Result<()> {
         let swap = base.and_then(|r| r.cid.clone());
         let mut value = match base.map(|r| &r.value) {
             Some(Value::Object(fields)) => fields.clone(),
@@ -1404,7 +1404,7 @@ impl Client {
 
 /// The fields the profile editor changes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProfileEdit {
+pub(crate) struct ProfileEdit {
     /// `None` leaves the field as the record has it.
     pub display_name: Option<String>,
     pub description: Option<String>,
@@ -1446,7 +1446,7 @@ fn quote_embed(quote: &StrongRef) -> Value {
 
 /// An uploaded image to attach to a post.
 #[derive(Debug, Clone)]
-pub struct PostImage {
+pub(crate) struct PostImage {
     /// The blob reference `uploadBlob` returned.
     pub blob: Value,
     pub alt: String,
@@ -1456,7 +1456,7 @@ pub struct PostImage {
 
 /// What a post carries besides its text.
 #[derive(Debug, Clone)]
-pub enum PostMedia {
+pub(crate) enum PostMedia {
     None,
     Images(Vec<PostImage>),
     Video(PostVideo),
@@ -1467,7 +1467,7 @@ pub enum PostMedia {
 /// A link card: the page's address, title and description, and its picture
 /// once uploaded.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PostExternal {
+pub(crate) struct PostExternal {
     pub uri: String,
     pub title: String,
     pub description: String,
@@ -1490,7 +1490,7 @@ fn external_embed(card: &PostExternal) -> Value {
 
 /// An uploaded video to attach to a post.
 #[derive(Debug, Clone)]
-pub struct PostVideo {
+pub(crate) struct PostVideo {
     pub blob: Value,
     pub alt: String,
     /// Width and height, when the file's header gave them.

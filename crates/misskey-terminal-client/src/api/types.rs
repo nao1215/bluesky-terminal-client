@@ -11,7 +11,7 @@ use serde_json::Value;
 /// these and more).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct User {
+pub(crate) struct User {
     pub id: String,
     pub username: String,
     /// The server the account lives on; `None` for one of the server asked.
@@ -52,7 +52,7 @@ pub struct User {
 /// `Notification`: what happened, who did it, and the note it is about.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Notification {
+pub(crate) struct Notification {
     pub id: String,
     pub created_at: String,
     /// `follow`, `mention`, `reply`, `renote`, `quote`, `reaction`, ...
@@ -74,7 +74,7 @@ pub struct Notification {
 /// `DriveFile`: a file attached to a note.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct DriveFile {
+pub(crate) struct DriveFile {
     pub id: String,
     /// The name it was uploaded with.
     pub name: String,
@@ -96,19 +96,19 @@ pub struct DriveFile {
 /// What the server measured of a file.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
-pub struct FileProperties {
+pub(crate) struct FileProperties {
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
 
 impl DriveFile {
     /// Whether it is a picture the client can draw.
-    pub fn is_picture(&self) -> bool {
+    pub(crate) fn is_picture(&self) -> bool {
         self.mime.starts_with("image/")
     }
 
     /// Its width and height, when the server measured both.
-    pub fn aspect(&self) -> Option<(u32, u32)> {
+    pub(crate) fn aspect(&self) -> Option<(u32, u32)> {
         match (self.properties.width, self.properties.height) {
             (Some(w), Some(h)) if w > 0 && h > 0 => Some((w, h)),
             _ => None,
@@ -120,7 +120,7 @@ impl DriveFile {
 /// the account on each side, as the server sent them.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Relation {
+pub(crate) struct Relation {
     /// The ID of the entry, which the next page is asked from.
     pub id: String,
     pub created_at: Option<String>,
@@ -135,7 +135,7 @@ pub struct Relation {
 /// A chat room, as a message to it names it.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ChatRoom {
+pub(crate) struct ChatRoom {
     pub id: String,
     pub name: String,
 }
@@ -144,7 +144,7 @@ pub struct ChatRoom {
 /// and what it says.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct ChatMessage {
+pub(crate) struct ChatMessage {
     pub id: String,
     pub created_at: String,
     pub from_user_id: String,
@@ -161,7 +161,7 @@ pub struct ChatMessage {
 /// An entry of `notes/reactions`: who reacted, with what, when.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Reaction {
+pub(crate) struct Reaction {
     pub id: String,
     pub created_at: String,
     pub user: User,
@@ -172,7 +172,7 @@ pub struct Reaction {
 /// `Note`.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Note {
+pub(crate) struct Note {
     pub id: String,
     pub created_at: String,
     /// The ID of the account that wrote it, as `user.id`.
@@ -214,7 +214,7 @@ impl Note {
     /// Whether this is a renote and nothing else: no text, no warning, no
     /// files, no poll, as Misskey decides it. Such a note shows the one it
     /// renotes; a renote with any of them is a quote.
-    pub fn is_pure_renote(&self) -> bool {
+    pub(crate) fn is_pure_renote(&self) -> bool {
         self.renote_id.is_some()
             && self.text.is_none()
             && self.cw.is_none()
@@ -224,7 +224,7 @@ impl Note {
 
     /// The note to show and to take files from: the renoted one for a pure
     /// renote (when the server sent it along), else this one.
-    pub fn shown(&self) -> &Note {
+    pub(crate) fn shown(&self) -> &Note {
         match &self.renote {
             Some(r) if self.is_pure_renote() => r,
             _ => self,
@@ -234,7 +234,7 @@ impl Note {
     /// The files it carries: its own, then those of the note it renotes or
     /// quotes, each with the note it is attached to and its place among
     /// that note's files, from 1.
-    pub fn attached(&self) -> Vec<(&Note, usize, &DriveFile)> {
+    pub(crate) fn attached(&self) -> Vec<(&Note, usize, &DriveFile)> {
         let mut all: Vec<(&Note, usize, &DriveFile)> = self
             .files
             .iter()
@@ -248,7 +248,7 @@ impl Note {
     }
 
     /// The ID of the account that wrote it.
-    pub fn author_id(&self) -> &str {
+    pub(crate) fn author_id(&self) -> &str {
         if self.user_id.is_empty() {
             &self.user.id
         } else {
@@ -258,7 +258,7 @@ impl Note {
 
     /// How many reactions it has, of every kind. The counts are the
     /// server's, so their sum stops at the largest rather than wrapping.
-    pub fn reaction_total(&self) -> u64 {
+    pub(crate) fn reaction_total(&self) -> u64 {
         self.reactions
             .values()
             .fold(0, |total, n| total.saturating_add(*n))

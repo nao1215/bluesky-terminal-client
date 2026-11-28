@@ -6,7 +6,7 @@
 use std::process::{Command, Stdio};
 
 /// Environment variable naming the program that opens links.
-pub const BROWSER_ENV: &str = "MSKY_BROWSER";
+pub(crate) const BROWSER_ENV: &str = "MSKY_BROWSER";
 
 /// The program and arguments that open `url`: `program` when one is named,
 /// else the system's opener.
@@ -30,13 +30,13 @@ fn opener(url: &str, program: Option<&str>) -> (String, Vec<String>) {
 /// Try to open `url` in the browser; whether the opener started. Only web
 /// links are opened. The address is printed either way, so an opener that
 /// is not there is no error.
-pub fn open(url: &str) -> bool {
+pub(crate) fn open(url: &str) -> bool {
     open_with(url, None)
 }
 
 /// [`open`] with `program` when `MSKY_BROWSER` names none: the browser
 /// the client's settings name.
-pub fn open_with(url: &str, program: Option<&str>) -> bool {
+pub(crate) fn open_with(url: &str, program: Option<&str>) -> bool {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return false;
     }

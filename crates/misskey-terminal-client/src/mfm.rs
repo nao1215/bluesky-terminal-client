@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 
 /// How a link is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Form {
+pub(crate) enum Form {
     /// `https://...` as it is.
     Bare,
     /// `<https://...>`.
@@ -38,7 +38,7 @@ pub enum Form {
 /// A link in the text: where it is (byte offsets of the whole of it,
 /// label and brackets included), its address, and how it is written.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Link {
+pub(crate) struct Link {
     pub start: usize,
     pub end: usize,
     pub url: String,
@@ -1340,7 +1340,7 @@ fn url_of(src: &str, s: usize, e: usize, brackets: bool) -> &str {
 }
 
 /// Every link in `text`, in order.
-pub fn links(text: &str) -> Vec<Link> {
+pub(crate) fn links(text: &str) -> Vec<Link> {
     let mut out = Vec::new();
     collect(&parse(text), text, &|p| p, &mut out);
     out
@@ -1350,7 +1350,7 @@ pub fn links(text: &str) -> Vec<Link> {
 /// every link that is not silent, each once, two that differ only after
 /// `#` counted as one, and not `skip` (the address of the note quoted,
 /// which the client leaves out).
-pub fn previewed(text: &str, skip: &[&str]) -> Vec<String> {
+pub(crate) fn previewed(text: &str, skip: &[&str]) -> Vec<String> {
     let mut urls: Vec<String> = Vec::new();
     for l in links(text) {
         if matches!(l.form, Form::Labeled { silent: true }) || skip.contains(&l.url.as_str()) {
@@ -1366,7 +1366,7 @@ pub fn previewed(text: &str, skip: &[&str]) -> Vec<String> {
 
 /// The address without what follows its last `#`, as the client compares
 /// them.
-pub fn without_hash(url: &str) -> &str {
+pub(crate) fn without_hash(url: &str) -> &str {
     url.rfind('#').map_or(url, |i| &url[..i])
 }
 
@@ -1389,7 +1389,7 @@ pub fn without_hash(url: &str) -> &str {
 /// `<plain>/</plain>`, which read as the same. Each way is read again
 /// before it is used; when none of them keeps the text, the note is written
 /// again from what it shows, every link in it silent.
-pub fn silenced(text: &str) -> String {
+pub(crate) fn silenced(text: &str) -> String {
     let tree = parse(text);
     let want = Expect::of(text, &tree);
     if want
@@ -1797,7 +1797,7 @@ impl Writer {
 /// A run of a note's text as the client draws it: its characters, and
 /// whether MFM makes them bold.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Run {
+pub(crate) struct Run {
     pub text: String,
     pub bold: bool,
 }
@@ -1815,14 +1815,14 @@ pub struct Run {
 /// mentions, hashtags, custom emoji (`:name:`) and anything that does not
 /// close are left as written. The text never grows: markup is only taken
 /// away.
-pub fn plain(text: &str) -> Vec<Run> {
+pub(crate) fn plain(text: &str) -> Vec<Run> {
     let mut runs = Vec::new();
     render(&parse(text), text, false, &mut runs);
     runs
 }
 
 /// [`plain`] without the bold: the text alone.
-pub fn plain_text(text: &str) -> String {
+pub(crate) fn plain_text(text: &str) -> String {
     plain(text).into_iter().map(|r| r.text).collect()
 }
 

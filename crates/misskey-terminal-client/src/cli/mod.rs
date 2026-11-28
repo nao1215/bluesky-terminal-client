@@ -7,7 +7,7 @@ pub(crate) mod format;
 pub(crate) mod more;
 mod post;
 
-pub use post::{PostArgs, Visibility};
+pub(crate) use post::{PostArgs, Visibility};
 
 use std::collections::HashSet;
 use std::io::{self, IsTerminal, Write};
@@ -26,7 +26,7 @@ use crate::{browser, download};
 
 /// The commands.
 #[derive(Debug, Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// An account's notes, newest first.
     ///
     /// ACTOR is name, @name, @name@host, or the account's address
@@ -284,7 +284,7 @@ pub enum Command {
 
 /// Which timeline `timeline` reads, by the names Misskey's tabs have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum TimelineKind {
+pub(crate) enum TimelineKind {
     /// The notes of the accounts you follow, and your own.
     Home,
     /// The notes of the server's accounts.
@@ -299,7 +299,7 @@ pub enum TimelineKind {
 impl TimelineKind {
     /// Every timeline, in the order of Misskey's tabs, which is the order
     /// the client steps through them.
-    pub const ALL: [TimelineKind; 4] = [
+    pub(crate) const ALL: [TimelineKind; 4] = [
         TimelineKind::Home,
         TimelineKind::Local,
         TimelineKind::Social,
@@ -307,7 +307,7 @@ impl TimelineKind {
     ];
 
     /// Its name, as the command line takes it.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             TimelineKind::Home => "home",
             TimelineKind::Local => "local",
@@ -317,7 +317,7 @@ impl TimelineKind {
     }
 
     /// Where it is in [`TimelineKind::ALL`].
-    pub fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         match self {
             TimelineKind::Home => 0,
             TimelineKind::Local => 1,
@@ -326,7 +326,7 @@ impl TimelineKind {
         }
     }
 
-    pub fn endpoint(self) -> &'static str {
+    pub(crate) fn endpoint(self) -> &'static str {
         match self {
             TimelineKind::Home => "notes/timeline",
             TimelineKind::Local => "notes/local-timeline",
@@ -336,7 +336,7 @@ impl TimelineKind {
     }
 
     /// Whether it is an account's: the server shows it to no visitor.
-    pub fn needs_login(self) -> bool {
+    pub(crate) fn needs_login(self) -> bool {
         matches!(self, TimelineKind::Home | TimelineKind::Social)
     }
 }
@@ -345,7 +345,7 @@ impl TimelineKind {
 /// takes. Misskey's `users/notes` filters by replies and by files; a video
 /// and an account's own threads are told here, from the notes it sends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum AuthorFilter {
+pub(crate) enum AuthorFilter {
     /// Notes and replies.
     #[value(alias = "posts_with_replies")]
     WithReplies,
@@ -403,7 +403,7 @@ impl AuthorFilter {
 }
 
 /// What a command runs with.
-pub struct Ctx {
+pub(crate) struct Ctx {
     /// The server `--host` names, else that of the account in use.
     pub origin: String,
     pub json: bool,
@@ -419,7 +419,7 @@ pub struct Ctx {
 impl Ctx {
     /// The account the client opens as: the one saved for the server
     /// `--host` names (or the token in `MSKY_TOKEN`), as the commands use.
-    pub fn account_in_use(&self) -> Result<Option<Session>> {
+    pub(crate) fn account_in_use(&self) -> Result<Option<Session>> {
         self.session(&self.origin)
     }
 
@@ -529,7 +529,7 @@ fn not_logged_in(host: &str) -> Error {
 }
 
 /// Run `cmd`, writing to stdout.
-pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
+pub(crate) fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
     let mut out = io::stdout().lock();
     ended_by_reader(run_to(cmd, ctx, &mut out))
 }
@@ -537,7 +537,7 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
 /// A command's result, where a reader that stopped reading (`| head`) is
 /// not an error: what it wanted it has, so the command ends there, as the
 /// tools it is piped into expect.
-pub fn ended_by_reader(result: Result<()>) -> Result<()> {
+fn ended_by_reader(result: Result<()>) -> Result<()> {
     match result {
         Err(e) if e.message() == PIPE_CLOSED => Ok(()),
         r => r,

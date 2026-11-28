@@ -67,7 +67,7 @@ const MIN_H: u16 = 8;
 const REACTIONS_SHOWN: usize = 3;
 
 /// Draw the whole UI.
-pub fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
+pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     let area = frame.area();
     let t = app.theme;
     images.begin_frame(Size::new(area.width, area.height), t.dim());

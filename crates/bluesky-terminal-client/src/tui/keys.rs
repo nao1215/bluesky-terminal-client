@@ -9,16 +9,16 @@ use crate::i18n::{n, t};
 use crate::tui::app::{App, Overlay, SearchMode, SettingEdit, Tab};
 
 /// A key and what it does.
-pub type Hint = (&'static str, &'static str);
+pub(crate) type Hint = (&'static str, &'static str);
 
 /// A titled group of bindings in the help.
-pub struct Section {
+pub(crate) struct Section {
     pub title: &'static str,
     pub keys: &'static [Hint],
 }
 
 /// Everything `?` shows, in the order it shows it.
-pub const HELP: &[Section] = &[
+pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Global"),
         keys: &[
@@ -194,7 +194,7 @@ pub const HELP: &[Section] = &[
 
 /// The help as it applies to this terminal. Without pictures there is no
 /// viewer, and `space` opens a post in the web browser instead.
-pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
+pub(crate) fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
     HELP.iter()
         .filter(|s| pictures || s.title != "Viewer")
         .map(|s| {
@@ -216,7 +216,7 @@ pub fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
 }
 
 /// The bindings worth showing under the current view, most useful first.
-pub fn hints(app: &App) -> Vec<Hint> {
+pub(crate) fn hints(app: &App) -> Vec<Hint> {
     let mut v = view_hints(app);
     if !app.pictures {
         for h in &mut v {
@@ -445,7 +445,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
 /// that act on it, each saying what it would do now. The list is the one
 /// place the keys of a post are all together, so the hint row does not have
 /// to carry them.
-pub fn actions(app: &App) -> Vec<Hint> {
+pub(crate) fn actions(app: &App) -> Vec<Hint> {
     if app.login.is_some()
         || app.overlay.is_some() && !matches!(app.overlay, Some(Overlay::Actions { .. }))
     {
@@ -550,7 +550,7 @@ pub fn actions(app: &App) -> Vec<Hint> {
 }
 
 /// The key an entry of the actions list stands for.
-pub fn action_key(name: &str) -> KeyEvent {
+pub(crate) fn action_key(name: &str) -> KeyEvent {
     let code = match name {
         "space" => KeyCode::Char(' '),
         "enter" => KeyCode::Enter,

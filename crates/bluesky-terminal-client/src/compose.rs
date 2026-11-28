@@ -10,7 +10,7 @@ use crate::{media, video};
 
 /// A picture or video on the user's disk to attach to a post.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Attachment {
+pub(crate) struct Attachment {
     pub path: PathBuf,
     /// Text describing it for people who cannot see it.
     pub alt: String,
@@ -18,11 +18,11 @@ pub struct Attachment {
 
 /// The most a video's alt text may hold (`app.bsky.embed.video`): more is
 /// refused with the post, after the video was uploaded.
-pub const MAX_VIDEO_ALT_GRAPHEMES: usize = 1000;
-pub const MAX_VIDEO_ALT_BYTES: usize = 10000;
+const MAX_VIDEO_ALT_GRAPHEMES: usize = 1000;
+const MAX_VIDEO_ALT_BYTES: usize = 10000;
 
 /// Why `alt` cannot describe a video, if it cannot.
-pub fn video_alt_problem(alt: &str) -> Option<String> {
+pub(crate) fn video_alt_problem(alt: &str) -> Option<String> {
     crate::api::length_problem(
         alt.trim(),
         (MAX_VIDEO_ALT_GRAPHEMES, MAX_VIDEO_ALT_BYTES),
@@ -35,7 +35,7 @@ pub fn video_alt_problem(alt: &str) -> Option<String> {
 
 /// How a post is sent, as the settings and the command line decide.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PostOptions {
+pub(crate) struct PostOptions {
     /// The service videos are uploaded to.
     pub video_service: String,
     /// The language the user reads bsky in, which settles the post's
@@ -51,7 +51,7 @@ pub struct PostOptions {
 /// anything is uploaded, so a file that cannot be read stops the post before
 /// anything reaches the server. Nothing is sent twice: a failure is
 /// returned, not tried again.
-pub fn send_post(
+pub(crate) fn send_post(
     client: &Client,
     text: &str,
     reply: Option<&ReplyRef>,

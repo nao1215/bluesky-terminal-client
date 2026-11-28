@@ -5,10 +5,10 @@
 /// title, or clear the screen), so it is dropped. A line break stays, a
 /// carriage return becomes one, and a tab becomes four spaces. The rule is
 /// terminal-kit's, the one the full-screen client lays text out by.
-pub use terminal_kit::text::drawable;
+pub(crate) use terminal_kit::text::drawable;
 
 /// As [`drawable`], on one line: for what is printed as one line.
-pub fn one_line(s: &str) -> String {
+pub(crate) fn one_line(s: &str) -> String {
     drawable(s).replace('\n', " ")
 }
 

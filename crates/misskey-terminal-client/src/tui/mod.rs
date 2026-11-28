@@ -6,21 +6,21 @@
 //! account in use (`accounts.json`), as the commands do. `A` switches to
 //! another account logged in, and so to its server.
 
-pub mod app;
-pub mod columns;
-pub mod files;
-pub mod images;
-pub mod keys;
-pub mod mp4;
-pub mod player;
-pub mod theme;
-pub mod view;
-pub mod worker;
+pub(crate) mod app;
+pub(crate) mod columns;
+pub(crate) mod files;
+pub(crate) mod images;
+pub(crate) mod keys;
+pub(crate) mod mp4;
+pub(crate) mod player;
+pub(crate) mod theme;
+pub(crate) mod view;
+pub(crate) mod worker;
 
 // The drawing helpers that know nothing of Misskey, shared with bsky in the
 // workspace's terminal-kit crate; at these paths so the rest of msky reads
 // them as before.
-pub use terminal_kit::{clipboard, events, input, scale, text};
+pub(crate) use terminal_kit::{clipboard, events, input, scale, text};
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -41,7 +41,7 @@ use worker::Worker;
 
 /// `thread::spawn` with a name; unlike it, a system out of threads is an
 /// error rather than a panic on the UI thread, as in bsky.
-pub fn spawn<T: Send + 'static>(
+pub(crate) fn spawn<T: Send + 'static>(
     name: &str,
     f: impl FnOnce() -> T + Send + 'static,
 ) -> io::Result<std::thread::JoinHandle<T>> {
@@ -60,7 +60,7 @@ const EVENTS_PER_FRAME: usize = 64;
 
 /// Environment variable naming the folder downloaded pictures are kept
 /// in between runs; `off` keeps none.
-pub const CACHE_DIR_ENV: &str = "MSKY_CACHE_DIR";
+const CACHE_DIR_ENV: &str = "MSKY_CACHE_DIR";
 
 /// The folder pictures are kept in: `MSKY_CACHE_DIR`, else `msky` in the
 /// platform cache folder; none when it is `off` or there is none.
@@ -80,7 +80,11 @@ fn client_for(origin: &str, session: Option<&Session>) -> Client {
 /// Run the client until the user quits, on the server at `origin`, as
 /// `session` when there is one. `accounts` holds the accounts logged in,
 /// when there is a config directory to keep them.
-pub fn run(accounts: Option<AccountStore>, session: Option<Session>, origin: &str) -> Result<()> {
+pub(crate) fn run(
+    accounts: Option<AccountStore>,
+    session: Option<Session>,
+    origin: &str,
+) -> Result<()> {
     terminal::ensure_interactive()?;
     // The first lists are asked for before the terminal is: its answer
     // takes a round trip, and the server's answers need nothing from it.
@@ -203,7 +207,7 @@ fn init_terminal() -> io::Result<Term> {
 /// Holds what a frame writes until the frame is flushed, then hands it to
 /// the terminal in one write, marked as one synchronized update (mode
 /// 2026), as bsky's: the terminal never shows a frame half drawn.
-pub struct FrameWriter<W: io::Write = io::Stdout> {
+struct FrameWriter<W: io::Write = io::Stdout> {
     out: W,
     frame: Vec<u8>,
 }
@@ -212,7 +216,7 @@ const BEGIN_UPDATE: &[u8] = b"\x1b[?2026h";
 const END_UPDATE: &[u8] = b"\x1b[?2026l";
 
 impl<W: io::Write> FrameWriter<W> {
-    pub fn new(out: W) -> Self {
+    pub(crate) fn new(out: W) -> Self {
         let mut frame = Vec::with_capacity(64 * 1024);
         frame.extend_from_slice(BEGIN_UPDATE);
         Self { out, frame }

@@ -23,7 +23,7 @@ use crate::{download, miauth};
 use serde_json::json;
 
 /// Notes, or notifications, asked for a page at a time.
-pub const PAGE: usize = 30;
+const PAGE: usize = 30;
 
 /// Replies asked for under a note, and under each of the first
 /// [`NESTED`] of them.
@@ -34,7 +34,7 @@ const NESTED_AT_ONCE: usize = 5;
 
 /// Work for the worker threads.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Job {
+pub(crate) enum Job {
     /// A page of a timeline: the first, or the one older than `until`.
     Timeline {
         kind: TimelineKind,
@@ -145,7 +145,7 @@ pub enum Job {
 
 /// What the profile editor changes: a field left as it came is `None`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProfileChange {
+pub(crate) struct ProfileChange {
     pub name: Option<String>,
     pub description: Option<String>,
     /// A picture to upload for the avatar, and for the banner.
@@ -154,7 +154,7 @@ pub struct ProfileChange {
 }
 
 impl ProfileChange {
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         *self == ProfileChange::default()
     }
 }
@@ -162,7 +162,7 @@ impl ProfileChange {
 impl Job {
     /// Whether it changes what a thread read ahead shows: a note, a
     /// reaction, a renote, a deletion.
-    pub fn writes(&self) -> bool {
+    pub(crate) fn writes(&self) -> bool {
         matches!(
             self,
             Job::Post { .. } | Job::React { .. } | Job::Renote { .. } | Job::Delete { .. }
@@ -172,7 +172,7 @@ impl Job {
 
 /// Whom a chat conversation is with.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ChatWith {
+pub(crate) enum ChatWith {
     /// An account, by ID.
     User(String),
     /// A room, by ID.
@@ -190,7 +190,7 @@ impl ChatWith {
 
 /// Whose profile is asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Who {
+pub(crate) enum Who {
     /// The account in use.
     Me,
     /// An account by its ID.
@@ -199,7 +199,7 @@ pub enum Who {
 
 /// A note's thread.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Thread {
+pub(crate) struct Thread {
     /// What it answers, the first note of the conversation first.
     pub ancestors: Vec<Note>,
     pub note: Note,
@@ -209,7 +209,7 @@ pub struct Thread {
 
 /// A finished job.
 #[derive(Debug)]
-pub enum Event {
+pub(crate) enum Event {
     ReadAhead {
         id: String,
         result: Result<Box<Thread>>,
@@ -395,7 +395,7 @@ impl Job {
 }
 
 /// Do `job` as `client`.
-pub fn run(job: Job, client: &Client) -> Event {
+pub(crate) fn run(job: Job, client: &Client) -> Event {
     match job {
         Job::Timeline { kind, until } => Event::Timeline {
             kind,
@@ -664,7 +664,7 @@ fn guard(client: &Client, id: &str, block: bool, on: bool) -> Result<User> {
 
 /// A page of a column: notes, or notifications.
 #[derive(Debug)]
-pub enum ColumnPage {
+pub(crate) enum ColumnPage {
     Notes(Vec<Note>),
     Notifications(Vec<Notification>),
 }
@@ -888,7 +888,7 @@ const WORKERS: usize = 4;
 type Queued = (u64, Job, Client);
 
 /// Handle to the running workers.
-pub struct Worker {
+pub(crate) struct Worker {
     /// The account the jobs sent from now on act as.
     client: Mutex<Client>,
     jobs: Sender<Queued>,
@@ -898,7 +898,7 @@ pub struct Worker {
 impl Worker {
     /// Start the threads, acting as `client`. Fails when the system cannot
     /// start a thread.
-    pub fn spawn(client: Client) -> std::io::Result<Self> {
+    pub(crate) fn spawn(client: Client) -> std::io::Result<Self> {
         let (jobs, queue) = channel::<Queued>();
         let queue = Arc::new(Mutex::new(queue));
         let (tx, answers) = channel();
@@ -926,7 +926,7 @@ impl Worker {
     }
 
     /// Send `job`, numbered `seq`, to be done as the account in use now.
-    pub fn send(&self, seq: u64, job: Job) {
+    pub(crate) fn send(&self, seq: u64, job: Job) {
         let client = self
             .client
             .lock()
@@ -940,12 +940,12 @@ impl Worker {
     }
 
     /// Act as `client` from the next job on.
-    pub fn use_client(&self, client: Client) {
+    pub(crate) fn use_client(&self, client: Client) {
         *self.client.lock().unwrap_or_else(PoisonError::into_inner) = client;
     }
 
     /// An answer, if one has come.
-    pub fn try_recv(&self) -> Option<(u64, Event)> {
+    pub(crate) fn try_recv(&self) -> Option<(u64, Event)> {
         self.answers.try_recv().ok()
     }
 }

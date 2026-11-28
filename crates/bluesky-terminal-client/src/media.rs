@@ -18,9 +18,9 @@ use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, RgbImage};
 use crate::error::{Error, Result};
 
 /// Most bytes an image of a post may have.
-pub const MAX_POST_IMAGE_BYTES: usize = 1_000_000;
+const MAX_POST_IMAGE_BYTES: usize = 1_000_000;
 /// Most images a post may have.
-pub const MAX_POST_IMAGES: usize = 4;
+pub(crate) const MAX_POST_IMAGES: usize = 4;
 /// Longest side, in pixels, of an uploaded image; larger ones are scaled
 /// down, which Bluesky's own clients also do.
 const MAX_SIDE: u32 = 2000;
@@ -30,7 +30,7 @@ const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 
 /// Whether a file name looks like a picture bsky can read.
-pub fn is_image_name(name: &str) -> bool {
+pub(crate) fn is_image_name(name: &str) -> bool {
     Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
@@ -39,7 +39,7 @@ pub fn is_image_name(name: &str) -> bool {
 
 /// How a file goes on a post.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
+pub(crate) enum Kind {
     Picture,
     /// A video, or an animated GIF, which Bluesky shows as one.
     Video,
@@ -47,7 +47,7 @@ pub enum Kind {
 
 /// What the browser and the composer show about a file.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Info {
+pub(crate) struct Info {
     pub kind: Kind,
     /// Pixel size, when the header tells it.
     pub dims: Option<(u32, u32)>,
@@ -58,7 +58,7 @@ pub struct Info {
 }
 
 /// Look at a file's header (never its frames) to tell what it is.
-pub fn inspect(path: &Path) -> Info {
+pub(crate) fn inspect(path: &Path) -> Info {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -93,7 +93,7 @@ pub fn inspect(path: &Path) -> Info {
 
 /// A picture ready to upload.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Prepared {
+pub(crate) struct Prepared {
     pub bytes: Vec<u8>,
     pub mime: &'static str,
     pub width: u32,
@@ -101,7 +101,7 @@ pub struct Prepared {
 }
 
 /// Read a picture upright. The error names the file and what is wrong.
-pub fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
+pub(crate) fn load(path: &Path) -> Result<(DynamicImage, ImageFormat)> {
     let shown = path.display();
     let file = File::open(path).map_err(|e| {
         Error::io(crate::i18n::tf(
@@ -164,7 +164,7 @@ const MAX_FETCHED_ALLOC: u64 = 256 * 1024 * 1024;
 /// A picture fetched from the web (a link card's), upright and encoded in
 /// at most [`MAX_POST_IMAGE_BYTES`] with its longest side at most
 /// `max_side`; `None` when it is not a picture bsky reads or cannot fit.
-pub fn prepare_bytes(bytes: &[u8], max_side: u32) -> Option<Prepared> {
+pub(crate) fn prepare_bytes(bytes: &[u8], max_side: u32) -> Option<Prepared> {
     prepare_bytes_within(bytes, max_side, MAX_FETCHED_ALLOC)
 }
 
@@ -183,7 +183,7 @@ fn prepare_bytes_within(bytes: &[u8], max_side: u32, max_alloc: u64) -> Option<P
 }
 
 /// Read `path` and encode it for a post.
-pub fn prepare(path: &Path) -> Result<Prepared> {
+pub(crate) fn prepare(path: &Path) -> Result<Prepared> {
     let (img, format) = load(path)?;
     encode_within(img, format, MAX_SIDE, MAX_POST_IMAGE_BYTES).ok_or_else(|| {
         Error::io(crate::i18n::tf(
@@ -198,7 +198,7 @@ pub fn prepare(path: &Path) -> Result<Prepared> {
 
 /// Read `path` and encode it as an avatar: upright, at most 1000 pixels on
 /// a side, a PNG or JPEG under `limit` bytes, without its metadata.
-pub fn prepare_avatar(path: &Path, limit: usize) -> Result<Prepared> {
+pub(crate) fn prepare_avatar(path: &Path, limit: usize) -> Result<Prepared> {
     let (img, format) = load(path)?;
     encode_within(img, format, 1000, limit).ok_or_else(|| {
         Error::io(crate::i18n::tf(

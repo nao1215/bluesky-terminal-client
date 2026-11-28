@@ -1,6 +1,6 @@
 //! Translations into Korean, by the English they translate.
 
-pub const TABLE: &[(&str, &str)] = &[
+pub(super) const TABLE: &[(&str, &str)] = &[
     ("(R to retry)", "(R로 다시 시도)"),
     ("(blocked post)", "(차단된 게시물)"),
     ("(deleted)", "(삭제됨)"),

@@ -11,14 +11,14 @@ use ratatui_image::picker::{Picker, ProtocolType};
 
 use crate::error::{Error, Kind, Result};
 
-pub use terminal_kit::terminal::protocol_name;
+pub(crate) use terminal_kit::terminal::protocol_name;
 
 /// Environment variable that forces a graphics protocol, for terminals that
 /// support one but do not answer the detection query (some multiplexers).
-pub const GRAPHICS_ENV: &str = "BSKY_GRAPHICS";
+pub(crate) const GRAPHICS_ENV: &str = "BSKY_GRAPHICS";
 
 /// Fail unless stdin and stdout are both terminals.
-pub fn ensure_interactive() -> Result<()> {
+pub(crate) fn ensure_interactive() -> Result<()> {
     if terminal_kit::terminal::is_interactive() {
         Ok(())
     } else {
@@ -30,7 +30,7 @@ pub fn ensure_interactive() -> Result<()> {
 }
 
 /// Parse a `BSKY_GRAPHICS` value.
-pub fn parse_protocol(value: &str) -> Result<ProtocolType> {
+fn parse_protocol(value: &str) -> Result<ProtocolType> {
     terminal_kit::terminal::parse_protocol(value).ok_or_else(|| {
         let other = value.trim().to_ascii_lowercase();
         Error::new(
@@ -48,7 +48,7 @@ pub fn parse_protocol(value: &str) -> Result<ProtocolType> {
 ///
 /// Must run after the alternate screen is entered and before any event is
 /// read, because the terminal's answer arrives on stdin.
-pub fn detect_graphics() -> Result<Option<Picker>> {
+pub(crate) fn detect_graphics() -> Result<Option<Picker>> {
     let forced = match std::env::var(GRAPHICS_ENV) {
         Ok(v) if !v.trim().is_empty() => Some(parse_protocol(&v)?),
         _ => None,

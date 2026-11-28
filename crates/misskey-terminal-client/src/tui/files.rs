@@ -24,18 +24,18 @@ fn has_extension(name: &str, list: &[&str]) -> bool {
 }
 
 /// Whether `name` is a picture's.
-pub fn is_picture_name(name: &str) -> bool {
+pub(crate) fn is_picture_name(name: &str) -> bool {
     has_extension(name, PICTURES)
 }
 
 /// Whether `name` is a video's.
-pub fn is_video_name(name: &str) -> bool {
+pub(crate) fn is_video_name(name: &str) -> bool {
     has_extension(name, VIDEOS)
 }
 
 /// What an entry of the listing is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EntryKind {
+pub(crate) enum EntryKind {
     /// `..`, the folder above.
     Parent,
     Dir,
@@ -45,7 +45,7 @@ pub enum EntryKind {
 
 /// One line of the listing.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub name: String,
     pub path: PathBuf,
     pub kind: EntryKind,
@@ -60,7 +60,7 @@ impl crate::tui::app::Keyed for Entry {
 }
 
 /// `path` with a leading `~` as the home folder, as a shell reads it.
-pub fn expand_home(path: &str) -> PathBuf {
+pub(crate) fn expand_home(path: &str) -> PathBuf {
     match path.strip_prefix('~') {
         Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => {
             match dirs::home_dir() {
@@ -74,7 +74,7 @@ pub fn expand_home(path: &str) -> PathBuf {
 
 /// What the browser asks of whoever opened it.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Action {
+pub(crate) enum Action {
     None,
     /// Close without choosing.
     Close,
@@ -84,7 +84,7 @@ pub enum Action {
 
 /// The browser's state.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Browser {
+pub(crate) struct Browser {
     pub dir: PathBuf,
     pub list: List<Entry>,
     /// Whether names starting with a dot are listed.
@@ -120,7 +120,7 @@ fn without_dot_dot(dir: PathBuf) -> PathBuf {
 impl Browser {
     /// Open at `dir`, where at most `room` files, a video among them when
     /// `videos`, may be chosen.
-    pub fn open(dir: &Path, room: usize, videos: bool) -> Self {
+    pub(crate) fn open(dir: &Path, room: usize, videos: bool) -> Self {
         let mut b = Self {
             dir: without_dot_dot(std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf())),
             list: List::default(),
@@ -136,7 +136,7 @@ impl Browser {
     }
 
     /// The selected entry.
-    pub fn current(&self) -> Option<&Entry> {
+    pub(crate) fn current(&self) -> Option<&Entry> {
         self.list.current()
     }
 
@@ -245,7 +245,7 @@ impl Browser {
     }
 
     /// Handle a key.
-    pub fn key(&mut self, key: KeyEvent) -> Action {
+    pub(crate) fn key(&mut self, key: KeyEvent) -> Action {
         self.note = None;
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => return Action::Close,

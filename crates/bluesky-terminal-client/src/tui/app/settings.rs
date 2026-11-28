@@ -6,7 +6,7 @@ use crate::i18n::Lang;
 impl App {
     /// Take the saved settings and the terminal's color depth into account.
     /// A warning (a settings file that could not be used) is shown.
-    pub fn apply_settings(
+    pub(crate) fn apply_settings(
         &mut self,
         settings: Settings,
         depth: ColorDepth,
@@ -41,12 +41,12 @@ impl App {
     }
 
     /// Settings the user asked to save, for the event loop to write.
-    pub fn take_settings_save(&mut self) -> Option<Settings> {
+    pub(crate) fn take_settings_save(&mut self) -> Option<Settings> {
         self.settings_to_save.take()
     }
 
     /// The outcome of writing the settings.
-    pub fn settings_saved(&mut self, result: crate::error::Result<()>) {
+    pub(crate) fn settings_saved(&mut self, result: crate::error::Result<()>) {
         let note = self.save_note.take();
         match result {
             Ok(()) => self.info(note.unwrap_or_default()),
@@ -55,7 +55,7 @@ impl App {
     }
 
     /// The language the client is shown in now.
-    pub fn language(&self) -> Lang {
+    pub(crate) fn language(&self) -> Lang {
         crate::config::language(&self.settings, &self.env)
     }
 
@@ -106,7 +106,7 @@ impl App {
     }
 
     /// Run as text, for a terminal that cannot show pictures or video.
-    pub fn without_pictures(&mut self) {
+    pub(crate) fn without_pictures(&mut self) {
         self.pictures = false;
         if self.status.is_none() {
             self.info(n!(
@@ -117,14 +117,14 @@ impl App {
 
     /// Pictures could not be started (the system had no thread left for
     /// their loaders): bsky runs without them, and says why.
-    pub fn pictures_failed(&mut self, why: &str) {
+    pub(crate) fn pictures_failed(&mut self, why: &str) {
         self.pictures = false;
         self.error(crate::i18n::tf("cannot show pictures: {}", &[why]));
     }
 
     /// The answer to pictures turned back on: whether the terminal draws
     /// them after all.
-    pub fn pictures_back(&mut self, shown: bool) {
+    pub(crate) fn pictures_back(&mut self, shown: bool) {
         self.pictures = shown;
         if !shown {
             self.info(n!(
@@ -134,17 +134,17 @@ impl App {
     }
 
     /// Pictures turned on or off on the settings screen, for the event loop.
-    pub fn take_pictures_change(&mut self) -> Option<bool> {
+    pub(crate) fn take_pictures_change(&mut self) -> Option<bool> {
         self.pictures_change.take()
     }
 
     /// Where `d` saves, as the environment and the settings decide.
-    pub fn download_dir(&self) -> Option<PathBuf> {
+    pub(crate) fn download_dir(&self) -> Option<PathBuf> {
         crate::config::download_dir(&self.env, &self.settings).0
     }
 
     /// Where pictures are cached, or `None` for no cache.
-    pub fn cache_dir(&self) -> Option<PathBuf> {
+    pub(crate) fn cache_dir(&self) -> Option<PathBuf> {
         crate::config::cache_dir(&self.env, &self.settings).0
     }
 
@@ -172,7 +172,7 @@ impl App {
     }
 
     /// What the settings screen lists, in order.
-    pub fn settings_rows(&self) -> Vec<SettingRow> {
+    pub(crate) fn settings_rows(&self) -> Vec<SettingRow> {
         use crate::config::{self, Source};
         let fixed = |var: &str| tf("set by {} for this run", &[var]);
         let path = |p: Option<PathBuf>, none: &str| {

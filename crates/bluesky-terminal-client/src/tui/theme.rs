@@ -13,7 +13,7 @@
 
 use terminal_kit::theme::{EDITOR_THEMES, MONOCHROME, TERMINAL, palette};
 
-pub use terminal_kit::theme::{ColorDepth, Theme, color_depth};
+pub(crate) use terminal_kit::theme::{ColorDepth, Theme, color_depth};
 
 /// Bluesky's own looks: `bluesky` is its "dim" look.
 const BLUESKY: [Theme; 3] = [
@@ -41,7 +41,7 @@ const BLUESKY: [Theme; 3] = [
 /// looks first (`bluesky`, its "dim" look, is the default), then the
 /// terminal's palette, then well-known editor and terminal themes by name,
 /// and `monochrome` last.
-pub static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
+pub(crate) static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
     let mut all = [MONOCHROME; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1];
     let mut i = 0;
     while i < BLUESKY.len() {
@@ -65,7 +65,7 @@ const OLD_NAMES: [(&str, &str); 3] = [
 ];
 
 /// Index of the theme named `name`, ignoring case.
-pub fn index_of(name: &str) -> Option<usize> {
+pub(crate) fn index_of(name: &str) -> Option<usize> {
     let name = name.trim();
     let name = OLD_NAMES
         .iter()

@@ -15,7 +15,7 @@
 use ratatui::style::{Modifier, Style};
 use terminal_kit::theme::{EDITOR_THEMES, MONOCHROME, TERMINAL, palette};
 
-pub use terminal_kit::theme::{ColorDepth, Theme, color_depth};
+pub(crate) use terminal_kit::theme::{ColorDepth, Theme, color_depth};
 
 /// Bluesky's own looks, as bsky offers them: `bluesky` is its "dim" look.
 const BLUESKY: [Theme; 3] = [
@@ -42,7 +42,7 @@ const BLUESKY: [Theme; 3] = [
 /// The built-in themes, bsky's, in the order the picker lists them:
 /// Bluesky's own looks first, then the terminal's palette (msky's default),
 /// then well-known editor and terminal themes by name, and `monochrome` last.
-pub static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
+pub(crate) static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
     let mut all = [MONOCHROME; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1];
     let mut i = 0;
     while i < BLUESKY.len() {
@@ -66,10 +66,10 @@ const OLD_NAMES: [(&str, &str); 3] = [
 ];
 
 /// The theme msky starts in without a `theme` setting.
-pub const DEFAULT: &str = "terminal";
+pub(crate) const DEFAULT: &str = "terminal";
 
 /// The theme `name` (else the default) as a terminal of `depth` shows it.
-pub fn chosen(name: Option<&str>, depth: ColorDepth) -> (usize, Theme) {
+pub(crate) fn chosen(name: Option<&str>, depth: ColorDepth) -> (usize, Theme) {
     let i = name
         .and_then(index_of)
         .or_else(|| index_of(DEFAULT))
@@ -78,7 +78,7 @@ pub fn chosen(name: Option<&str>, depth: ColorDepth) -> (usize, Theme) {
 }
 
 /// Index of the theme named `name`, ignoring case.
-pub fn index_of(name: &str) -> Option<usize> {
+pub(crate) fn index_of(name: &str) -> Option<usize> {
     let name = name.trim();
     let name = OLD_NAMES
         .iter()
@@ -90,12 +90,12 @@ pub fn index_of(name: &str) -> Option<usize> {
 }
 
 /// Index of `monochrome`, which `NO_COLOR` forces: the last of [`THEMES`].
-pub fn monochrome() -> usize {
+pub(crate) fn monochrome() -> usize {
     THEMES.len() - 1
 }
 
 /// The styles msky draws that bsky does not.
-pub trait MisskeyStyles {
+pub(crate) trait MisskeyStyles {
     /// A content warning: the like color, bold, so it stands out in every
     /// theme and without color.
     fn warn(&self) -> Style;

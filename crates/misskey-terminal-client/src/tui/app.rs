@@ -29,17 +29,17 @@ mod write;
 #[cfg(test)]
 mod tests;
 
-pub use browse::{Profile, Search, SearchMode};
-pub use chat::{ChatPane, partner, partner_user};
-pub use edit_profile::EditProfile;
-pub use report::Report;
-pub use settings::{Environment, SettingRow};
-pub use write::Compose;
+pub(crate) use browse::{Profile, Search, SearchMode};
+pub(crate) use chat::{ChatPane, partner, partner_user};
+pub(crate) use edit_profile::EditProfile;
+pub(crate) use report::Report;
+pub(crate) use settings::{Environment, SettingRow};
+pub(crate) use write::Compose;
 
 /// The tabs. Each timeline is a tab of its own, and the tabs are always
 /// the same ones in the same order, as bsky's are 1 to 5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
+pub(crate) enum Tab {
     Timeline(TimelineKind),
     Notifications,
     Search,
@@ -51,7 +51,7 @@ pub enum Tab {
 
 /// The tabs, in the order of their numbers. Social, home and local mixed,
 /// is not one of them; `msky timeline social` reads it.
-pub const TABS: [Tab; 7] = [
+pub(crate) const TABS: [Tab; 7] = [
     Tab::Timeline(TimelineKind::Home),
     Tab::Timeline(TimelineKind::Local),
     Tab::Timeline(TimelineKind::Global),
@@ -62,7 +62,7 @@ pub const TABS: [Tab; 7] = [
 ];
 
 impl Tab {
-    pub fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Tab::Timeline(TimelineKind::Home) => n!("Home"),
             Tab::Timeline(TimelineKind::Local) => n!("Local"),
@@ -79,7 +79,7 @@ impl Tab {
 
 /// Items that are the same item when their keys are equal: a further page
 /// can repeat what the last one ended with.
-pub trait Keyed {
+pub(crate) trait Keyed {
     fn key(&self) -> &str;
 }
 
@@ -108,7 +108,7 @@ const MORE_AHEAD: usize = 15;
 
 /// A scrollable list with a selection.
 #[derive(Debug, Clone, PartialEq)]
-pub struct List<T> {
+pub(crate) struct List<T> {
     pub items: Vec<T>,
     pub selected: usize,
     /// First item drawn; kept by the view so the selection stays visible.
@@ -236,7 +236,7 @@ impl<T> List<T> {
         self.retry = false;
     }
 
-    pub fn current(&self) -> Option<&T> {
+    pub(crate) fn current(&self) -> Option<&T> {
         self.items.get(self.selected)
     }
 
@@ -281,14 +281,14 @@ impl<T> List<T> {
 
 /// A note of a thread, and how deep in its replies it is.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ThreadRow {
+pub(crate) struct ThreadRow {
     pub note: Note,
     pub depth: u16,
 }
 
 /// A thread opened with `v`, shown over the current tab.
 #[derive(Debug, Clone, Default)]
-pub struct ThreadView {
+pub(crate) struct ThreadView {
     /// The note it was opened on.
     pub id: String,
     pub list: List<ThreadRow>,
@@ -319,7 +319,7 @@ impl ThreadView {
 /// An account logged in, as the account list shows it. The token stays
 /// in its file, which is read again when it is switched to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Account {
+pub(crate) struct Account {
     /// The server's host, as the account's file is named.
     pub host: String,
     pub username: String,
@@ -338,7 +338,7 @@ impl From<&Session> for Account {
 /// account list: a server chosen from a list, or typed, as bsky's form
 /// takes its service; then MiAuth in the web browser.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LoginForm {
+pub(crate) struct LoginForm {
     /// The servers offered: the built-in ones until Misskey Hub's list is in.
     pub servers: Vec<Server>,
     pub selected: usize,
@@ -354,7 +354,7 @@ pub struct LoginForm {
 
 /// A login waiting to be allowed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Waiting {
+pub(crate) struct Waiting {
     pub origin: String,
     /// The MiAuth session the answer comes for.
     pub session: String,
@@ -376,11 +376,11 @@ impl LoginForm {
 }
 
 /// A file of a note, with the note it is attached to and its place there.
-pub type Attached = (String, usize, DriveFile);
+pub(crate) type Attached = (String, usize, DriveFile);
 
 /// A window drawn over the current tab.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Overlay {
+pub(crate) enum Overlay {
     /// The key reference, scrolled `scroll` lines down (the view clamps it).
     Help { scroll: u16 },
     /// A note's files, full screen, `index` the one shown; `replay` counts
@@ -426,23 +426,23 @@ pub enum Overlay {
 /// A one-line message in the status row; it clears after [`STATUS_TTL`]
 /// ([`ERROR_TTL`] for an error), as bsky's.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Status {
+pub(crate) struct Status {
     pub text: String,
     pub error: bool,
     pub at: Instant,
 }
 
-pub const STATUS_TTL: Duration = Duration::from_secs(5);
+const STATUS_TTL: Duration = Duration::from_secs(5);
 /// How often the unread count is asked for.
-pub const UNREAD_POLL: Duration = Duration::from_secs(60);
-pub const ERROR_TTL: Duration = Duration::from_secs(10);
+const UNREAD_POLL: Duration = Duration::from_secs(60);
+const ERROR_TTL: Duration = Duration::from_secs(10);
 
 /// Jobs, each with the number it is sent and answered under.
-pub type Jobs = Vec<(u64, Job)>;
+pub(crate) type Jobs = Vec<(u64, Job)>;
 
 /// All UI state.
 #[derive(Debug, Clone)]
-pub struct App {
+pub(crate) struct App {
     /// The account in use; `None` reads the server as a visitor.
     pub session: Option<Session>,
     /// The server, `https://misskey.io`.
@@ -557,7 +557,7 @@ impl App {
     /// else as a visitor. It opens on the home timeline, as Misskey's own
     /// client does; without an account home says how to log in, and the
     /// local and global timelines are a key away.
-    pub fn new(session: Option<Session>, origin: &str) -> (Self, Jobs) {
+    pub(crate) fn new(session: Option<Session>, origin: &str) -> (Self, Jobs) {
         let mut app = Self {
             session,
             origin: origin.to_string(),
@@ -615,7 +615,7 @@ impl App {
     }
 
     /// The server's host.
-    pub fn host(&self) -> &str {
+    pub(crate) fn host(&self) -> &str {
         crate::api::authority(&self.origin)
     }
 
@@ -698,7 +698,7 @@ impl App {
 
     /// Clear a status message that has been up long enough; whether the
     /// screen changed.
-    pub fn expire_status(&mut self, now: Instant) -> bool {
+    pub(crate) fn expire_status(&mut self, now: Instant) -> bool {
         match &self.status {
             Some(s)
                 if now.saturating_duration_since(s.at)
@@ -725,39 +725,39 @@ impl App {
     }
 
     /// Whether files are shown full screen.
-    pub fn viewer_open(&self) -> bool {
+    pub(crate) fn viewer_open(&self) -> bool {
         matches!(self.overlay, Some(Overlay::Viewer { .. }))
     }
 
     /// The text `c` put up for the clipboard, once.
-    pub fn take_copy(&mut self) -> Option<String> {
+    pub(crate) fn take_copy(&mut self) -> Option<String> {
         self.to_copy.take()
     }
 
     /// The account the list asked to switch to, by host, once.
-    pub fn take_account_switch(&mut self) -> Option<String> {
+    pub(crate) fn take_account_switch(&mut self) -> Option<String> {
         self.account_switch.take()
     }
 
     /// The account the list asked to log out, by host, once.
-    pub fn take_account_logout(&mut self) -> Option<String> {
+    pub(crate) fn take_account_logout(&mut self) -> Option<String> {
         self.account_logout.take()
     }
 
     /// The login just made, once.
-    pub fn take_logged_in(&mut self) -> Option<Session> {
+    pub(crate) fn take_logged_in(&mut self) -> Option<Session> {
         self.logged_in.take()
     }
 
     /// Open the login form, and ask for the servers to offer in it.
-    pub fn open_login(&mut self) -> Jobs {
+    pub(crate) fn open_login(&mut self) -> Jobs {
         self.overlay = Some(Overlay::Login(Box::new(LoginForm::new())));
         vec![self.stamp(Job::Servers)]
     }
 
     /// Now acting as `session`, on its server: every list is loaded again.
     /// Answers to what was asked before are of the other account.
-    pub fn switched_to(&mut self, session: Option<Session>, origin: &str) -> Jobs {
+    pub(crate) fn switched_to(&mut self, session: Option<Session>, origin: &str) -> Jobs {
         self.session = session;
         self.origin = origin.to_string();
         self.account_since = self.sent + 1;
@@ -773,7 +773,7 @@ impl App {
 
     /// The account on `host` was logged out; `next` is the one in use now,
     /// if any.
-    pub fn logged_out(&mut self, host: &str, next: Option<Session>) -> Jobs {
+    pub(crate) fn logged_out(&mut self, host: &str, next: Option<Session>) -> Jobs {
         self.accounts.retain(|a| a.host != host);
         let was_current = self.session.as_ref().is_some_and(|s| s.host() == host);
         self.info(format!("logged out of {host}"));
@@ -791,7 +791,7 @@ impl App {
     }
 
     /// A switch or a logout that could not be done.
-    pub fn account_error(&mut self, why: String) {
+    pub(crate) fn account_error(&mut self, why: String) {
         self.error(why);
     }
 
@@ -822,7 +822,7 @@ impl App {
     }
 
     /// Take the answer to job `seq`.
-    pub fn handle_answer(&mut self, seq: u64, event: Event) -> Jobs {
+    pub(crate) fn handle_answer(&mut self, seq: u64, event: Event) -> Jobs {
         // A thread read ahead was not counted as pending.
         if let Event::ReadAhead { id, result } = event {
             return self.read_ahead_answer(seq, id, result);
@@ -1009,7 +1009,7 @@ impl App {
 
     /// Handle a key press. A key also closes an error on screen, and still
     /// does what it does, as in bsky.
-    pub fn handle_key(&mut self, key: KeyEvent) -> Jobs {
+    pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Jobs {
         if self.status.as_ref().is_some_and(|s| s.error) {
             self.status = None;
         }
@@ -1433,7 +1433,7 @@ impl App {
     }
 
     /// Ask how many notifications are unread, at most once a minute.
-    pub fn ask_unread(&mut self, now: Instant) -> Jobs {
+    pub(crate) fn ask_unread(&mut self, now: Instant) -> Jobs {
         if self.session.is_none()
             || self
                 .unread_polled
@@ -1449,7 +1449,7 @@ impl App {
 
     /// The label of the Notifications tab's count: `(3)`, `(•)` when the
     /// server only says there are some, or nothing.
-    pub fn unread_label(&self) -> Option<String> {
+    pub(crate) fn unread_label(&self) -> Option<String> {
         match self.unread {
             Some(0) => None,
             Some(n) if n > 99 => Some("(99+)".into()),
@@ -1461,13 +1461,13 @@ impl App {
 
     /// Ask for the server's custom emoji, which notes and reactions are
     /// drawn with.
-    pub fn load_emojis(&mut self) -> Jobs {
+    pub(crate) fn load_emojis(&mut self) -> Jobs {
         vec![self.stamp(Job::Emojis)]
     }
 
     /// The tabs shown, in the order of their numbers: every one, but Chat
     /// on a server without it.
-    pub fn tabs(&self) -> Vec<Tab> {
+    pub(crate) fn tabs(&self) -> Vec<Tab> {
         TABS.into_iter()
             .filter(|t| !(self.no_chat && *t == Tab::Chat))
             .collect()
@@ -1475,7 +1475,7 @@ impl App {
 
     /// The tab of [`Self::tabs`] that is shown: the Home tab for its
     /// columns.
-    pub fn shown_tab(&self) -> Tab {
+    pub(crate) fn shown_tab(&self) -> Tab {
         match self.tab {
             Tab::Columns => Tab::Timeline(TimelineKind::Home),
             t => t,
@@ -1495,7 +1495,7 @@ impl App {
 
     /// The timeline the tab shown is, if it is one.
     #[cfg(test)]
-    pub fn kind(&self) -> Option<TimelineKind> {
+    pub(crate) fn kind(&self) -> Option<TimelineKind> {
         match self.tab {
             Tab::Timeline(k) => Some(k),
             _ => None,
@@ -1575,7 +1575,7 @@ impl App {
     }
 
     /// The note the selection is on, as it is posted: a renote's own note.
-    pub fn selected_note(&self) -> Option<&Note> {
+    pub(crate) fn selected_note(&self) -> Option<&Note> {
         if let Some(th) = self.threads.last() {
             return th.list.current().map(|r| &r.note);
         }
@@ -1593,7 +1593,7 @@ impl App {
     }
 
     /// The note the selection shows: the renoted one for a renote.
-    pub fn shown_note(&self) -> Option<&Note> {
+    pub(crate) fn shown_note(&self) -> Option<&Note> {
         self.selected_note().map(Note::shown)
     }
 
@@ -1707,7 +1707,7 @@ impl App {
     }
 
     /// Whether the text of `n` is shown: it has no warning, or `w` opened it.
-    pub fn text_shown(&self, n: &Note) -> bool {
+    pub(crate) fn text_shown(&self, n: &Note) -> bool {
         n.cw.is_none() || self.opened.contains(&n.id)
     }
 }

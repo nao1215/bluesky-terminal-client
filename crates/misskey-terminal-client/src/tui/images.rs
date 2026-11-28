@@ -190,7 +190,7 @@ type Loaded = (String, Result<DynamicImage, String>);
 type Key = (String, u16, u16);
 
 /// Cache and renderer for every image on screen.
-pub struct Images {
+pub(crate) struct Images {
     protocol_type: ratatui_image::picker::ProtocolType,
     cell: (u16, u16),
     /// Each image with the frame number it was last drawn in.
@@ -224,7 +224,7 @@ impl Images {
     /// Start the loader and encoder threads. Downloads are kept in `cache`
     /// when there is one. Fails when the system cannot start a thread; the
     /// ones started by then stop.
-    pub fn new(picker: Picker, cache: Option<DiskCache>) -> std::io::Result<Self> {
+    pub(crate) fn new(picker: Picker, cache: Option<DiskCache>) -> std::io::Result<Self> {
         let mut images = Self::idle(picker.clone());
         let cache = cache.map(Arc::new);
         if let Some(c) = &cache {
@@ -323,30 +323,30 @@ impl Images {
 
     /// For a terminal that cannot show pictures: every picture is left out.
     /// Nothing is ever loaded, so no thread is started for it.
-    pub fn none() -> Self {
+    pub(crate) fn none() -> Self {
         let mut images = Self::idle(Picker::halfblocks());
         images.shows = false;
         images
     }
 
     /// Whether pictures are shown at all.
-    pub fn shows(&self) -> bool {
+    pub(crate) fn shows(&self) -> bool {
         self.shows
     }
 
     /// The protocol images are drawn with.
-    pub fn protocol_type(&self) -> ratatui_image::picker::ProtocolType {
+    pub(crate) fn protocol_type(&self) -> ratatui_image::picker::ProtocolType {
         self.protocol_type
     }
 
     /// Pixel size of one terminal cell, as the terminal reported it.
-    pub fn cell_size(&self) -> (u16, u16) {
+    pub(crate) fn cell_size(&self) -> (u16, u16) {
         self.cell
     }
 
     /// Collect finished downloads and encodes. Returns
     /// whether any arrived.
-    pub fn poll(&mut self) -> bool {
+    pub(crate) fn poll(&mut self) -> bool {
         let mut changed = self.video.as_mut().is_some_and(Player::poll);
         while let Ok((url, result)) = self.fetch_rx.try_recv() {
             let slot = match result {
@@ -372,7 +372,7 @@ impl Images {
     }
 
     /// Whether any requested image is still downloading or encoding.
-    pub fn loading(&self) -> bool {
+    pub(crate) fn loading(&self) -> bool {
         self.video
             .as_ref()
             .is_some_and(|v| v.state == State::Loading)
@@ -389,7 +389,7 @@ impl Images {
     /// Start a frame of `size` cells. Encoded images are per size, so a
     /// resize drops them all; and the cache is trimmed to what was drawn in
     /// the last frames, so a long session does not keep every image it saw.
-    pub fn begin_frame(&mut self, size: Size, placeholder: Style) {
+    pub(crate) fn begin_frame(&mut self, size: Size, placeholder: Style) {
         self.frame += 1;
         self.placeholder = placeholder;
         if size != self.frame_size {
@@ -438,7 +438,7 @@ impl Images {
     /// store is full, and the full-size pictures of the viewer
     /// can fill it. The list then drew only empty places: the avatars and
     /// photos were gone after the viewer closed.
-    pub fn viewer_closed(&mut self, open: bool) -> Option<&'static str> {
+    pub(crate) fn viewer_closed(&mut self, open: bool) -> Option<&'static str> {
         let closed = self.viewer_open && !open;
         self.viewer_open = open;
         if !closed {
@@ -450,7 +450,7 @@ impl Images {
     /// Forget every encoded picture, and return the sequence that deletes
     /// kitty's copies of them, for the caller to write. Other protocols
     /// draw into the cells, which the next full redraw overwrites.
-    pub fn delete_all(&mut self) -> Option<&'static str> {
+    fn delete_all(&mut self) -> Option<&'static str> {
         if self.protocol_type != ProtocolType::Kitty {
             return None;
         }
@@ -462,7 +462,7 @@ impl Images {
     /// Play the video at `url` in `area`, starting it (again, for a new
     /// `generation`) when needed. Draws nothing until its first picture;
     /// returns where playback is. As bsky's.
-    pub fn draw_video(
+    pub(crate) fn draw_video(
         &mut self,
         frame: &mut Frame,
         area: Rect,
@@ -488,25 +488,25 @@ impl Images {
     }
 
     /// Stop the video, when the viewer no longer shows it.
-    pub fn stop_video(&mut self) {
+    pub(crate) fn stop_video(&mut self) {
         self.video = None;
     }
 
     /// Whether a video is playing, so the screen should follow it closely.
-    pub fn playing(&self) -> bool {
+    pub(crate) fn playing(&self) -> bool {
         self.video
             .as_ref()
             .is_some_and(|v| matches!(v.state, State::Loading | State::Playing))
     }
 
     /// Whether a video picture is on screen.
-    pub fn video_shown(&self) -> bool {
+    pub(crate) fn video_shown(&self) -> bool {
         self.video.as_ref().is_some_and(|v| v.frame().is_some())
     }
 
     /// Draw the first of `urls` that is ready in `area`, asking for all of
     /// them: a full-size picture over its thumbnail as soon as it arrives.
-    pub fn draw_first(&mut self, frame: &mut Frame, area: Rect, urls: &[&str]) {
+    pub(crate) fn draw_first(&mut self, frame: &mut Frame, area: Rect, urls: &[&str]) {
         let area = area.intersection(frame.area());
         // Without pictures nothing goes in the box, not even a placeholder:
         // the text may run under where it would have been.
@@ -538,7 +538,7 @@ impl Images {
     }
 
     /// Draw the picture at `path` on the user's disk fitted inside `area`.
-    pub fn draw_file(&mut self, frame: &mut Frame, area: Rect, path: &Path) {
+    pub(crate) fn draw_file(&mut self, frame: &mut Frame, area: Rect, path: &Path) {
         let key = file_key(path);
         self.local.insert(key.clone(), path.to_path_buf());
         self.draw(frame, area, &key);
@@ -546,7 +546,7 @@ impl Images {
 
     /// Draw `url` fitted inside `area`, starting its download or encode when
     /// needed.
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect, url: &str) {
+    pub(crate) fn draw(&mut self, frame: &mut Frame, area: Rect, url: &str) {
         let area = area.intersection(frame.area());
         // Without pictures nothing goes in the box, not even an empty
         // placeholder: its style would be painted over the text that starts
@@ -563,14 +563,14 @@ impl Images {
 
     /// Get `url` ready for a box of `width` x `height` without drawing it,
     /// so it is there when it scrolls into view.
-    pub fn prefetch(&mut self, url: &str, width: u16, height: u16) {
+    pub(crate) fn prefetch(&mut self, url: &str, width: u16, height: u16) {
         if width > 0 && height > 0 && !url.is_empty() {
             self.request(url, width, height);
         }
     }
 
     /// Pixel size of `url` once it is decoded (after shrinking).
-    pub fn dims(&self, url: &str) -> Option<(u32, u32)> {
+    pub(crate) fn dims(&self, url: &str) -> Option<(u32, u32)> {
         match self.slots.get(url) {
             Some((Slot::Ready(img), _)) => Some((img.width(), img.height())),
             _ => None,
@@ -580,7 +580,7 @@ impl Images {
     /// Start downloading `url` without encoding it, for pictures further
     /// ahead than [`Images::prefetch`] prepares: when the reader gets there
     /// only the (fast) encode is left.
-    pub fn warm(&mut self, url: &str) {
+    pub(crate) fn warm(&mut self, url: &str) {
         if !url.is_empty() {
             self.decoded(url, false);
         }
@@ -750,7 +750,7 @@ fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
 /// used files are removed once the cache outgrows its budget. A cache that
 /// cannot be written is simply not used; it never stops a picture showing.
 #[derive(Debug)]
-pub struct DiskCache {
+pub(crate) struct DiskCache {
     dir: PathBuf,
     max_bytes: u64,
     /// Bytes written since the last trim; a long session trims again.
@@ -758,10 +758,10 @@ pub struct DiskCache {
 }
 
 /// Default size budget of the picture cache.
-pub const CACHE_BYTES: u64 = 256 * 1024 * 1024;
+pub(crate) const CACHE_BYTES: u64 = 256 * 1024 * 1024;
 
 impl DiskCache {
-    pub fn new(dir: PathBuf, max_bytes: u64) -> Self {
+    pub(crate) fn new(dir: PathBuf, max_bytes: u64) -> Self {
         Self {
             dir,
             max_bytes,
@@ -806,7 +806,7 @@ impl DiskCache {
     }
 
     /// The body stored for `url`. Reading it counts as a use.
-    pub fn get(&self, url: &str) -> Option<Vec<u8>> {
+    pub(crate) fn get(&self, url: &str) -> Option<Vec<u8>> {
         let path = self.path(url);
         let data = fs::read(&path).ok()?;
         let body = data.strip_prefix(url.as_bytes())?.strip_prefix(b"\n")?;
@@ -821,7 +821,7 @@ impl DiskCache {
     }
 
     /// Store `body` for `url`. The file appears whole or not at all.
-    pub fn put(&self, url: &str, body: &[u8]) {
+    pub(crate) fn put(&self, url: &str, body: &[u8]) {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         if fs::create_dir_all(&self.dir).is_err() {
             return;
@@ -860,7 +860,7 @@ impl DiskCache {
     /// Remove the least recently used files until the cache fits its budget,
     /// and temporary files a crashed run left behind. Only files msky wrote
     /// are counted or removed.
-    pub fn trim(&self) {
+    pub(crate) fn trim(&self) {
         let Ok(dir) = fs::read_dir(&self.dir) else {
             return;
         };

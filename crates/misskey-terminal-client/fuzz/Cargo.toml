@@ -11,6 +11,11 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+# The files the targets include by path use it (src/metadata.rs), which cargo-machete
+# does not read.
+[package.metadata.cargo-machete]
+ignored = ["image"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 # The same features as the main package, for src/metadata.rs.

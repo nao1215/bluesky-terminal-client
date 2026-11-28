@@ -1,6 +1,6 @@
 //! Translations into German, by the English they translate.
 
-pub const TABLE: &[(&str, &str)] = &[
+pub(super) const TABLE: &[(&str, &str)] = &[
     ("(R to retry)", "(R zum Wiederholen)"),
     ("(blocked post)", "(blockierter Beitrag)"),
     ("(deleted)", "(gelöscht)"),

@@ -12,14 +12,14 @@ use std::path::Path;
 use crate::error::{Error, Result};
 
 /// Most bytes a video may have.
-pub const MAX_VIDEO_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_VIDEO_BYTES: u64 = 100 * 1024 * 1024;
 /// Longest a video may run, in seconds.
-pub const MAX_VIDEO_SECONDS: f64 = 180.0;
+const MAX_VIDEO_SECONDS: f64 = 180.0;
 /// File name extensions shown as videos.
 const EXTENSIONS: [&str; 6] = ["mp4", "m4v", "mov", "webm", "mpeg", "mpg"];
 
 /// Whether a file name looks like a video.
-pub fn is_video_name(name: &str) -> bool {
+pub(crate) fn is_video_name(name: &str) -> bool {
     Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
@@ -27,7 +27,7 @@ pub fn is_video_name(name: &str) -> bool {
 }
 
 /// Whether the file is a GIF with more than one frame.
-pub fn is_animated_gif(path: &Path) -> bool {
+pub(crate) fn is_animated_gif(path: &Path) -> bool {
     let Ok(file) = File::open(path) else {
         return false;
     };
@@ -100,7 +100,7 @@ fn gif_has_two_frames<R: Read>(mut r: R) -> Option<bool> {
 
 /// What a video's header says about it.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct VideoInfo {
+pub(crate) struct VideoInfo {
     /// Width and height as shown (a rotated phone video is taller than wide).
     pub dims: Option<(u32, u32)>,
     pub seconds: Option<f64>,
@@ -108,7 +108,7 @@ pub struct VideoInfo {
 
 /// Read the shape and length of an MP4 or QuickTime file from its `moov`
 /// box. Other formats, and files that are not what they claim, give nothing.
-pub fn probe(path: &Path) -> VideoInfo {
+pub(crate) fn probe(path: &Path) -> VideoInfo {
     File::open(path)
         .ok()
         .and_then(|f| read_moov(&mut BufReader::new(f)))
@@ -117,7 +117,7 @@ pub fn probe(path: &Path) -> VideoInfo {
 }
 
 /// A length the way a player shows it: 0:07, 2:45.
-pub fn format_seconds(s: f64) -> String {
+pub(crate) fn format_seconds(s: f64) -> String {
     minutes_seconds(s.round())
 }
 
@@ -160,7 +160,7 @@ fn read_moov<R: Read + Seek>(r: &mut R) -> Option<Vec<u8>> {
 }
 
 /// The file name extension of a video's type.
-pub fn extension(mime: &str) -> &'static str {
+pub(crate) fn extension(mime: &str) -> &'static str {
     match mime {
         "video/quicktime" => "mov",
         "video/webm" => "webm",
@@ -182,7 +182,7 @@ const CONTAINERS: &[&[u8; 4]] = &[b"moov", b"trak", b"mdia", b"minf", b"edts"];
 /// Blank the private boxes of an MP4 or QuickTime file in place: each
 /// becomes a `free` box of the same size, its content zeroed, so every
 /// offset in the file (the media data's included) stays where it was.
-pub fn strip_metadata(file: &mut [u8]) {
+fn strip_metadata(file: &mut [u8]) {
     fn walk(buf: &mut [u8]) {
         let mut at = 0;
         while at + 8 <= buf.len() {
@@ -299,7 +299,7 @@ fn tkhd_dims(b: &[u8]) -> Option<(u32, u32)> {
 const QUICKTIME_FIRST: &[&[u8; 4]] = &[b"moov", b"mdat", b"free", b"skip", b"wide", b"pnot"];
 
 /// Guess a video's MIME type from its first bytes.
-pub fn sniff_mime(b: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff_mime(b: &[u8]) -> Option<&'static str> {
     match b {
         [
             _,
@@ -332,7 +332,7 @@ pub fn sniff_mime(b: &[u8]) -> Option<&'static str> {
 
 /// A video ready to upload.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Prepared {
+pub(crate) struct Prepared {
     pub bytes: Vec<u8>,
     pub mime: &'static str,
     pub dims: Option<(u32, u32)>,
@@ -360,7 +360,7 @@ fn read_at_most(file: &Path, limit: u64) -> std::io::Result<std::result::Result<
 
 /// Read a video (or an animated GIF) and check it against Bluesky's limits.
 /// The error names the file and what is wrong.
-pub fn prepare(file: &Path) -> Result<Prepared> {
+pub(crate) fn prepare(file: &Path) -> Result<Prepared> {
     let name = file.display();
     let read = read_at_most(file, MAX_VIDEO_BYTES).map_err(|e| {
         Error::io(crate::i18n::tf(

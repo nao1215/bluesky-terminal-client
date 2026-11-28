@@ -8,10 +8,10 @@ use crate::api::types::Post;
 use crate::tui::app::List;
 use crate::tui::worker::{Feed, NotifItem};
 
-pub use crate::config::ColumnSource as Source;
+pub(crate) use crate::config::ColumnSource as Source;
 
 /// The list the worker loads for a column of `source`.
-pub fn feed_of(source: &Source) -> Feed {
+pub(crate) fn feed_of(source: &Source) -> Feed {
     match source {
         Source::Following => Feed::Timeline,
         Source::Feed { uri, .. } => Feed::Custom(uri.clone()),
@@ -34,14 +34,14 @@ pub(crate) use each_list;
 
 /// A column's list: posts, or notifications.
 #[derive(Debug, Clone)]
-pub enum Rows {
+pub(crate) enum Rows {
     Posts(List<Post>),
     Notifications(List<NotifItem>),
 }
 
 /// One column.
 #[derive(Debug, Clone)]
-pub struct Column {
+pub(crate) struct Column {
     /// Stays the same while the column exists; answers name it.
     pub id: u64,
     pub source: Source,
@@ -66,14 +66,14 @@ impl Column {
     }
 
     /// Whether its first page has been asked for.
-    pub fn asked(&self) -> bool {
+    pub(crate) fn asked(&self) -> bool {
         each_list!(&self.rows, |l| l.loaded || l.loading)
     }
 }
 
 /// Every column of the account in use, and the one keys act on.
 #[derive(Debug, Clone, Default)]
-pub struct Columns {
+pub(crate) struct Columns {
     pub items: Vec<Column>,
     pub focus: usize,
     next_id: u64,
@@ -81,7 +81,7 @@ pub struct Columns {
 
 impl Columns {
     /// Columns for `sources`, none of them loaded yet.
-    pub fn from_sources(sources: &[Source]) -> Self {
+    pub(crate) fn from_sources(sources: &[Source]) -> Self {
         let mut c = Self::default();
         for s in sources {
             c.add(s.clone());
@@ -91,12 +91,12 @@ impl Columns {
     }
 
     /// The sources, in order, as `settings.json` keeps them.
-    pub fn sources(&self) -> Vec<Source> {
+    pub(crate) fn sources(&self) -> Vec<Source> {
         self.items.iter().map(|c| c.source.clone()).collect()
     }
 
     /// Add a column after the others and focus it; returns its id.
-    pub fn add(&mut self, source: Source) -> u64 {
+    pub(crate) fn add(&mut self, source: Source) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
         self.items.push(Column::new(id, source));
@@ -104,20 +104,20 @@ impl Columns {
         id
     }
 
-    pub fn focused(&self) -> Option<&Column> {
+    pub(crate) fn focused(&self) -> Option<&Column> {
         self.items.get(self.focus)
     }
 
-    pub fn focused_mut(&mut self) -> Option<&mut Column> {
+    pub(crate) fn focused_mut(&mut self) -> Option<&mut Column> {
         self.items.get_mut(self.focus)
     }
 
-    pub fn by_id(&mut self, id: u64) -> Option<&mut Column> {
+    pub(crate) fn by_id(&mut self, id: u64) -> Option<&mut Column> {
         self.items.iter_mut().find(|c| c.id == id)
     }
 
     /// Move the focus `delta` columns, stopping at the ends.
-    pub fn move_focus(&mut self, delta: isize) {
+    pub(crate) fn move_focus(&mut self, delta: isize) {
         if self.items.is_empty() {
             return;
         }
@@ -126,7 +126,7 @@ impl Columns {
     }
 
     /// Move the focused column `delta` places, keeping the focus on it.
-    pub fn move_focused(&mut self, delta: isize) {
+    pub(crate) fn move_focused(&mut self, delta: isize) {
         if self.items.is_empty() {
             return;
         }
@@ -138,7 +138,7 @@ impl Columns {
     }
 
     /// Remove the focused column.
-    pub fn remove_focused(&mut self) -> Option<Column> {
+    pub(crate) fn remove_focused(&mut self) -> Option<Column> {
         if self.items.is_empty() {
             return None;
         }
@@ -148,7 +148,7 @@ impl Columns {
     }
 
     /// Every list of posts in the columns, for a write to show on.
-    pub fn post_lists(&mut self) -> impl Iterator<Item = &mut List<Post>> {
+    pub(crate) fn post_lists(&mut self) -> impl Iterator<Item = &mut List<Post>> {
         self.items.iter_mut().filter_map(|c| match &mut c.rows {
             Rows::Posts(l) => Some(l),
             Rows::Notifications(_) => None,
@@ -156,7 +156,7 @@ impl Columns {
     }
 
     /// The lists of posts of the columns showing `source`.
-    pub fn posts_of<'a>(
+    pub(crate) fn posts_of<'a>(
         &'a mut self,
         source: &'a Source,
     ) -> impl Iterator<Item = &'a mut List<Post>> + 'a {
@@ -170,7 +170,7 @@ impl Columns {
     }
 
     /// Every list of notifications in the columns.
-    pub fn notification_lists(&mut self) -> impl Iterator<Item = &mut List<NotifItem>> {
+    pub(crate) fn notification_lists(&mut self) -> impl Iterator<Item = &mut List<NotifItem>> {
         self.items.iter_mut().filter_map(|c| match &mut c.rows {
             Rows::Notifications(l) => Some(l),
             Rows::Posts(_) => None,

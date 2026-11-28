@@ -23,7 +23,7 @@ use crate::error::{Error, Kind, Result};
 
 /// The commands besides `logout`, which main handles.
 #[derive(Debug, Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// The following timeline, newest first.
     #[command(visible_alias = "tl")]
     Timeline {
@@ -217,7 +217,7 @@ pub enum Command {
 /// Which posts of an account `author` lists: `app.bsky.feed.getAuthorFeed`'s
 /// `filter`, also taken by its lexicon name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum AuthorFilter {
+pub(crate) enum AuthorFilter {
     /// Posts and replies.
     #[value(alias = "posts_with_replies")]
     WithReplies,
@@ -249,7 +249,7 @@ impl AuthorFilter {
 
 /// Why a post or an account is reported: `com.atproto.moderation.defs`.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
-pub enum ReportReason {
+pub(crate) enum ReportReason {
     Spam,
     Violation,
     Misleading,
@@ -272,7 +272,7 @@ impl ReportReason {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum AppPasswordAction {
+pub(crate) enum AppPasswordAction {
     /// Make one; its password is printed once.
     Add {
         name: String,
@@ -285,7 +285,7 @@ pub enum AppPasswordAction {
 }
 
 /// What a command runs with.
-pub struct Ctx<'a> {
+pub(crate) struct Ctx<'a> {
     pub dir: &'a std::path::Path,
     pub accounts: &'a AccountStore,
     /// The account `-a` named, or the one in use.
@@ -306,14 +306,14 @@ impl Ctx<'_> {
 }
 
 /// Run `cmd`, writing to stdout.
-pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
+pub(crate) fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
     ended_by_reader(run_to(cmd, ctx))
 }
 
 /// A command's result, where a reader that stopped reading (`| head`) is
 /// not an error: what it wanted it has, so the command ends there, as the
 /// tools it is piped into expect.
-pub fn ended_by_reader(result: Result<()>) -> Result<()> {
+pub(crate) fn ended_by_reader(result: Result<()>) -> Result<()> {
     match result {
         Err(e) if e.message() == PIPE_CLOSED => Ok(()),
         r => r,
@@ -403,7 +403,7 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
 }
 
 /// Print `v` as one line of JSON.
-pub fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
+pub(crate) fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
     writeln!(out, "{v}").map_err(write_err)
 }
 
@@ -414,7 +414,7 @@ fn write_err(e: io::Error) -> Error {
     Error::io(format!("cannot write the output: {e}"))
 }
 
-pub fn text(out: &mut dyn Write, s: &str) -> Result<()> {
+pub(crate) fn text(out: &mut dyn Write, s: &str) -> Result<()> {
     out.write_all(s.as_bytes()).map_err(write_err)
 }
 
