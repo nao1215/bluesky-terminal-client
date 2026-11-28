@@ -225,9 +225,9 @@ From their READMEs, November 2026.
 | Unit tests | Wrong answers for the cases someone wrote down | All four |
 | Property-based tests | Split emoji, lines wider than the column, and text nobody listed | All four |
 | End-to-end tests ([atago](https://github.com/nao1215/atago)) | Wrong screens, pictures, requests and files from the real binary on Linux, macOS and Windows | All four |
-| Fuzzing | Panics and wrong answers on malformed videos, posts and web pages | bsky, msky, mstdn |
-| Mutation tests | Lines the tests run but whose answer no test checks | bsky, msky, mstdn |
-| Benchmarks ([himorime](https://github.com/nao1215/himorime)) | Slower start-up and commands slipping in unnoticed | bsky, msky |
+| Fuzzing | Panics and wrong answers on malformed videos, posts, web pages and protocol messages | All four |
+| Mutation tests | Lines the tests run but whose answer no test checks | All four |
+| Benchmarks ([himorime](https://github.com/nao1215/himorime)) | Slower start-up and commands slipping in unnoticed | All four |
 
 The end-to-end tests need no network or account: msky's and mstdn's talk to atago mocks of their APIs, and nstr's to a relay stand-in on 127.0.0.1 with throwaway keys.
 

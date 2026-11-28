@@ -3,7 +3,8 @@ name: Fuzz
 # Explores the fuzz targets (cargo-fuzz, libFuzzer) for a few minutes each
 # night: bsky's in crates/bluesky-terminal-client/fuzz/, msky's in
 # crates/misskey-terminal-client/fuzz/ and mstdn's in
-# crates/mastodon-terminal-client/fuzz/.
+# crates/mastodon-terminal-client/fuzz/ and nstr's in
+# crates/nostr-terminal-client/fuzz/.
 # Pull requests do not explore: rust.yml builds the targets and runs each over
 # its seed corpus in <fuzz dir>/corpus/<target>/ when the code they test
 # changes.
@@ -39,7 +40,7 @@ jobs:
       - id: list
         run: |
           set -o pipefail
-          list="$(for dir in crates/bluesky-terminal-client/fuzz crates/misskey-terminal-client/fuzz crates/mastodon-terminal-client/fuzz; do
+          list="$(for dir in crates/bluesky-terminal-client/fuzz crates/misskey-terminal-client/fuzz crates/mastodon-terminal-client/fuzz crates/nostr-terminal-client/fuzz; do
             grep -A1 '^\[\[bin\]\]' "${dir}/Cargo.toml" | sed -n 's/^name *= *"\(.*\)"/\1/p' | jq -R --arg dir "${dir}" '{dir: $dir, target: .}'
           done | jq -cs .)"
           test "$list" != "[]"

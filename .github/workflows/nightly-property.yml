@@ -54,19 +54,26 @@ jobs:
       - name: Properties and metamorphic relations
         env:
           PROPTEST_CASES: ${{ inputs.cases || '20000' }}
-        run: cargo test --locked --release --workspace --exclude misskey-terminal-client --lib --bins properties
+        run: cargo test --locked --release --workspace --exclude misskey-terminal-client --exclude nostr-terminal-client --lib --bins properties
 
       - name: msky's properties
         env:
           PROPTEST_CASES: ${{ inputs.msky-cases || '500000' }}
         run: cargo test --locked --release -p misskey-terminal-client --bin msky properties
 
+      # nstr's generated tests live beside the protocol unit tests and do not
+      # have "properties" in their names, so run its bin tests without a filter.
+      - name: nstr's properties and protocol tests
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '20000' }}
+        run: cargo test --locked --release -p nostr-terminal-client --bin nstr
+
       - name: Random keys and late answers
         env:
           BSKY_FUZZ_SEEDS: ${{ inputs.seeds || '2000' }}
         run: cargo test --locked --release -p bluesky-terminal-client --bins random_keys_and_late_answers_keep_the_client_sound
 
-      # A failing case of msky's or mstdn's is written under its crate; the
+      # A failing case of msky's, mstdn's or nstr's is written under its crate; the
       # smallest input goes into a unit test beside the code it breaks.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
@@ -75,4 +82,5 @@ jobs:
           path: |
             crates/misskey-terminal-client/proptest-regressions
             crates/mastodon-terminal-client/proptest-regressions
+            crates/nostr-terminal-client/proptest-regressions
           if-no-files-found: ignore
