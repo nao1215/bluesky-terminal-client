@@ -203,33 +203,44 @@ scenarios:
               - { path: "$.theme", equals: "oceanic-next" }
               - { path: "$.keep['written by']", equals: "a newer bsky" }
 
-  - name: a broken settings file is reported, ignored, and left alone
+  - name: a broken settings file is reported, ignored, and left alone (${config})
+    matrix:
+      - { config: cfg }
+      - { config: settings-in-a-long-directory-name }
     mock_servers:
       - name: api
         routes:
           - *empty_timeline
     steps:
-      - *session
       - fixture:
-          file: cfg/settings.json
+          file: ${config}/accounts/did_plc_me.json
+          content: |
+            {"service": "${api.url}", "did": "did:plc:me", "handle": "me.test", "accessJwt": "acc", "refreshJwt": "ref"}
+      - fixture:
+          file: ${config}/settings.json
           content: "{broken"
       - pty:
           command: bsky
           graphics: kitty
           rows: 30
           cols: 160
-          env: *env
+          env:
+            BSKY_CONFIG_DIR: ${workdir}/${config}
+            BSKY_CACHE_DIR: ${workdir}/cache
+            COLORTERM: truecolor
+            TZ: UTC
           timeout: 20s
           session:
             - expect_screen:
-                # The message names the file by its full path, which the error
-                # box wraps where it likes (macOS temporary paths are long).
-                # The box is up from the first frame and closes by itself after
-                # ten seconds, so it is looked for before the timeline, whose
-                # load a slow runner may take long over.
-                contains: [" Error ", "is not valid and was ignored"]
+                # The box wraps at 72 cells even in a wide terminal. The full
+                # path can push any space in the message onto the next line;
+                # match whole words, not a phrase that might span two rows.
+                # The long directory exercises wrapping with a short TMPDIR too.
+                contains: [" Error ", "valid", "ignored:"]
+            - send: { key: esc }
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
+                not_contains: " Error "
             # A theme can still be used, but saving it would lose the file.
             - send: T
             - expect_screen:
