@@ -11,8 +11,9 @@ concurrency:
 permissions:
   contents: read
 
-# bsky and msky are measured end to end with himorime, from bench/himorime.yaml
-# and crates/misskey-terminal-client/bench/himorime.yaml, in one job each.
+# bsky and msky are measured end to end with himorime, from
+# crates/bluesky-terminal-client/bench/himorime.yaml and
+# crates/misskey-terminal-client/bench/himorime.yaml, in one job each.
 #
 # On a pull request, `himorime ci` checks the base of the pull request out
 # into a temporary worktree, builds it and the head, and measures both in
@@ -32,7 +33,7 @@ jobs:
       matrix:
         include:
           - client: bsky
-            suite: bench
+            suite: crates/bluesky-terminal-client/bench
           - client: msky
             suite: crates/misskey-terminal-client/bench
     name: bench (${{ matrix.client }})

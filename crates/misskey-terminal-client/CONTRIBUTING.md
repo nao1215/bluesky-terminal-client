@@ -1,6 +1,6 @@
 # Contributing to msky
 
-msky lives in `crates/misskey-terminal-client` of the [social-terminal-clients](../../README.md) workspace, beside bsky and the shared crate `crates/terminal-kit`. The commands below run in this directory unless they say otherwise; the workflows, `deny.toml`, `about.toml`, `.cargo/mutants.toml` and `scripts/` are the workspace's, at the repository root. The repository's [CONTRIBUTING.md](../../CONTRIBUTING.md) covers bsky.
+msky lives in `crates/misskey-terminal-client` of the [social-terminal-clients](../../README.md) workspace, beside bsky and the shared crate `crates/terminal-kit`. The commands below run in this directory unless they say otherwise; the workflows, `deny.toml`, `about.toml`, `.cargo/mutants.toml` and `scripts/` are the workspace's, at the repository root. The repository's [CONTRIBUTING.md](../../CONTRIBUTING.md) covers the workspace, and bsky has [its own](../bluesky-terminal-client/CONTRIBUTING.md).
 
 ## Prerequisites
 

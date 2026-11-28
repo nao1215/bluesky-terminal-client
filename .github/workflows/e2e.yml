@@ -5,16 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "e2e/**"
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/e2e.yml"
   pull_request:
     paths:
-      - "src/**"
-      - "e2e/**"
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -45,7 +41,7 @@ jobs:
         client: [bsky, msky]
         include:
           - client: bsky
-            run: ./e2e/run.sh
+            run: ./crates/bluesky-terminal-client/e2e/run.sh
           - client: msky
             run: ./crates/misskey-terminal-client/e2e/run.sh
     name: atago (${{ matrix.client }}, ${{ matrix.os }})

@@ -6,7 +6,7 @@ If you discover any security-related issues or vulnerabilities, please contact u
 
 ## Verifying a Release
 
-The checksums, their cosign signature, the SLSA provenance and the GitHub attestation of a release are checked as described in [Verifying a release](README.md#verifying-a-release).
+The checksums, their cosign signature, the SLSA provenance and the GitHub attestation of a release are checked as described in the Verifying a release section of each client's README: [bsky](crates/bluesky-terminal-client/README.md#verifying-a-release) and [msky](crates/misskey-terminal-client/README.md#verifying-a-release).
 
 ## Supported Versions
 

@@ -1,0 +1,63 @@
+[package]
+name = "bluesky-terminal-client"
+version = "0.15.0"
+edition.workspace = true
+# Written out in each package: CI and the release scripts read it from the
+# package's own [package] table.
+rust-version = "1.90"
+authors.workspace = true
+description = "Unofficial Bluesky client for the terminal that shows pictures and videos inline (kitty graphics, sixel, iTerm2)."
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
+categories = ["command-line-utilities"]
+# The unit tests read e2e/atago/testdata, so it ships; the rest of the
+# crate's tooling does not.
+exclude = [
+    "about.hbs",
+    "bench/",
+    "doc/",
+    "e2e/*.sh",
+    "e2e/atago/*.yaml",
+    "fuzz/",
+    "justfile",
+]
+
+# `cargo binstall bluesky-terminal-client` fetches the release archive instead
+# of building it.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/bsky-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[[bin]]
+name = "bsky"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+crossterm.workspace = true
+dirs.workspace = true
+image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
+jiff.workspace = true
+openh264.workspace = true
+ratatui.workspace = true
+ratatui-image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rstest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

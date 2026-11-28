@@ -1,4 +1,5 @@
-# bsky — Bluesky client for the terminal
+# The workspace of the terminal clients in crates/. Each client has a justfile
+# of its own in its crate directory; these recipes act on the whole workspace.
 #
 # Run `just` with no arguments to see available recipes.
 
@@ -8,7 +9,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# Run unit tests
+# Run the unit tests of every crate
 test:
     cargo test --workspace --all-targets
 
@@ -36,36 +37,25 @@ audit:
 deny:
     cargo deny --locked --all-features check
 
-# Measure performance with himorime (needs himorime and python3)
-bench *ARGS:
-    himorime run {{ARGS}} bench
-
-# Run the end-to-end suite with atago (builds bsky, needs atago on PATH)
-e2e *ARGS:
-    ./e2e/run.sh {{ARGS}}
+# Run bsky's end-to-end suite with atago (builds bsky, needs atago on PATH)
+e2e-bsky *ARGS:
+    ./crates/bluesky-terminal-client/e2e/run.sh {{ARGS}}
 
 # Run msky's end-to-end suite with atago (builds msky, needs atago on PATH)
 e2e-msky *ARGS:
     ./crates/misskey-terminal-client/e2e/run.sh {{ARGS}}
 
-# Fuzz one target, e.g. `just fuzz hls_demux -max_total_time=60` (needs nightly and cargo-fuzz).
-# New inputs go to fuzz/work/, so the committed seeds in fuzz/corpus/ stay as they are.
-fuzz TARGET *ARGS:
-    mkdir -p fuzz/work/{{TARGET}}
-    cargo +nightly fuzz run {{TARGET}} fuzz/work/{{TARGET}} fuzz/corpus/{{TARGET}} -- {{ARGS}}
+# Run both end-to-end suites
+e2e: e2e-bsky e2e-msky
 
 # Run every CI check locally
-ci: test lint fmt-check doc e2e e2e-msky
+ci: test lint fmt-check doc e2e
 
-# Build a debug binary
-build:
-    cargo build
-
-# Build a release binary
+# Build a release binary of every client
 build-release:
-    cargo build --release --locked
+    cargo build --release --locked --workspace
 
-# Line coverage of the unit tests and the E2E suite together, as lcov.info (needs cargo-llvm-cov and atago)
+# Line coverage of the unit tests and both E2E suites together, as lcov.info (needs cargo-llvm-cov and atago)
 coverage:
     ./scripts/coverage.sh
 

@@ -21,7 +21,7 @@ updates:
           - "unicode-width"
   # Each fuzz crate is its own workspace with its own Cargo.lock.
   - package-ecosystem: cargo
-    directory: "/fuzz"
+    directory: "/crates/bluesky-terminal-client/fuzz"
     schedule:
       interval: monthly
     groups:

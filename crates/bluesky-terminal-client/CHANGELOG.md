@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- bsky's crate is `crates/bluesky-terminal-client` of the workspace, beside msky and terminal-kit, and the repository root holds no package. The crate, the `bsky` binary, the `vX.Y.Z` tags and the release files keep their names.
 - The repository is a Cargo workspace: the terminal drawing helpers that know nothing of Bluesky (text layout in cells, the text field, picture scaling, OSC 52, themes, input events, terminal checks) are the `terminal-kit` crate in `crates/terminal-kit`, published to crates.io before `bluesky-terminal-client`, which depends on it. bsky behaves as before.
 - A post with pictures uploads them side by side, and the accounts it mentions are looked up side by side, in the client and in `bsky post`. With every answer 100 ms away, a post with four pictures is sent in 0.21 s instead of 0.51 s, and one with three mentions in 0.21 s instead of 0.41 s. Each picture is still sent once and the post keeps them in the order they were attached.
 

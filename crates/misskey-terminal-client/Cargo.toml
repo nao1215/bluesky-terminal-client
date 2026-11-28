@@ -2,8 +2,8 @@
 name = "misskey-terminal-client"
 version = "0.1.1"
 edition.workspace = true
-# The root package's rust-version, written out here too: CI and the release
-# scripts read it from each package's own [package] table.
+# Written out in each package: CI and the release scripts read it from the
+# package's own [package] table.
 rust-version = "1.90"
 authors.workspace = true
 description = "Unofficial Misskey client for the terminal: a full-screen client that draws pictures inline (kitty graphics, sixel, iTerm2), and commands that read timelines, notifications and notes, save their files, post notes and follow accounts."
