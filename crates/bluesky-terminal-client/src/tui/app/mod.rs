@@ -729,6 +729,9 @@ pub(crate) struct App {
     /// Whether the terminal shows pictures and video. Without them the
     /// lists are text, and `Space` opens a post's media on bsky.app.
     pub pictures: bool,
+    /// Whether the detected protocol is kitty, the default for timeline playback.
+    /// Kept even with pictures off, so turning them back on restores the default.
+    pub kitty_graphics: bool,
     /// The variables that fix a setting for this run.
     pub env: Environment,
     /// Every logged-in account, by handle.
@@ -945,6 +948,7 @@ impl App {
             settings_writable: true,
             quit: false,
             pictures: true,
+            kitty_graphics: false,
             env: Environment::default(),
             accounts: Vec::new(),
             account_switch: None,

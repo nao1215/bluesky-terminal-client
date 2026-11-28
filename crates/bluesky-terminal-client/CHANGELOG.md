@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- The selected post's video plays without sound in the timeline by default on terminals using kitty graphics, when pictures are on. The neighbouring videos' playlists and first segments are read ahead in a bounded cache, and leaving a video restores its thumbnail. Settings has Play videos in the timeline; changes apply immediately and are saved in `settings.json`. `BSKY_INLINE_VIDEO=0/1` overrides the setting.
 - `bsky whoami` prints the account in use, as msky's and mstdn's do, so a job can tell which account it posts as (`bsky whoami --json | jq -r .username`).
 - `bsky post --dry-run` shows what would be posted, as the account in use, with the card its first link would get, and sends nothing: no picture, video or card picture is uploaded. With `--json` it prints `{"dryRun", "host", "username", "post", "characters", "maxCharacters", "card"}`, as msky's and mstdn's do.
 - `--raw` prints the server's own objects as JSON, as `--json` did in 0.15.0 and earlier: each feedViewPost, postView, profile and notification, and the thread as one object. A write prints the object below with `--raw` too.

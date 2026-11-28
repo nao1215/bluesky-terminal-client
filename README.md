@@ -100,6 +100,8 @@ nstr reads `config.json` in its config folder: your public key, one to sixteen r
 
 Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts and notifications, and post photos and videos without their location data; all three also have columns and direct messages. All four clients print JSON in one shape from every command with `--json`.
 
+On kitty, bsky plays the selected post's video in the timeline without sound; Play videos in the timeline in the settings or `BSKY_INLINE_VIDEO=0` turns it off.
+
 Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). msky and mstdn draw custom emoji on terminals with graphics and keep their shortcodes on other terminals; msky also keeps MFM's bold. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
 
 ## Screens
@@ -215,6 +217,7 @@ no preview: the text has no link Misskey previews
 | Program that opens links | `BSKY_BROWSER` | `MSKY_BROWSER` | `MSTDN_BROWSER` | |
 | PDS to log in to (also `--service`) | `BSKY_SERVICE` | | | |
 | Video upload service | `BSKY_VIDEO_SERVICE` | | | |
+| Timeline video playback; `0` off, `1` on | `BSKY_INLINE_VIDEO` | | | |
 | `off` for posts without a link card | `BSKY_LINK_CARDS` | | | |
 
 `LANG` picks the language unless one is chosen in the settings (mstdn and nstr read `LC_ALL` and `LC_MESSAGES` before it), and `NO_COLOR` turns color off.

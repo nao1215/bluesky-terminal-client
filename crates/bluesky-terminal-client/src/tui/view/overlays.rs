@@ -168,8 +168,12 @@ pub(super) fn draw_settings(
             let marker = if i == selected { "▶ " } else { "  " };
             // Padded by the cells it takes: a name in Japanese is twice as
             // wide as its characters.
-            let name = truncate(i18n::t(r.name), NAME_W);
-            let pad = " ".repeat(NAME_W.saturating_sub(crate::tui::text::cells(&name)));
+            let label = i18n::t(r.name);
+            let name_w = NAME_W
+                .max(crate::tui::text::cells(label))
+                .min(width.saturating_sub(6));
+            let name = truncate(label, name_w);
+            let pad = " ".repeat(name_w.saturating_sub(crate::tui::text::cells(&name)));
             let head = format!("{marker}{name}{pad} ");
             let room = width.saturating_sub(crate::tui::text::cells(&head));
             // A path is cut at its start: its end names the folder.

@@ -26,7 +26,7 @@ use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
-use crate::tui::player::{State, inline_video};
+use crate::tui::player::State;
 use crate::tui::text::{drawable, format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
@@ -174,19 +174,10 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     ])
     .areas(area);
     draw_tabs(frame, top, app);
+    let inline = app.inline_video() && app.overlay.is_none();
     if let Some(th) = app.threads.last_mut() {
         let me = app.session.as_ref().map(|s| s.did.as_str());
-        draw_thread(
-            frame,
-            body,
-            th,
-            images,
-            PostContext {
-                me,
-                inline: app.overlay.is_none(),
-            },
-            &t,
-        );
+        draw_thread(frame, body, th, images, PostContext { me, inline }, &t);
     } else {
         draw_tab(frame, body, app, images, &t);
     }
@@ -250,7 +241,7 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     );
     // With nothing over the list, the selected post's video plays in its
     // picture box (posts::draw_posts); moving off it stops it here.
-    let inline_playing = inline_video()
+    let inline_playing = app.inline_video()
         && app.overlay.is_none()
         && app.selected_post().is_some_and(|p| {
             p.embed

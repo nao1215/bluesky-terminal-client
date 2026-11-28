@@ -1,6 +1,14 @@
 //! Translations into Russian, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (
+        "Play videos in the timeline",
+        "Воспроизводить видео в ленте",
+    ),
+    (
+        "enter turns timeline playback on or off",
+        "Enter включает или выключает видео в ленте",
+    ),
     ("(R to retry)", "(R — повторить)"),
     ("(blocked post)", "(заблокированный пост)"),
     ("(deleted)", "(удалено)"),

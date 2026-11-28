@@ -199,6 +199,9 @@ fn event_loop(
     for s in accounts.list().unwrap_or_default() {
         app.accounts.push((&s).into());
     }
+    app.kitty_graphics = picker
+        .as_ref()
+        .is_some_and(|p| p.protocol_type() == ratatui_image::picker::ProtocolType::Kitty);
     app.env = env;
     app.apply_settings(loaded, depth, warning);
     // The columns kept for the account, if any, are what the Timeline tab
@@ -221,7 +224,7 @@ fn event_loop(
     while !app.quit {
         // Update before drawing: a player started by this frame adopts the
         // same in-flight read instead of issuing three duplicate requests.
-        let videos = app.videos_near_selection(player::inline_video() && images.shows());
+        let videos = app.videos_near_selection(app.inline_video() && images.shows());
         player::read_ahead(&videos);
         if dirty {
             if let Some(delete) = images.viewer_closed(app.viewer_open()) {

@@ -546,7 +546,7 @@ pub(super) fn draw_posts<T: PostRow>(
                 ..content
             };
             if whole {
-                let playlist = (i == list.selected && context.inline && inline_video())
+                let playlist = (i == list.selected && context.inline)
                     .then_some(pl.video.as_deref())
                     .flatten();
                 draw_post_media(frame, img_area, &pl.images, playlist, images);

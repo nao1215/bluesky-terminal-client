@@ -39,12 +39,6 @@ use {
 mod ahead;
 pub(crate) use ahead::{AheadSession, read_ahead};
 
-/// Whether the selected post plays in the timeline (a trial, off by default).
-pub(crate) fn inline_video() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("BSKY_INLINE_VIDEO").is_some_and(|v| v == "1"))
-}
-
 /// Largest segment or playlist read.
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 

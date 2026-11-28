@@ -481,7 +481,9 @@ scenarios:
           graphics: kitty
           rows: 40
           cols: 100
-          env: *env
+          env:
+            <<: *env
+            BSKY_INLINE_VIDEO: "0"
           timeout: 20s
           session:
             # Long enough for the selection to rest on the post.
