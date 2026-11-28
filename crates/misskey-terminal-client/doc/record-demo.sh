@@ -162,15 +162,20 @@ stop() { # OUTPUT.gif [WIDTH] [FPS]
 
 demo_fake() {
   serve
+  # Another theme than bsky's demo, at the same size, so the two sit side
+  # by side in the repository's README.
+  use_theme dracula
   start 1120 700
   ready "♡"
   record
   # The timeline first: the photos of the top note, the video under it.
   sleep 3
   # The aquarium's photos, full screen: the first and the next, and back.
+  # No ready here: reading the screen with kitty's get-text while the
+  # photo was being sent left the viewer empty for seconds in the
+  # recording, so the viewer gets a fixed time instead.
   send " "
-  ready "d download"
-  sleep 2
+  sleep 4
   send "\033[C"
   sleep 2
   send "\033"
@@ -210,7 +215,7 @@ demo_fake() {
   sleep 2
   send "1"
   sleep 1.5
-  stop "$OUT/demo.gif" 860 8
+  stop "$OUT/demo.gif" 960 8
   quit
 }
 
