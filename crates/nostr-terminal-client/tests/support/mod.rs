@@ -65,9 +65,8 @@ impl Relay {
                     }
                     Err(e) => panic!("local listener: {e}"),
                 };
-                stream
-                    .set_read_timeout(Some(Duration::from_millis(100)))
-                    .unwrap();
+                // On Windows an accepted socket inherits the listener's nonblocking mode, and a large frame then fails to write; WinSock also leaves a socket unusable after a receive timeout. Each connection is read blocking until nstr closes it.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_write_timeout(Some(Duration::from_secs(1)))
                     .unwrap();
@@ -78,14 +77,6 @@ impl Relay {
                     let message = match socket.read() {
                         Ok(Message::Text(t)) => serde_json::from_str::<Value>(&t).unwrap(),
                         Ok(_) => continue,
-                        Err(tungstenite::Error::Io(e))
-                            if matches!(
-                                e.kind(),
-                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                            ) =>
-                        {
-                            continue;
-                        }
                         Err(_) => break,
                     };
                     record.lock().unwrap().push(message.clone());
