@@ -1642,6 +1642,7 @@ dependencies = [
  "tempfile",
  "terminal-kit",
  "tungstenite",
+ "ureq",
  "url",
  "zeroize",
 ]

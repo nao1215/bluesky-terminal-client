@@ -21,8 +21,8 @@ pub(super) const MAX_CW_CHARS: usize = 100;
 /// The most characters a file's alt text may have (`drive/files/create`'s
 /// `comment`).
 pub(super) const MAX_ALT_CHARS: usize = 512;
-/// The most pictures a post has, as bsky's `post` takes them.
-pub(super) const MAX_IMAGES: usize = 4;
+/// The most pictures a post has, as the public notes/create schema allows.
+pub(crate) const MAX_IMAGES: usize = 16;
 /// The language the preview is asked in, as Misskey's web client asks for
 /// it when the account sets none.
 pub(super) const PREVIEW_LANG: &str = "ja-JP";
@@ -101,7 +101,7 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read, origin: &str) -> Result<Draft> {
     };
     if a.video.is_some() && !a.images.is_empty() {
         return Err(Error::usage(
-            "a note can have up to 4 pictures or one video, not both",
+            "a note can have up to 16 pictures or one video, not both",
         ));
     }
     if a.images.len() > MAX_IMAGES {
@@ -112,12 +112,6 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read, origin: &str) -> Result<Draft> {
     let paths: Vec<PathBuf> = a.images.iter().cloned().chain(a.video.clone()).collect();
     if a.alts.len() > paths.len() {
         return Err(Error::usage("there is more --alt than pictures and videos"));
-    }
-    if let Some(alt) = a.alts.iter().find(|t| chars(t) > MAX_ALT_CHARS) {
-        return Err(Error::usage(format!(
-            "an --alt is {} characters; the limit is {MAX_ALT_CHARS}",
-            chars(alt)
-        )));
     }
     let cw = match a.cw.as_deref() {
         Some(c) if c.trim().is_empty() => {
@@ -242,6 +236,26 @@ pub(super) fn post(
     // The limit is the server's own: it says it in `meta`, counted in code
     // points as its API counts them.
     too_long(&d, client.max_note_chars())?;
+    if d.files.iter().any(|file| !file.alt.is_empty()) {
+        // Sharkey publishes its configured limit in NodeInfo and checks JS
+        // string length (UTF-16); the standard API's 512-character schema
+        // counts Unicode code points. Detect the field, not a server version.
+        let configured = client.max_alt_chars();
+        let max = configured.unwrap_or(MAX_ALT_CHARS);
+        for file in &d.files {
+            let count = if configured.is_some() {
+                file.alt.encode_utf16().count()
+            } else {
+                chars(&file.alt)
+            };
+            if count > max {
+                return Err(Error::usage(format!(
+                    "an --alt is {count} characters; the limit on {} is {max}",
+                    client.host()
+                )));
+            }
+        }
+    }
     let me = me(ctx, &client)?;
     if let Some(max) = max_file_bytes(me.as_ref())
         && let Some(f) = d.files.iter().find(|f| f.data.len() as u64 > max)
@@ -686,15 +700,47 @@ mod tests {
         }))
     }
 
+    // Limits projected from each local server's public NodeInfo response.
+    #[rstest]
+    #[case(include_str!("../testdata/compat/misskey-limits.json"), 512, 512)]
+    #[case(include_str!("../testdata/compat/sharkey-limits.json"), 20000, 10000)]
+    fn live_alt_limits_count_the_servers_unicode_units_before_upload(
+        #[case] nodeinfo: &'static str,
+        #[case] limit: usize,
+        #[case] emoji_count: usize,
+    ) {
+        let (url, calls) = serve(Arc::new(move |path, _, _| match path {
+            "/nodeinfo/2.1" => reply(200, nodeinfo),
+            "/api/i" => reply(200, r#"{"id":"me","username":"me"}"#),
+            _ => reply(404, "{}"),
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        login(dir.path(), &url, crate::miauth::PERMISSIONS);
+        let picture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("e2e/atago/testdata/photo.png");
+        let mut a = PostArgs {
+            images: vec![picture],
+            alts: vec!["🐈".repeat(emoji_count)],
+            dry_run: true,
+            ..args("alt boundary")
+        };
+        run(&ctx(&url, dir.path(), true), &a).0.unwrap();
+        a.alts[0].push('x');
+        let error = run(&ctx(&url, dir.path(), true), &a).0.unwrap_err();
+        assert_eq!(error.kind(), Kind::Usage);
+        assert!(error.message().contains(&format!("is {limit}")));
+        assert!(error.message().contains(&url[7..]));
+        assert!(!paths(&calls).iter().any(|p| p.contains("files/create")));
+    }
+
     const PREVIEW: &str = r#"{"url":"https://debimate.jp/post/a/","title":"記事の題 🐈‍⬛","description":"説明\u001b[2J","thumbnail":"https://media.test/preview.webp?url=x","icon":null,"sitename":"debimate","sensitive":false,"player":{"url":null}}"#;
 
     // What can be told before anything is sent is exit 1, and nothing is
     // asked of the server: not even who the account is.
     #[rstest]
-    #[case::too_many_pictures(PostArgs { images: vec!["a".into(); 5], ..args("x") }, "at most 4 pictures")]
+    #[case::too_many_pictures(PostArgs { images: vec!["a".into(); 17], ..args("x") }, "at most 16 pictures")]
     #[case::pictures_and_a_video(PostArgs { images: vec!["a".into()], video: Some("v".into()), ..args("x") }, "not both")]
     #[case::more_alt_than_files(PostArgs { alts: vec!["a".into()], ..args("x") }, "more --alt")]
-    #[case::long_alt(PostArgs { images: vec!["a".into()], alts: vec!["あ".repeat(513)], ..args("x") }, "513 characters; the limit is 512")]
     #[case::empty_cw(PostArgs { cw: Some(" ".into()), ..args("x") }, "--cw is empty")]
     #[case::long_cw(PostArgs { cw: Some("🐈".repeat(101)), ..args("x") }, "101 characters; the limit is 100")]
     #[case::empty(args("  \n "), "the note is empty")]
@@ -850,6 +896,7 @@ mod tests {
             paths(&calls),
             [
                 "/api/meta",
+                "/nodeinfo/2.1",
                 "/api/i",
                 "/api/notes/show",
                 "/api/notes/show",
@@ -859,7 +906,7 @@ mod tests {
             ]
         );
         let log = calls.lock().unwrap();
-        let upload = &log[4].1;
+        let upload = &log[5].1;
         assert!(
             upload.contains(&format!("name=\"i\"\r\n\r\n{FAKE}\r\n")),
             "{upload}"
@@ -882,7 +929,7 @@ mod tests {
             "{upload}"
         );
         assert!(
-            !log[5].1.contains("name=\"comment\""),
+            !log[6].1.contains("name=\"comment\""),
             "the second has no alt"
         );
         drop(log);
@@ -895,7 +942,7 @@ mod tests {
                 "visibility": "followers",
                 "replyId": "n0",
                 "renoteId": "n0",
-                "fileIds": ["f4", "f5"],
+                "fileIds": ["f5", "f6"],
             })
         );
     }
@@ -976,6 +1023,7 @@ mod tests {
             paths(&calls),
             [
                 "/api/meta",
+                "/nodeinfo/2.1",
                 "/api/i",
                 "/url?url=https%3A%2F%2Fdebimate.jp%2Fpost%2Fa%2F&lang=ja-JP"
             ]

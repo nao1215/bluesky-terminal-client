@@ -76,8 +76,9 @@ ID or its address (https://misskey.io/notes/ID); an account is name, @name,
 on its own server, whatever --host says.
 
 Exit status: 0 success, 1 usage error, 2 not an interactive terminal,
-3 local file error, 4 network or server error (a command's; the client
-shows them and keeps running).";
+3 local file error, 4 network, authentication, permission or server error,
+5 this server does not have this feature. The full-screen client shows
+errors and keeps running.";
 
 fn run(cli: Cli) -> Result<()> {
     let accounts = config::config_dir().map(config::AccountStore::open);

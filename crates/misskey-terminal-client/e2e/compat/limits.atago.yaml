@@ -1,0 +1,254 @@
+version: '1'
+suite:
+  name: msky live limits
+runners:
+  api:
+    type: http
+    base_url: ${env:MSKY_HOST}
+    timeout: 15s
+scenarios:
+- name: 'heavy: text at the advertised limit and one over'
+  steps:
+  - run:
+      command: msky post - --json
+      stdin: ${env:MSKY_SEED_MAX_TEXT_VALUE}
+  - assert:
+      exit_code: 0
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.text
+          matches: ^x+$
+  - run:
+      command: msky post - --json
+      stdin: ${env:MSKY_SEED_OVER_TEXT_VALUE}
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: the limit is ${env:MSKY_SEED_MAX_TEXT}
+- name: 'heavy: sixteen pictures and one over before upload'
+  steps:
+  - run:
+      command: msky post compat-sixteen --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --json
+      timeout: 30s
+  - assert:
+      exit_code: 0
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.files
+          length: 16
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - store:
+      name: before
+      from:
+        body:
+          json:
+            path: $[0].id
+  - run:
+      command: msky post compat-seventeen --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH} --image ${env:MSKY_SEED_PICTURE_PATH}
+        --json
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: at most 16 pictures
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - assert:
+      body:
+        json:
+          path: $[0].id
+          equals: ${before}
+- name: 'heavy: alt text at the server limit and one over before upload'
+  steps:
+  - run:
+      command: msky post compat-limit --image ${env:MSKY_SEED_PICTURE_PATH} --alt "${env:MSKY_SEED_MAX_ALT_TEXT}"
+        --json
+      timeout: 30s
+  - assert:
+      exit_code: 0
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.files[0].description
+          equals: ${env:MSKY_SEED_MAX_ALT_TEXT}
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - store:
+      name: before
+      from:
+        body:
+          json:
+            path: $[0].id
+  - run:
+      command: msky post compat-limit --image ${env:MSKY_SEED_PICTURE_PATH} --alt "${env:MSKY_SEED_OVER_ALT_TEXT}"
+        --json
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: ${env:MSKY_SEED_MAX_ALT}
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - assert:
+      body:
+        json:
+          path: $[0].id
+          equals: ${before}
+- name: 'heavy: file bytes at the server limit and one over before upload'
+  steps:
+  - run:
+      command: msky post compat-limit --image ${env:MSKY_SEED_DIR}/max-file.png --json
+      timeout: 30s
+  - assert:
+      exit_code: 0
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.files[0].size
+          equals: 1048576
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - store:
+      name: before
+      from:
+        body:
+          json:
+            path: $[0].id
+  - run:
+      command: msky post compat-limit --image ${env:MSKY_SEED_DIR}/over-file.png --json
+  - assert:
+      exit_code: 1
+      stdout:
+        contains: '1048576'
+  - http:
+      runner: api
+      method: POST
+      path: /api/drive/files
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        limit: 100
+  - assert:
+      body:
+        json:
+          path: $[0].id
+          equals: ${before}
+- name: 'behavior: revoked token remains authentication status four'
+  steps:
+  - http:
+      runner: api
+      method: POST
+      path: /api/miauth/gen-token
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        session: null
+        permission:
+        - read:account
+  - store:
+      name: revoked
+      from:
+        body:
+          json:
+            path: $.token
+  - http:
+      runner: api
+      method: POST
+      path: /api/i/revoke-token
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        token: ${revoked}
+  - assert:
+      status: 204
+  - run:
+      command: msky whoami --json
+      env:
+        MSKY_TOKEN: ${revoked}
+  - assert:
+      exit_code: 4
+      stdout:
+        contains: AUTHENTICATION_FAILED
+secrets:
+- ${env:MSKY_TOKEN}
+- ${env:MSKY_SECOND_TOKEN}
+- ${env:MSKY_THIRD_TOKEN}
+- ${env:MSKY_ADMIN_TOKEN}
+- ${env:MSKY_RESTRICTED_TOKEN}

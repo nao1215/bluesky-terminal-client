@@ -45,3 +45,6 @@ pub mod media;
 pub mod files;
 
 pub mod locale;
+
+/// Command errors and exit statuses used by the clients.
+pub mod error;
