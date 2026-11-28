@@ -19,6 +19,7 @@ scenarios:
         ready:
           file: ready.txt
           store: relay
+          timeout: 30s
     steps:
       - run:
           command: nstr whoami

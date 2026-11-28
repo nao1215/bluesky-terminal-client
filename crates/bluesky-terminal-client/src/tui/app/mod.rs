@@ -177,10 +177,19 @@ impl<T> Default for List<T> {
 }
 
 impl<T: Keyed> List<T> {
+    fn unique(items: impl IntoIterator<Item = T>) -> Vec<T> {
+        let mut seen = HashSet::new();
+        items
+            .into_iter()
+            .filter(|i| seen.insert(i.key().to_string()))
+            .collect()
+    }
+
     /// Replace the list with a first page. The selection stays on the item
     /// it was on when that item is in the page (a reload after replying, or
     /// R, keeps the reader's place); otherwise it goes to the top.
-    fn set(&mut self, page: Page<T>) {
+    fn set(&mut self, mut page: Page<T>) {
+        page.items = Self::unique(page.items);
         let kept = self
             .current()
             .and_then(|old| page.items.iter().position(|i| i.key() == old.key()));
@@ -209,14 +218,16 @@ impl<T: Keyed> List<T> {
             .into_iter()
             .filter(|i| !whole && !fresh.contains(i.key()))
             .collect();
-        let (cursor, pending) = if rest.is_empty() {
-            (page.cursor, false)
+        let cursor = if rest.is_empty() {
+            page.cursor
         } else {
-            (self.cursor.take(), self.more_pending)
+            self.cursor.take()
         };
-        self.items = page.items.into_iter().chain(rest).collect();
+        self.items = Self::unique(page.items.into_iter().chain(rest));
         self.cursor = cursor;
-        self.more_pending = pending;
+        // A next page sent before this refresh is superseded, even when
+        // the server reused its cursor. The next move can request it again.
+        self.more_pending = false;
         self.selected = selected
             .and_then(|k| self.items.iter().position(|i| i.key() == k))
             .unwrap_or(0);
@@ -247,9 +258,12 @@ impl<T: Keyed> List<T> {
             return;
         }
         self.more_pending = false;
-        let seen: HashSet<String> = self.items.iter().map(|i| i.key().to_string()).collect();
-        self.items
-            .extend(page.items.into_iter().filter(|i| !seen.contains(i.key())));
+        let mut seen: HashSet<String> = self.items.iter().map(|i| i.key().to_string()).collect();
+        self.items.extend(
+            page.items
+                .into_iter()
+                .filter(|i| seen.insert(i.key().to_string())),
+        );
         self.cursor = page.cursor.filter(|c| c != requested);
     }
 }
@@ -308,6 +322,7 @@ impl<T> List<T> {
     fn failed(&mut self, e: &Error) {
         self.loaded = true;
         self.loading = false;
+        self.more_pending = false;
         self.error = Some(e.message().to_string());
     }
 
