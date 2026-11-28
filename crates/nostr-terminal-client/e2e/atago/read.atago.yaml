@@ -1,0 +1,182 @@
+# nstr timeline and nstr notifications against the relay stand-in
+# (testdata/relay.py on 127.0.0.1). The relay stores, signed by throwaway
+# keys: alice's contact list (bob, and a p tag that is not a key), notes by
+# alice and bob, a note by carol whom alice does not follow, carol's mention
+# of alice and bob's reply to alice's note. The times are fixed
+# (2026-01-01 00:00 UTC onwards) and TZ=UTC, so the text output is exact.
+version: "1"
+
+suite:
+  name: nstr read
+
+scenarios:
+  - name: timeline shows alice's and her contacts' notes, newest first
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready:
+          file: ready.txt
+          store: relay
+    steps:
+      - run:
+          command: nstr timeline -n 2
+          env: &env
+            NSTR_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              npub1yluhcpenal4x57hawx40489ppxpfsgn5emgnahx6ce09kcetkkysac2sl5 · 2026-01-01 00:10
+              返信です
+              nostr:note1rkjr5g58edz7rat4n358satz58y5yewscz6w0ch23x5kmffnkpjqm23yjp
+              npub1yluhcpenal4x57hawx40489ppxpfsgn5emgnahx6ce09kcetkkysac2sl5 · 2026-01-01 00:05
+              bob の二つ目 👨‍👩‍👧
+              nostr:note1hn0f0axwprt4m0a8zazmgz47up8mr5kfpej7tx0cs4nftjrz8ztseakpkp
+          stderr:
+            empty: true
+      # The notes are asked of the authors of the contact list and alice;
+      # the p tag that is not a key is left out.
+      - assert:
+          file:
+            path: requests.jsonl
+            contains: '{"authors": ["27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589", "76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742"], "kinds": [1], "limit": 2}'
+      - assert:
+          file: { path: requests.jsonl, not_contains: not-a-key }
+      # All of them: carol's notes are not in it, alice's own note is.
+      - run:
+          command: nstr timeline --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            # One note a line, newest first.
+            matches: '^\{[^\n]*"text":"返信です"[^\n]*\}\n\{[^\n]*"text":"bob の二つ目 👨‍👩‍👧"[^\n]*\}\n\{[^\n]*"text":"bob の一つ目"[^\n]*\}\n\{[^\n]*"text":"はじめての投稿 🐈‍⬛"[^\n]*\}\n$'
+            not_contains: carol
+          stderr:
+            empty: true
+      - run:
+          command: nstr timeline -n 1 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 1da43a2287cb45e1f5759c68787562a1c94265d0c0b4e7e2ea89a96da533b064 }
+              - { path: "$.text", equals: 返信です }
+              - { path: "$.replyId", equals: 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 }
+              - { path: "$.createdAt", equals: "2026-01-01T00:10:00Z" }
+              - { path: "$.user.id", equals: 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 }
+              - { path: "$.user.username", equals: npub1yluhcpenal4x57hawx40489ppxpfsgn5emgnahx6ce09kcetkkysac2sl5 }
+              - { path: "$.uri", equals: "nostr:note1rkjr5g58edz7rat4n358satz58y5yewscz6w0ch23x5kmffnkpjqm23yjp" }
+              - { path: "$.note", equals: note1rkjr5g58edz7rat4n358satz58y5yewscz6w0ch23x5kmffnkpjqm23yjp }
+              - { path: "$.kind", equals: 1 }
+              - { path: "$.cw", equals: null }
+              - { path: "$.url", equals: null }
+              - { path: "$.tags[0][3]", equals: reply }
+
+  - name: without a contact list the timeline is alice's own notes
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --no-contacts
+        ready:
+          file: ready.txt
+    steps:
+      - run:
+          command: nstr timeline
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              npub1wmzszgqc4h2r7n2m8ppwg7w50pgrx0jtsef9j35xy3m4gmhdwapqx894z8 · 2026-01-01 00:01
+              はじめての投稿 🐈‍⬛
+              nostr:note1n9tsk39qcxlxmq2yz7a4cq4ta3zdxtzvyhavdzs35vz2nrk4xe3qhljmgt
+
+  # Notes that tag alice, whoever wrote them: bob's reply (an e tag with
+  # the reply marker) and carol's mention.
+  - name: notifications are the notes that tag alice, as replies and mentions
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready:
+          file: ready.txt
+    steps:
+      - run:
+          command: nstr notifications
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              reply: npub1yluhcpenal4x57hawx40489ppxpfsgn5emgnahx6ce09kcetkkysac2sl5 · 2026-01-01 00:10
+              返信です
+              nostr:note1rkjr5g58edz7rat4n358satz58y5yewscz6w0ch23x5kmffnkpjqm23yjp
+              mention: npub1mgdpefvvjt9trkjpvrqpacxtxtwwlj6df9xu6u06czvklntw3lqq2h5lyn · 2026-01-01 00:08
+              @alice こんにちは
+              nostr:note1jtx3gxzld40m7f3wer77fjtnw7kjf8tpk9f509p438ufqtz9w9qs0uxv9n
+      - assert:
+          file:
+            path: requests.jsonl
+            contains: '{"#p": ["76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742"], "kinds": [1], "limit": 20}'
+      - run:
+          command: nstr notifications -n 1 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.type", equals: reply }
+              - { path: "$.id", equals: 1da43a2287cb45e1f5759c68787562a1c94265d0c0b4e7e2ea89a96da533b064 }
+              - { path: "$.postId", equals: 1da43a2287cb45e1f5759c68787562a1c94265d0c0b4e7e2ea89a96da533b064 }
+              - { path: "$.createdAt", equals: "2026-01-01T00:10:00Z" }
+              - { path: "$.user.id", equals: 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 }
+              - { path: "$.post.replyId", equals: 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 }
+              - { path: "$.post.text", equals: 返信です }
+
+  # A relay nothing listens on is all the config names: exit 4, with what
+  # went wrong for each relay.
+  - name: no relay answering is exit 4
+    steps:
+      - fixture:
+          file: cfg/config.json
+          content: '{"publicKey": "76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742", "relays": ["ws://127.0.0.1:1/"], "timeoutSeconds": 5}'
+      - run:
+          command: nstr timeline --json
+          env: *env
+      - assert:
+          exit_code: 4
+          stdout:
+            json:
+              - { path: "$.status", equals: 4 }
+          stderr:
+            contains: "error: no relay completed the operation: ws://127.0.0.1:1/: "
+
+  # A reader that stops early (head) closes the pipe; nstr stops writing
+  # and exits 0, rather than 3 or a panic. The relay stores 120 more long
+  # notes, more than a pipe holds, so nstr is still writing.
+  - name: a pipe closed early ends the output quietly with exit 0
+    skip:
+      os: windows  # the pipeline needs head and a POSIX shell
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --many
+        ready:
+          file: ready.txt
+    steps:
+      - run:
+          command: '{ nstr timeline -n 100 --json; echo "nstr=$?" >&2; } | head -c 1'
+          shell: true
+          env: *env
+      - assert:
+          stderr:
+            contains: "nstr=0"
+            not_contains: ["panicked", "Broken pipe"]
+      - run:
+          command: '{ nstr timeline -n 100; echo "nstr=$?" >&2; } | head -c 1'
+          shell: true
+          env: *env
+      - assert:
+          stderr:
+            contains: "nstr=0"
+            not_contains: ["panicked", "Broken pipe"]

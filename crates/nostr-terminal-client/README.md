@@ -60,9 +60,10 @@ Text output removes terminal control characters and formats timestamps with term
 
 ```sh
 cargo test -p nostr-terminal-client
+just e2e-nstr    # end-to-end tests (atago, needs python3)
 ```
 
-Unit and property tests check event hashing and signatures against the published BIP-340 and NIP-19 vectors, and cover message parsing, config validation and output. The integration tests run the binary against fake relays started in the test process on loopback, with keys the tests generate; no test connects to a public relay.
+Unit and property tests check event hashing and signatures against the published BIP-340 and NIP-19 vectors, and cover message parsing, config validation and output. The integration tests run the binary against fake relays started in the test process on loopback, with keys the tests generate. The end-to-end specs in `e2e/atago/` run the built binary against `e2e/atago/testdata/relay.py`, a relay stand-in on 127.0.0.1 whose events are signed with throwaway keys; no test connects to a public relay.
 
 ## License
 

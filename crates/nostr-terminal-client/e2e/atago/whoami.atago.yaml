@@ -1,0 +1,128 @@
+# nstr whoami, and what nstr does before it reaches a relay: usage errors
+# (exit 1) and a config it cannot use (exit 3). The relay is
+# testdata/relay.py on 127.0.0.1, so nothing reaches a real relay; it signs
+# its events with throwaway keys that belong to no one.
+version: "1"
+
+suite:
+  name: nstr whoami
+
+scenarios:
+  # The relay holds two kind-0 events for alice; whoami shows the newer
+  # one, and a relay in the config that refuses connections is a warning,
+  # not a failure, while another relay answers.
+  - name: whoami prints the newest profile metadata
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --dead
+        # The relay writes cfg/config.json with its port before this file.
+        ready:
+          file: ready.txt
+          store: relay
+    steps:
+      - run:
+          command: nstr whoami
+          env: &env
+            NSTR_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              npub1wmzszgqc4h2r7n2m8ppwg7w50pgrx0jtsef9j35xy3m4gmhdwapqx894z8
+              Alice 🐈‍⬛
+              テスト用のアカウントです
+          stderr:
+            contains: "warning: ws://127.0.0.1:"
+            not_contains: "${relay}"
+      - run:
+          command: nstr whoami --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: 76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742 }
+              - { path: "$.username", equals: npub1wmzszgqc4h2r7n2m8ppwg7w50pgrx0jtsef9j35xy3m4gmhdwapqx894z8 }
+              - { path: "$.npub", equals: npub1wmzszgqc4h2r7n2m8ppwg7w50pgrx0jtsef9j35xy3m4gmhdwapqx894z8 }
+              - { path: "$.nprofile", equals: nprofile1qqs8d3gpyqv2m4plf4dnsshy0828s5pn8e9cv5jeg6rzga65dmkhwssm2jru0 }
+              - { path: "$.name", equals: "Alice 🐈‍⬛" }
+              - { path: "$.description", equals: テスト用のアカウントです }
+              - { path: "$.picture", equals: "https://example.invalid/alice.png" }
+              - { path: "$.host", equals: null }
+              - { path: "$.url", equals: null }
+              - { path: "$.followersCount", equals: null }
+      - assert:
+          file:
+            path: requests.jsonl
+            contains: '["REQ", "nstr-0", {"authors": ["76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742"], "kinds": [0], "limit": 1}]'
+
+  # Nothing below needs a relay: nstr stops at the command line or the
+  # config, with the usage status 1 or the local file status 3, and with
+  # --json the error is a JSON line on stdout too.
+  - name: usage errors are exit 1 and a config nstr cannot use is exit 3
+    steps:
+      - run:
+          command: nstr --json
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.error", equals: no command given }
+              - { path: "$.hint", equals: "run `nstr --help` for usage" }
+              - { path: "$.status", equals: 1 }
+          stderr:
+            equals: "error: no command given\nhint: run `nstr --help` for usage\n"
+      - run:
+          command: nstr timeline -n 0
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: invalid value '0' for '--limit <LIMIT>'"
+      - run:
+          command: nstr notifications -n x --json
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              - { path: "$.status", equals: 1 }
+      - run:
+          command: nstr post "  "
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: post text must not be empty\nhint: run `nstr --help` for usage\n"
+      - run:
+          command: nstr whoami --json
+          env:
+            NSTR_CONFIG_DIR: ${workdir}/none
+      - assert:
+          exit_code: 3
+          stdout:
+            json:
+              - { path: "$.status", equals: 3 }
+              - { path: "$.hint", equals: null }
+          stderr:
+            contains: "error: cannot open config "
+      - fixture:
+          file: bad/config.json
+          content: '{"publicKey": "npub1notakey", "relays": ["ws://127.0.0.1:1/"]}'
+      - run:
+          command: nstr timeline
+          env:
+            NSTR_CONFIG_DIR: ${workdir}/bad
+      - assert:
+          exit_code: 3
+          stderr:
+            equals: "error: publicKey must be hex, npub or nprofile\n"
+      - fixture:
+          file: http/config.json
+          content: '{"publicKey": "76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742", "relays": ["https://127.0.0.1:1/"]}'
+      - run:
+          command: nstr notifications
+          env:
+            NSTR_CONFIG_DIR: ${workdir}/http
+      - assert:
+          exit_code: 3
+          stderr:
+            equals: "error: relay URLs require ws:// or wss://, a host, no credentials and no fragment\n"
