@@ -172,28 +172,13 @@ fn event_loop(
     let off = loaded.pictures_off() && env.graphics.is_none();
     // The picker is kept even with pictures off, so they can be turned
     // back on without asking the terminal again while keys are read.
-    let make_images = |picker: &Option<ratatui_image::picker::Picker>, cache: Option<PathBuf>| {
-        let Some(picker) = picker else {
-            return Ok(Images::none());
-        };
-        let cache = cache.map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
-        let mut images = Images::with_loader(picker.clone(), cache, |p| {
-            crate::media::load(p)
-                .map(|(image, _)| image)
-                .map_err(|e| e.message().to_string())
-        })?;
-        images.set_player(player::start);
-        if let Some(cdn) = picture_server(service) {
-            images.connect(cdn);
-        }
-        Ok::<_, io::Error>(images)
-    };
     let (mut images, images_failed) = if off {
         (Images::none(), None)
     } else {
         without_threads(make_images(
             &picker,
             crate::config::cache_dir(&env, &loaded).0,
+            picture_server(service, app.session.as_ref()),
         ))
     };
     for s in accounts.list().unwrap_or_default() {
@@ -288,7 +273,11 @@ fn event_loop(
             }
             images = Images::none();
             if on {
-                let (made, failed) = without_threads(make_images(&picker, app.cache_dir()));
+                let (made, failed) = without_threads(make_images(
+                    &picker,
+                    app.cache_dir(),
+                    picture_server(service, app.session.as_ref()),
+                ));
                 images = made;
                 match failed {
                     Some(why) => app.pictures_failed(&why),
@@ -386,10 +375,35 @@ fn without_threads(made: io::Result<Images>) -> (Images, Option<String>) {
     }
 }
 
+fn make_images(
+    picker: &Option<ratatui_image::picker::Picker>,
+    cache: Option<PathBuf>,
+    cdn: Option<&str>,
+) -> io::Result<Images> {
+    let Some(picker) = picker else {
+        return Ok(Images::none());
+    };
+    let cache = cache.map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
+    let mut images = Images::with_loader(picker.clone(), cache, |p| {
+        crate::media::load(p)
+            .map(|(image, _)| image)
+            .map_err(|e| e.message().to_string())
+    })?;
+    images.set_player(player::start);
+    if let Some(cdn) = cdn {
+        images.connect(cdn);
+    }
+    Ok(images)
+}
+
 /// Bluesky's picture server, to connect to at the start, for a service
 /// reached over the internet. A local one (a test's stand-in server) gets
 /// its pictures elsewhere, and a run against it must not reach out at all.
-fn picture_server(service: &str) -> Option<&'static str> {
+fn picture_server(service: &str, session: Option<&Session>) -> Option<&'static str> {
+    // The CLI service is only the login default. Warming its CDN while a
+    // saved account uses another service can occupy every picture loader,
+    // leaving even that account's local thumbnails waiting for the CDN.
+    let service = session.map_or(service, |s| s.service.as_str());
     let host = service.strip_prefix("https://")?;
     let host = host.split(['/', ':']).next().unwrap_or("");
     let local = host == "localhost" || host.starts_with("127.") || host.starts_with('[');
@@ -398,8 +412,8 @@ fn picture_server(service: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::picture_server;
     use super::{account_changes, with_restore, without_threads};
+    use super::{make_images, picture_server};
     use crate::config::{AccountStore, Session};
     use crate::error::{Error, Kind};
     use crate::tui::app::App;
@@ -496,18 +510,87 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_local_service_does_not_let_cdn_warmups_starve_thumbnails() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        use terminal_kit::test_support::http::{Response, reply, serve_http};
+
+        let (heads_tx, heads_rx) = mpsc::channel();
+        let (picture_tx, picture_rx) = mpsc::channel();
+        let server = serve_http(move |request, _| {
+            if request.method == "HEAD" {
+                // Hold every warm-up until the test ends, including on
+                // assertion failure. No sleep decides which request wins.
+                let (release, wait) = mpsc::channel::<()>();
+                heads_tx.send(release).unwrap();
+                let _released = wait.recv();
+                return Some(reply(200, ""));
+            }
+            assert_eq!(request.target, "/thumbnail.png");
+            picture_tx.send(()).unwrap();
+            Some(Response {
+                status: 200,
+                headers: vec![("Content-Type", "image/png".into())],
+                body: include_bytes!("../../e2e/atago/testdata/avatar-alice.png").to_vec(),
+            })
+        })
+        .unwrap();
+        let mut saved = session("did:plc:me", "me.test");
+        saved.service = server.url().into();
+        let default_service = "https://bsky.social";
+        let (app, _) = App::new(Some(saved), default_service);
+        let cdn = picture_server(default_service, app.session.as_ref());
+        // Redirect any wrongly selected public CDN to our blocked mock:
+        // the regression must never contact a real server.
+        let mut images = make_images(
+            &Some(ratatui_image::picker::Picker::halfblocks()),
+            None,
+            cdn.map(|_| server.url()),
+        )
+        .unwrap();
+        let _held: Vec<_> = if cdn.is_some() {
+            // Images::connect warms all eight loaders. Force that ordering
+            // before asking for the poster, as a slow CDN did on CI.
+            (0..8)
+                .map(|_| heads_rx.recv_timeout(Duration::from_secs(5)).unwrap())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        images.prefetch(&format!("{}/thumbnail.png", server.url()), 36, 11);
+        picture_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the saved account's thumbnail must not wait for unrelated CDN warm-ups");
+        assert!(server.calls().iter().all(|r| r.method == "GET"));
+    }
+
+    #[test]
     fn the_picture_server_is_warmed_only_for_a_service_on_the_internet() {
         assert_eq!(
-            picture_server("https://bsky.social"),
+            picture_server("https://bsky.social", None),
             Some("https://cdn.bsky.app/")
         );
         assert_eq!(
-            picture_server("https://pds.example.com:2583"),
+            picture_server("https://pds.example.com:2583", None),
             Some("https://cdn.bsky.app/")
         );
-        assert_eq!(picture_server("http://127.0.0.1:4000"), None);
-        assert_eq!(picture_server("https://127.0.0.1:4000"), None);
-        assert_eq!(picture_server("https://localhost"), None);
-        assert_eq!(picture_server("https://[::1]:8080"), None);
+        assert_eq!(picture_server("http://127.0.0.1:4000", None), None);
+        assert_eq!(picture_server("https://127.0.0.1:4000", None), None);
+        assert_eq!(picture_server("https://localhost", None), None);
+        assert_eq!(picture_server("https://[::1]:8080", None), None);
+        let mut saved = session("did:plc:me", "me.test");
+        for service in [
+            "http://127.0.0.1:4000",
+            "https://localhost",
+            "https://[::1]:8080",
+        ] {
+            saved.service = service.into();
+            assert_eq!(picture_server("https://bsky.social", Some(&saved)), None);
+        }
+        saved.service = "https://bsky.social".into();
+        assert_eq!(
+            picture_server("http://127.0.0.1:4000", Some(&saved)),
+            Some("https://cdn.bsky.app/")
+        );
     }
 }

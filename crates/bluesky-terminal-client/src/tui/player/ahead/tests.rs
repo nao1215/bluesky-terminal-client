@@ -144,11 +144,13 @@ fn cancelling_read_ahead_interrupts_the_socket_and_a_late_result_cannot_return(
             .unwrap();
     }
     let job = Arc::clone(&cache.0.lock().entries[0].job);
+    // Set before the client shuts the socket: macOS refuses SO_RCVTIMEO with
+    // EINVAL on a socket its peer has already reset.
+    old.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     // Hold either the response headers or the rest of the segment body.
     // Eviction must release the read without waiting for its HTTP timeout.
     cache.update(&[]);
     assert!(job.cancelled.load(Ordering::Relaxed));
-    old.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     // Shutting down with response bytes still in flight can reset TCP,
     // rather than close it gracefully. Either must stop the server's read.
     match old.read(&mut [0; 1]) {

@@ -44,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- Resizing the terminal while pressing a key no longer leaves the key unread until another key is pressed, so timeline navigation keeps the intended selection.
+- Picture loading for a saved local account no longer waits for unrelated public CDN warm-ups, so stopping inline video can restore its thumbnail promptly.
 - Repeated posts, accounts or chat messages within a page are shown once, including after refreshing or loading more pages.
 - A late page or error from before a refresh no longer replaces the next page being awaited when the server reuses a cursor.
 - A quote can be posted without commentary in the composer and with `bsky post --quote`.

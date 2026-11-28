@@ -70,7 +70,7 @@ bsky speaks English, 日本語, 简体中文, 한국어, Русский, Españo
 |:--:|:--:|
 | ![a picture and a video, full screen](doc/img/viewer.gif) | ![the picture browser of the composer](doc/img/compose.png) |
 | `v`: thread | `/`: search |
-| ![a thread](doc/img/thread.png) | ![accounts found for a search](doc/img/search.png) |
+| ![a thread](doc/img/thread.png) | ![posts found from the search box](doc/img/search.png) |
 | `.`: actions | `e`: edit your profile |
 | ![the list of what the keys do to a post](doc/img/actions.png) | ![the profile editor](doc/img/editor.png) |
 | `2`: chat | `A`: accounts |

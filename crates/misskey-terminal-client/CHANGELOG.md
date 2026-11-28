@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- Resizing the terminal while pressing a key no longer leaves the key unread until another key is pressed.
 - An error answered in a shape other than Misskey's, as a proxy or a gateway in front of the server writes it (`{"error": "..."}`, `{"message": "..."}`, a line of text), is said in the message: msky said only `HTTP 500`.
 
 - A setting too long for the settings screen, such as a download folder, is cut between whole emoji: its start could be left as half a flag, a skin tone or the end of a family.

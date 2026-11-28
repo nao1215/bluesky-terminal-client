@@ -65,7 +65,7 @@ msky speaks English and 日本語: the language of your system, or the one chose
 |:--:|:--:|
 | ![a note's pictures and a video, full screen](doc/img/viewer.gif) | ![the picture browser of the composer](doc/img/compose.png) |
 | `v`: thread | `/`: search box and results |
-| ![a thread](doc/img/thread.png) | ![accounts found for a search](doc/img/search.png) |
+| ![a thread](doc/img/thread.png) | ![posts found from the search box](doc/img/search.png) |
 | `.`: actions | `e`: edit your profile |
 | ![the list of what the keys do to a note](doc/img/actions.png) | ![the profile editor](doc/img/editor.png) |
 | `7`: chat | `A`: accounts |

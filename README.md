@@ -110,7 +110,7 @@ Only bsky makes link cards and speaks nine languages (msky and mstdn speak Engli
 |:--:|:--:|
 | ![bsky: a picture and a video, full screen](crates/bluesky-terminal-client/doc/img/viewer.gif) | ![msky: the picture browser of the composer](crates/misskey-terminal-client/doc/img/compose.png) |
 | msky `v`: thread | bsky `/`: search box |
-| ![msky: a thread](crates/misskey-terminal-client/doc/img/thread.png) | ![bsky: accounts found for a search](crates/bluesky-terminal-client/doc/img/search.png) |
+| ![msky: a thread](crates/misskey-terminal-client/doc/img/thread.png) | ![bsky: posts found from the search box](crates/bluesky-terminal-client/doc/img/search.png) |
 | bsky `.`: actions | msky `e`: edit your profile |
 | ![bsky: the list of what the keys do to a post](crates/bluesky-terminal-client/doc/img/actions.png) | ![msky: the profile editor](crates/misskey-terminal-client/doc/img/editor.png) |
 | msky `6`: chat | bsky `A`: accounts |
