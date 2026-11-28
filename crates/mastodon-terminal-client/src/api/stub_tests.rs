@@ -5,6 +5,34 @@ use super::*;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Mutex;
 
+#[test]
+fn unsupported_reads_discovery_without_sending_the_token() {
+    let (url, calls) = serve(Arc::new(|call, _| match call.path() {
+        "/api/v1/timelines/public" => reply(404, r#"{"error":"Not Found"}"#),
+        "/api/v2/instance" => reply(
+            200,
+            r#"{"version":"4.2.0 (compatible; GoToSocial 0.19.0)"}"#,
+        ),
+        "/.well-known/nodeinfo" => reply(
+            200,
+            r#"{"links":[{"rel":"http://nodeinfo.diaspora.software/ns/schema/2.0","href":"https://outside.invalid/nodeinfo/2.0"}]}"#,
+        ),
+        _ => reply(500, "{}"),
+    }));
+    let client = Client::new(&url).with_token(Some("private-test-token".into()));
+    let error = client
+        .timeline("v1/timelines/public", &[], 1, None)
+        .unwrap_err();
+    assert_eq!(error.kind(), Kind::Unsupported);
+    assert!(error.message().contains(client.host()));
+    assert!(error.message().contains("v1/timelines/public"));
+    assert!(error.message().contains("GoToSocial 0.19.0"));
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.len(), 3);
+    assert!(calls[0].auth.is_some());
+    assert!(calls[1..].iter().all(|c| c.auth.is_none()));
+}
+
 /// What the stand-in answers: status, extra headers, body.
 pub(crate) struct Reply {
     pub status: u16,
@@ -486,4 +514,44 @@ fn an_upload_sends_the_file_and_says_whether_it_is_ready() {
         !first.body.contains("SecretCam"),
         "the metadata is taken off"
     );
+}
+
+#[test]
+fn quote_capabilities_come_from_readable_fields_not_software_versions() {
+    for (field, expected) in [(true, None), (false, Some(Kind::Unsupported))] {
+        let (url, _) = serve(Arc::new(move |call, _| match call.path() {
+            "/api/v1/statuses/10" => reply(
+                200,
+                if field {
+                    r#"{"id":"10","quote_approval":{"current_user":"automatic"}}"#
+                } else {
+                    r#"{"id":"10"}"#
+                },
+            ),
+            "/api/v1/accounts/verify_credentials" => reply(
+                200,
+                if field {
+                    r#"{"id":"1","source":{"quote_policy":"public"}}"#
+                } else {
+                    r#"{"id":"1","source":{}}"#
+                },
+            ),
+            "/api/v2/instance" => reply(200, r#"{"version":"99.0.0 (compatible; example)"}"#),
+            _ => reply(404, "{}"),
+        }));
+        let client = Client::new(&url);
+        for id in [Some("10"), None] {
+            assert_eq!(client.require_quotes(id).err().map(|e| e.kind()), expected);
+        }
+    }
+    for status in [401, 403, 404, 500] {
+        let (url, _) = serve(Arc::new(move |_, _| reply(status, r#"{"error":"denied"}"#)));
+        assert_eq!(
+            Client::new(&url)
+                .require_quotes(Some("10"))
+                .unwrap_err()
+                .kind(),
+            Kind::Api
+        );
+    }
 }

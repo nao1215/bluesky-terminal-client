@@ -273,9 +273,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("ctrl+w", n!("warning")),
                 ("ctrl+p", n!("visibility")),
             ];
-            if app.limits.quotes {
-                v.push(("ctrl+q", n!("quote approval")));
-            }
+            v.push(("ctrl+q", n!("quote approval")));
             if c.warning.is_some() || !c.media.is_empty() {
                 v.push(("tab", n!("next field")));
             }

@@ -142,7 +142,7 @@ More keys: bsky `cid`, and for `app-passwords add` the `password`; msky `reactio
 
 ## Errors
 
-A command that fails prints `{"error", "hint", "status"}` to stdout as well as the error to stderr, and exits with `status`: 1 a usage error, 2 no terminal to draw in, 3 a local file, 4 the network or the server.
+A command that fails prints `{"error", "hint", "status"}` to stdout as well as the error to stderr, and exits with `status`: 1 a usage error, 2 no terminal to draw in, 3 a local file, 4 the network or the server; mstdn also uses 5 for an unsupported server feature.
 
 ## Before this shape
 

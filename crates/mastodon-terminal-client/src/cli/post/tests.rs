@@ -22,6 +22,23 @@ fn args(text: &str) -> PostArgs {
     }
 }
 
+#[test]
+fn explicitly_disabled_media_is_unsupported_before_upload() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut a = args("picture");
+    a.images.push(photo(dir.path()));
+    let draft = draft(&a, &mut std::io::empty()).unwrap();
+    let limits = Limits::from_instance(
+        &json!({"configuration": {"statuses": {"max_media_attachments": 0}}}),
+    );
+    let error = too_much(&draft, &limits, "127.0.0.1:8080").unwrap_err();
+    assert_eq!(error.kind(), Kind::Unsupported);
+    assert_eq!(
+        error.message(),
+        "127.0.0.1:8080 does not support media attachments"
+    );
+}
+
 fn ctx_of(origin: &str, dir: &std::path::Path, json: bool, scopes: &[&str]) -> Ctx {
     AccountStore::open(dir)
         .save(&Session {
@@ -407,11 +424,10 @@ fn local(alt: &str, size: usize, video: bool) -> Local {
     }
 }
 
-// Each limit takes what is at it and refuses one past it.
+// Text/count limits are inclusive; Mastodon and GoToSocial byte ceilings are exclusive.
 #[test]
-fn the_limits_take_what_is_at_them_and_refuse_one_past() {
+fn text_and_count_limits_are_inclusive_and_byte_limits_are_exclusive() {
     let l = Limits {
-        quotes: false,
         max_characters: 5,
         characters_reserved_per_url: 23,
         max_media_attachments: 2,
@@ -445,11 +461,11 @@ fn the_limits_take_what_is_at_them_and_refuse_one_past() {
         )
         .is_err()
     );
-    assert!(too_much(&d("x", None, vec![local("abc", 10, false)]), &l, "h").is_ok());
+    assert!(too_much(&d("x", None, vec![local("abc", 9, false)]), &l, "h").is_ok());
     assert!(too_much(&d("x", None, vec![local("abcd", 1, false)]), &l, "h").is_err());
-    assert!(too_much(&d("x", None, vec![local("", 11, false)]), &l, "h").is_err());
-    assert!(too_much(&d("x", None, vec![local("", 20, true)]), &l, "h").is_ok());
-    assert!(too_much(&d("x", None, vec![local("", 21, true)]), &l, "h").is_err());
+    assert!(too_much(&d("x", None, vec![local("", 10, false)]), &l, "h").is_err());
+    assert!(too_much(&d("x", None, vec![local("", 19, true)]), &l, "h").is_ok());
+    assert!(too_much(&d("x", None, vec![local("", 20, true)]), &l, "h").is_err());
 }
 
 // As many --alt as files is fine; one more is a usage error.

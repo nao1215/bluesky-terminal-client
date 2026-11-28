@@ -50,6 +50,15 @@ Mastodon's multipart writer to avatar/header parts changed the adjacent existing
 retry-notice fingerprint; that unchanged command-line network retry notice does
 not belong in terminal-kit's drawing API. No new implementation copy is retained.
 
+The compatibility stage adds a distinct unsupported kind and help text. This
+changes fingerprints of the existing per-client error constructors, formatting
+and startup code; those unchanged copies retain the earlier exception rather
+than moving application error policy into terminal-kit.
+
+Routing retry notices through the TUI removed the shared stderr formatting
+match and shifted the existing Client constructor match; neither adds copied
+implementation. The constructors keep their per-client API ownership.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 

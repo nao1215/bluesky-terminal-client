@@ -12,6 +12,7 @@
 //! once, and anything else is returned at once.
 
 mod chat;
+mod compatibility;
 mod deck;
 pub(crate) mod profile;
 pub(crate) mod types;
@@ -212,6 +213,12 @@ impl Client {
         self
     }
 
+    /// Replace stderr notices when the caller owns the terminal.
+    pub(crate) fn with_retry_wait(mut self, wait: Wait) -> Self {
+        self.wait = wait;
+        self
+    }
+
     /// Whether calls are made as an account.
     pub(crate) fn logged_in(&self) -> bool {
         self.token.is_some()
@@ -369,6 +376,9 @@ impl Client {
 
     /// The error for a call to `what` the server refused.
     fn refusal(&self, what: &str, r: Refusal) -> Error {
+        if compatibility::unsupported_endpoint(what, r.status) {
+            return self.unsupported(what);
+        }
         let shown = crate::text::one_line(&r.said());
         let err = Error::api(format!("{what} failed: {shown}"));
         let host = self.host();
@@ -899,6 +909,10 @@ fn multipart(
     body
 }
 
+pub(crate) fn retry_message(wait: Duration, host: &str) -> String {
+    format!("{host} asks to wait; trying again in {} s", wait.as_secs())
+}
+
 /// Say on stderr why the command is quiet, then wait. stdout carries the
 /// output, so it is not written there.
 fn wait_and_say(wait: Duration, host: &str) {
@@ -907,11 +921,7 @@ fn wait_and_say(wait: Duration, host: &str) {
         clippy::let_underscore_must_use,
         reason = "a note on stderr while waiting; the wait and the call go on whether it showed or not"
     )]
-    let _: std::io::Result<()> = writeln!(
-        std::io::stderr(),
-        "{host} asks to wait; trying again in {} s",
-        wait.as_secs()
-    );
+    let _: std::io::Result<()> = writeln!(std::io::stderr(), "{}", retry_message(wait, host));
     std::thread::sleep(wait);
 }
 

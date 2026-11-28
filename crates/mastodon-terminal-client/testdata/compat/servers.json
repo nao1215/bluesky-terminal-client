@@ -1,0 +1,26 @@
+[
+  {
+    "instance": {"domain": "127.0.0.1", "version": "4.5.0", "configuration": {"statuses": {"max_characters": 500, "max_media_attachments": 4}}},
+    "nodeinfo": {"version": "2.0", "software": {"name": "mastodon", "version": "4.5.0"}, "protocols": ["activitypub"], "metadata": {}},
+    "label": "127.0.0.1 (mastodon 4.5.0)",
+    "characters": 500
+  },
+  {
+    "instance": {"domain": "127.0.0.1", "version": "4.2.0 (compatible; GoToSocial 0.19.0)", "configuration": {"statuses": {"max_characters": 5000, "max_media_attachments": 6}}},
+    "nodeinfo": {"version": "2.0", "software": {"name": "gotosocial", "version": "0.19.0"}, "protocols": ["activitypub"], "metadata": {}},
+    "label": "127.0.0.1 (gotosocial 0.19.0)",
+    "characters": 5000
+  },
+  {
+    "instance": {"uri": "127.0.0.1", "version": "2.7.2 (compatible; Pleroma 2.7.0)", "max_toot_chars": 5000, "pleroma": {"metadata": {"features": ["pleroma_api", "mastodon_api"]}}},
+    "nodeinfo": {"version": "2.0", "software": {"name": "pleroma", "version": "2.7.0"}, "protocols": ["activitypub"], "metadata": {"features": ["pleroma_api", "mastodon_api"]}},
+    "label": "127.0.0.1 (pleroma 2.7.0)",
+    "characters": 5000
+  },
+  {
+    "instance": {"uri": "127.0.0.1", "version": "2.7.2 (compatible; Akkoma 3.13.0)", "max_toot_chars": 5000, "pleroma": {"metadata": {"features": ["pleroma_api", "mastodon_api", "quote_posting"]}}},
+    "nodeinfo": {"version": "2.1", "software": {"name": "akkoma", "version": "3.13.0", "repository": "https://akkoma.dev/AkkomaGang/akkoma"}, "protocols": ["activitypub"], "metadata": {"features": ["quote_posting"]}},
+    "label": "127.0.0.1 (akkoma 3.13.0)",
+    "characters": 5000
+  }
+]

@@ -11,8 +11,9 @@
 //! | 2    | terminal  | the full-screen client was started without a terminal, or the terminal failed |
 //! | 3    | local I/O | the output or a download cannot be written                       |
 //! | 4    | API       | a request failed on the network or the server said no            |
+//! | 5    | unsupported | the server does not offer the requested feature               |
 //!
-//! The codes are bsky's and msky's.
+//! These meanings are shared by all four clients (doc/cli-surface/exit-status.md).
 
 use std::fmt;
 
@@ -27,6 +28,8 @@ pub(crate) enum Kind {
     Io,
     /// The Mastodon server could not be reached or refused the request.
     Api,
+    /// The server does not offer the requested feature.
+    Unsupported,
 }
 
 impl Kind {
@@ -37,6 +40,7 @@ impl Kind {
             Kind::Terminal => 2,
             Kind::Io => 3,
             Kind::Api => 4,
+            Kind::Unsupported => 5,
         }
     }
 }
@@ -86,6 +90,14 @@ impl Error {
         Self::new(Kind::Api, message)
     }
 
+    /// Name the feature and server without claiming capabilities from a version.
+    pub(crate) fn unsupported(feature: &str, server: &str) -> Self {
+        Self::new(
+            Kind::Unsupported,
+            format!("{server} does not support {feature}"),
+        )
+    }
+
     /// Shorthand for [`Kind::Io`].
     pub(crate) fn io(message: impl Into<String>) -> Self {
         Self::new(Kind::Io, message)
@@ -129,7 +141,14 @@ mod tests {
 
     #[test]
     fn exit_codes_are_distinct_and_nonzero() {
-        let codes = [Kind::Usage, Kind::Terminal, Kind::Io, Kind::Api].map(Kind::exit_code);
-        assert_eq!(codes, [1, 2, 3, 4]);
+        let codes = [
+            Kind::Usage,
+            Kind::Terminal,
+            Kind::Io,
+            Kind::Api,
+            Kind::Unsupported,
+        ]
+        .map(Kind::exit_code);
+        assert_eq!(codes, [1, 2, 3, 4, 5]);
     }
 }

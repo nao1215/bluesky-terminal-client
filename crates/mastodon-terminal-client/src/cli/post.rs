@@ -262,6 +262,9 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.characters_reserved_per_url
         )));
     }
+    if !d.files.is_empty() && l.max_media_attachments == 0 {
+        return Err(Error::unsupported("media attachments", host));
+    }
     if d.files.len() > l.max_media_attachments {
         return Err(Error::usage(format!(
             "{host} takes up to {} files on a post",
@@ -289,10 +292,10 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.image_size_limit
         };
         if let Some(max) = max
-            && f.data.len() as u64 > max
+            && f.data.len() as u64 >= max
         {
             return Err(Error::usage(format!(
-                "{} is {} bytes; {host} takes files up to {max} bytes",
+                "{} is {} bytes; {host} takes files smaller than {max} bytes",
                 f.name,
                 f.data.len()
             )));
@@ -391,6 +394,9 @@ pub(super) fn post(
 /// The same validation, uploads, processing wait and post used by the composer.
 pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
+    if extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some() {
+        client.require_quotes(extra["quoted_status_id"].as_str())?;
+    }
     too_much(&d, &client.limits(), client.host())?;
     submit(
         client,

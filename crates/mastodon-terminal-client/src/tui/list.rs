@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::api::types::{Notification, Status};
-use crate::error::Result;
+use crate::error::{Kind, Result};
 use crate::tui::worker::Thread;
 
 /// The next page is asked for when the selection is this near the end.
@@ -128,6 +128,11 @@ impl<T: Keyed> List<T> {
                 self.loaded = true;
             }
             Err(e) => {
+                // An endpoint that cannot supply another page must not be
+                // asked again on every navigation key near the list's end.
+                if e.kind() == Kind::Unsupported {
+                    self.next = None;
+                }
                 self.error = Some(e.message().to_string());
                 self.loaded = true;
             }
@@ -306,5 +311,27 @@ mod tests {
         assert_eq!(l.selected, 9);
         l.step(-100);
         assert_eq!(l.selected, 0);
+    }
+
+    #[test]
+    fn an_unsupported_page_stops_automatic_paging_but_keeps_the_rows() {
+        let mut list = List {
+            items: vec![status("1", None)],
+            loaded: true,
+            next: Some("1".into()),
+            waiting: Some(7),
+            ..List::default()
+        };
+        let error = Error::unsupported("public timeline", "127.0.0.1:8080");
+        assert!(list.take(7, false, Err(error.clone())));
+        assert_eq!(ids(&list), ["1"]);
+        assert_eq!(list.error.as_deref(), Some(error.message()));
+        assert!(list.waiting.is_none());
+        assert!(!list.wants_more());
+        assert!(!list.take(7, false, Err(error)));
+        list.waiting = Some(8);
+        assert!(list.take(8, true, Ok((vec![status("2", None)], None))));
+        assert!(list.error.is_none());
+        assert_eq!(ids(&list), ["2"]);
     }
 }
