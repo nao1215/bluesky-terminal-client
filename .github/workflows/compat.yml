@@ -22,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
         with:
-          version: v0.27.1
+          version: v0.28.0
           verify-attestation: 'true'
       - name: Check media generator
         run: ffmpeg -version

@@ -67,7 +67,7 @@ jobs:
       - uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
         if: matrix.client == 'mstdn'
         with:
-          version: v0.27.1
+          version: v0.28.0
       - name: Tell whether the base has the suite
         id: base
         env:
