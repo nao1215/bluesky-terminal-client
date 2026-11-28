@@ -17,6 +17,7 @@ scenarios:
         ready:
           file: ready.txt
           store: relay
+          timeout: 30s
     steps:
       - run:
           command: nstr timeline -n 2
@@ -81,6 +82,7 @@ scenarios:
         command: python3 "${specdir}/testdata/relay.py" --no-contacts
         ready:
           file: ready.txt
+          timeout: 30s
     steps:
       - run:
           command: nstr timeline
@@ -101,6 +103,7 @@ scenarios:
         command: python3 "${specdir}/testdata/relay.py"
         ready:
           file: ready.txt
+          timeout: 30s
     steps:
       - run:
           command: nstr notifications

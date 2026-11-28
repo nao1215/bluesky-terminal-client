@@ -35,3 +35,14 @@ path = "fuzz_targets/status_json.rs"
 test = false
 doc = false
 bench = false
+
+[build-dependencies]
+syn = { version = "2", features = ["full", "printing"] }
+quote = "1"
+
+[[bin]]
+name = "link_header"
+path = "fuzz_targets/link_header.rs"
+test = false
+doc = false
+bench = false

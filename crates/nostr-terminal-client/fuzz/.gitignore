@@ -1,0 +1,5 @@
+target/
+artifacts/
+coverage/
+# What a local run finds; the committed seeds are in corpus/.
+work/

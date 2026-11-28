@@ -41,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- Repeated posts, accounts or chat messages within a page are shown once, including after refreshing or loading more pages.
+- A late page or error from before a refresh no longer replaces the next page being awaited when the server reuses a cursor.
+- A quote can be posted without commentary in the composer and with `bsky post --quote`.
+- Chat drops older refresh answers that arrive after a newer one, so old messages and errors no longer appear after the latest messages.
 - `q` right after a write, such as a like or the notifications marked seen, waits up to 3 seconds for it to reach the server: bsky could end before the request left.
 - On kitty, the text after a character with VS16 (U+FE0F), such as the classical building or the red heart, in a post or a name is drawn where it belongs again: it was written one cell to the right, so after a tab change some of it stayed on screen and showed twice when the tab came back.
 
