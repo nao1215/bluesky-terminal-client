@@ -768,12 +768,12 @@ fn status_lines_nested(
             ));
         }
     }
-    if shown && let Some(quote) = &s.quote {
+    if shown && let Some((state, quoted)) = s.quote_view() {
         lines.push(Line::styled(truncate(t("Quoted post"), width), th.repost()));
-        if quote.state == "accepted"
+        if state == "accepted"
             && depth < 2
             && width > 4
-            && let Some(quoted) = &quote.quoted_status
+            && let Some(quoted) = quoted
         {
             for mut line in
                 status_lines_nested(quoted, (width - 2) as u16, ctx, depth + 1, pictures, urls)

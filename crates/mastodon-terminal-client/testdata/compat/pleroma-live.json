@@ -1,0 +1,2303 @@
+{
+  "system": "pleroma",
+  "verified_at": "2026-11-28T10:27:56.243548+00:00",
+  "instance_v1": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "version": "2.7.2 (compatible; Pleroma 2.11.0-develop)",
+      "description": "Pleroma: An efficient and flexible fediverse server",
+      "pleroma": {
+        "metadata": {
+          "features": [
+            "pleroma_api",
+            "mastodon_api",
+            "mastodon_api_grouped_notifications",
+            "mastodon_api_streaming",
+            "polls",
+            "v2_suggestions",
+            "pleroma_explicit_addressing",
+            "shareable_emoji_packs",
+            "multifetch",
+            "pleroma:api/v1/notifications:include_types_filter",
+            "editing",
+            "quote_posting",
+            "blockers_visible",
+            "relay",
+            "pleroma_emoji_reactions",
+            "pleroma_custom_emoji_reactions",
+            "pleroma_chat_messages",
+            "pleroma:pin_chats",
+            "exposable_reactions",
+            "profile_directory",
+            "pleroma:get:main/ostatus",
+            "pleroma:group_actors",
+            "pleroma:bookmark_folders",
+            "pleroma:block_expiration"
+          ],
+          "markup": {
+            "allow_inline_images": true,
+            "allow_headings": false,
+            "allow_tables": false
+          },
+          "translation": {
+            "source_languages": null,
+            "target_languages": null
+          },
+          "account_activation_required": false,
+          "birthday_required": false,
+          "birthday_min_age": 0,
+          "federation": {
+            "enabled": false,
+            "quarantined_instances": [],
+            "rejected_instances": {},
+            "mrf_hashtag": {
+              "sensitive": [
+                "nsfw"
+              ],
+              "reject": [],
+              "federated_timeline_removal": []
+            },
+            "mrf_object_age": {
+              "threshold": 604800,
+              "actions": [
+                "delist",
+                "strip_followers"
+              ]
+            },
+            "exclusions": false,
+            "mrf_policies": [
+              "ObjectAgePolicy",
+              "TagPolicy",
+              "InlineQuotePolicy",
+              "HashtagPolicy"
+            ],
+            "quarantined_instances_info": {
+              "quarantined_instances": {}
+            }
+          },
+          "fields_limits": {
+            "name_length": 512,
+            "max_fields": 10,
+            "max_remote_fields": 20,
+            "value_length": 2048
+          },
+          "base_urls": {
+            "upload": "http://127.0.0.1:14001/media/"
+          },
+          "post_formats": [
+            "text/plain",
+            "text/html",
+            "text/markdown",
+            "text/bbcode",
+            "text/x.misskeymarkdown"
+          ]
+        },
+        "stats": {
+          "mau": 3
+        },
+        "vapid_public_key": null
+      },
+      "title": "mstdn disposable compatibility",
+      "stats": {
+        "domain_count": 0,
+        "status_count": 0,
+        "user_count": 0
+      },
+      "uri": "127.0.0.1",
+      "email": "admin@example.invalid",
+      "rules": [],
+      "urls": {
+        "streaming_api": "ws://127.0.0.1:14001"
+      },
+      "thumbnail": "http://127.0.0.1:14001/instance/thumbnail.jpeg",
+      "registrations": false,
+      "short_description": "",
+      "background_image": "http://127.0.0.1:14001/images/city.jpg",
+      "description_limit": 5000,
+      "upload_limit": 16000000,
+      "avatar_upload_limit": 2000000,
+      "background_upload_limit": 4000000,
+      "banner_upload_limit": 4000000,
+      "poll_limits": {
+        "max_expiration": 31536000,
+        "max_option_chars": 200,
+        "max_options": 20,
+        "min_expiration": 0
+      },
+      "max_media_attachments": 1000,
+      "chat_limit": null,
+      "languages": [
+        "en"
+      ],
+      "max_toot_chars": 5000,
+      "configuration": {
+        "statuses": {
+          "max_media_attachments": 1000,
+          "max_characters": 5000
+        },
+        "accounts": {
+          "max_featured_tags": 0
+        },
+        "media_attachments": {
+          "image_size_limit": 16000000,
+          "video_size_limit": 16000000,
+          "supported_mime_types": [
+            "application/octet-stream"
+          ]
+        },
+        "polls": {
+          "max_expiration": 31536000,
+          "max_options": 20,
+          "min_expiration": 0,
+          "max_characters_per_option": 200
+        }
+      },
+      "approval_required": false,
+      "contact_account": null,
+      "shout_limit": 5000
+    }
+  },
+  "instance_v2": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "version": "2.7.2 (compatible; Pleroma 2.11.0-develop)",
+      "domain": "127.0.0.1",
+      "description": "",
+      "pleroma": {
+        "metadata": {
+          "features": [
+            "pleroma_api",
+            "mastodon_api",
+            "mastodon_api_grouped_notifications",
+            "mastodon_api_streaming",
+            "polls",
+            "v2_suggestions",
+            "pleroma_explicit_addressing",
+            "shareable_emoji_packs",
+            "multifetch",
+            "pleroma:api/v1/notifications:include_types_filter",
+            "editing",
+            "quote_posting",
+            "blockers_visible",
+            "relay",
+            "pleroma_emoji_reactions",
+            "pleroma_custom_emoji_reactions",
+            "pleroma_chat_messages",
+            "pleroma:pin_chats",
+            "exposable_reactions",
+            "profile_directory",
+            "pleroma:get:main/ostatus",
+            "pleroma:group_actors",
+            "pleroma:bookmark_folders",
+            "pleroma:block_expiration"
+          ],
+          "markup": {
+            "allow_inline_images": true,
+            "allow_headings": false,
+            "allow_tables": false
+          },
+          "translation": {
+            "source_languages": null,
+            "target_languages": null
+          },
+          "background_image": "http://127.0.0.1:14001/images/city.jpg",
+          "description_limit": 5000,
+          "avatar_upload_limit": 2000000,
+          "background_upload_limit": 4000000,
+          "banner_upload_limit": 4000000,
+          "account_activation_required": false,
+          "birthday_required": false,
+          "birthday_min_age": 0,
+          "federation": {
+            "enabled": false,
+            "quarantined_instances": [],
+            "rejected_instances": {},
+            "mrf_hashtag": {
+              "sensitive": [
+                "nsfw"
+              ],
+              "reject": [],
+              "federated_timeline_removal": []
+            },
+            "mrf_object_age": {
+              "threshold": 604800,
+              "actions": [
+                "delist",
+                "strip_followers"
+              ]
+            },
+            "exclusions": false,
+            "mrf_policies": [
+              "ObjectAgePolicy",
+              "TagPolicy",
+              "InlineQuotePolicy",
+              "HashtagPolicy"
+            ],
+            "quarantined_instances_info": {
+              "quarantined_instances": {}
+            }
+          },
+          "chat_limit": null,
+          "fields_limits": {
+            "name_length": 512,
+            "max_fields": 10,
+            "max_remote_fields": 20,
+            "value_length": 2048
+          },
+          "base_urls": {
+            "upload": "http://127.0.0.1:14001/media/"
+          },
+          "post_formats": [
+            "text/plain",
+            "text/html",
+            "text/markdown",
+            "text/bbcode",
+            "text/x.misskeymarkdown"
+          ],
+          "shout_limit": 5000
+        },
+        "stats": {
+          "mau": 3
+        },
+        "vapid_public_key": null
+      },
+      "title": "mstdn disposable compatibility",
+      "usage": {
+        "users": {
+          "active_month": 3
+        }
+      },
+      "rules": [],
+      "contact": {
+        "email": "admin@example.invalid",
+        "account": null
+      },
+      "thumbnail": {
+        "url": "http://127.0.0.1:14001/instance/thumbnail.jpeg"
+      },
+      "registrations": {
+        "enabled": false,
+        "message": null,
+        "url": null,
+        "approval_required": false
+      },
+      "languages": [
+        "en"
+      ],
+      "configuration": {
+        "translation": {
+          "enabled": false
+        },
+        "statuses": {
+          "max_media_attachments": 1000,
+          "characters_reserved_per_url": 0,
+          "max_characters": 5000
+        },
+        "urls": {
+          "status": null,
+          "streaming": "ws://127.0.0.1:14001"
+        },
+        "accounts": {
+          "max_pinned_statuses": 1,
+          "max_featured_tags": 0,
+          "max_profile_fields": 10,
+          "profile_field_name_limit": 512,
+          "profile_field_value_limit": 2048
+        },
+        "media_attachments": {
+          "image_size_limit": 16000000,
+          "video_size_limit": 16000000,
+          "supported_mime_types": [
+            "application/octet-stream"
+          ]
+        },
+        "polls": {
+          "max_expiration": 31536000,
+          "max_options": 20,
+          "min_expiration": 0,
+          "max_characters_per_option": 200
+        },
+        "timelines_access": {
+          "hashtag_feeds": {
+            "local": "public",
+            "remote": "public"
+          },
+          "live_feeds": {
+            "local": "public",
+            "remote": "public"
+          },
+          "trending_link_feeds": {
+            "local": "disabled",
+            "remote": "disabled"
+          }
+        },
+        "vapid": {
+          "public_key": null
+        }
+      },
+      "source_url": "https://git.pleroma.social/pleroma/pleroma"
+    }
+  },
+  "discovery": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "links": [
+        {
+          "rel": "http://nodeinfo.diaspora.software/ns/schema/2.0",
+          "href": "http://127.0.0.1:14001/nodeinfo/2.0.json"
+        },
+        {
+          "rel": "http://nodeinfo.diaspora.software/ns/schema/2.1",
+          "href": "http://127.0.0.1:14001/nodeinfo/2.1.json"
+        }
+      ]
+    }
+  },
+  "nodeinfo": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "version": "2.0",
+      "protocols": [
+        "activitypub"
+      ],
+      "metadata": {
+        "private": false,
+        "features": [
+          "pleroma_api",
+          "mastodon_api",
+          "mastodon_api_grouped_notifications",
+          "mastodon_api_streaming",
+          "polls",
+          "v2_suggestions",
+          "pleroma_explicit_addressing",
+          "shareable_emoji_packs",
+          "multifetch",
+          "pleroma:api/v1/notifications:include_types_filter",
+          "editing",
+          "quote_posting",
+          "blockers_visible",
+          "relay",
+          "pleroma_emoji_reactions",
+          "pleroma_custom_emoji_reactions",
+          "pleroma_chat_messages",
+          "pleroma:pin_chats",
+          "exposable_reactions",
+          "profile_directory",
+          "pleroma:get:main/ostatus",
+          "pleroma:group_actors",
+          "pleroma:bookmark_folders",
+          "pleroma:block_expiration"
+        ],
+        "suggestions": {
+          "enabled": false
+        },
+        "federation": {
+          "enabled": false,
+          "quarantined_instances": [],
+          "rejected_instances": {},
+          "mrf_hashtag": {
+            "sensitive": [
+              "nsfw"
+            ],
+            "reject": [],
+            "federated_timeline_removal": []
+          },
+          "mrf_object_age": {
+            "threshold": 604800,
+            "actions": [
+              "delist",
+              "strip_followers"
+            ]
+          },
+          "exclusions": false,
+          "mrf_policies": [
+            "ObjectAgePolicy",
+            "TagPolicy",
+            "InlineQuotePolicy",
+            "HashtagPolicy"
+          ],
+          "quarantined_instances_info": {
+            "quarantined_instances": {}
+          }
+        },
+        "roles": {
+          "admin": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "moderator": [
+            "messages_delete",
+            "reports_manage_reports"
+          ]
+        },
+        "accountActivationRequired": false,
+        "fieldsLimits": {
+          "maxFields": 10,
+          "maxRemoteFields": 20,
+          "nameLength": 512,
+          "valueLength": 2048
+        },
+        "invitesEnabled": false,
+        "mailerEnabled": false,
+        "nodeDescription": "Pleroma: An efficient and flexible fediverse server",
+        "nodeName": "mstdn disposable compatibility",
+        "pollLimits": {
+          "max_expiration": 31536000,
+          "max_option_chars": 200,
+          "max_options": 20,
+          "min_expiration": 0
+        },
+        "postFormats": [
+          "text/plain",
+          "text/html",
+          "text/markdown",
+          "text/bbcode",
+          "text/x.misskeymarkdown"
+        ],
+        "restrictedNicknames": [
+          ".well-known",
+          "~",
+          "about",
+          "activities",
+          "api",
+          "auth",
+          "check_password",
+          "dev",
+          "friend-requests",
+          "inbox",
+          "internal",
+          "main",
+          "media",
+          "nodeinfo",
+          "notice",
+          "oauth",
+          "objects",
+          "ostatus_subscribe",
+          "pleroma",
+          "proxy",
+          "push",
+          "registration",
+          "relay",
+          "settings",
+          "status",
+          "tag",
+          "user-search",
+          "user_exists",
+          "users",
+          "web",
+          "verify_credentials",
+          "update_credentials",
+          "relationships",
+          "search",
+          "confirmation_resend",
+          "mfa"
+        ],
+        "skipThreadContainment": true,
+        "staffAccounts": [
+          "http://127.0.0.1:14001/users/alice"
+        ],
+        "uploadLimits": {
+          "general": 16000000,
+          "banner": 4000000,
+          "background": 4000000,
+          "avatar": 2000000
+        }
+      },
+      "usage": {
+        "users": {
+          "total": 0,
+          "activeHalfyear": 3,
+          "activeMonth": 3
+        },
+        "localPosts": 0
+      },
+      "services": {
+        "outbound": [],
+        "inbound": []
+      },
+      "software": {
+        "name": "pleroma",
+        "version": "2.11.0-develop"
+      },
+      "openRegistrations": false
+    }
+  },
+  "status": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7hpvxI6HuWApMPI",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/3c4f1070-c915-4341-a371-e6e13629be40",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 749385884,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/848c6c0f-9a59-4507-8104-1c237c8e2fc5",
+      "url": "http://127.0.0.1:14001/notice/BCu7hpvxI6HuWApMPI",
+      "content": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:28:27.000Z",
+      "media_attachments": [
+        {
+          "id": "1474",
+          "type": "image",
+          "description": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword",
+          "blurhash": null,
+          "pleroma": {
+            "mime_type": "image/png"
+          },
+          "url": "http://127.0.0.1:14001/media/a2/a4/df/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "text_url": "http://127.0.0.1:14001/media/a2/a4/df/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "remote_url": "http://127.0.0.1:14001/media/a2/a4/df/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "preview_url": "http://127.0.0.1:14001/media/a2/a4/df/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png"
+        }
+      ],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "video": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7hsNgBzeY6joWtk",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/2f53fabf-9dbf-4973-a318-b918d8fec86d",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "compatibility viewer video"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 217526529,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/6155cda9-d0e9-40c6-8329-e79acc0ea4e9",
+      "url": "http://127.0.0.1:14001/notice/BCu7hsNgBzeY6joWtk",
+      "content": "compatibility viewer video",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:28:27.000Z",
+      "media_attachments": [
+        {
+          "id": "1477",
+          "type": "video",
+          "description": "Compatibility video",
+          "blurhash": null,
+          "pleroma": {
+            "mime_type": "video/mp4"
+          },
+          "url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "text_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "remote_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "preview_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4"
+        }
+      ],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "page": {
+    "status": 200,
+    "link": "<http://127.0.0.1:14001/api/v1/accounts/BCu7eov6bTUoVNzXcW/statuses?offset=0&limit=2&max_id=BCu7hGFXxmZJqViUwi>; rel=\"next\", <http://127.0.0.1:14001/api/v1/accounts/BCu7eov6bTUoVNzXcW/statuses?offset=0&limit=2&min_id=BCu7hGQXIvMKOarH4i>; rel=\"prev\"",
+    "body": [
+      {
+        "id": "BCu7hGQXIvMKOarH4i",
+        "sensitive": false,
+        "application": {
+          "name": "mstdn local compatibility",
+          "website": null
+        },
+        "pleroma": {
+          "local": true,
+          "context": "http://127.0.0.1:14001/contexts/ad16fdc6-2813-43e4-9a9e-2d0eca0f92c9",
+          "quote": null,
+          "expires_at": null,
+          "content": {
+            "text/plain": "video099 #compatvideo"
+          },
+          "quotes_count": 0,
+          "spoiler_text": {
+            "text/plain": ""
+          },
+          "direct_conversation_id": null,
+          "conversation_id": 1861356285,
+          "quote_url": null,
+          "quote_id": null,
+          "list_id": null,
+          "emoji_reactions": [],
+          "in_reply_to_account_acct": null,
+          "parent_visible": false,
+          "pinned_at": null,
+          "quote_visible": false,
+          "thread_muted": false,
+          "bookmark_folder": null
+        },
+        "text": null,
+        "uri": "http://127.0.0.1:14001/objects/b751f3a2-5cf2-4cd1-a941-e3e9b0f35387",
+        "url": "http://127.0.0.1:14001/notice/BCu7hGQXIvMKOarH4i",
+        "content": "video099 <a class=\"hashtag\" data-tag=\"compatvideo\" href=\"http://127.0.0.1:14001/tag/compatvideo\">#compatvideo</a>",
+        "language": null,
+        "poll": null,
+        "tags": [
+          {
+            "name": "compatvideo",
+            "url": "http://127.0.0.1:14001/tag/compatvideo"
+          }
+        ],
+        "card": null,
+        "pinned": false,
+        "account": {
+          "id": "BCu7eov6bTUoVNzXcW",
+          "header": "http://127.0.0.1:14001/images/banner.png",
+          "pleroma": {
+            "relationship": {},
+            "tags": [],
+            "header_description": "",
+            "avatar_description": "",
+            "is_confirmed": true,
+            "ap_id": "http://127.0.0.1:14001/users/videos",
+            "is_admin": false,
+            "is_moderator": false,
+            "accepts_chat_messages": true,
+            "also_known_as": [],
+            "hide_favorites": true,
+            "hide_followers": false,
+            "hide_followers_count": false,
+            "hide_follows": false,
+            "hide_follows_count": false,
+            "is_suggested": false,
+            "skip_thread_containment": false,
+            "background_image": null,
+            "favicon": null,
+            "deactivated": false,
+            "privileges": []
+          },
+          "fields": [],
+          "source": {
+            "sensitive": false,
+            "pleroma": {
+              "actor_type": "Person",
+              "discoverable": false
+            },
+            "fields": [],
+            "note": ""
+          },
+          "username": "videos",
+          "locked": false,
+          "url": "http://127.0.0.1:14001/users/videos",
+          "display_name": "videos",
+          "emojis": [],
+          "note": "",
+          "statuses_count": 100,
+          "header_static": "http://127.0.0.1:14001/images/banner.png",
+          "header_description": "",
+          "following_count": 2,
+          "followers_count": 2,
+          "created_at": "2026-11-28T10:27:54.000Z",
+          "bot": false,
+          "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+          "avatar_description": "",
+          "avatar": "http://127.0.0.1:14001/images/avi.png",
+          "acct": "videos",
+          "last_status_at": "2026-11-28",
+          "fqn": "videos@127.0.0.1"
+        },
+        "mentions": [],
+        "emojis": [],
+        "replies_count": 0,
+        "quotes_count": 0,
+        "created_at": "2026-11-28T10:28:21.000Z",
+        "media_attachments": [
+          {
+            "id": "961",
+            "type": "video",
+            "description": "Video 099",
+            "blurhash": null,
+            "pleroma": {
+              "mime_type": "video/mp4"
+            },
+            "url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "text_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "remote_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "preview_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4"
+          }
+        ],
+        "visibility": "public",
+        "spoiler_text": "",
+        "reblogs_count": 0,
+        "reblogged": false,
+        "reblog": null,
+        "muted": false,
+        "in_reply_to_id": null,
+        "in_reply_to_account_id": null,
+        "favourites_count": 0,
+        "favourited": false,
+        "edited_at": null,
+        "bookmarked": false
+      },
+      {
+        "id": "BCu7hGFXxmZJqViUwi",
+        "sensitive": false,
+        "application": {
+          "name": "mstdn local compatibility",
+          "website": null
+        },
+        "pleroma": {
+          "local": true,
+          "context": "http://127.0.0.1:14001/contexts/11ecf0fe-779d-4371-819d-55d9c33c1f02",
+          "quote": null,
+          "expires_at": null,
+          "content": {
+            "text/plain": "video098 #compatvideo"
+          },
+          "quotes_count": 0,
+          "spoiler_text": {
+            "text/plain": ""
+          },
+          "direct_conversation_id": null,
+          "conversation_id": 1480631370,
+          "quote_url": null,
+          "quote_id": null,
+          "list_id": null,
+          "emoji_reactions": [],
+          "in_reply_to_account_acct": null,
+          "parent_visible": false,
+          "pinned_at": null,
+          "quote_visible": false,
+          "thread_muted": false,
+          "bookmark_folder": null
+        },
+        "text": null,
+        "uri": "http://127.0.0.1:14001/objects/9a52b100-9586-49d8-a2c0-1ec0f540d854",
+        "url": "http://127.0.0.1:14001/notice/BCu7hGFXxmZJqViUwi",
+        "content": "video098 <a class=\"hashtag\" data-tag=\"compatvideo\" href=\"http://127.0.0.1:14001/tag/compatvideo\">#compatvideo</a>",
+        "language": null,
+        "poll": null,
+        "tags": [
+          {
+            "name": "compatvideo",
+            "url": "http://127.0.0.1:14001/tag/compatvideo"
+          }
+        ],
+        "card": null,
+        "pinned": false,
+        "account": {
+          "id": "BCu7eov6bTUoVNzXcW",
+          "header": "http://127.0.0.1:14001/images/banner.png",
+          "pleroma": {
+            "relationship": {},
+            "tags": [],
+            "header_description": "",
+            "avatar_description": "",
+            "is_confirmed": true,
+            "ap_id": "http://127.0.0.1:14001/users/videos",
+            "is_admin": false,
+            "is_moderator": false,
+            "accepts_chat_messages": true,
+            "also_known_as": [],
+            "hide_favorites": true,
+            "hide_followers": false,
+            "hide_followers_count": false,
+            "hide_follows": false,
+            "hide_follows_count": false,
+            "is_suggested": false,
+            "skip_thread_containment": false,
+            "background_image": null,
+            "favicon": null,
+            "deactivated": false,
+            "privileges": []
+          },
+          "fields": [],
+          "source": {
+            "sensitive": false,
+            "pleroma": {
+              "actor_type": "Person",
+              "discoverable": false
+            },
+            "fields": [],
+            "note": ""
+          },
+          "username": "videos",
+          "locked": false,
+          "url": "http://127.0.0.1:14001/users/videos",
+          "display_name": "videos",
+          "emojis": [],
+          "note": "",
+          "statuses_count": 100,
+          "header_static": "http://127.0.0.1:14001/images/banner.png",
+          "header_description": "",
+          "following_count": 2,
+          "followers_count": 2,
+          "created_at": "2026-11-28T10:27:54.000Z",
+          "bot": false,
+          "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+          "avatar_description": "",
+          "avatar": "http://127.0.0.1:14001/images/avi.png",
+          "acct": "videos",
+          "last_status_at": "2026-11-28",
+          "fqn": "videos@127.0.0.1"
+        },
+        "mentions": [],
+        "emojis": [],
+        "replies_count": 0,
+        "quotes_count": 0,
+        "created_at": "2026-11-28T10:28:21.000Z",
+        "media_attachments": [
+          {
+            "id": "959",
+            "type": "video",
+            "description": "Video 098",
+            "blurhash": null,
+            "pleroma": {
+              "mime_type": "video/mp4"
+            },
+            "url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "text_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "remote_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "preview_url": "http://127.0.0.1:14001/media/6d/7c/07/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4"
+          }
+        ],
+        "visibility": "public",
+        "spoiler_text": "",
+        "reblogs_count": 0,
+        "reblogged": false,
+        "reblog": null,
+        "muted": false,
+        "in_reply_to_id": null,
+        "in_reply_to_account_id": null,
+        "favourites_count": 0,
+        "favourited": false,
+        "edited_at": null,
+        "bookmarked": false
+      }
+    ]
+  },
+  "conversations": {
+    "status": 200,
+    "link": "<http://127.0.0.1:14001/api/v1/conversations?offset=0&limit=20&max_id=2>; rel=\"next\", <http://127.0.0.1:14001/api/v1/conversations?offset=0&limit=20&min_id=2>; rel=\"prev\"",
+    "body": [
+      {
+        "id": "2",
+        "unread": false,
+        "last_status": {
+          "id": "BCu7f12HYcMo57RRTM",
+          "sensitive": false,
+          "application": {
+            "name": "mstdn local compatibility",
+            "website": null
+          },
+          "pleroma": {
+            "local": true,
+            "context": "http://127.0.0.1:14001/contexts/d900b77c-1b85-49f5-be69-d212f2bb5454",
+            "quote": null,
+            "expires_at": null,
+            "content": {
+              "text/plain": "@bob compatibility direct"
+            },
+            "quotes_count": 0,
+            "spoiler_text": {
+              "text/plain": "compatibility warning"
+            },
+            "direct_conversation_id": 2,
+            "conversation_id": 1324293490,
+            "quote_url": null,
+            "quote_id": null,
+            "list_id": null,
+            "emoji_reactions": [],
+            "in_reply_to_account_acct": null,
+            "parent_visible": false,
+            "pinned_at": null,
+            "quote_visible": false,
+            "thread_muted": false,
+            "bookmark_folder": null
+          },
+          "text": null,
+          "uri": "http://127.0.0.1:14001/objects/904983f1-6ea0-4c05-861e-ad4228681c31",
+          "url": "http://127.0.0.1:14001/notice/BCu7f12HYcMo57RRTM",
+          "content": "<span class=\"h-card\"><a class=\"u-url mention\" data-user=\"BCu7em0fQLA7TlZRNA\" href=\"http://127.0.0.1:14001/users/bob\" rel=\"ugc\">@<span>bob</span></a></span> compatibility direct",
+          "language": null,
+          "poll": null,
+          "tags": [],
+          "card": null,
+          "pinned": false,
+          "account": {
+            "id": "BCu7eiKN78Y03il7Wy",
+            "header": "http://127.0.0.1:14001/images/banner.png",
+            "pleroma": {
+              "email": "alice@example.invalid",
+              "relationship": {},
+              "tags": [],
+              "birthday": null,
+              "header_description": "",
+              "avatar_description": "",
+              "is_confirmed": true,
+              "ap_id": "http://127.0.0.1:14001/users/alice",
+              "notification_settings": {
+                "hide_notification_contents": false,
+                "block_from_strangers": false
+              },
+              "is_admin": true,
+              "is_moderator": false,
+              "accepts_chat_messages": true,
+              "allow_following_move": true,
+              "also_known_as": [],
+              "hide_favorites": true,
+              "hide_followers": false,
+              "hide_followers_count": false,
+              "hide_follows": false,
+              "hide_follows_count": false,
+              "is_suggested": false,
+              "skip_thread_containment": false,
+              "background_image": null,
+              "favicon": null,
+              "deactivated": false,
+              "unread_notifications_count": 756,
+              "privileges": [
+                "users_read",
+                "users_manage_invites",
+                "users_manage_activation_state",
+                "users_manage_tags",
+                "users_manage_credentials",
+                "users_delete",
+                "messages_read",
+                "messages_delete",
+                "instances_delete",
+                "reports_manage_reports",
+                "moderation_log_read",
+                "announcements_manage_announcements",
+                "emoji_manage_emoji",
+                "statistics_read"
+              ],
+              "unread_conversation_count": 0
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "accepts_chat_messages": true,
+                "actor_type": "Person",
+                "no_rich_text": false,
+                "show_birthday": false,
+                "show_role": true,
+                "discoverable": false
+              },
+              "fields": [],
+              "note": "",
+              "privacy": "public"
+            },
+            "username": "alice",
+            "locked": false,
+            "url": "http://127.0.0.1:14001/users/alice",
+            "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+            "emojis": [],
+            "note": "",
+            "statuses_count": 16,
+            "header_static": "http://127.0.0.1:14001/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "follow_requests_count": 0,
+            "created_at": "2026-11-28T10:27:53.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14001/images/avi.png",
+            "acct": "alice",
+            "last_status_at": "2026-11-28",
+            "fqn": "alice@127.0.0.1"
+          },
+          "mentions": [
+            {
+              "id": "BCu7em0fQLA7TlZRNA",
+              "username": "bob",
+              "url": "http://127.0.0.1:14001/users/bob",
+              "acct": "bob"
+            }
+          ],
+          "emojis": [],
+          "replies_count": 0,
+          "quotes_count": 0,
+          "created_at": "2026-11-28T10:27:56.000Z",
+          "media_attachments": [],
+          "visibility": "direct",
+          "spoiler_text": "compatibility warning",
+          "reblogs_count": 0,
+          "reblogged": false,
+          "reblog": null,
+          "muted": false,
+          "in_reply_to_id": null,
+          "in_reply_to_account_id": null,
+          "favourites_count": 0,
+          "favourited": false,
+          "edited_at": null,
+          "bookmarked": false
+        },
+        "accounts": [
+          {
+            "id": "BCu7em0fQLA7TlZRNA",
+            "header": "http://127.0.0.1:14001/images/banner.png",
+            "pleroma": {
+              "relationship": {},
+              "tags": [],
+              "header_description": "",
+              "avatar_description": "",
+              "is_confirmed": true,
+              "ap_id": "http://127.0.0.1:14001/users/bob",
+              "is_admin": false,
+              "is_moderator": false,
+              "accepts_chat_messages": true,
+              "also_known_as": [],
+              "hide_favorites": true,
+              "hide_followers": false,
+              "hide_followers_count": false,
+              "hide_follows": false,
+              "hide_follows_count": false,
+              "is_suggested": false,
+              "skip_thread_containment": false,
+              "background_image": null,
+              "favicon": null,
+              "deactivated": false,
+              "privileges": []
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "actor_type": "Person",
+                "discoverable": false
+              },
+              "fields": [],
+              "note": ""
+            },
+            "username": "bob",
+            "locked": false,
+            "url": "http://127.0.0.1:14001/users/bob",
+            "display_name": "bob",
+            "emojis": [],
+            "note": "",
+            "statuses_count": 851,
+            "header_static": "http://127.0.0.1:14001/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "created_at": "2026-11-28T10:27:54.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14001/images/avi.png",
+            "acct": "bob",
+            "last_status_at": "2026-11-28",
+            "fqn": "bob@127.0.0.1"
+          }
+        ]
+      }
+    ]
+  },
+  "chats": {
+    "status": 200,
+    "link": null,
+    "body": []
+  },
+  "deleted": {
+    "status": 404,
+    "link": null,
+    "body": {
+      "error": "Record not found"
+    }
+  },
+  "wrong_token": {
+    "status": 403,
+    "link": null,
+    "body": {
+      "error": "Invalid credentials."
+    }
+  },
+  "blocked": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7eyLfY55lkNUNm4",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/e131faa3-2eec-49a0-94f5-d9053bd952b6",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "@alice compatibility reply"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 211951656,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": "alice",
+        "parent_visible": true,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/5804e47d-76e7-4594-b859-c186810f72c9",
+      "url": "http://127.0.0.1:14001/notice/BCu7eyLfY55lkNUNm4",
+      "content": "<span class=\"h-card\"><a class=\"u-url mention\" data-user=\"BCu7eiKN78Y03il7Wy\" href=\"http://127.0.0.1:14001/users/alice\" rel=\"ugc\">@<span>alice</span></a></span> compatibility reply",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7em0fQLA7TlZRNA",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "relationship": {},
+          "tags": [],
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/bob",
+          "is_admin": false,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "privileges": []
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": ""
+        },
+        "username": "bob",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/bob",
+        "display_name": "bob",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 851,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 1,
+        "followers_count": 1,
+        "created_at": "2026-11-28T10:27:54.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "bob",
+        "last_status_at": "2026-11-28",
+        "fqn": "bob@127.0.0.1"
+      },
+      "mentions": [
+        {
+          "id": "BCu7eiKN78Y03il7Wy",
+          "username": "alice",
+          "url": "http://127.0.0.1:14001/users/alice",
+          "acct": "alice"
+        }
+      ],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:27:56.000Z",
+      "media_attachments": [],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": "BCu7ey64U4cCy0BvSi",
+      "in_reply_to_account_id": "BCu7eiKN78Y03il7Wy",
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "markdown": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7eysdZVSnOcuiA4",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/5547e5ee-5da0-4f19-85dd-ed89f5b6705c",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "compatibility markdown"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 622457351,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/10ae8c6b-7779-46a1-a180-5dcc15b8bcab",
+      "url": "http://127.0.0.1:14001/notice/BCu7eysdZVSnOcuiA4",
+      "content": "<p><strong>compatibility markdown</strong></p>",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:27:56.000Z",
+      "media_attachments": [],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "mfm": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7ez4Ks0oxyuO3Oa",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/470b6c72-3fc4-457b-a4a2-8d432376344c",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "compatibility mfm"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 684600894,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/eb346f73-ccd4-4760-b0f7-506989e4c391",
+      "url": "http://127.0.0.1:14001/notice/BCu7ez4Ks0oxyuO3Oa",
+      "content": "<p><strong>compatibility mfm</strong></p>",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:27:56.000Z",
+      "media_attachments": [],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "extension_quote": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7ezHS5FJSdaWWq8",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/4b8539a7-a579-4fe2-b16f-d22915b6e1d3",
+        "quote": {
+          "id": "BCu7ey64U4cCy0BvSi",
+          "sensitive": false,
+          "application": {
+            "name": "mstdn local compatibility",
+            "website": null
+          },
+          "pleroma": {
+            "local": true,
+            "context": "http://127.0.0.1:14001/contexts/e131faa3-2eec-49a0-94f5-d9053bd952b6",
+            "quote": null,
+            "expires_at": null,
+            "content": {
+              "text/plain": "compatibility root #compatroot"
+            },
+            "quotes_count": 1,
+            "spoiler_text": {
+              "text/plain": ""
+            },
+            "direct_conversation_id": null,
+            "conversation_id": 211951656,
+            "quote_url": null,
+            "quote_id": null,
+            "list_id": null,
+            "emoji_reactions": [
+              {
+                "count": 1,
+                "name": "👍",
+                "me": false,
+                "url": null,
+                "account_ids": [
+                  "BCu7em0fQLA7TlZRNA"
+                ]
+              }
+            ],
+            "in_reply_to_account_acct": null,
+            "parent_visible": false,
+            "pinned_at": null,
+            "quote_visible": false,
+            "thread_muted": false,
+            "bookmark_folder": null
+          },
+          "text": null,
+          "uri": "http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab",
+          "url": "http://127.0.0.1:14001/notice/BCu7ey64U4cCy0BvSi",
+          "content": "compatibility root <a class=\"hashtag\" data-tag=\"compatroot\" href=\"http://127.0.0.1:14001/tag/compatroot\">#compatroot</a>",
+          "language": null,
+          "poll": null,
+          "tags": [
+            {
+              "name": "compatroot",
+              "url": "http://127.0.0.1:14001/tag/compatroot"
+            }
+          ],
+          "card": null,
+          "pinned": false,
+          "account": {
+            "id": "BCu7eiKN78Y03il7Wy",
+            "header": "http://127.0.0.1:14001/images/banner.png",
+            "pleroma": {
+              "email": "alice@example.invalid",
+              "relationship": {},
+              "tags": [],
+              "birthday": null,
+              "header_description": "",
+              "avatar_description": "",
+              "is_confirmed": true,
+              "ap_id": "http://127.0.0.1:14001/users/alice",
+              "notification_settings": {
+                "hide_notification_contents": false,
+                "block_from_strangers": false
+              },
+              "is_admin": true,
+              "is_moderator": false,
+              "accepts_chat_messages": true,
+              "allow_following_move": true,
+              "also_known_as": [],
+              "hide_favorites": true,
+              "hide_followers": false,
+              "hide_followers_count": false,
+              "hide_follows": false,
+              "hide_follows_count": false,
+              "is_suggested": false,
+              "skip_thread_containment": false,
+              "background_image": null,
+              "favicon": null,
+              "deactivated": false,
+              "unread_notifications_count": 756,
+              "privileges": [
+                "users_read",
+                "users_manage_invites",
+                "users_manage_activation_state",
+                "users_manage_tags",
+                "users_manage_credentials",
+                "users_delete",
+                "messages_read",
+                "messages_delete",
+                "instances_delete",
+                "reports_manage_reports",
+                "moderation_log_read",
+                "announcements_manage_announcements",
+                "emoji_manage_emoji",
+                "statistics_read"
+              ],
+              "unread_conversation_count": 0
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "accepts_chat_messages": true,
+                "actor_type": "Person",
+                "no_rich_text": false,
+                "show_birthday": false,
+                "show_role": true,
+                "discoverable": false
+              },
+              "fields": [],
+              "note": "",
+              "privacy": "public"
+            },
+            "username": "alice",
+            "locked": false,
+            "url": "http://127.0.0.1:14001/users/alice",
+            "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+            "emojis": [],
+            "note": "",
+            "statuses_count": 16,
+            "header_static": "http://127.0.0.1:14001/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "follow_requests_count": 0,
+            "created_at": "2026-11-28T10:27:53.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14001/images/avi.png",
+            "acct": "alice",
+            "last_status_at": "2026-11-28",
+            "fqn": "alice@127.0.0.1"
+          },
+          "mentions": [],
+          "emojis": [],
+          "replies_count": 1,
+          "quotes_count": 1,
+          "created_at": "2026-11-28T10:27:56.000Z",
+          "media_attachments": [],
+          "visibility": "public",
+          "spoiler_text": "",
+          "reblogs_count": 1,
+          "reblogged": false,
+          "reblog": null,
+          "muted": false,
+          "in_reply_to_id": null,
+          "in_reply_to_account_id": null,
+          "favourites_count": 1,
+          "favourited": false,
+          "edited_at": null,
+          "bookmarked": false
+        },
+        "expires_at": null,
+        "content": {
+          "text/plain": "compatibility extension quoteRT: http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab"
+        },
+        "quotes_count": 0,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 1276904539,
+        "quote_url": "http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab",
+        "quote_id": "BCu7ey64U4cCy0BvSi",
+        "list_id": null,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": true,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/30dfbd7c-2394-4e36-bdd1-847229861bb7",
+      "url": "http://127.0.0.1:14001/notice/BCu7ezHS5FJSdaWWq8",
+      "content": "compatibility extension quote<span class=\"quote-inline\"><br/><br/><bdi>RT:</bdi> <a href=\"http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab\">http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab</a></span>",
+      "language": null,
+      "poll": null,
+      "tags": [],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 0,
+      "quotes_count": 0,
+      "created_at": "2026-11-28T10:27:56.000Z",
+      "media_attachments": [],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 0,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 0,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "emoji_reaction": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7ey64U4cCy0BvSi",
+      "sensitive": false,
+      "application": {
+        "name": "mstdn local compatibility",
+        "website": null
+      },
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14001/contexts/e131faa3-2eec-49a0-94f5-d9053bd952b6",
+        "quote": null,
+        "expires_at": null,
+        "content": {
+          "text/plain": "compatibility root #compatroot"
+        },
+        "quotes_count": 1,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 211951656,
+        "quote_url": null,
+        "quote_id": null,
+        "list_id": null,
+        "emoji_reactions": [
+          {
+            "count": 1,
+            "name": "👍",
+            "me": false,
+            "url": null,
+            "account_ids": [
+              "BCu7em0fQLA7TlZRNA"
+            ]
+          }
+        ],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "quote_visible": false,
+        "thread_muted": false,
+        "bookmark_folder": null
+      },
+      "text": null,
+      "uri": "http://127.0.0.1:14001/objects/1bd20a79-0ddb-4d3e-a71a-1b8f678e54ab",
+      "url": "http://127.0.0.1:14001/notice/BCu7ey64U4cCy0BvSi",
+      "content": "compatibility root <a class=\"hashtag\" data-tag=\"compatroot\" href=\"http://127.0.0.1:14001/tag/compatroot\">#compatroot</a>",
+      "language": null,
+      "poll": null,
+      "tags": [
+        {
+          "name": "compatroot",
+          "url": "http://127.0.0.1:14001/tag/compatroot"
+        }
+      ],
+      "card": null,
+      "pinned": false,
+      "account": {
+        "id": "BCu7eiKN78Y03il7Wy",
+        "header": "http://127.0.0.1:14001/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "birthday": null,
+          "header_description": "",
+          "avatar_description": "",
+          "is_confirmed": true,
+          "ap_id": "http://127.0.0.1:14001/users/alice",
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "is_admin": true,
+          "is_moderator": false,
+          "accepts_chat_messages": true,
+          "allow_following_move": true,
+          "also_known_as": [],
+          "hide_favorites": true,
+          "hide_followers": false,
+          "hide_followers_count": false,
+          "hide_follows": false,
+          "hide_follows_count": false,
+          "is_suggested": false,
+          "skip_thread_containment": false,
+          "background_image": null,
+          "favicon": null,
+          "deactivated": false,
+          "unread_notifications_count": 756,
+          "privileges": [
+            "users_read",
+            "users_manage_invites",
+            "users_manage_activation_state",
+            "users_manage_tags",
+            "users_manage_credentials",
+            "users_delete",
+            "messages_read",
+            "messages_delete",
+            "instances_delete",
+            "reports_manage_reports",
+            "moderation_log_read",
+            "announcements_manage_announcements",
+            "emoji_manage_emoji",
+            "statistics_read"
+          ],
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "accepts_chat_messages": true,
+            "actor_type": "Person",
+            "no_rich_text": false,
+            "show_birthday": false,
+            "show_role": true,
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "username": "alice",
+        "locked": false,
+        "url": "http://127.0.0.1:14001/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "emojis": [],
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14001/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "created_at": "2026-11-28T10:27:53.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14001/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14001/images/avi.png",
+        "acct": "alice",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "mentions": [],
+      "emojis": [],
+      "replies_count": 1,
+      "quotes_count": 1,
+      "created_at": "2026-11-28T10:27:56.000Z",
+      "media_attachments": [],
+      "visibility": "public",
+      "spoiler_text": "",
+      "reblogs_count": 1,
+      "reblogged": false,
+      "reblog": null,
+      "muted": false,
+      "in_reply_to_id": null,
+      "in_reply_to_account_id": null,
+      "favourites_count": 1,
+      "favourited": false,
+      "edited_at": null,
+      "bookmarked": false
+    }
+  },
+  "text_over_limit": {
+    "status": 422,
+    "link": null,
+    "body": {
+      "error": "The status is over the character limit"
+    }
+  },
+  "upload_over_limit": {
+    "status": 413,
+    "link": null,
+    "body": {
+      "errors": {
+        "detail": "Internal server error"
+      }
+    }
+  }
+}

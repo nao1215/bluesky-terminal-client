@@ -206,6 +206,34 @@ fn instance_authentication_failure_does_not_fall_back() {
     assert_eq!(calls.lock().unwrap().len(), 1);
 }
 
+#[rstest]
+#[case("{}", None)]
+#[case(r#"{"id":"","quote_approval":{}}"#, None)]
+#[case(r#"{"id":"42"}"#, Some("quote_id"))]
+#[case(r#"{"id":"42","quote_approval":{}}"#, Some("quoted_status_id"))]
+fn extension_quotes_preserve_status_validation_and_mastodon_precedence(
+    #[case] body: &str,
+    #[case] parameter: Option<&str>,
+) {
+    let body = body.to_owned();
+    let (origin, calls) = serve(Arc::new(move |c, _| match c.path() {
+        "/api/v1/statuses/42" => reply(200, &body),
+        "/api/v2/instance" => reply(
+            200,
+            r#"{"pleroma":{"metadata":{"features":["quote_posting"]}}}"#,
+        ),
+        _ => reply(404, "{}"),
+    }));
+    let result = Client::new(&origin).require_quotes(Some("42"));
+    if let Some(parameter) = parameter {
+        assert_eq!(result.unwrap(), parameter);
+    } else {
+        assert_eq!(result.unwrap_err().kind(), Kind::Api);
+        assert_eq!(calls.lock().unwrap().len(), 1);
+    }
+    assert!(calls.lock().unwrap().iter().all(|c| c.method == "GET"));
+}
+
 #[test]
 fn only_endpoint_absence_is_unsupported() {
     let (origin, _) = serve(Arc::new(|c, _| {
@@ -353,4 +381,86 @@ fn nodeinfo_prevents_treating_another_implementations_release_as_mastodon() {
             .filter(|c| !c.path().contains("bookmark") && c.path() != "/api/v1/lists")
             .all(|c| c.auth.is_none())
     );
+}
+
+#[rstest::rstest]
+#[case(include_str!("../../../testdata/compat/pleroma-live.json"))]
+#[case(include_str!("../../../testdata/compat/akkoma-live.json"))]
+fn live_extension_shapes(#[case] source: &str) {
+    use crate::api::{Next, Refusal, next_of, types::Status};
+    let fixture: Value = serde_json::from_str(source).unwrap();
+    for key in ["instance_v1", "instance_v2"] {
+        if fixture[key]["status"] != 200 {
+            continue;
+        }
+        let limits = Limits::from_instance(&fixture[key]["body"]);
+        assert_eq!(limits.max_characters, 5000);
+        assert_eq!(limits.description_limit, 5000);
+        assert_eq!(limits.characters_reserved_per_url, 0);
+        assert_eq!(limits.video_size_limit, Some(16_000_000));
+        assert_eq!(limits.media_body_limit, Some(16_000_000));
+        assert!(limits.extension_quotes);
+    }
+    let nodeinfo = &fixture["nodeinfo"]["body"];
+    assert!(
+        server_label("127.0.0.1", &fixture["instance_v1"]["body"], nodeinfo)
+            .contains(nodeinfo["software"]["name"].as_str().unwrap())
+    );
+    let video: Status = serde_json::from_value(fixture["video"]["body"].clone()).unwrap();
+    let file = &video.media_attachments[0];
+    assert_eq!(file.kind, "video");
+    assert_eq!(file.preview_url, file.url);
+    let page: Vec<Status> = serde_json::from_value(fixture["page"]["body"].clone()).unwrap();
+    assert_eq!(
+        next_of(fixture["page"]["link"].as_str()),
+        Next::MaxId(page.last().unwrap().id.clone())
+    );
+    let conversations: Vec<crate::api::types::Conversation> =
+        serde_json::from_value(fixture["conversations"]["body"].clone()).unwrap();
+    assert_eq!(
+        conversations[0].last_status.as_ref().unwrap().visibility,
+        "direct"
+    );
+    for key in [
+        "status",
+        "blocked",
+        "markdown",
+        "mfm",
+        "emoji_reaction",
+        "extension_quote",
+    ] {
+        let status: Status = serde_json::from_value(fixture[key]["body"].clone()).unwrap();
+        assert!(!status.id.is_empty());
+        assert!(status.quote_approval.is_none());
+        if key == "markdown" || key == "mfm" {
+            assert!(
+                crate::html::to_text(&status.content).contains(&format!("compatibility {key}"))
+            );
+        }
+        if key == "extension_quote" {
+            let (state, quoted) = status.quote_view().unwrap();
+            assert_eq!(state, "accepted");
+            assert_eq!(quoted.unwrap().id, fixture["emoji_reaction"]["body"]["id"]);
+        }
+    }
+    for (key, path, code) in [
+        ("deleted", "v1/statuses/deleted", 404),
+        ("wrong_token", "v1/accounts/verify_credentials", 403),
+        ("text_over_limit", "v1/statuses", 422),
+        ("upload_over_limit", "v2/media", 413),
+    ] {
+        assert_eq!(fixture[key]["status"], code);
+        let refusal = Refusal {
+            status: code,
+            body: serde_json::from_value(fixture[key]["body"].clone()).unwrap(),
+            reset: None,
+        };
+        let error = Client::new("http://127.0.0.1:1").refusal(path, refusal);
+        assert_eq!(error.kind().exit_code(), 4);
+        let expected = fixture[key]["body"]["error"]
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("HTTP {code}"));
+        assert!(error.message().contains(&expected));
+    }
 }

@@ -846,9 +846,9 @@ impl App {
         let Some(s) = self.selected().cloned() else {
             return;
         };
-        // This field is the documented quote capability on a successfully
-        // read status. A compatibility version says nothing about it.
-        if s.quote_approval.is_none() {
+        // A readable quote field or an explicit extension advertises support;
+        // a compatibility version says nothing about it.
+        if s.quote_approval.is_none() && !self.limits.extension_quotes {
             self.fail(
                 Error::unsupported("quote posts", &self.origin)
                     .message()
