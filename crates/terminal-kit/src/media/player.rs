@@ -246,18 +246,11 @@ fn play_file(
     // with B-frames is not the order they go in; each takes the earliest
     // time not yet used.
     let mut pending: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
-    let mut first = true;
-    for sample in &track.samples {
+    for (sample, unit) in track.units() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
         }
         pending.push(Reverse(sample.pts));
-        let unit = if first {
-            first = false;
-            [track.config.as_slice(), sample.data.as_slice()].concat()
-        } else {
-            sample.data.clone()
-        };
         let Ok(Some(yuv)) = decoder.decode(&unit) else {
             continue;
         };
@@ -272,6 +265,27 @@ fn play_file(
         return Err("no picture of the video could be decoded".into());
     }
     Ok(())
+}
+
+/// Some servers return the original MP4 as its own preview. Decode one
+/// frame on the existing image worker, within its download and pixel bounds.
+pub(super) fn poster(file: &[u8]) -> Result<image::DynamicImage, String> {
+    let track = super::mp4::video_track(file)?;
+    let mut decoder = decoder()?;
+    for (_, unit) in track.units() {
+        if let Ok(Some(yuv)) = decoder.decode(&unit)
+            && let Some(rgb) = to_rgb(&yuv)
+        {
+            return Ok(image::DynamicImage::ImageRgb8(rgb));
+        }
+    }
+    decoder
+        .flush_remaining()
+        .unwrap_or_default()
+        .iter()
+        .find_map(to_rgb)
+        .map(image::DynamicImage::ImageRgb8)
+        .ok_or_else(|| "no picture of the video could be decoded".into())
 }
 
 /// A decoder that holds pictures until their turn. Forcing one out after
