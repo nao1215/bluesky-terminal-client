@@ -93,7 +93,7 @@ impl RelayMessage {
 }
 
 #[derive(Debug)]
-struct DeadlineStream {
+pub(crate) struct DeadlineStream {
     stream: TcpStream,
     deadline: Instant,
 }
@@ -124,14 +124,14 @@ impl Write for DeadlineStream {
     }
 }
 
-struct Session<S = MaybeTlsStream<DeadlineStream>> {
+pub(crate) struct Session<S = MaybeTlsStream<DeadlineStream>> {
     socket: WebSocket<S>,
     deadline: Instant,
     notices: Vec<String>,
 }
 
 impl Session {
-    fn open(address: &str, timeout: Duration) -> Result<Self> {
+    pub(crate) fn open(address: &str, timeout: Duration) -> Result<Self> {
         let deadline = Instant::now() + timeout;
         let url = url::Url::parse(address).map_err(Error::network)?;
         let host = url
@@ -184,14 +184,14 @@ impl Session {
 }
 
 impl<S: Read + Write> Session<S> {
-    fn send(&mut self, message: Value) -> Result<()> {
+    pub(crate) fn send(&mut self, message: Value) -> Result<()> {
         remaining(self.deadline).map_err(Error::network)?;
         self.socket
             .send(Message::Text(message.to_string().into()))
             .map_err(Error::network)
     }
 
-    fn receive(&mut self) -> Result<RelayMessage> {
+    pub(crate) fn receive(&mut self) -> Result<RelayMessage> {
         loop {
             remaining(self.deadline).map_err(Error::network)?;
             match self.socket.read().map_err(Error::network)? {
@@ -410,4 +410,4 @@ impl Relays<'_> {
 
 #[cfg(test)]
 #[path = "relay_tests.rs"]
-mod tests;
+pub(crate) mod tests;

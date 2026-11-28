@@ -23,7 +23,7 @@ use std::{
     name = "nstr",
     version,
     about,
-    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile, placed by its owner.\nExit status: 0 success, 1 usage, 3 local file, 4 network or relay."
+    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile or a bunker URI.\nExit status: 0 success, 1 usage, 3 local file, 4 network or relay."
 )]
 struct Cli {
     /// Print JSON lines in the shared client format, including errors.
@@ -102,11 +102,13 @@ fn run(cli: Cli) -> Result<()> {
             )
         }
         Command::Post { text } => {
-            let key = config.signing_key()?;
             let now = u64::try_from(jiff::Timestamp::now().as_second()).map_err(Error::usage)?;
-            let event = Event::sign(&key, now, 1, Vec::new(), text);
-            drop(key);
-            let event = event?;
+            let event = if let Some(bunker) = &config.bunker {
+                bunker.sign_note(&config.public, now, &text, config.timeout)?
+            } else {
+                let key = config.signing_key()?;
+                Event::sign(&key, now, 1, Vec::new(), text)?
+            };
             let published = client.relays().publish(&event)?;
             (
                 vec![output::publication(&event, published.value)?],

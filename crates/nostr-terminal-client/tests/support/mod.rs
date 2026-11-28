@@ -49,6 +49,14 @@ pub(crate) struct Relay {
 
 impl Relay {
     pub(crate) fn start(events: Vec<Value>, behavior: Behavior) -> Self {
+        Self::with_handler(events, behavior, |_message| None)
+    }
+
+    pub(crate) fn with_handler(
+        events: Vec<Value>,
+        behavior: Behavior,
+        mut handler: impl FnMut(&Value) -> Option<Vec<Value>> + Send + 'static,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("ws://{}", listener.local_addr().unwrap());
         listener.set_nonblocking(true).unwrap();
@@ -85,6 +93,12 @@ impl Relay {
                     }
                     let mut send =
                         |v: Value| socket.send(Message::Text(v.to_string().into())).is_ok();
+                    if let Some(replies) = handler(&message) {
+                        if !replies.into_iter().all(&mut send) {
+                            break;
+                        }
+                        continue;
+                    }
                     match message[0].as_str().unwrap() {
                         "REQ" => {
                             let sub = &message[1];
