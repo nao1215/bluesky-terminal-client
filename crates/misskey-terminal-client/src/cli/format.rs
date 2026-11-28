@@ -201,8 +201,23 @@ pub(crate) fn account_json(u: &User, origin: &str) -> Value {
     v["description"] = json!(u.description);
     v["followersCount"] = json!(u.followers_count);
     v["followingCount"] = json!(u.following_count);
-    v["notesCount"] = json!(u.notes_count);
+    v["postsCount"] = json!(u.notes_count);
+    v["following"] = json!(u.is_following);
+    v["locked"] = json!(u.is_locked);
     v
+}
+
+/// What a write did, as every client prints it with `--json`: the command,
+/// the note or account it was done to, what it made and its address, and
+/// whether there was nothing to do.
+pub(crate) fn wrote(
+    action: &str,
+    target: Option<&str>,
+    id: Option<&str>,
+    url: Option<&str>,
+    already: bool,
+) -> Value {
+    json!({"action": action, "target": target, "id": id, "url": url, "already": already})
 }
 
 /// What a notification says happened.
@@ -263,6 +278,16 @@ pub(crate) fn notification(n: &Notification, origin: &str) -> String {
     out
 }
 
+/// A notification's `type` in the JSON every client prints: a reaction is
+/// a like and a renote a repost; the rest keep Misskey's word.
+fn notification_type(kind: &str) -> &str {
+    match kind {
+        "reaction" => "like",
+        "renote" => "repost",
+        other => other,
+    }
+}
+
 /// A notification as `notifications --json` prints it: what happened, who
 /// did it (a note's `user`, or null), the reaction, and the note it is
 /// about in the shape every command prints (or null).
@@ -270,14 +295,27 @@ pub(crate) fn notification_json(n: &Notification, origin: &str) -> Value {
     json!({
         "id": n.id,
         "createdAt": n.created_at,
-        "type": n.kind,
+        "type": notification_type(&n.kind),
         "user": n.user.as_ref().map(|u| user_json(u, origin)),
         "reaction": n.reaction,
-        "note": n.note.as_ref().map(|x| note_json(x, origin)),
+        "postId": n.note.as_ref().map(|x| &x.id),
+        "post": n.note.as_ref().map(|x| note_json(x, origin)),
     })
 }
 
-/// A note as `--json` prints it, its `user` as [`user_json`] puts it.
+/// A file's `type` in the JSON every client prints, from its media type.
+pub(crate) fn file_type(mime: &str) -> &'static str {
+    match mime.split('/').next().unwrap_or("") {
+        "image" => "image",
+        "video" => "video",
+        "audio" => "audio",
+        _ => "file",
+    }
+}
+
+/// A note as `--json` prints it, the post of `doc/json.md`: its `user` as
+/// [`user_json`] puts it. A renote with nothing of its own is a repost of
+/// the note it renotes; one with words or files quotes it.
 pub(crate) fn note_json(n: &Note, origin: &str) -> Value {
     let files: Vec<Value> = n
         .files
@@ -285,14 +323,18 @@ pub(crate) fn note_json(n: &Note, origin: &str) -> Value {
         .map(|f| {
             json!({
                 "id": f.id,
-                "name": f.name,
+                "type": file_type(&f.mime),
+                "mime": (!f.mime.is_empty()).then_some(&f.mime),
                 "url": f.url,
-                "type": f.mime,
+                "previewUrl": f.thumbnail_url,
+                "description": f.comment,
+                "name": f.name,
                 "size": f.size,
                 "isSensitive": f.is_sensitive,
             })
         })
         .collect();
+    let repost = n.is_pure_renote();
     json!({
         "id": n.id,
         "createdAt": n.created_at,
@@ -301,14 +343,15 @@ pub(crate) fn note_json(n: &Note, origin: &str) -> Value {
         "user": user_json(&n.user, origin),
         "text": n.text,
         "cw": n.cw,
-        "reactionCount": n.reaction_total(),
+        "likeCount": n.reaction_total(),
         "reactions": n.reactions,
-        "renoteCount": n.renote_count,
+        "repostCount": n.renote_count,
         "repliesCount": n.replies_count,
         "files": files,
         "replyId": n.reply_id,
-        "renoteId": n.renote_id,
-        "renote": n.renote.as_deref().map(|r| note_json(r, origin)),
+        "quoteId": if repost { None } else { n.renote_id.as_ref() },
+        "repostOf": if repost { n.renote.as_deref().map(|r| note_json(r, origin)) } else { None },
+        "visibility": n.visibility,
     })
 }
 
@@ -434,13 +477,16 @@ mod tests {
         let v = note_json(&n, ORIGIN);
         assert_eq!(v["url"], "https://misskey.test/notes/9abc");
         assert_eq!(v["user"]["host"], "misskey.test");
-        assert_eq!(v["reactionCount"], 3);
+        assert_eq!(v["likeCount"], 3);
         assert_eq!(v["reactions"][":a@.:"], 1);
-        assert_eq!(v["files"][0]["type"], "image/png");
+        assert_eq!(v["repostCount"], 4);
+        assert_eq!(v["files"][0]["type"], "image");
+        assert_eq!(v["files"][0]["mime"], "image/png");
         assert_eq!(v["files"][0]["size"], 10);
-        assert_eq!(v["renote"]["user"]["host"], "other.example");
-        assert_eq!(v["renote"]["url"], "https://misskey.test/notes/r");
-        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        // A note with words that renotes another quotes it.
+        assert_eq!(v["quoteId"], "r");
+        assert_eq!(v["repostOf"], Value::Null);
+        let keys = keys_of(&v);
         assert_eq!(
             keys,
             [
@@ -448,19 +494,52 @@ mod tests {
                 "cw",
                 "files",
                 "id",
-                "reactionCount",
+                "likeCount",
+                "quoteId",
                 "reactions",
-                "renote",
-                "renoteCount",
-                "renoteId",
                 "repliesCount",
                 "replyId",
+                "repostCount",
+                "repostOf",
                 "text",
                 "uri",
                 "url",
-                "user"
+                "user",
+                "visibility"
             ]
         );
+        assert!(missing(json::POST, &keys).is_empty());
+        assert!(missing(json::USER, &keys_of(&v["user"])).is_empty());
+        assert!(missing(json::FILE, &keys_of(&v["files"][0])).is_empty());
+        // One with nothing of its own is a repost of it, whole.
+        let rn = note_json(
+            &a_note(json!({
+                "id": "rn", "user": {"username": "alice"}, "renoteId": "r",
+                "renote": {"id": "r", "user": {"username": "bob", "host": "other.example"}, "text": "元"}
+            })),
+            ORIGIN,
+        );
+        assert_eq!(rn["quoteId"], Value::Null);
+        assert_eq!(rn["repostOf"]["user"]["host"], "other.example");
+        assert_eq!(rn["repostOf"]["url"], "https://misskey.test/notes/r");
+        assert_eq!(rn["repostOf"]["text"], "元");
+    }
+
+    use terminal_kit::json::{self, missing};
+
+    fn keys_of(v: &Value) -> Vec<&str> {
+        v.as_object().unwrap().keys().map(String::as_str).collect()
+    }
+
+    #[rstest]
+    #[case("image/webp", "image")]
+    #[case("video/mp4", "video")]
+    #[case("audio/ogg", "audio")]
+    #[case("application/pdf", "file")]
+    #[case("", "file")]
+    fn a_file_is_one_of_the_four_types(#[case] mime: &str, #[case] want: &str) {
+        assert_eq!(file_type(mime), want);
+        assert!(json::FILE_TYPES.contains(&want));
     }
 
     fn a_notification(v: Value) -> Notification {
@@ -524,18 +603,46 @@ mod tests {
             v["user"],
             json!({"id": "u2", "username": "bob", "host": "misskey.test", "name": null})
         );
-        assert_eq!(v["note"], note_json(n.note.as_ref().unwrap(), ORIGIN));
+        assert_eq!(v["post"], note_json(n.note.as_ref().unwrap(), ORIGIN));
+        assert_eq!(v["postId"], "9abc");
         assert_eq!(v["reaction"], Value::Null);
-        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        let keys = keys_of(&v);
         assert_eq!(
             keys,
-            ["createdAt", "id", "note", "reaction", "type", "user"]
+            [
+                "createdAt",
+                "id",
+                "post",
+                "postId",
+                "reaction",
+                "type",
+                "user"
+            ]
         );
+        assert!(missing(json::NOTIFICATION, &keys).is_empty());
         let bare = notification_json(&a_notification(json!({"id": "n2", "type": "app"})), ORIGIN);
         assert_eq!(
-            (bare["user"].clone(), bare["note"].clone()),
-            (Value::Null, Value::Null)
+            (
+                bare["user"].clone(),
+                bare["post"].clone(),
+                bare["type"].clone()
+            ),
+            (Value::Null, Value::Null, json!("app"))
         );
+        // A reaction is a like, with the reaction beside; a renote a repost.
+        let r = notification_json(
+            &a_notification(json!({"id": "n3", "type": "reaction", "reaction": "👍"})),
+            ORIGIN,
+        );
+        assert_eq!(
+            (r["type"].clone(), r["reaction"].clone()),
+            (json!("like"), json!("👍"))
+        );
+        let rn = notification_json(
+            &a_notification(json!({"id": "n4", "type": "renote"})),
+            ORIGIN,
+        );
+        assert_eq!(rn["type"], "repost");
     }
 
     // whoami names the account with the server's host, its address, its
@@ -560,21 +667,25 @@ mod tests {
         let v = account_json(&u, ORIGIN);
         assert_eq!(v["host"], "misskey.test");
         assert_eq!(v["url"], "https://misskey.test/@alice");
-        assert_eq!(v["notesCount"], 56);
-        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(v["postsCount"], 56);
+        assert_eq!(v["following"], false);
+        let keys = keys_of(&v);
         assert_eq!(
             keys,
             [
                 "description",
                 "followersCount",
+                "following",
                 "followingCount",
                 "host",
                 "id",
+                "locked",
                 "name",
-                "notesCount",
+                "postsCount",
                 "url",
                 "username"
             ]
         );
+        assert!(missing(json::ACCOUNT, &keys).is_empty());
     }
 }

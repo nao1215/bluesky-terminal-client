@@ -104,14 +104,15 @@ scenarios:
           stdout:
             json:
               - { path: "$.id", equals: n4 }
-              - { path: "$.type", equals: reaction }
+              - { path: "$.type", equals: like }
               - { path: "$.reaction", equals: ":blobcat@.:" }
               - { path: "$.user.username", equals: bob }
               - { path: "$.user.host", equals: misskey.design }
-              - { path: "$.note.id", equals: 9a }
-              - { path: "$.note.url", equals: "${api.url}/notes/9a" }
-              - { path: "$.note.user.host", equals: "127.0.0.1:${api.port}" }
-              - { path: "$.note.files[0].type", equals: image/png }
+              - { path: "$.postId", equals: 9a }
+              - { path: "$.post.url", equals: "${api.url}/notes/9a" }
+              - { path: "$.post.user.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.post.files[0].type", equals: image }
+              - { path: "$.post.files[0].mime", equals: image/png }
 
   - name: notifications without a login are a usage error before anything is asked
     mock_servers:

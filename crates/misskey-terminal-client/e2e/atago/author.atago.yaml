@@ -285,13 +285,14 @@ scenarios:
               - { path: "$.url", equals: "${api.url}/notes/9c" }
               - { path: "$.text", equals: "hi\e]52;c;cHduZWQ=\a 🇯🇵" }
               - { path: "$.cw", equals: null }
-              - { path: "$.reactionCount", equals: 5 }
+              - { path: "$.likeCount", equals: 5 }
               - { path: "$.reactions['👍']", equals: 2 }
               - { path: "$.reactions[':blobcat@.:']", equals: 3 }
-              - { path: "$.renoteCount", equals: 1 }
+              - { path: "$.repostCount", equals: 1 }
               - { path: "$.repliesCount", equals: 4 }
               - { path: "$.files[0].url", equals: "${api.url}/files/f1.png" }
-              - { path: "$.files[0].type", equals: image/png }
+              - { path: "$.files[0].type", equals: image }
+              - { path: "$.files[0].mime", equals: image/png }
               - { path: "$.files[0].size", equals: 242 }
               - { path: "$.user.username", equals: alice }
               - { path: "$.user.host", equals: "127.0.0.1:${api.port}" }
@@ -435,7 +436,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: '^\{"kind":"image","note":"[^"]*/notes/9c","path":"out[/\\]+9c-1 \(1\)\.png","url":"[^"]*/files/f1\.png"\}\n\{"kind":"video","note":"[^"]*/notes/9c","path":"out[/\\]+9c-2 \(1\)\.mp4","url":"[^"]*/files/f2"\}\n$'
+            matches: '^\{"path":"out[/\\]+9c-1 \(1\)\.png","postId":"9c","type":"image","url":"[^"]*/files/f1\.png"\}\n\{"path":"out[/\\]+9c-2 \(1\)\.mp4","postId":"9c","type":"video","url":"[^"]*/files/f2"\}\n$'
       - assert:
           dir: { path: out, count: 4, contains: ["9c-1 (1).png", "9c-2 (1).mp4"] }
       - assert:

@@ -85,8 +85,8 @@ scenarios:
               - { path: "$.url", equals: "${api.url}/notes/9c" }
               - { path: "$.user.host", equals: misskey.design }
               - { path: "$.text", equals: "おはよう 🇯🇵👍🏽\n二行目 مرحبا" }
-              - { path: "$.reactionCount", equals: 3 }
-              - { path: "$.renote", equals: null }
+              - { path: "$.likeCount", equals: 3 }
+              - { path: "$.repostOf", equals: null }
       - assert:
           mock:
             name: api
@@ -192,3 +192,55 @@ scenarios:
             equals: |
               error: notes/local-timeline failed: LTL_DISABLED: Local timeline has been disabled.
               hint: 127.0.0.1:${api.port} does not show this timeline to you; try another one, or log in with `msky login --host 127.0.0.1:${api.port}`
+
+  # What stands in front of Misskey (a proxy, a gateway) writes its own
+  # error, not Misskey's; msky says it rather than the status alone.
+  - name: an error the server writes in another shape is said, not only its status
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/local-timeline
+            status: 500
+            json: { error: "Internal Server Error 🔥" }
+    steps:
+      - run:
+          command: msky timeline local --json --host ${api.url}
+          env: *visitor
+      - assert:
+          exit_code: 4
+          stderr:
+            contains: "error: notes/local-timeline failed: Internal Server Error 🔥"
+          stdout:
+            json: { path: "$.error", equals: "notes/local-timeline failed: Internal Server Error 🔥" }
+
+  # A reader that stops early (head) closes the pipe; msky stops writing and
+  # exits 0, rather than 3 or a panic, so `set -o pipefail` scripts work.
+  # The page is larger than a pipe holds, so msky is still writing then.
+  - name: a pipe closed early ends the output quietly with exit 0
+    skip:
+      os: windows  # the pipeline needs head and a POSIX shell
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/local-timeline
+            body_file: testdata/local-100.json
+            header: { Content-Type: application/json }
+    steps:
+      - run:
+          command: '{ msky timeline local -n 100 --json --host ${api.url}; echo "msky=$?" >&2; } | head -c 1'
+          shell: true
+          env: *visitor
+      - assert:
+          stderr:
+            contains: "msky=0"
+            not_contains: ["panicked", "Broken pipe"]
+      - run:
+          command: '{ msky timeline local -n 100 --host ${api.url}; echo "msky=$?" >&2; } | head -c 1'
+          shell: true
+          env: *visitor
+      - assert:
+          stderr:
+            contains: "msky=0"
+            not_contains: "Broken pipe"

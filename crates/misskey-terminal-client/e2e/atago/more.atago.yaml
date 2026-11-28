@@ -92,7 +92,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"id\":\"rn1\",\"uri\":\"${api.url}/notes/rn1\"}\n"
+            equals: "{\"action\":\"repost\",\"already\":false,\"id\":\"rn1\",\"target\":\"n\",\"url\":\"${api.url}/notes/rn1\"}\n"
       - run:
           command: msky delete n --host ${api.url}
           env: *env
@@ -113,7 +113,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"id\":\"u-bob\"}\n"
+            equals: "{\"action\":\"block\",\"already\":false,\"id\":null,\"target\":\"u-bob\",\"url\":null}\n"
       - assert:
           mock:
             name: api

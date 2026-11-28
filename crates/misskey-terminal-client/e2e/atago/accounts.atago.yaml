@@ -166,7 +166,7 @@ scenarios:
           exit_code: 0
           stdout:
             equals: |
-              {"description":null,"followersCount":null,"followingCount":null,"host":"127.0.0.1:${api.port}","id":"u-cat","name":null,"notesCount":null,"url":"${api.url}/@cat","username":"cat"}
+              {"description":null,"followersCount":null,"following":false,"followingCount":null,"host":"127.0.0.1:${api.port}","id":"u-cat","locked":false,"name":null,"postsCount":null,"url":"${api.url}/@cat","username":"cat"}
       - assert:
           mock:
             name: api
