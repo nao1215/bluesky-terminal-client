@@ -1,6 +1,6 @@
 # mstdn
 
-A [Mastodon](https://joinmastodon.org) client for the terminal, built the way [msky](https://github.com/nao1215/misskey-terminal-client) and [bsky](https://github.com/nao1215/social-terminal-clients) are: the same commands, options, JSON and exit codes.
+A [Mastodon](https://joinmastodon.org) client for the terminal: commands that read timelines, posts and accounts, save their files, and post with pictures. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
 
 ```sh
 mstdn author Gargron@mastodon.social -n 5
@@ -11,7 +11,7 @@ mstdn login
 mstdn post "hello" --image cat.jpg --alt "a cat"
 ```
 
-This version has the commands only; the full-screen client comes later.
+mstdn is commands only: each one prints its result and exits, as plain lines or as JSON.
 
 ## Install
 
@@ -19,7 +19,7 @@ This version has the commands only; the full-screen client comes later.
 cargo install --locked --git https://github.com/nao1215/social-terminal-clients mastodon-terminal-client
 ```
 
-Building it needs Rust 1.90 or later. It is not on crates.io yet.
+Building it needs Rust 1.90 or later. It is not on crates.io.
 
 ## Commands
 
@@ -73,7 +73,7 @@ For a job with no one at the keyboard, set `MSTDN_TOKEN` to an access token made
 
 `mstdn post` uploads the files, waits until the server has processed them, makes the post, and prints its address. Before sending, it checks what it can against the server's own limits (`/api/v2/instance`): the length as Mastodon counts it (an address as 23 characters, `@name@host` as `@name`, the content warning with the text), four pictures or one video, the alt texts, and the file sizes. A post is sent once, with an `Idempotency-Key`. Photos and videos go up without their metadata (EXIF and GPS, XMP, a video's user data and location).
 
-`--visibility` takes `public`, `unlisted`, `private` or `direct` (msky's `home` and `followers` too). `--reply` takes a post of another server by its address, and the server fetches it first. The server makes the link card itself, so there is no `--no-card`. `--dry-run` prints what would be sent and sends nothing.
+`--visibility` takes `public`, `unlisted`, `private` or `direct` (`home` and `followers`, Misskey's names for `unlisted` and `private`, too). `--reply` takes a post of another server by its address, and the server fetches it first. The server makes the link card itself, so there is no `--no-card`. `--dry-run` prints what would be sent and sends nothing.
 
 ## Saving files
 

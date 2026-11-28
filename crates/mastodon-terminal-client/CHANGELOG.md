@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
-- `mstdn`, a Mastodon client for the terminal, built as msky is, with its commands, options, JSON shape and exit codes where Mastodon has the same thing. This version has the commands; the full-screen client comes later.
+- `mstdn`, a Mastodon client for the terminal made of commands that read timelines, posts and accounts, save their files, and post.
 - `mstdn login` logs in with OAuth: it registers mstdn on the server once (`POST /api/v1/apps`, kept in `apps/<host>.json`), opens the authorization page, and takes the code the browser brings back to a listener on 127.0.0.1, or, with `--oob`, the code pasted from the page. The code is traded with a PKCE verifier and the token is saved per server in `accounts/<host>.json` (mode 0600), never printed. `mstdn accounts` lists and switches the accounts, `mstdn logout` removes one or `--all`, and `MSTDN_TOKEN` takes a token made in the server's settings for CI jobs.
 - `mstdn author`, `status` (`note`), `thread`, `profile` and `whoami` read accounts and posts, as a visitor where the server allows it; `author` takes bsky's `--filter` names and `--reposts`, and finds an account of another server with a search when logged in.
 - `mstdn timeline` reads the home, local and public (federated) timelines, a page of up to 40 at a time where the `Link` header says the next one starts, and `mstdn notifications` the account's notifications.
