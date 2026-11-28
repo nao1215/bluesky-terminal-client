@@ -4,6 +4,7 @@
 # the release optimizations without LTO, so it builds in a fraction of the
 # time) and runs the atago end-to-end suite (e2e/atago/*.atago.yaml) against
 # the real binary.
+# The concurrent token refresh scenario also needs python3 for its mock server's request barrier.
 #
 # The test definitions are atago YAML; this script only bootstraps the
 # environment. The suite drives bsky in a pseudo-terminal that answers like a
