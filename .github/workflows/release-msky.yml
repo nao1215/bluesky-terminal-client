@@ -1,8 +1,11 @@
-name: Release
+name: Release msky
 
-# A pushed version tag (vX.Y.Z) publishes msky: it checks the tag against
-# Cargo.toml and CHANGELOG.md, builds every target in release-targets.json with
-# a pinned compiler and no build cache, packs reproducible archives, writes the
+# A pushed msky tag (msky-vX.Y.Z) publishes msky, the Misskey client in
+# crates/misskey-terminal-client, the way release.yml publishes bsky from a
+# vX.Y.Z tag: neither workflow starts on the other's tags. It checks the tag
+# against the crate's Cargo.toml and CHANGELOG.md, builds every target in
+# release-targets.json with a pinned compiler and no build cache, packs
+# reproducible archives, writes the
 # third-party license texts, their checksums and an SBOM, signs checksums.txt
 # with cosign, attests the build provenance, creates the GitHub release with the
 # CHANGELOG section as its text, adds SLSA provenance to it, verifies all of it
@@ -14,7 +17,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "msky-v*"
 
 # One release per tag at a time, never cancelled midway: a half-run release
 # leaves crates.io, the GitHub release, and Homebrew out of step.
@@ -32,6 +35,8 @@ env:
   # No job restores a build cache: caches are written by other workflows, and
   # a poisoned one would end up in the binaries.
   RUST_TOOLCHAIN: "1.100.0"
+  # The client the release scripts act on (scripts/release/client.sh).
+  BIN: msky
 
 jobs:
   # The build matrix, read from one file so the targets are listed once.
@@ -50,6 +55,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      prerelease: ${{ steps.prerelease.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,8 +70,22 @@ jobs:
       - name: Check the tag, the toolchain pin, and the CHANGELOG section
         run: ./scripts/release/check-version.sh "${GITHUB_REF_NAME}" "${RUST_TOOLCHAIN}"
 
-      - name: Verify the crate packages and builds
-        run: cargo publish --locked --dry-run
+      # The tag always holds a hyphen (msky-v), so a pre-release is told by
+      # one in the version after the prefix.
+      - name: Tell whether the version is a pre-release
+        id: prerelease
+        run: |
+          version="${GITHUB_REF_NAME#msky-v}"
+          case "${version}" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # Both crates, terminal-kit first: msky depends on it, and cargo builds
+      # msky against the terminal-kit packaged here even before it is on
+      # crates.io. A version already on crates.io is only a warning here.
+      - name: Verify the crates package and build
+        run: cargo publish --locked --dry-run -p terminal-kit -p misskey-terminal-client
 
   build-binaries:
     needs: [verify, targets]
@@ -91,7 +112,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release --locked --target "${TARGET}"
+        run: cargo build --release --locked -p misskey-terminal-client --target "${TARGET}"
 
       - name: Pack
         shell: bash
@@ -101,16 +122,15 @@ jobs:
         run: |
           bin="target/${TARGET}/release/msky"
           [ -f "${bin}.exe" ] && bin="${bin}.exe"
-          archive="msky-${GITHUB_REF_NAME}-${TARGET}.${ARCHIVE_EXT}"
+          archive="${GITHUB_REF_NAME}-${TARGET}.${ARCHIVE_EXT}"
           ./scripts/release/pack-archive.sh "${bin}" "${archive}"
           echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
 
       # A glibc binary runs only where the C library is at least as new as the
-      # newest GLIBC_x.y symbol version it links. bsky v0.12.0, the sister
-      # client, was built on Ubuntu 24.04 and needed GLIBC_2.39, so it did not
-      # start on Debian 12 or Ubuntu 22.04. The Linux targets build on Ubuntu
-      # 22.04, and this fails the release if a binary needs a glibc newer than
-      # that system's.
+      # newest GLIBC_x.y symbol version it links. bsky v0.12.0 was built on
+      # Ubuntu 24.04 and needed GLIBC_2.39, so it did not start on Debian 12 or
+      # Ubuntu 22.04. The Linux targets build on Ubuntu 22.04, and this fails
+      # the release if a binary needs a glibc newer than that system's.
       - name: Check the glibc the binary requires
         if: endsWith(matrix.target, '-linux-gnu')
         env:
@@ -162,14 +182,14 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-about@0.9.2
 
       - name: Write the third-party licenses
         run: |
-          out="msky-${GITHUB_REF_NAME}-THIRD_PARTY_LICENSES.html"
-          cargo about generate --locked --fail about.hbs -o "${out}"
+          out="${GITHUB_REF_NAME}-THIRD_PARTY_LICENSES.html"
+          cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml crates/misskey-terminal-client/about.hbs -o "${out}"
           test -s "${out}"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -180,7 +200,7 @@ jobs:
 
   # Every SHA-256 of the release is computed here, once. Every archive gets a
   # signed build provenance attestation, which
-  # `gh attestation verify <archive> --repo nao1215/misskey-terminal-client`
+  # `gh attestation verify <archive> --repo nao1215/social-terminal-clients`
   # checks against this workflow and the tag it ran for, and checksums.txt is
   # signed with cosign (keyless: the certificate names this workflow and tag).
   # The signature is made before the release exists, so a failure here leaves
@@ -222,7 +242,7 @@ jobs:
             echo "::error title=Missing archives::${count} archives for ${targets} targets"
             exit 1
           fi
-          test -s "msky-${GITHUB_REF_NAME}-THIRD_PARTY_LICENSES.html"
+          test -s "${GITHUB_REF_NAME}-THIRD_PARTY_LICENSES.html"
           sha256sum -- * > checksums.txt
           cat checksums.txt
 
@@ -271,27 +291,33 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Install cargo-cyclonedx
-        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-cyclonedx@0.5.9
 
+      # cargo-cyclonedx writes an SBOM beside every manifest of the workspace;
+      # msky's is the one in its crate directory.
       - name: Generate the CycloneDX SBOM
         run: |
-          cargo cyclonedx --format json --override-filename "msky-${GITHUB_REF_NAME}.cdx"
-          test -s "msky-${GITHUB_REF_NAME}.cdx.json"
+          cargo cyclonedx --format json --override-filename "${GITHUB_REF_NAME}.cdx"
+          mv "crates/misskey-terminal-client/${GITHUB_REF_NAME}.cdx.json" .
+          test -s "${GITHUB_REF_NAME}.cdx.json"
+          jq -e '.metadata.component.name == "misskey-terminal-client"' "${GITHUB_REF_NAME}.cdx.json"
 
       - name: Attest the SBOM
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: msky-${{ github.ref_name }}.cdx.json
+          subject-path: ${{ github.ref_name }}.cdx.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: msky-*.cdx.json
 
+  # bsky's newest release stays the repository's latest: msky's are made with
+  # --latest=false.
   create-release:
-    needs: [checksums, sbom]
+    needs: [verify, checksums, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -306,19 +332,19 @@ jobs:
           merge-multiple: true
 
       - name: Write the release notes from CHANGELOG.md
-        run: ./scripts/release/release-notes.sh "${GITHUB_REF_NAME#v}" > release-notes.md
+        run: ./scripts/release/release-notes.sh "${GITHUB_REF_NAME#msky-v}" crates/misskey-terminal-client/CHANGELOG.md > release-notes.md
 
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          PRERELEASE: ${{ contains(github.ref_name, '-') }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
-          args=(--repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file release-notes.md)
+          args=(--repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file release-notes.md --latest=false)
           [ "${PRERELEASE}" = "true" ] && args+=(--prerelease)
           gh release create "${GITHUB_REF_NAME}" release-assets/* "${args[@]}"
 
   # SLSA build provenance for everything checksums.txt lists, attached to the
-  # release as msky-<tag>.intoto.jsonl. The reusable workflow must be referenced
+  # release as <tag>.intoto.jsonl (msky-vX.Y.Z.intoto.jsonl). The reusable workflow must be referenced
   # by tag: slsa-verifier checks the tag the provenance names.
   provenance:
     needs: [checksums, create-release]
@@ -329,11 +355,11 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.checksums.outputs.hashes }}
-      provenance-name: msky-${{ github.ref_name }}.intoto.jsonl
+      provenance-name: ${{ github.ref_name }}.intoto.jsonl
       upload-assets: true
       upload-tag-name: ${{ github.ref_name }}
 
-  # The published release checked the way SECURITY.md tells a user to check
+  # The published release checked the way msky's README tells a user to check
   # it. The crate and the Homebrew formula wait for this, since a version on
   # crates.io cannot be taken back.
   verify-release:
@@ -358,7 +384,7 @@ jobs:
           sha256sum --check checksums.txt
           cosign verify-blob \
             --bundle checksums.txt.sigstore.json \
-            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-msky.yml@refs/tags/${GITHUB_REF_NAME}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             checksums.txt
 
@@ -369,7 +395,7 @@ jobs:
         run: |
           for f in msky-*.tar.gz msky-*.zip; do
             slsa-verifier verify-artifact "${f}" \
-              --provenance-path "msky-${GITHUB_REF_NAME}.intoto.jsonl" \
+              --provenance-path "${GITHUB_REF_NAME}.intoto.jsonl" \
               --source-uri "github.com/${GITHUB_REPOSITORY}" \
               --source-tag "${GITHUB_REF_NAME}"
             gh attestation verify "${f}" --repo "${GITHUB_REPOSITORY}"
@@ -378,10 +404,13 @@ jobs:
   # crates.io with CARGO_REGISTRY_TOKEN when it is set, else trusted publishing
   # (which needs the crate to exist on crates.io first). The crate is published
   # after the release so a failed build never leaves a version on crates.io
-  # without binaries.
+  # without binaries. terminal-kit goes first, since msky depends on it, and
+  # only when its version is not on crates.io yet: a release of bsky may have
+  # published it already. A version new to crates.io needs CARGO_REGISTRY_TOKEN, as
+  # trusted publishing cannot create a crate.
   publish-crate:
-    needs: [create-release, verify-release]
-    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [verify, create-release, verify-release]
+    if: needs.verify.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -403,14 +432,26 @@ jobs:
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
+      - name: Publish terminal-kit unless its version is out already
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "terminal-kit") | .version')"
+          status="$(curl -s -o /dev/null -w '%{http_code}' -A "${GITHUB_REPOSITORY} release" "https://crates.io/api/v1/crates/terminal-kit/${version}")"
+          case "${status}" in
+            200) echo "terminal-kit ${version} is on crates.io already" ;;
+            404) cargo publish --locked -p terminal-kit ;;
+            *) echo "::error::crates.io answered ${status} for terminal-kit ${version}"; exit 1 ;;
+          esac
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ env.HAS_CARGO_REGISTRY_TOKEN == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.crates-auth.outputs.token }}
+
       - name: Publish the crate
-        run: cargo publish --locked
+        run: cargo publish --locked -p misskey-terminal-client
         env:
           CARGO_REGISTRY_TOKEN: ${{ env.HAS_CARGO_REGISTRY_TOKEN == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.crates-auth.outputs.token }}
 
   publish-homebrew-formula:
-    needs: [create-release, verify-release]
-    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [verify, create-release, verify-release]
+    if: needs.verify.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     env:
       HOMEBREW_TAP_TOKEN_CONFIGURED: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
@@ -460,8 +501,8 @@ jobs:
           git push
 
   verify-homebrew-install:
-    needs: publish-homebrew-formula
-    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [verify, publish-homebrew-formula]
+    if: needs.verify.outputs.prerelease != 'true'
     runs-on: macos-latest
     env:
       HOMEBREW_TAP_TOKEN_CONFIGURED: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}

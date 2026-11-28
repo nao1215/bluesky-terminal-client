@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# run.sh builds msky from this checkout (cargo, release profile) and runs the
-# atago end-to-end suite (e2e/atago/*.atago.yaml) against the real binary.
+# run.sh builds msky from this checkout (cargo, the workspace's e2e profile:
+# the release optimizations without LTO, so it builds in a fraction of the
+# time) and runs the atago end-to-end suite (e2e/atago/*.atago.yaml) against
+# the real binary.
 #
 # The test definitions are atago YAML; this script only bootstraps the
 # environment. The suite stubs the Misskey API with atago mock servers and
@@ -9,27 +11,29 @@
 # no account.
 #
 # Environment contract used by the specs:
-#   PATH   msky resolves here (target/release from this checkout)
+#   PATH   msky resolves here (target/e2e of the workspace)
 #   LC_ALL C.UTF-8, so the client is in English unless a spec says otherwise
 #
-# Usage: e2e/run.sh [atago args...]        (e.g. e2e/run.sh --filter search)
+# Usage: crates/misskey-terminal-client/e2e/run.sh [atago args...]
+#        (e.g. crates/misskey-terminal-client/e2e/run.sh --filter search)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+CRATE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+WORKSPACE_ROOT="$(cd -- "$CRATE_DIR/../.." && pwd)"
 
 if ! command -v atago >/dev/null 2>&1; then
 	echo "e2e: atago is not installed. Install it from https://github.com/nao1215/atago" >&2
-	echo "e2e: e.g. 'go install github.com/nao1215/atago@latest' (CI uses the release pinned in .github/workflows/e2e.yml)" >&2
+	echo "e2e: e.g. 'go install github.com/nao1215/atago@latest' (CI uses the release pinned in the workspace's .github/workflows/e2e.yml)" >&2
 	exit 127
 fi
 
-cd "$REPO_ROOT"
+cd "$CRATE_DIR"
 
-echo "e2e: building msky (cargo build --release --locked)..."
-cargo build --release --locked
+echo "e2e: building msky (cargo build --profile e2e --locked -p misskey-terminal-client)..."
+cargo build --profile e2e --locked -p misskey-terminal-client
 
-export PATH="$REPO_ROOT/target/release:$PATH"
+export PATH="$WORKSPACE_ROOT/target/e2e:$PATH"
 # The client speaks the language the locale asks for; the specs read it in
 # English, and set the locale themselves where they read another one.
 export LC_ALL=C.UTF-8 LANG=C.UTF-8

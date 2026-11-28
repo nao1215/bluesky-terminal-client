@@ -1,5 +1,0 @@
-# Tests may unwrap, expect and panic: a failure there is the test failing.
-# The code msky ships may not (see [lints.clippy] in Cargo.toml).
-allow-unwrap-in-tests = true
-allow-expect-in-tests = true
-allow-panic-in-tests = true

@@ -4,17 +4,19 @@
 # executable at its root with mode 0755, and, with --exec on a runner that can
 # run it, the executable reports the version of the tag.
 #
-# usage: check-archive.sh <archive> <tag> [--exec]
+# usage: [BIN=bsky|msky] check-archive.sh <archive> <tag> [--exec]
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
 	echo "usage: $0 <archive> <tag> [--exec]" >&2
 	exit 2
 fi
+# shellcheck source=client.sh
+. "$(dirname "$0")/client.sh"
 archive="$1"
 tag="$2"
 exec_check="${3:-}"
-version="${tag#v}"
+version="$(tag_version "$tag")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -27,9 +29,9 @@ if command -v cygpath >/dev/null; then
 fi
 
 # Python reads both formats the same way on all three runners.
-"$python_bin" - "$src" "$out" <<'PY'
+"$python_bin" - "$src" "$out" "$bin" <<'PY'
 import os, stat, sys, tarfile, zipfile
-archive, out = sys.argv[1:3]
+archive, out, exe = sys.argv[1:4]
 problems = []
 if archive.endswith(".zip"):
     with zipfile.ZipFile(archive) as z:
@@ -53,8 +55,8 @@ else:
         if any(m.mtime != 946684800 for m in members):
             problems.append("an entry time is not 2000-01-01T00:00:00Z")
         t.extractall(out, filter="data") if hasattr(tarfile, "data_filter") else t.extractall(out)
-if names not in (["bsky"], ["bsky.exe"]):
-    problems.append(f"entries are {names}, expected only bsky or bsky.exe")
+if names not in ([exe], [exe + ".exe"]):
+    problems.append(f"entries are {names}, expected only {exe} or {exe}.exe")
 if modes and modes[0] != 0o755:
     problems.append(f"mode is {oct(modes[0])}, expected 0o755")
 for p in problems:
@@ -63,11 +65,11 @@ sys.exit(1 if problems else 0)
 PY
 
 if [ "$exec_check" = "--exec" ]; then
-	bin="$work/bsky"
-	[ -f "$bin" ] || bin="$work/bsky.exe"
-	got="$("$bin" --version)"
-	if [ "$got" != "bsky $version" ]; then
-		echo "error: $bin --version printed '$got', expected 'bsky $version'" >&2
+	exe="$work/$bin"
+	[ -f "$exe" ] || exe="$work/$bin.exe"
+	got="$("$exe" --version)"
+	if [ "$got" != "$bin $version" ]; then
+		echo "error: $exe --version printed '$got', expected '$bin $version'" >&2
 		exit 1
 	fi
 fi

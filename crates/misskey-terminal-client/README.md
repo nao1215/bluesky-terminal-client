@@ -1,11 +1,11 @@
-[![Build](https://github.com/nao1215/misskey-terminal-client/actions/workflows/rust.yml/badge.svg)](https://github.com/nao1215/misskey-terminal-client/actions/workflows/rust.yml)
-[![E2E](https://github.com/nao1215/misskey-terminal-client/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/misskey-terminal-client/actions/workflows/e2e.yml)
-[![Trivy](https://github.com/nao1215/misskey-terminal-client/actions/workflows/trivy.yml/badge.svg)](https://github.com/nao1215/misskey-terminal-client/actions/workflows/trivy.yml)
-![Coverage](https://raw.githubusercontent.com/nao1215/octocovs-central-repo/main/badges/nao1215/misskey-terminal-client/coverage.svg)
+[![Build](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml)
+[![E2E](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml)
+[![Trivy](https://github.com/nao1215/social-terminal-clients/actions/workflows/trivy.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/trivy.yml)
+![Coverage](https://raw.githubusercontent.com/nao1215/octocovs-central-repo/main/badges/nao1215/social-terminal-clients/coverage.svg)
 [![tested with atago](https://img.shields.io/badge/tested%20with-atago-7c3aed?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMuNiA0LjIgMTEuOSAxMmwtOC4zIDcuOC0xLjktMi4yTDcuOSAxMiAxLjcgNi40eiIvPjxyZWN0IGZpbGw9IiNmZmYiIHg9IjEyLjYiIHk9IjE3LjIiIHdpZHRoPSI5LjciIGhlaWdodD0iMi44IiByeD0iMS40Ii8%2BPC9zdmc%2B&logoColor=white)](https://github.com/nao1215/atago)
 [![measured with himorime](https://img.shields.io/badge/measured%20with-himorime-d9480f?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBkPSJNNC4yIDE4LjVBOSA5IDAgMSAxIDE5LjggMTguNSIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTEyIDE0LjUgMTYuNSA5Ii8%2BPGNpcmNsZSBmaWxsPSIjZmZmIiBjeD0iMTIiIGN5PSIxNC41IiByPSIyLjIiLz48L3N2Zz4=&logoColor=white)](https://github.com/nao1215/himorime)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nao1215/misskey-terminal-client/badge)](https://scorecard.dev/viewer/?uri=github.com/nao1215/misskey-terminal-client)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nao1215/social-terminal-clients/badge)](https://scorecard.dev/viewer/?uri=github.com/nao1215/social-terminal-clients)
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -26,22 +26,24 @@ cargo install --locked misskey-terminal-client
 cargo binstall misskey-terminal-client
 ```
 
-Binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/misskey-terminal-client/releases), with the license texts of the crates they contain in `msky-<version>-THIRD_PARTY_LICENSES.html`. Building it needs Rust 1.90 or later.
+Binaries for Linux, macOS and Windows of 0.1.1 and earlier are on the [releases page of nao1215/misskey-terminal-client](https://github.com/nao1215/misskey-terminal-client/releases), tagged `v<version>`. Releases made from this repository are tagged `msky-v<version>` on its [releases page](https://github.com/nao1215/social-terminal-clients/releases). Each carries the license texts of the crates its binaries contain in `msky-v<version>-THIRD_PARTY_LICENSES.html`. Building it needs Rust 1.90 or later.
 
 ### Verifying a release
 
-Each release carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files (`<tag>` is the release, for example `v0.1.1`):
+Each release carries `checksums.txt`, a cosign signature of it, and SLSA provenance, and each archive has a GitHub build attestation. In a directory with the downloaded files of a release made from this repository (`<version>` is its version, `<archive>` one of its archives):
 
 ```sh
 sha256sum --ignore-missing --check checksums.txt
 cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/nao1215/misskey-terminal-client/.github/workflows/release.yml@refs/tags/<tag>" \
+  --certificate-identity "https://github.com/nao1215/social-terminal-clients/.github/workflows/release-msky.yml@refs/tags/msky-v<version>" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
-slsa-verifier verify-artifact <archive> --provenance-path msky-<tag>.intoto.jsonl \
-  --source-uri github.com/nao1215/misskey-terminal-client --source-tag <tag>
-gh attestation verify <archive> --repo nao1215/misskey-terminal-client
+slsa-verifier verify-artifact <archive> --provenance-path msky-v<version>.intoto.jsonl \
+  --source-uri github.com/nao1215/social-terminal-clients --source-tag msky-v<version>
+gh attestation verify <archive> --repo nao1215/social-terminal-clients
 ```
+
+A release of 0.1.1 or earlier is checked the same way with `nao1215/misskey-terminal-client` in place of `nao1215/social-terminal-clients`, `release.yml` in place of `release-msky.yml`, and the tag `v<version>` in place of `msky-v<version>`; its provenance is in `msky-v<version>.intoto.jsonl` too.
 
 ## Use
 
@@ -151,7 +153,7 @@ From their READMEs, November 2026.
 
 ## Related projects
 
-- [bsky](https://github.com/nao1215/bluesky-terminal-client): the same client for Bluesky, with the same keys.
+- [bsky](../../README.md#bsky): a Bluesky client for the terminal, in the same repository.
 
 ## Contributing
 

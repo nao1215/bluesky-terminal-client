@@ -20,7 +20,8 @@ name: msky
 description: Start-up, the timeline, notifications, a thread and a search as text and JSON, and the client from start to its first note.
 
 build:
-  command: [sh, -c, 'cargo build --release --locked --quiet && cp "target/release/msky$1" "$2"', sh, "${exe}", "${artifact}"]
+  # cwd is the crate; the workspace builds into the target/ two levels up.
+  command: [sh, -c, 'cargo build --release --locked --quiet -p misskey-terminal-client && cp "../../target/release/msky$1" "$2"', sh, "${exe}", "${artifact}"]
   cwd: ..
 
 defaults:

@@ -1,9 +1,10 @@
 name: licenses
 
-# Dependency license gate. Every crate compiled into bsky, on every target in
-# release-targets.json, must carry a license in deny.toml's allow list
-# (cargo deny), and cargo-about must be able to write its license text into the
-# THIRD_PARTY_LICENSES file that release.yml attaches to each release. Without
+# Dependency license gate. Every crate compiled into bsky or msky, on every
+# target in release-targets.json, must carry a license in deny.toml's allow
+# list (cargo deny), and cargo-about must be able to write its license text
+# into the THIRD_PARTY_LICENSES file that release.yml and release-msky.yml
+# attach to each release. Without
 # the second step a crate whose text cargo-about cannot find would pass review
 # and stop the release at the tag.
 #
@@ -22,6 +23,8 @@ on:
       - "deny.toml"
       - "about.toml"
       - "about.hbs"
+      - "crates/*/Cargo.toml"
+      - "crates/misskey-terminal-client/about.hbs"
       - ".github/workflows/licenses.yml"
   pull_request:
     branches:
@@ -32,6 +35,8 @@ on:
       - "deny.toml"
       - "about.toml"
       - "about.hbs"
+      - "crates/*/Cargo.toml"
+      - "crates/misskey-terminal-client/about.hbs"
       - ".github/workflows/licenses.yml"
 
 concurrency:
@@ -65,14 +70,18 @@ jobs:
       - name: Check the dependency licenses
         run: cargo deny --locked --all-features check --hide-inclusion-graph licenses
 
-      - name: Write the third-party licenses the release ships
+      - name: Write the third-party licenses the releases ship
         run: |
           cargo about generate --locked --fail about.hbs -o THIRD_PARTY_LICENSES.html
           test -s THIRD_PARTY_LICENSES.html
+          cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml crates/misskey-terminal-client/about.hbs -o msky-THIRD_PARTY_LICENSES.html
+          test -s msky-THIRD_PARTY_LICENSES.html
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: third-party-licenses
-          path: THIRD_PARTY_LICENSES.html
+          path: |
+            THIRD_PARTY_LICENSES.html
+            msky-THIRD_PARTY_LICENSES.html
           if-no-files-found: error
           retention-days: 7

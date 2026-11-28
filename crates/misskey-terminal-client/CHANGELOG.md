@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- msky is developed in [nao1215/social-terminal-clients](https://github.com/nao1215/social-terminal-clients), as the crate `crates/misskey-terminal-client` of its Cargo workspace, beside bsky. Its releases from there are tagged `msky-vX.Y.Z`; the files they carry keep their names (`msky-vX.Y.Z-<target>.tar.gz`, `checksums.txt`, `msky-vX.Y.Z-THIRD_PARTY_LICENSES.html`), and the cosign certificate names `.github/workflows/release-msky.yml` of that repository.
+
 ## [0.1.1] - 2026-11-28
 
 ### Fixed

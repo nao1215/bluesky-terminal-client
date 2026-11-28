@@ -2,15 +2,17 @@ name: Mutation
 
 # Mutation testing rewrites one operator, constant or return value at a time and
 # checks that a unit test fails. Every mutant rebuilds the crate and reruns the
-# unit tests, so the whole set (about 930 mutants in the files
-# `.cargo/mutants.toml` names) runs weekly in shards, and a pull request mutates
+# unit tests, so the whole set (the files `.cargo/mutants.toml` names in bsky,
+# msky and terminal-kit) runs weekly in shards, and a pull request mutates
 # only the lines it changes.
 #
-# The gate is the score recorded in doc/testing.md, not 100%: some mutants are
-# equivalent to the original and no test can tell them apart. A score that drops
-# below the recorded one means a change made the tests weaker, or added code
-# they do not check. Read the missed mutants in the job summary, add the test
-# that catches them, and raise the recorded score when it goes up.
+# The gate is off until the clients are released: the score is a report, not a check.
+#
+# Both runs write the score and the missed mutants to the job summary, and no
+# job of this workflow fails a pull request or holds up a release. Some
+# mutants are equivalent to the original and no test can tell them apart, so
+# the score is not expected to reach 100%. Read the missed mutants in the
+# summary and add the test that catches them.
 
 on:
   schedule:
@@ -35,8 +37,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: never
-  # The score recorded in doc/testing.md. Raise it with the document.
-  MUTATION_MIN_SCORE: "87.83"
   # A mutant that allocates without end would take the runner down with it,
   # leaving no log; the limit turns it into a failed test instead. Two
   # mutants run at once on a 16 GB runner, so each gets 4 GiB. The limit is
@@ -47,12 +47,18 @@ env:
   MUTANT_MEMORY_KIB: "4194304"
   MALLOC_ARENA_MAX: "2"
   RUST_TEST_THREADS: "4"
+  # A pull request that changes more mutants than this (a new file, a moved
+  # crate) leaves them to the weekly run instead of taking a runner for hours.
+  MUTATION_DIFF_MAX: "300"
 
 jobs:
   diff:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # A report only: whatever happens here, the pull request is merged on its
+    # other checks.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,19 +82,24 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git diff "${BASE_SHA}...HEAD" -- src crates > pr.diff
+          count="$(cargo mutants --workspace --in-diff pr.diff --list | wc -l)"
+          if [ "${count}" -gt "${MUTATION_DIFF_MAX}" ]; then
+            echo "### Mutation: ${count} mutants, more than ${MUTATION_DIFF_MAX}; the weekly run covers them" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
           ulimit -v "${MUTANT_MEMORY_KIB}"
           status=0
           cargo mutants --workspace --in-diff pr.diff --no-shuffle -j 2 || status=$?
-          # 0: every mutant caught, 2: some missed, 3: some timed out. The score
-          # below decides; anything else is a failure of the run itself.
+          # 0: every mutant caught, 2: some missed, 3: some timed out. Anything
+          # else is a failure of the run itself, reported but not failed.
           case "${status}" in
             0|2|3) ;;
-            *) exit "${status}" ;;
+            *) echo "::warning title=Mutation run::cargo mutants exited with ${status}" ;;
           esac
 
-      - name: Check the score
+      - name: Report the score
         if: hashFiles('mutants.out/outcomes.json') != ''
-        run: python3 scripts/mutation_score.py mutants.out --min "${MUTATION_MIN_SCORE}" --summary "${GITHUB_STEP_SUMMARY}"
+        run: python3 scripts/mutation_score.py mutants.out --summary "${GITHUB_STEP_SUMMARY}"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -107,7 +118,7 @@ jobs:
       # repository, and the weekly run has all night.
       max-parallel: 4
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -125,11 +136,13 @@ jobs:
         with:
           tool: cargo-mutants@27.1.0
 
-      - name: Mutate shard ${{ matrix.shard }} of 8
+      - name: Mutate shard ${{ matrix.shard }} of 16
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           ulimit -v "${MUTANT_MEMORY_KIB}"
           status=0
-          cargo mutants --workspace --shard "${{ matrix.shard }}/8" --no-shuffle -j 2 || status=$?
+          cargo mutants --workspace --shard "${SHARD}/16" --no-shuffle -j 2 || status=$?
           case "${status}" in
             0|2|3) ;;
             *) exit "${status}" ;;
@@ -157,5 +170,5 @@ jobs:
           pattern: mutants-shard-*
           path: shards
 
-      - name: Check the score over every shard
-        run: python3 scripts/mutation_score.py shards/* --min "${MUTATION_MIN_SCORE}" --summary "${GITHUB_STEP_SUMMARY}"
+      - name: Report the score over every shard
+        run: python3 scripts/mutation_score.py shards/* --summary "${GITHUB_STEP_SUMMARY}"

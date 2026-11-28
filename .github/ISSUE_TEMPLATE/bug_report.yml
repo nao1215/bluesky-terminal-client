@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in bsky
+description: Report a bug in bsky or msky
 labels: ["bug"]
 body:
   - type: textarea
@@ -28,8 +28,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: bsky version
-      description: Output of `bsky --version`.
+      label: Client and version
+      description: Output of `bsky --version` or `msky --version`.
     validations:
       required: true
   - type: input
