@@ -212,6 +212,9 @@ fn draw_notes(frame: &mut Frame, mut area: Rect, app: &App, images: &mut Images)
         if !urls.is_empty() {
             lines.push(format!("▣ {} {}", urls.len(), app.t("pictures", "画像")));
         }
+        if note::has_video(note) {
+            lines.push("▶ video · playback unsupported".into());
+        }
         let height = (lines.len() as u16).min(area.height);
         frame.render_widget(
             Paragraph::new(lines.join("\n")).style(style),

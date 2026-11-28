@@ -73,9 +73,13 @@ pub(super) fn pictures(note: &Event) -> Vec<String> {
         }
     }
     for tag in &note.tags {
-        if tag.first().is_some_and(|s| s == "imeta") {
+        if tag.first().is_some_and(|s| s == "imeta")
+            && !tag.iter().any(|field| field.starts_with("m video/"))
+        {
             for field in tag.iter().skip(1) {
-                if let Some(url) = field.strip_prefix("url ") {
+                if let Some(url) = field.strip_prefix("url ")
+                    && !video_url(url)
+                {
                     add_picture(&mut urls, url);
                 }
             }
@@ -91,5 +95,55 @@ fn add_picture(urls: &mut Vec<String>, raw: &str) {
         && !urls.iter().any(|u| u == raw)
     {
         urls.push(raw.into());
+    }
+}
+
+fn video_url(raw: &str) -> bool {
+    url::Url::parse(raw).is_ok_and(|url| {
+        [".mp4", ".webm", ".mov", ".mkv", ".m4v", ".avi"]
+            .iter()
+            .any(|ext| url.path().to_ascii_lowercase().ends_with(ext))
+    })
+}
+
+pub(super) fn has_video(note: &Event) -> bool {
+    note.content.split_whitespace().any(video_url)
+        || note.tags.iter().any(|tag| {
+            tag.first().is_some_and(|s| s == "imeta")
+                && tag.iter().any(|field| {
+                    field.starts_with("m video/")
+                        || field.strip_prefix("url ").is_some_and(video_url)
+                })
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use k256::{elliptic_curve::Generate, schnorr::SigningKey};
+
+    #[test]
+    fn video_imeta_is_not_sent_to_the_picture_decoder() {
+        let event = Event::sign(
+            &SigningKey::generate(),
+            1,
+            1,
+            vec![
+                vec![
+                    "imeta".into(),
+                    "url http://127.0.0.1/opaque".into(),
+                    "m video/mp4".into(),
+                ],
+                vec![
+                    "imeta".into(),
+                    "url http://127.0.0.1/picture.png".into(),
+                    "m image/png".into(),
+                ],
+            ],
+            "http://127.0.0.1/video.webm".into(),
+        )
+        .unwrap();
+        assert!(has_video(&event));
+        assert_eq!(pictures(&event), ["http://127.0.0.1/picture.png"]);
     }
 }

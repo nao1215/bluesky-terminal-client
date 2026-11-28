@@ -115,7 +115,10 @@ fn all_relay_messages_have_strict_types() {
             json!(["CLOSED", "a", "restricted"]),
             RelayMessage::Closed("a".into(), "restricted".into()),
         ),
-        (json!(["AUTH", "challenge"]), RelayMessage::Unknown),
+        (
+            json!(["AUTH", "challenge"]),
+            RelayMessage::Auth("challenge".into()),
+        ),
     ] {
         assert_eq!(RelayMessage::parse(&text.to_string()).unwrap(), expected);
     }
@@ -127,6 +130,8 @@ fn all_relay_messages_have_strict_types() {
         r#"["EOSE",3]"#,
         r#"["OK","id",1,""]"#,
         r#"["NOTICE"]"#,
+        r#"["AUTH"]"#,
+        r#"["AUTH",42]"#,
         r#"["CLOSED","a"]"#,
         r#"["EVENT","a",{}]"#,
     ] {

@@ -76,7 +76,7 @@ pub(crate) fn publication(event: &Event, accepted: usize) -> Result<Value> {
 
 pub(crate) fn notification(event: &Event) -> Result<Value> {
     Ok(json!({"id": event.id, "createdAt": timestamp(event)?,
-        "type": if event.reply_id().is_some() { "reply" } else { "mention" },
+        "type": match event.kind { 3 => "follow", 6 => "repost", 7 => "reaction", _ if event.reply_id().is_some() => "reply", _ => "mention" },
         "user": user(&event.pubkey)?, "postId": event.id, "post": post(event)? }))
 }
 
