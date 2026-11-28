@@ -4,8 +4,9 @@
 //! default mio reader can return a resize and discard a simultaneously
 //! ready key's edge, leaving that key unread until another key arrives.
 //!
-//! Everywhere but Windows this is crossterm's `poll` and `read`. On Windows,
-//! crossterm 0.29 drops every character outside the Basic Multilingual Plane
+//! EventStream waits without a deadline; our receiver owns the timeout, avoiding
+//! filedescriptor's truncation of a positive sub-millisecond timeout to zero.
+//! On Windows, crossterm 0.29 drops every character outside the Basic Multilingual Plane
 //! (emoji, most of all): a terminal sends such a character as two UTF-16
 //! surrogates, each as a key-down and a key-up record, and crossterm pairs a
 //! surrogate's key-up with its own key-down, fails to decode the pair, and
@@ -25,7 +26,12 @@ use crossterm::event::Event;
 mod unix_tests;
 
 /// The input events of the terminal the program runs in.
+///
+/// Keep one Input alive at a time. On Unix it owns a crossterm EventStream;
+/// do not use crossterm's event `poll` or `read` alongside it.
 pub struct Input {
+    #[cfg(unix)]
+    reader: unix::Reader,
     #[cfg(windows)]
     console: windows::Console,
 }
@@ -37,13 +43,16 @@ impl Input {
         #[cfg(not(windows))]
         event::poll(Duration::ZERO)?;
         Ok(Input {
+            #[cfg(unix)]
+            reader: unix::Reader::new(),
             #[cfg(windows)]
             console: windows::Console::new()?,
         })
     }
 
-    /// Handle at most `limit` events, waiting only for the first. A false
-    /// callback result stops immediately; the return value is the number handled.
+    /// Handle at most `limit` events, waiting only for the first (apart from
+    /// Unix's minimum 1 ms wait below). A false callback result stops immediately;
+    /// the return value is the number handled.
     pub fn drain(
         &mut self,
         limit: usize,
@@ -53,20 +62,83 @@ impl Input {
         drain(limit, wait, |wait| self.next(wait), handle)
     }
 
-    /// The next event, waiting at most `wait` for one. Unix rounds the timeout
-    /// up to 1 ms; already available events return immediately.
+    /// The next event, waiting at most `wait` for one. Unix allows at least
+    /// 1 ms for the event reader to deliver already available input.
     pub fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
         #[cfg(windows)]
         return self.console.next(wait);
-        #[cfg(not(windows))]
-        // The use-dev-tty reader skips polling altogether for a zero timeout,
-        // including its buffered events. Give it a positive millisecond (the
-        // underlying poll's resolution); ready input still returns immediately.
-        return if event::poll(wait.max(Duration::from_millis(1)))? {
-            event::read().map(Some)
-        } else {
-            Ok(None)
-        };
+        #[cfg(unix)]
+        return self.reader.next(wait);
+    }
+}
+
+#[cfg(unix)]
+mod unix {
+    use super::*;
+    use std::pin::Pin;
+    use std::sync::{Arc, mpsc};
+    use std::task::{Context, Poll, Wake, Waker};
+    use std::time::Instant;
+
+    use futures_core::Stream;
+
+    struct Notify(mpsc::SyncSender<()>);
+
+    impl Wake for Notify {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            // A full channel already carries a wakeup; a disconnected one
+            // belongs to an Input that has been dropped.
+            match self.0.try_send(()) {
+                Ok(())
+                | Err(mpsc::TrySendError::Full(()))
+                | Err(mpsc::TrySendError::Disconnected(())) => {}
+            }
+        }
+    }
+
+    pub(super) struct Reader {
+        stream: event::EventStream,
+        wakeups: mpsc::Receiver<()>,
+        waker: Waker,
+    }
+
+    impl Reader {
+        pub(super) fn new() -> Self {
+            let (sender, wakeups) = mpsc::sync_channel(1);
+            Self {
+                stream: event::EventStream::new(),
+                wakeups,
+                waker: Waker::from(Arc::new(Notify(sender))),
+            }
+        }
+
+        pub(super) fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
+            // The tty backend's zero-timeout poll skips its parser, so even
+            // buffered keys may need a turn on EventStream's reader thread.
+            let deadline = Instant::now() + wait.max(Duration::from_millis(1));
+            let mut context = Context::from_waker(&self.waker);
+            loop {
+                if let Poll::Ready(event) = Pin::new(&mut self.stream).poll_next(&mut context) {
+                    return event.transpose();
+                }
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return Ok(None);
+                }
+                // Always poll once more after a timeout: input may have
+                // become ready just before the reader sent its wakeup.
+                match self.wakeups.recv_timeout(left) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        return Err(io::Error::other("terminal event reader disconnected"));
+                    }
+                }
+            }
+        }
     }
 }
 

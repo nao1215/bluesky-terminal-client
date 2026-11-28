@@ -27,6 +27,8 @@ fn a_key_ready_with_a_resize_is_delivered_without_another_key() {
         return;
     }
 
+    // SAFETY: bound a deadlock in the isolated reader subprocess.
+    unsafe { libc::alarm(10) };
     // SAFETY: this subprocess must not query the caller's controlling terminal.
     assert!(unsafe { libc::setsid() } >= 0);
     // SAFETY: dup returns new owned descriptors, wrapped exactly once.
@@ -92,6 +94,32 @@ fn a_key_ready_with_a_resize_is_delivered_without_another_key() {
     let events: Vec<_> = (0..3)
         .filter_map(|_| input.next(Duration::ZERO).unwrap())
         .collect();
+    // An idle timeout must leave the reader able to wake on later input,
+    // including a character whose UTF-8 encoding spans several bytes.
+    assert_eq!(input.next(Duration::from_millis(2)).unwrap(), None);
+    master.write_all("😀".as_bytes()).unwrap();
+    assert_eq!(
+        input.next(Duration::from_secs(1)).unwrap(),
+        Some(Event::Key(KeyEvent::new(
+            KeyCode::Char('😀'),
+            KeyModifiers::NONE
+        )))
+    );
+    // Login and the main TUI create consecutive Inputs. Dropping an idle
+    // reader must wake its worker and let the next Input acquire the reader.
+    assert_eq!(input.next(Duration::from_millis(2)).unwrap(), None);
+    drop(input);
+    let mut input = Input::new().unwrap();
+    master.write_all(b"q").unwrap();
+    assert_eq!(
+        input.next(Duration::from_secs(1)).unwrap(),
+        Some(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE
+        )))
+    );
+    assert_eq!(input.next(Duration::from_millis(2)).unwrap(), None);
+    drop(input);
     crossterm::terminal::disable_raw_mode().unwrap();
     // SAFETY: restore the saved descriptors before the harness prints results
     // and before closing the PTY master would make stdout return EIO.
