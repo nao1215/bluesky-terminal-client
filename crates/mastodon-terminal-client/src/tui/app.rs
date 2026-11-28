@@ -14,11 +14,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use terminal_kit::input::TextInput;
 
 use crate::api::types::{Account, Limits, Media, Notification, Status};
+mod accounts;
 mod browse;
 mod chat;
 mod deck;
 mod edit_profile;
 mod read_ahead;
+mod settings;
 mod write;
 use crate::api::types::Relationship;
 use crate::cli::{TimelineKind, Visibility};
@@ -210,6 +212,14 @@ pub(crate) fn visibility_label(v: Visibility) -> &'static str {
 /// A box over the screen.
 #[derive(Debug, Clone)]
 pub(crate) enum Overlay {
+    Login {
+        input: TextInput,
+        url: Option<String>,
+        waiting: bool,
+    },
+    Logout {
+        host: String,
+    },
     AddColumn {
         selected: usize,
         query: Option<TextInput>,
@@ -232,6 +242,10 @@ pub(crate) enum Overlay {
         before: usize,
     },
     Compose(Box<Compose>),
+    SettingText {
+        row: usize,
+        input: TextInput,
+    },
     Settings {
         selected: usize,
     },
@@ -287,6 +301,9 @@ pub(crate) struct App {
     pub profile: Profile,
     pub accounts: Vec<Session>,
     switch_to: Option<Session>,
+    login_host: Option<String>,
+    login_open: Option<String>,
+    logout_host: Option<String>,
     locale: crate::i18n::Lang,
     settings_return: bool,
     /// The threads opened, the last on top.
@@ -344,6 +361,9 @@ impl App {
             profile: Profile::default(),
             accounts: Vec::new(),
             switch_to: None,
+            login_host: None,
+            login_open: None,
+            logout_host: None,
             locale: crate::i18n::current(),
             settings_return: false,
             threads: Vec::new(),
@@ -908,6 +928,17 @@ impl App {
         {
             o.input.insert_str(text);
         }
+        if let Some(Overlay::Login {
+            input,
+            waiting: false,
+            ..
+        }) = &mut self.overlay
+        {
+            input.insert_str(text);
+        }
+        if let Some(Overlay::SettingText { input, .. }) = &mut self.overlay {
+            input.insert_str(text);
+        }
         if let Some(Overlay::AddColumn { query: Some(q), .. }) = &mut self.overlay {
             q.insert_str(text);
         }
@@ -1061,9 +1092,24 @@ impl App {
                 self.compose(false);
                 Vec::new()
             }
+            KeyCode::Char('O') => {
+                if let Some(s) = self.selected()
+                    && self.text_shown(s)
+                    && let Some(card) = &s.card
+                {
+                    let url = card.url.clone();
+                    let program = self.settings.as_ref().and_then(|s| s.browser.clone());
+                    vec![self.job(Job::OpenLink { url, program })]
+                } else {
+                    Vec::new()
+                }
+            }
             KeyCode::Char('o') => match self.address() {
                 Some(url) => {
-                    let (seq, job) = self.job(Job::OpenLink { url });
+                    let (seq, job) = self.job(Job::OpenLink {
+                        url,
+                        program: self.settings.as_ref().and_then(|s| s.browser.clone()),
+                    });
                     vec![(seq, job)]
                 }
                 None => Vec::new(),
@@ -1164,6 +1210,8 @@ impl App {
                     KeyCode::Char('k') | KeyCode::Up => Some(selected.saturating_sub(1)),
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(last),
+                    KeyCode::PageDown => Some((selected + PAGE_STEP).min(last)),
+                    KeyCode::PageUp => Some(selected.saturating_sub(PAGE_STEP)),
                     KeyCode::Enter => {
                         self.keep_theme(selected);
                         self.return_settings();
@@ -1346,6 +1394,8 @@ impl App {
         );
         match ev {
             Event::Retrying(message) => self.say(message),
+            Event::NotificationState(result) => self.notification_state(seq, result),
+            Event::NotificationsMarked { id, result } => self.notifications_marked(seq, id, result),
             Event::Conversations { first, result } => self.conversations_answer(seq, first, result),
             Event::ChatThread(result) => return self.chat_thread_answer(seq, result),
             Event::ConversationRead(result) => self.chat_read_answer(seq, result),

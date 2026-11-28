@@ -16,6 +16,12 @@ pub(super) fn thumbnails<'a>(s: &'a Status, ctx: &Ctx, pictures: bool) -> Vec<&'
             "video" | "gifv" => m.preview_url.as_deref().filter(|u| !u.is_empty()),
             _ => None,
         })
+        .chain(
+            s.card
+                .as_ref()
+                .and_then(|c| c.image.as_deref())
+                .filter(|u| !u.is_empty()),
+        )
         .take(4)
         .collect()
 }

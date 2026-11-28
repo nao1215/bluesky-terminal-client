@@ -6,6 +6,7 @@
 //! and bsky give them, where Mastodon has the same thing.
 
 pub(crate) mod format;
+mod more;
 pub(crate) mod post;
 
 pub(crate) use post::{PostArgs, Visibility, counted};
@@ -38,6 +39,112 @@ fn at_least_one(s: &str) -> std::result::Result<usize, String> {
 /// The commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    /// Favourite a post.
+    #[command(visible_alias = "favourite")]
+    Like { status: String },
+    /// Take back a favourite.
+    #[command(visible_alias = "unfavourite")]
+    Unlike { status: String },
+    /// Boost a post.
+    #[command(visible_alias = "boost")]
+    Repost { status: String },
+    /// Take back a boost.
+    #[command(visible_alias = "unboost")]
+    Unrepost { status: String },
+    /// Delete your own post.
+    Delete { status: String },
+    /// Bookmark a post.
+    Bookmark { status: String },
+    /// Remove a bookmark.
+    Unbookmark { status: String },
+    /// Follow an account.
+    Follow { actor: String },
+    /// Unfollow an account.
+    Unfollow { actor: String },
+    /// Mute an account.
+    Mute { actor: String },
+    /// Unmute an account.
+    Unmute { actor: String },
+    /// Block an account.
+    Block { actor: String },
+    /// Unblock an account.
+    Unblock { actor: String },
+    /// Accounts that favourited a post.
+    Likes {
+        status: String,
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Accounts that boosted a post.
+    Reposts {
+        status: String,
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Your mutes.
+    Mutes {
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Your blocks.
+    Blocks {
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Your favourites.
+    Favourites {
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Your bookmarks.
+    Bookmarks {
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Your lists.
+    Lists {
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Accounts following ACTOR (you by default), or incoming follow requests.
+    Followers {
+        actor: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+        #[arg(long, conflicts_with = "actor")]
+        pending: bool,
+    },
+    /// Accounts ACTOR follows (you by default).
+    #[command(visible_alias = "following")]
+    Follows {
+        actor: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Posts in one of your lists.
+    List {
+        id: String,
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
+        limit: usize,
+    },
+    /// Report a post ID or @account to your server's moderators.
+    Report {
+        target: String,
+        #[arg(long, value_enum)]
+        reason: more::ReportReason,
+        #[arg(long)]
+        comment: Option<String>,
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Direct conversations, history with ACTOR, or send TEXT (- reads stdin).
+    Chat {
+        actor: Option<String>,
+        text: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
+        limit: usize,
+    },
+
     /// An account's posts, newest first.
     ///
     /// ACTOR is name, @name, @name@host, or the account's address
@@ -78,6 +185,9 @@ pub(crate) enum Command {
     /// and those of accounts that opted in).
     Search {
         query: String,
+        /// Search accounts instead of posts.
+        #[arg(long)]
+        accounts: bool,
         #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
@@ -113,6 +223,9 @@ pub(crate) enum Command {
     /// Your notifications, newest first.
     #[command(visible_alias = "notif")]
     Notifications {
+        /// Save the newest displayed notification as read on the server.
+        #[arg(long)]
+        seen: bool,
         #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
@@ -137,6 +250,9 @@ pub(crate) enum Command {
         /// The post this one replies to.
         #[arg(long, value_name = "STATUS")]
         reply: Option<String>,
+        /// Quote a post (Mastodon 4.5 or later).
+        #[arg(long, value_name = "STATUS")]
+        quote: Option<String>,
         /// A content warning, shown in place of the text until it is opened.
         #[arg(long, value_name = "TEXT")]
         cw: Option<String>,
@@ -409,6 +525,67 @@ const PIPE_CLOSED: &str = "the output was closed";
 
 fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
     match cmd {
+        Command::Like { status } => more::status_action(ctx, out, &status, "like"),
+        Command::Unlike { status } => more::status_action(ctx, out, &status, "unlike"),
+        Command::Repost { status } => more::status_action(ctx, out, &status, "repost"),
+        Command::Unrepost { status } => more::status_action(ctx, out, &status, "unrepost"),
+        Command::Delete { status } => more::status_action(ctx, out, &status, "delete"),
+        Command::Bookmark { status } => more::status_action(ctx, out, &status, "bookmark"),
+        Command::Unbookmark { status } => more::status_action(ctx, out, &status, "unbookmark"),
+        Command::Follow { actor } => more::relation(ctx, out, &actor, "follow"),
+        Command::Unfollow { actor } => more::relation(ctx, out, &actor, "unfollow"),
+        Command::Mute { actor } => more::relation(ctx, out, &actor, "mute"),
+        Command::Unmute { actor } => more::relation(ctx, out, &actor, "unmute"),
+        Command::Block { actor } => more::relation(ctx, out, &actor, "block"),
+        Command::Unblock { actor } => more::relation(ctx, out, &actor, "unblock"),
+        Command::Likes { status, limit } => {
+            more::status_accounts(ctx, out, &status, "favourited_by", limit)
+        }
+        Command::Reposts { status, limit } => {
+            more::status_accounts(ctx, out, &status, "reblogged_by", limit)
+        }
+        Command::Mutes { limit } => more::collection(ctx, out, "mutes", limit),
+        Command::Blocks { limit } => more::collection(ctx, out, "blocks", limit),
+        Command::Favourites { limit } => more::collection(ctx, out, "favourites", limit),
+        Command::Bookmarks { limit } => more::collection(ctx, out, "bookmarks", limit),
+        Command::Followers {
+            actor,
+            limit,
+            pending,
+        } => more::follows(ctx, out, actor.as_deref(), limit, true, pending),
+        Command::Follows { actor, limit } => {
+            more::follows(ctx, out, actor.as_deref(), limit, false, false)
+        }
+        Command::Lists { limit } => more::lists(ctx, out, limit),
+        Command::List { id, limit } => more::list(ctx, out, &id, limit),
+        Command::Chat { actor, text, limit } => more::chat(
+            ctx,
+            out,
+            actor.as_deref(),
+            text.as_deref(),
+            limit,
+            &mut io::stdin().lock(),
+        ),
+        Command::Report {
+            target,
+            reason,
+            comment,
+            yes,
+        } => more::report(
+            ctx,
+            out,
+            &more::ReportArgs {
+                target,
+                reason,
+                comment,
+                yes,
+            },
+            &mut io::stdin().lock(),
+            io::stdin()
+                .is_terminal()
+                .then_some(&mut io::stderr() as &mut dyn Write),
+        ),
+
         Command::Author {
             actor,
             limit,
@@ -427,7 +604,17 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
         Command::Status { status } => show_status(ctx, out, &status),
         Command::Thread { status } => thread(ctx, out, &status),
         Command::Profile { actor } => profile(ctx, out, actor.as_deref()),
-        Command::Search { query, limit } => search(ctx, out, &query, limit),
+        Command::Search {
+            query,
+            limit,
+            accounts,
+        } => {
+            if accounts {
+                more::search_accounts(ctx, out, &query, limit)
+            } else {
+                search(ctx, out, &query, limit)
+            }
+        }
         Command::Download { status, output } => {
             download_status(ctx, out, &status, &download::download_dir(output)?)
         }
@@ -436,7 +623,7 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
             limit,
             reposts,
         } => timeline(ctx, out, kind, limit, reposts),
-        Command::Notifications { limit } => notifications(ctx, out, limit),
+        Command::Notifications { limit, seen } => notifications(ctx, out, limit, seen),
         Command::Whoami => whoami(ctx, out),
         Command::Post {
             text,
@@ -444,6 +631,7 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
             alts,
             video,
             reply,
+            quote,
             cw,
             sensitive,
             visibility,
@@ -457,6 +645,7 @@ fn run_to(cmd: Command, ctx: &Ctx, out: &mut dyn Write) -> Result<()> {
                 alts,
                 video,
                 reply,
+                quote,
                 cw,
                 sensitive,
                 visibility,
@@ -933,7 +1122,7 @@ fn timeline(
     print_statuses(ctx, out, client.origin(), &statuses)
 }
 
-fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
+fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize, seen: bool) -> Result<()> {
     let client = ctx.account_client()?;
     let all = pages(
         limit,
@@ -942,6 +1131,10 @@ fn notifications(ctx: &Ctx, out: &mut dyn Write, limit: usize) -> Result<()> {
         |n, max_id| client.notifications(n, max_id),
     )
     .map_err(|e| ctx.explained(e))?;
+    if seen && let Some(n) = all.first() {
+        ctx.writer(&["write:statuses"], "save notification markers")?
+            .mark_notifications(&n.id)?;
+    }
     for (i, n) in all.iter().enumerate() {
         if ctx.json {
             json_line(out, &format::notification_json(n, client.origin()))?;
@@ -1083,21 +1276,7 @@ fn login(
         }
     };
     let token = oauth::exchange(store, &client, &app, &code, &redirect_uri, &pkce.verifier)?;
-    let me = Client::new(client.origin())
-        .with_token(Some(token.access_token.clone()))
-        .me()?;
-    let scopes: Vec<String> = if token.scope.trim().is_empty() {
-        oauth::SCOPES.split(' ').map(str::to_string).collect()
-    } else {
-        token.scope.split_whitespace().map(str::to_string).collect()
-    };
-    let saved = Session {
-        service: client.origin().to_string(),
-        user_id: me.id,
-        username: me.username,
-        token: token.access_token,
-        scopes,
-    };
+    let saved = oauth::session(&client, token)?;
     store.save(&saved)?;
     if ctx.json {
         return json_line(

@@ -11,27 +11,67 @@ author --filter
 author --limit (-n)
 author --output (-o)
 author --reposts
+block
+blocks
+blocks --limit (-n)
+bookmark
+bookmarks
+bookmarks --limit (-n)
+chat
+chat --limit (-n)
+delete
 download
 download --output (-o)
+favourites
+favourites --limit (-n)
+follow
+followers
+followers --limit (-n)
+followers --pending
+follows
+follows --limit (-n)
+follows [alias following]
+like
+like [alias favourite]
+likes
+likes --limit (-n)
+list
+list --limit (-n)
+lists
+lists --limit (-n)
 login
 login --oob
 login --timeout
 logout
 logout --all
+mute
+mutes
+mutes --limit (-n)
 notifications
 notifications --limit (-n)
+notifications --seen
 notifications [alias notif]
 post
 post --alt
 post --cw
 post --dry-run
 post --image
+post --quote
 post --reply
 post --sensitive
 post --video
 post --visibility
 profile
+report
+report --comment
+report --reason
+report --yes (-y)
+repost
+repost [alias boost]
+reposts
+reposts --limit (-n)
 search
+search --accounts
 search --limit (-n)
 status
 status [hidden alias note]
@@ -40,4 +80,12 @@ timeline
 timeline --limit (-n)
 timeline --reposts
 timeline [alias tl]
+unblock
+unbookmark
+unfollow
+unlike
+unlike [alias unfavourite]
+unmute
+unrepost
+unrepost [alias unboost]
 whoami

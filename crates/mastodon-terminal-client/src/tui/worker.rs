@@ -50,6 +50,10 @@ impl RelationAction {
 /// Work for the worker threads.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Job {
+    NotificationState,
+    MarkNotifications {
+        id: String,
+    },
     Conversations {
         next: Option<String>,
     },
@@ -113,6 +117,7 @@ pub(crate) enum Job {
     /// Open an address in the web browser.
     OpenLink {
         url: String,
+        program: Option<String>,
     },
     /// A search page; hashtags use max_id, other searches an offset.
     Search {
@@ -127,6 +132,7 @@ pub(crate) enum Job {
     },
     /// Save the original attachments using the command's naming policy.
     Download {
+        directory: Option<String>,
         id: String,
         files: Vec<Media>,
     },
@@ -154,7 +160,8 @@ impl Job {
     pub(crate) fn changes_server(&self) -> bool {
         matches!(
             self,
-            Job::ChatPost(_)
+            Job::MarkNotifications { .. }
+                | Job::ChatPost(_)
                 | Job::ReadConversation { .. }
                 | Job::SaveProfile(_)
                 | Job::Favourite { .. }
@@ -181,6 +188,11 @@ pub(crate) struct Thread {
 #[derive(Debug)]
 pub(crate) enum Event {
     Retrying(String),
+    NotificationState(Result<(Option<String>, Option<usize>)>),
+    NotificationsMarked {
+        id: String,
+        result: Result<()>,
+    },
     Conversations {
         first: bool,
         result: Result<Page<crate::api::types::Conversation>>,
@@ -254,6 +266,8 @@ impl Job {
     /// anything else, so the screen stops waiting for it.
     fn failed(self, e: Error) -> Event {
         match self {
+            Job::NotificationState => Event::NotificationState(Err(e)),
+            Job::MarkNotifications { id } => Event::NotificationsMarked { id, result: Err(e) },
             Job::Conversations { next } => Event::Conversations {
                 first: next.is_none(),
                 result: Err(e),
@@ -313,6 +327,18 @@ impl Job {
 /// Do `job` as `client`.
 pub(crate) fn run(job: Job, client: &Client) -> Event {
     match job {
+        Job::NotificationState => {
+            Event::NotificationState(client.notification_marker().map(|marker| {
+                (
+                    marker.map(|m| m.last_read_id),
+                    client.unread_notifications().ok(),
+                )
+            }))
+        }
+        Job::MarkNotifications { id } => Event::NotificationsMarked {
+            result: client.mark_notifications(&id),
+            id,
+        },
         Job::Conversations { next } => Event::Conversations {
             first: next.is_none(),
             result: client.conversations(next.as_deref()),
@@ -373,7 +399,9 @@ pub(crate) fn run(job: Job, client: &Client) -> Event {
             on,
         },
         Job::Post(d) => Event::Posted(post(client, &d).map(Box::new)),
-        Job::OpenLink { url } => Event::Opened(crate::browser::open(&url)),
+        Job::OpenLink { url, program } => {
+            Event::Opened(crate::browser::open_with(&url, program.as_deref()))
+        }
         Job::Limits => Event::Limits(client.limits()),
         Job::Search {
             query,
@@ -387,7 +415,11 @@ pub(crate) fn run(job: Job, client: &Client) -> Event {
             more: max_id.is_some(),
             result: profile(client, id.as_deref(), max_id.as_deref()),
         },
-        Job::Download { id, files } => Event::Downloaded(download(&id, &files)),
+        Job::Download {
+            id,
+            files,
+            directory,
+        } => Event::Downloaded(download(&id, &files, directory)),
     }
 }
 
@@ -418,6 +450,7 @@ fn post(client: &Client, d: &Draft) -> Result<Status> {
         alts: Vec::new(),
         video: None,
         reply: d.reply.clone(),
+        quote: d.quote.clone(),
         cw: (!d.cw.trim().is_empty()).then(|| d.cw.clone()),
         sensitive: false,
         visibility: d.visibility,
@@ -626,8 +659,13 @@ fn profile(client: &Client, id: Option<&str>, max_id: Option<&str>) -> Result<Pr
     )?;
     Ok(ProfilePage { account, posts })
 }
-fn download(id: &str, files: &[Media]) -> Result<usize> {
-    let dir = crate::download::download_dir(None)?;
+fn download(id: &str, files: &[Media], directory: Option<String>) -> Result<usize> {
+    let explicit = std::env::var(crate::download::DOWNLOAD_DIR_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or(directory)
+        .map(std::path::PathBuf::from);
+    let dir = crate::download::download_dir(explicit)?;
     let agent = crate::api::agent();
     for (i, file) in files.iter().enumerate() {
         crate::download::save(&agent, file, &dir, &crate::download::file_stem(id, i + 1))?;

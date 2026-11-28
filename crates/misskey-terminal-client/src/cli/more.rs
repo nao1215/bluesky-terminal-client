@@ -470,14 +470,9 @@ pub(crate) fn report(
             client.host(),
             reason.label()
         );
-        err.write_all(question.as_bytes())
-            .and_then(|()| err.flush())
-            .map_err(|e| Error::io(format!("cannot ask: {e}")))?;
-        let mut answer = String::new();
-        input
-            .read_line(&mut answer)
-            .map_err(|e| Error::io(format!("cannot read the answer: {e}")))?;
-        if !matches!(answer.trim(), "y" | "Y" | "yes") {
+        if !terminal_kit::confirm::ask(input, err, &question)
+            .map_err(|e| Error::io(format!("cannot confirm: {e}")))?
+        {
             return Err(Error::usage("not reported"));
         }
     }

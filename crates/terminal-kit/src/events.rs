@@ -35,6 +35,17 @@ impl Input {
         })
     }
 
+    /// Handle at most `limit` events, waiting only for the first. A false
+    /// callback result stops immediately; the return value is the number handled.
+    pub fn drain(
+        &mut self,
+        limit: usize,
+        wait: Duration,
+        handle: impl FnMut(Event) -> bool,
+    ) -> io::Result<usize> {
+        drain(limit, wait, |wait| self.next(wait), handle)
+    }
+
     /// The next event, waiting at most `wait` for one.
     pub fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
         #[cfg(windows)]
@@ -45,6 +56,57 @@ impl Input {
         } else {
             Ok(None)
         };
+    }
+}
+
+fn drain<T>(
+    limit: usize,
+    mut wait: Duration,
+    mut next: impl FnMut(Duration) -> io::Result<Option<T>>,
+    mut handle: impl FnMut(T) -> bool,
+) -> io::Result<usize> {
+    let mut count = 0;
+    for _ in 0..limit {
+        let Some(event) = next(wait)? else {
+            break;
+        };
+        count += 1;
+        if !handle(event) {
+            break;
+        }
+        wait = Duration::ZERO;
+    }
+    Ok(count)
+}
+
+#[cfg(test)]
+mod drain_tests {
+    use super::*;
+    #[test]
+    fn waits_once_limits_work_and_stops_on_quit() {
+        for (limit, stop, expected) in [(0, 99, 0), (3, 99, 3), (20, 2, 2)] {
+            let mut waits = Vec::new();
+            let mut handled = 0;
+            let count = drain(
+                limit,
+                Duration::from_millis(50),
+                |wait| {
+                    waits.push(wait);
+                    Ok(Some(()))
+                },
+                |_| {
+                    handled += 1;
+                    handled < stop
+                },
+            )
+            .unwrap();
+            assert_eq!(count, expected);
+            assert_eq!(handled, expected);
+            if let Some(first) = waits.first() {
+                assert_eq!(*first, Duration::from_millis(50));
+                assert!(waits.iter().skip(1).all(Duration::is_zero));
+            }
+        }
     }
 }
 

@@ -151,6 +151,9 @@ scenarios:
             # The chat and column keys come first; pgdn brings the post keys up.
             - send: { key: pagedown }
             - expect_screen:
+                contains: ["Keys", "Chat"]
+            - send: { key: pagedown }
+            - expect_screen:
                 contains: ["Keys", "favourite / take back your favourite"]
             - send: { key: esc }
             - expect_screen:

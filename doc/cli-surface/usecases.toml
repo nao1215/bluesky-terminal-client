@@ -164,46 +164,94 @@
 "whoami" = { usecase = "debimate's scripts/msky_announce.py reads its own account to look for notes it already posted", without = "the script could not tell whose notes to check, and would post an article twice" }
 
 [mstdn]
-"--host" = { usecase = "", without = "" }
-"--json" = { usecase = "", without = "" }
-"accounts" = { usecase = "", without = "" }
-"accounts --use" = { usecase = "", without = "" }
-"author" = { usecase = "", without = "" }
-"author --download" = { usecase = "", without = "" }
-"author --filter" = { usecase = "", without = "" }
-"author --limit (-n)" = { usecase = "", without = "" }
-"author --output (-o)" = { usecase = "", without = "" }
-"author --reposts" = { usecase = "", without = "" }
-"download" = { usecase = "", without = "" }
-"download --output (-o)" = { usecase = "", without = "" }
-"login" = { usecase = "", without = "" }
-"login --oob" = { usecase = "", without = "" }
-"login --timeout" = { usecase = "", without = "" }
-"logout" = { usecase = "", without = "" }
-"logout --all" = { usecase = "", without = "" }
-"notifications" = { usecase = "", without = "" }
-"notifications --limit (-n)" = { usecase = "", without = "" }
-"notifications [alias notif]" = { usecase = "", without = "" }
-"post" = { usecase = "", without = "" }
-"post --alt" = { usecase = "", without = "" }
-"post --cw" = { usecase = "", without = "" }
-"post --dry-run" = { usecase = "", without = "" }
-"post --image" = { usecase = "", without = "" }
-"post --reply" = { usecase = "", without = "" }
-"post --sensitive" = { usecase = "", without = "" }
-"post --video" = { usecase = "", without = "" }
-"post --visibility" = { usecase = "", without = "" }
-"profile" = { usecase = "", without = "" }
-"search" = { usecase = "", without = "" }
-"search --limit (-n)" = { usecase = "", without = "" }
-"status" = { usecase = "", without = "" }
-"status [hidden alias note]" = { usecase = "", without = "" }
-"thread" = { usecase = "", without = "" }
-"timeline" = { usecase = "", without = "" }
-"timeline --limit (-n)" = { usecase = "", without = "" }
-"timeline --reposts" = { usecase = "", without = "" }
-"timeline [alias tl]" = { usecase = "", without = "" }
-"whoami" = { usecase = "", without = "" }
+"--host" = { usecase = "select the server explicitly for an account or local test server", without = "commands use the current account server or the default server" }
+"--json" = { usecase = "consume command output in scripts as shared JSON Lines", without = "scripts must parse display text" }
+"accounts" = { usecase = "inspect saved logins before switching a working session", without = "the user must inspect credential files to identify saved accounts" }
+"accounts --use" = { usecase = "make one saved server account the default", without = "each invocation needs an explicit server" }
+"author" = { usecase = "read an account's posts or archive its attached files", without = "the account timeline must be read in a browser" }
+"author --download" = { usecase = "archive the attachments of an account timeline", without = "each post must be downloaded separately" }
+"author --filter" = { usecase = "restrict account posts to media, videos, threads or posts without replies", without = "the caller must filter a larger result set" }
+"author --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"author --output (-o)" = { usecase = "save attachments into a specific project folder", without = "files go to the default download folder" }
+"author --reposts" = { usecase = "include boosts while reading a timeline or author", without = "boosts are omitted" }
+"block" = { usecase = "prevent an account interacting with the logged-in account", without = "the user must open moderation controls in the web client" }
+"blocks" = { usecase = "audit the accounts currently blocked", without = "the block list cannot be inspected from a terminal" }
+"blocks --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"bookmark" = { usecase = "save a post for later reading without notifying its author", without = "the user must bookmark it in the web client" }
+"bookmarks" = { usecase = "retrieve saved reading material for a terminal reading session", without = "bookmarked posts must be found in the web client" }
+"bookmarks --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"chat" = { usecase = "list direct conversations, read history with an account, or send a direct post", without = "direct conversations require opening the full-screen or web client" }
+"chat --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"delete" = { usecase = "remove an accidental post by its local status ID", without = "the user must locate it in the full-screen or web client" }
+"download" = { usecase = "save a post's original attachments without overwriting existing files", without = "each attachment must be downloaded manually" }
+"download --output (-o)" = { usecase = "save attachments into a specific project folder", without = "files go to the default download folder" }
+"favourites" = { usecase = "revisit posts previously favourited by the current account", without = "favourite history requires the web client" }
+"favourites --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"follow" = { usecase = "subscribe to an account from a terminal workflow", without = "the user must open its profile in another interface" }
+"followers" = { usecase = "inspect followers or incoming requests awaiting approval", without = "followers and pending requests require the web client" }
+"followers --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"followers --pending" = { usecase = "review incoming follow requests before using the web client to approve them", without = "only established followers are listed" }
+"follows" = { usecase = "inspect the accounts followed by an account", without = "the following list requires the web client" }
+"follows --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"follows [alias following]" = { usecase = "inspect the accounts followed by an account using the familiar alternative command name", without = "the following list requires the web client" }
+"like" = { usecase = "favourite a post found by a command", without = "the user must find that post again in another interface" }
+"like [alias favourite]" = { usecase = "favourite a post found by a command using the familiar alternative command name", without = "the user must find that post again in another interface" }
+"likes" = { usecase = "inspect the accounts that favourited a post", without = "the favourite count cannot be explored from the terminal" }
+"likes --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"list" = { usecase = "read a curated Mastodon list timeline", without = "the list is accessible only through a saved TUI column or web client" }
+"list --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"lists" = { usecase = "discover IDs and names of the current account's Mastodon lists", without = "the user must obtain list IDs elsewhere" }
+"lists --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"login" = { usecase = "authorize the terminal client using browser OAuth without sharing a password", without = "authenticated commands cannot use a saved session" }
+"login --oob" = { usecase = "authorize using a browser on another machine and paste its code", without = "OAuth requires a local browser callback" }
+"login --timeout" = { usecase = "bound the wait for browser authorization", without = "login waits for its default timeout" }
+"logout" = { usecase = "remove locally saved credentials for an account", without = "the user must delete credential files manually" }
+"logout --all" = { usecase = "remove every locally saved login", without = "logout removes only the selected account" }
+"mute" = { usecase = "hide unwanted account activity in the logged-in account's timelines", without = "the user must open moderation controls elsewhere" }
+"mutes" = { usecase = "audit muted accounts before deciding whether to unmute", without = "the mute list requires the web client" }
+"mutes --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"notifications" = { usecase = "read incoming interactions in a terminal script", without = "notifications require a full-screen or web client" }
+"notifications --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"notifications --seen" = { usecase = "synchronize the newest displayed notification as read across clients", without = "reading notifications leaves the server marker unchanged" }
+"notifications [alias notif]" = { usecase = "read incoming interactions in a terminal script using the familiar alternative command name", without = "notifications require a full-screen or web client" }
+"post" = { usecase = "publish text and media from a terminal workflow", without = "publication requires another interface" }
+"post --alt" = { usecase = "describe attached media for readers using assistive technology", without = "the attachment has no supplied description" }
+"post --cw" = { usecase = "hide sensitive post text behind a content warning", without = "the text is shown without that warning" }
+"post --dry-run" = { usecase = "inspect a proposed post before any upload or publication", without = "the command publishes when validation succeeds" }
+"post --image" = { usecase = "attach a picture to a post", without = "the post contains only its text" }
+"post --quote" = { usecase = "comment on another post using Mastodon 4.5 quotes", without = "the post cannot identify the quoted status" }
+"post --reply" = { usecase = "continue an existing discussion under a specific post", without = "the post starts a new discussion" }
+"post --sensitive" = { usecase = "mark attached media as sensitive", without = "media is not explicitly marked sensitive" }
+"post --video" = { usecase = "attach a video to a post", without = "video cannot be included" }
+"post --visibility" = { usecase = "choose who may see a post including direct recipients", without = "the post is public" }
+"profile" = { usecase = "inspect an account biography and counts", without = "the account profile must be opened elsewhere" }
+"report" = { usecase = "send an explicitly confirmed report to the current server's moderators", without = "moderation reports require the web client" }
+"report --comment" = { usecase = "give moderators context beyond the report reason", without = "the report contains only its reason" }
+"report --reason" = { usecase = "classify a report using Mastodon spam, violation or other categories", without = "a report cannot communicate its selected reason" }
+"report --yes (-y)" = { usecase = "explicitly confirm a report in an unattended script", without = "the command requires interactive confirmation and otherwise sends nothing" }
+"repost" = { usecase = "boost a post for the current account's followers", without = "the user must boost from another interface" }
+"repost [alias boost]" = { usecase = "boost a post for the current account's followers using the familiar alternative command name", without = "the user must boost from another interface" }
+"reposts" = { usecase = "inspect the accounts that boosted a post", without = "the boost count cannot be explored from the terminal" }
+"reposts --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"search" = { usecase = "find posts, hashtags, or accounts on the selected Mastodon server", without = "discovery requires the web client" }
+"search --accounts" = { usecase = "find user accounts instead of post text", without = "search returns statuses or hashtag results" }
+"search --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"status" = { usecase = "read a single post by ID or URL", without = "scripts must fetch a whole timeline to find it" }
+"status [hidden alias note]" = { usecase = "read a single post by ID or URL using the familiar alternative command name", without = "scripts must fetch a whole timeline to find it" }
+"thread" = { usecase = "read the ancestors and replies of a selected post", without = "the discussion must be followed manually in another interface" }
+"timeline" = { usecase = "read home, local or federated posts in a script", without = "timeline reading requires the full-screen or web client" }
+"timeline --limit (-n)" = { usecase = "bound the number of results read and printed", without = "the command uses its default result limit" }
+"timeline --reposts" = { usecase = "include boosts while reading a timeline or author", without = "boosts are omitted" }
+"timeline [alias tl]" = { usecase = "read home, local or federated posts in a script using the familiar alternative command name", without = "timeline reading requires the full-screen or web client" }
+"unblock" = { usecase = "undo an earlier block action from the terminal", without = "taking back block requires another interface" }
+"unbookmark" = { usecase = "undo an earlier bookmark action from the terminal", without = "taking back bookmark requires another interface" }
+"unfollow" = { usecase = "undo an earlier follow action from the terminal", without = "taking back follow requires another interface" }
+"unlike" = { usecase = "undo an earlier like action from the terminal", without = "taking back like requires another interface" }
+"unlike [alias unfavourite]" = { usecase = "undo an earlier like action from the terminal using the familiar alternative command name", without = "taking back like requires another interface" }
+"unmute" = { usecase = "undo an earlier mute action from the terminal", without = "taking back mute requires another interface" }
+"unrepost" = { usecase = "undo an earlier repost action from the terminal", without = "taking back repost requires another interface" }
+"unrepost [alias unboost]" = { usecase = "undo an earlier repost action from the terminal using the familiar alternative command name", without = "taking back repost requires another interface" }
+"whoami" = { usecase = "check which account the selected credentials belong to", without = "scripts cannot verify the posting identity before acting" }
 
 [nstr]
 "search" = { usecase = "find hashtagged notes and query relays that advertise NIP-50", without = "relay capability differences cannot be reported to a caller searching for notes" }

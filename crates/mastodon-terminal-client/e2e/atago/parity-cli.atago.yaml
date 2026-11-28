@@ -1,0 +1,1284 @@
+version: '1'
+suite:
+  name: mstdn CLI parity
+scenarios:
+- name: like sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/favourite
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn like 42 --host ${api.url} --json
+      env: &id001
+        MSTDN_TOKEN: parity-fake-token
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: like
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/favourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: like sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/favourite
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn like 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/favourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unlike sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unfavourite
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn unlike 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unlike
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unfavourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unlike sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unfavourite
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn unlike 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unfavourite
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: repost sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/reblog
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn repost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: repost
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/reblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: repost sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/reblog
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn repost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/reblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unrepost sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unreblog
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn unrepost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unrepost
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unreblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unrepost sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unreblog
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn unrepost 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unreblog
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: delete sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: DELETE
+      path: /api/v1/statuses/42
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn delete 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: delete
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42
+        method: DELETE
+        count: 1
+- name: delete sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: DELETE
+      path: /api/v1/statuses/42
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn delete 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42
+        method: DELETE
+        count: 1
+- name: bookmark sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/bookmark
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn bookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: bookmark
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/bookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: bookmark sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/bookmark
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn bookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/bookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unbookmark sends its exact request once successfully
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unbookmark
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn unbookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unbookmark
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unbookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unbookmark sends its exact request once and propagates refusal
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/statuses/42/unbookmark
+      json:
+        error: refused
+      status: 403
+  steps:
+  - run:
+      command: mstdn unbookmark 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 4
+      stdout:
+        not_contains: '"action"'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/unbookmark
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: follow uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/follow
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn follow @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: follow
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/follow
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unfollow uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/unfollow
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn unfollow @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unfollow
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/unfollow
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: mute uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/mute
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn mute @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: mute
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/mute
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unmute uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/unmute
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn unmute @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unmute
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/unmute
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: block uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/block
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn block @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: block
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/block
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: unblock uses the resolved local account ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+        username: bob
+      status: 200
+    - method: POST
+      path: /api/v1/accounts/7/unblock
+      json:
+        id: '7'
+        requested: true
+      status: 200
+  steps:
+  - run:
+      command: mstdn unblock @bob --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: unblock
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/unblock
+        method: POST
+        count: 1
+        body:
+          equals: '{}'
+- name: report requires confirmation and sends the category and status once
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/statuses/42
+      json:
+        id: '42'
+        account:
+          id: '7'
+      status: 200
+    - method: POST
+      path: /api/v1/reports
+      json: {}
+      status: 200
+  steps:
+  - run:
+      command: mstdn report 42 --reason spam --comment unsolicited --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 1
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/reports
+        method: POST
+        count: 0
+  - run:
+      command: mstdn report 42 --reason spam --comment unsolicited --yes --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: report
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/reports
+        method: POST
+        count: 1
+        body:
+          equals: '{"account_id":"7","category":"spam","comment":"Spam\n-----\nunsolicited","forward":false,"status_ids":["42"]}'
+- name: likes 42 reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/statuses/42/favourited_by
+      json:
+      - id: '7'
+        username: bob
+      status: 200
+  steps:
+  - run:
+      command: mstdn likes 42 -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/favourited_by
+        method: GET
+        count: 1
+- name: reposts 42 reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/statuses/42/reblogged_by
+      json:
+      - id: '7'
+        username: bob
+      status: 200
+  steps:
+  - run:
+      command: mstdn reposts 42 -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses/42/reblogged_by
+        method: GET
+        count: 1
+- name: followers reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/accounts/7/followers
+      json:
+      - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn followers -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/followers
+        method: GET
+        count: 1
+- name: follows reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/accounts/7/following
+      json:
+      - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn follows -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/7/following
+        method: GET
+        count: 1
+- name: followers --pending reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/follow_requests
+      json:
+      - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn followers --pending -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/follow_requests
+        method: GET
+        count: 1
+- name: mutes reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/mutes
+      json:
+      - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn mutes -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/mutes
+        method: GET
+        count: 1
+- name: blocks reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/blocks
+      json:
+      - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn blocks -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/blocks
+        method: GET
+        count: 1
+- name: favourites reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/favourites
+      json:
+      - id: '42'
+      status: 200
+  steps:
+  - run:
+      command: mstdn favourites -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/favourites
+        method: GET
+        count: 1
+- name: bookmarks reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/bookmarks
+      json:
+      - id: '42'
+      status: 200
+  steps:
+  - run:
+      command: mstdn bookmarks -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/bookmarks
+        method: GET
+        count: 1
+- name: lists reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/lists
+      json:
+      - id: '9'
+        title: friends
+      status: 200
+  steps:
+  - run:
+      command: mstdn lists -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/lists
+        method: GET
+        count: 1
+- name: list 9 reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/timelines/list/9
+      json:
+      - id: '42'
+      status: 200
+  steps:
+  - run:
+      command: mstdn list 9 -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/timelines/list/9
+        method: GET
+        count: 1
+- name: search bob --accounts reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v2/search
+      json:
+        accounts:
+        - id: '7'
+      status: 200
+  steps:
+  - run:
+      command: mstdn search bob --accounts -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v2/search
+        method: GET
+        count: 1
+- name: chat reads its matching API and common JSON
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/conversations
+      json:
+      - id: '9'
+        accounts:
+        - id: '7'
+        unread: true
+        last_status:
+          id: '42'
+          visibility: direct
+      status: 200
+  steps:
+  - run:
+      command: mstdn chat -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/conversations
+        method: GET
+        count: 1
+- name: chat sends a direct status with idempotency key
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+      status: 200
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+      status: 200
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: '43'
+        content: <p>@bob hello</p>
+        account:
+          id: '1'
+        visibility: direct
+      status: 200
+  steps:
+  - run:
+      command: mstdn chat bob hello --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 1
+        body:
+          equals: '{"status":"@bob hello","visibility":"direct"}'
+  - assert:
+      stdout:
+        json:
+        - path: $.id
+          equals: '43'
+        - path: $.text
+          equals: '@bob hello'
+- name: post quote and dry run resolve the quote ID
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {version: "4.5.0"}
+      status: 200
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+      status: 200
+    - method: GET
+      path: /api/v1/statuses/42
+      json:
+        id: '42'
+        quote_approval: {current_user: automatic}
+      status: 200
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: '43'
+      status: 200
+  steps:
+  - run:
+      command: mstdn post comment --quote 42 --dry-run --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      stdout:
+        json:
+          path: $.post.quoteId
+          equals: '42'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 0
+  - run:
+      command: mstdn post comment --quote 42 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+      stdout:
+        json:
+          path: $.action
+          equals: post
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 1
+        body:
+          equals: '{"quoted_status_id":"42","status":"comment","visibility":"public"}'
+- name: notifications seen writes exactly the latest read marker
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/notifications
+      json:
+      - id: '42'
+        type: follow
+      status: 200
+    - method: POST
+      path: /api/v1/markers
+      json:
+        notifications:
+          last_read_id: '42'
+      status: 200
+  steps:
+  - run:
+      command: mstdn notifications --seen -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/markers
+        method: POST
+        count: 1
+        body:
+          equals: '{"notifications":{"last_read_id":"42"}}'
+- name: interactive report decline sends no request
+  mock_servers:
+  - name: api
+    routes:
+    - method: POST
+      path: /api/v1/reports
+      json: {}
+      status: 200
+  steps:
+  - pty:
+      command: mstdn report 42 --reason spam --host ${api.url} --json
+      env: *id001
+      rows: 12
+      cols: 100
+      timeout: 10s
+      session:
+      - expect_screen:
+          contains: Report to the server's moderators?
+          stable_for: 150ms
+      - send: n
+      - send:
+          key: enter
+  - assert:
+      exit_code: 1
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/reports
+        method: POST
+        count: 0
+- name: received quote exposes quoteId and boost preserves it
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/statuses/43
+      json:
+        id: '43'
+        reblog:
+          id: '42'
+          quote:
+            state: accepted
+            quoted_status:
+              id: '41'
+      status: 200
+  steps:
+  - run:
+      command: mstdn status 43 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      stdout:
+        json:
+          path: $.repostOf.quoteId
+          equals: '41'
+- name: chat history excludes public posts and other participants
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v1/accounts/lookup
+      json:
+        id: '7'
+        acct: bob
+      status: 200
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '1'
+        acct: me
+      status: 200
+    - method: GET
+      path: /api/v1/conversations
+      json:
+      - id: '9'
+        accounts:
+        - id: '7'
+          acct: bob
+        last_status:
+          id: '42'
+          visibility: direct
+          account:
+            id: '7'
+            acct: bob
+      status: 200
+    - method: GET
+      path: /api/v1/statuses/42/context
+      json:
+        ancestors:
+        - id: '40'
+          visibility: public
+          account:
+            id: '7'
+            acct: bob
+        - id: '41'
+          visibility: direct
+          account:
+            id: '7'
+            acct: bob
+        descendants:
+        - id: '43'
+          visibility: direct
+          account:
+            id: '8'
+            acct: eve
+      status: 200
+  steps:
+  - run:
+      command: mstdn chat bob -n 1 --host ${api.url} --json
+      env: *id001
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      stdout:
+        json:
+          path: $.id
+          equals: '42'
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/statuses
+        method: POST
+        count: 0
