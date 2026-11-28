@@ -5,3 +5,9 @@
 #
 # scripts/rules/cli.py fails on a command that has neither a spec nor an
 # entry here, and warns about an entry whose command a spec now runs.
+
+[nstr]
+"whoami" = "tests/cli.rs runs the binary against in-process WebSocket relays with generated identities, checking latest metadata and subscription closure; this stage uses cargo integration tests instead of atago"
+"timeline" = "tests/cli.rs runs the binary against local WebSocket relays and checks contact filters, pagination, timestamp boundaries, deduplication and a closed output pipe"
+"notifications" = "tests/cli.rs runs the binary against a local WebSocket relay and checks p-tag filtering, reply classification and limits"
+"post" = "tests/cli.rs generates a temporary test key, runs the binary against local WebSocket relays, verifies the published signature and checks OK, rejection and timeout behavior without real keys or public relays"

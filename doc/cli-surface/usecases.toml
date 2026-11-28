@@ -204,3 +204,12 @@
 "timeline --reposts" = { usecase = "", without = "" }
 "timeline [alias tl]" = { usecase = "", without = "" }
 "whoami" = { usecase = "", without = "" }
+
+[nstr]
+"--json" = { usecase = "read profiles, notes, notifications and posting results with the workspace's JSON-lines consumers", without = "scripts would parse text intended for people" }
+"whoami" = { usecase = "check the configured public identity and its latest profile before posting", without = "the user would need another Nostr client to verify the posting identity" }
+"timeline" = { usecase = "read the account's own notes and the authors in its current contact list from configured relays", without = "the home timeline would need a separate Nostr client" }
+"timeline --limit (-n)" = { usecase = "read a chosen number of unique home timeline notes, including beyond one relay page", without = "a script would be limited to the default twenty notes" }
+"notifications" = { usecase = "collect mentions and replies tagging the configured public key", without = "the user would need another client to find conversations involving the account" }
+"notifications --limit (-n)" = { usecase = "bound a notification check or inspect more than twenty mentions and replies", without = "every notification check would use the fixed default" }
+"post" = { usecase = "publish an announcement as a signed kind-1 note using the user-provided key file", without = "announcements would have to be posted through another client" }
