@@ -14,7 +14,7 @@ pub(crate) mod worker;
 
 // The drawing helpers that know nothing of Bluesky, shared with other
 // terminal clients; at these paths so the rest of bsky reads them as before.
-pub(crate) use terminal_kit::{clipboard, events, input, scale, text};
+pub(crate) use terminal_kit::{clipboard, events, input, text};
 
 use terminal_kit::screen::{Term, init_terminal, restore_terminal, write_now};
 
@@ -177,7 +177,12 @@ fn event_loop(
             return Ok(Images::none());
         };
         let cache = cache.map(|d| DiskCache::new(d.join("images"), images::CACHE_BYTES));
-        let images = Images::new(picker.clone(), cache)?;
+        let mut images = Images::with_loader(picker.clone(), cache, |p| {
+            crate::media::load(p)
+                .map(|(image, _)| image)
+                .map_err(|e| e.message().to_string())
+        })?;
+        images.set_player(player::start);
         if let Some(cdn) = picture_server(service) {
             images.connect(cdn);
         }

@@ -24,8 +24,11 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("General"),
         keys: &[
-            ("1 2 3 4", n!("the tabs, in the order shown")),
+            ("1 2 3 4 5 6", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
+            ("/", n!("search")),
+            ("A", n!("switch accounts")),
+            ("s", n!("settings")),
             ("T", n!("theme: each previewed as you move, enter keeps it")),
             ("?", n!("this help")),
             ("q ctrl+c", n!("quit")),
@@ -44,11 +47,14 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Posts"),
         keys: &[
+            ("enter", n!("open the author profile")),
+            ("space", n!("open pictures and videos")),
+            ("d", n!("save the post files")),
             ("n", n!("new post")),
             ("r", n!("reply to the selected post")),
             ("l", n!("favourite / take back your favourite")),
             ("b", n!("boost / take back your boost")),
-            ("v enter", n!("open the thread with its replies")),
+            ("v", n!("open the thread with its replies")),
             ("w", n!("show / hide the text behind a content warning")),
             ("o", n!("open the post in the browser")),
             ("c", n!("copy the post's address to the clipboard")),
@@ -66,7 +72,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Notifications"),
         keys: &[
-            ("v enter", n!("the thread of the post it is about")),
+            ("v", n!("the thread of the post it is about")),
             ("r l b", n!("reply, favourite, boost the post it is about")),
             ("R", n!("load new notifications")),
         ],
@@ -83,6 +89,33 @@ pub(crate) const HELP: &[Section] = &[
             ),
             ("ctrl+u", n!("clear to the start of the line")),
             ("esc", n!("close without sending")),
+        ],
+    },
+    Section {
+        title: n!("Search"),
+        keys: &[
+            ("/ i", n!("edit the search")),
+            ("enter", n!("search / open profile")),
+            ("t ctrl+t", n!("posts / accounts")),
+            ("esc", n!("leave the search field")),
+        ],
+    },
+    Section {
+        title: n!("Viewer"),
+        keys: &[
+            ("h l ← →", n!("previous / next file")),
+            ("r", n!("replay video")),
+            ("d o", n!("save files / open post")),
+            ("esc q", n!("close")),
+        ],
+    },
+    Section {
+        title: n!("Settings"),
+        keys: &[
+            ("j k", n!("move")),
+            ("enter", n!("choose")),
+            ("x", n!("reset to default")),
+            ("esc", n!("close")),
         ],
     },
     Section {
@@ -140,7 +173,48 @@ fn view_hints(app: &App) -> Vec<Hint> {
             v.push(("esc", n!("cancel")));
             return v;
         }
+        Some(Overlay::Settings { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("choose")),
+                ("x", n!("reset to default")),
+                ("esc", n!("close")),
+            ];
+        }
+        Some(Overlay::Languages { .. } | Overlay::Accounts { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("choose")),
+                ("esc", n!("close")),
+            ];
+        }
+        Some(Overlay::Viewer { .. }) => {
+            return vec![
+                ("h l", n!("previous / next file")),
+                ("r", n!("replay video")),
+                ("d", n!("save")),
+                ("o", n!("open")),
+                ("esc", n!("close")),
+            ];
+        }
         None => {}
+    }
+    if app.tab == Tab::Search && app.threads.is_empty() {
+        return if app.search.editing {
+            vec![
+                ("enter", n!("search")),
+                ("ctrl+t", n!("posts / accounts")),
+                ("esc", n!("back")),
+            ]
+        } else {
+            vec![
+                ("?", n!("help")),
+                ("/", n!("search")),
+                ("t", n!("posts / accounts")),
+                ("enter", n!("open profile")),
+                ("v", n!("thread")),
+            ]
+        };
     }
     if !app.threads.is_empty() {
         return vec![
@@ -168,6 +242,8 @@ fn view_hints(app: &App) -> Vec<Hint> {
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
     v.insert(0, ("?", n!("help")));
+    v.push(("enter", n!("open profile")));
+    v.push(("space", n!("open pictures and videos")));
     v.push(("q", n!("quit")));
     v
 }
@@ -183,6 +259,11 @@ pub(crate) fn actions(app: &App) -> Vec<Hint> {
         v.push(("v", n!("open the thread")));
     } else {
         v.push(("v", n!("open the thread of this post")));
+    }
+    v.push(("enter", n!("open the author profile")));
+    if !s.media_attachments.is_empty() {
+        v.push(("space", n!("open pictures and videos")));
+        v.push(("d", n!("save the post files")));
     }
     v.push(("o", n!("open it in the web browser")));
     v.push(("c", n!("copy its address")));
@@ -228,6 +309,7 @@ fn status_actions(app: &App, s: &Status) -> Vec<Hint> {
 pub(crate) fn action_key(name: &str) -> KeyEvent {
     let code = match name {
         "enter" => KeyCode::Enter,
+        "space" => KeyCode::Char(' '),
         _ => KeyCode::Char(name.chars().next().unwrap_or('?')),
     };
     KeyEvent::from(code)

@@ -41,7 +41,6 @@ crossterm.workspace = true
 dirs.workspace = true
 getrandom = "0.4"
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
-openh264.workspace = true
 ratatui.workspace = true
 ratatui-image.workspace = true
 serde.workspace = true

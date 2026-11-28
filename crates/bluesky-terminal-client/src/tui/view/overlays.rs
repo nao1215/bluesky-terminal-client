@@ -59,7 +59,15 @@ pub(super) fn draw_viewer(
                 State::Warning(why) => (
                     format!(
                         "  ⚠ {}",
-                        i18n::tf("{}; showing its thumbnail", &[i18n::t(&why)])
+                        i18n::tf(
+                            "{}; showing its thumbnail",
+                            &[match why.as_str() {
+                                "this terminal cannot show video" =>
+                                    i18n::t("this terminal cannot show video"),
+                                "the player stopped" => i18n::t("the player stopped"),
+                                other => i18n::t(other),
+                            }]
+                        )
                     ),
                     t.error(),
                 ),

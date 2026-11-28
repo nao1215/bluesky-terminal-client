@@ -24,13 +24,20 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 
 ## Full-screen client
 
-`mstdn` opens four tabs: Home, Local, Federated and Notifications, as the account in use or, without one, as a visitor (Local and Federated only). `--host` picks the server as it does for the commands.
+`mstdn` opens six tabs: Home, Local, Federated, Notifications, Search and Profile, as the account in use or, without one, as a visitor. Visitors can read Local, Federated, hashtag searches and public profiles. `--host` picks the server as it does for the commands.
 
 | Key | What it does |
 |---|---|
-| `1`-`4`, `tab` | The tabs |
+| `1`-`6`, `tab` | The tabs |
 | `j` `k`, `g` `G`, `pgdn` `pgup` | Move; the next page loads near the end |
-| `v`, `enter` | The thread of the post, with its replies |
+| `v` | The thread of the post, with its replies |
+| `enter` | The selected post author or search account in Profile; `esc` returns |
+| `5`, `/` | Search; `t` switches posts and accounts, `ctrl+t` while typing, `enter` searches |
+| `6` | The account in use and its posts |
+| `space` | Pictures and videos full screen; `h` `l` or arrows change files, `r` replays video, `esc` closes |
+| `d` | Save the post files in the download folder |
+| `A` | Saved accounts; `j` `k` select, `enter` switches and keeps the account in use |
+| `s` | Settings: theme and language; `enter` chooses, `x` resets to the default |
 | `l`, `b` | Favourite, boost, or take it back |
 | `n`, `r` | A new post, a reply; `ctrl+s` sends, `ctrl+w` adds a content warning, `ctrl+p` changes who may see it |
 | `w` | Show the text behind a content warning |
@@ -40,7 +47,11 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 | `R` | Refresh |
 | `?`, `q` | The keys, quit |
 
-A post's pictures and videos are listed with their alt text, not drawn. `q` waits up to 3 seconds for a favourite, a boost or a post still on its way.
+Pictures and video thumbnails are drawn in the lists with kitty graphics, sixel or iTerm2 inline images, detected from the terminal. `space` opens the original pictures and plays MP4/H.264 videos without sound. Other codecs show a reason; `d` saves the files and `o` opens the post. On a terminal without graphics, the files and their alt text appear as text. A content warning hides its pictures until `w` opens it. Custom emoji remain `:shortcode:`.
+
+Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for a favourite, a boost or a post still on its way.
+
+Settings are kept in `settings.json`. The language setting takes precedence over `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order, with English as the fallback. Unknown settings are preserved; an unreadable settings file is left untouched. Pictures are cached on disk up to 256 MB and in memory; `MSTDN_CACHE_DIR=off` disables the disk cache.
 
 ## Commands
 
@@ -129,9 +140,11 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | `MSTDN_HOST` | Server to read (also `--host`) |
 | `MSTDN_TOKEN` | Access token in place of the saved login, on `MSTDN_HOST` only |
 | `MSTDN_CONFIG_DIR` | Config folder |
-| `MSTDN_DOWNLOAD_DIR` | Where `download` saves |
+| `MSTDN_DOWNLOAD_DIR` | Where `download` and `d` save |
+| `MSTDN_CACHE_DIR` | Picture cache folder, else `mstdn` in the platform cache folder; `off` disables it |
+| `MSTDN_GRAPHICS` | Force `kitty`, `sixel` or `iterm2` when the terminal supports it but reports another protocol |
 | `MSTDN_BROWSER` | Program that opens the login page and, in the full-screen client, a post |
-| `LC_ALL` `LC_MESSAGES` `LANG` | Language of the full-screen client and the login's directions: English or 日本語 |
+| `LC_ALL` `LC_MESSAGES` `LANG` | English or 日本語; the full-screen language when settings name none, and the login directions |
 | `NO_COLOR` | The full-screen client in `monochrome` |
 | `TZ` | Time zone of the times shown |
 

@@ -163,6 +163,8 @@ scenarios:
         command: python3 "${specdir}/testdata/relay.py" --many
         ready:
           file: ready.txt
+          # Signing 120 notes in pure Python takes several seconds on a slow runner.
+          timeout: 30s
     steps:
       - run:
           command: '{ nstr timeline -n 100 --json; echo "nstr=$?" >&2; } | head -c 1'

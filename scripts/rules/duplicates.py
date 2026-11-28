@@ -14,6 +14,15 @@ part both need into terminal-kit, or, when the copy is the right thing,
 run with --update and say why in the pull request. A copy taken away
 leaves its entry behind, and the run says to drop it (--update does).
 
+The Mastodon media extraction removed the image pipeline and player copies.
+The remaining cross-client HELP tables intentionally spell out matching keys
+beside each client's translation marks; sharing them would put UI vocabulary
+and translation policy into terminal-kit. The small video-state label match
+stays with each view's fallback and caption layout. The input dispatch slice
+stays in each event loop because its App, jobs, account switch and persistence
+have different contracts. These matches are recorded in the baseline, without
+changing the token or line thresholds.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 

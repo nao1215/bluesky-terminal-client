@@ -23,6 +23,7 @@ use crate::api::Client;
 use crate::config::{AccountStore, Session};
 use crate::error::{Error, Kind, Result};
 use app::App;
+use terminal_kit::media::images::{CACHE_BYTES, DiskCache, Images};
 use worker::Worker;
 
 /// How long the loop waits for a key before checking the worker again.
@@ -62,11 +63,17 @@ pub(crate) fn run(
     // The first pages are asked for before the terminal is set up: the
     // server's answers need nothing from it.
     let client = Client::new(origin).with_token(session.as_ref().map(|s| s.token.clone()));
-    let worker = Worker::spawn(client)
+    let mut worker = Worker::spawn(client)
         .map_err(|e| Error::new(Kind::Terminal, format!("cannot start the client: {e}")))?;
     let (mut app, jobs) = App::new(session, origin);
     for (seq, job) in jobs {
         worker.send(seq, job);
+    }
+    if let Some(store) = accounts {
+        match store.list() {
+            Ok(list) => app.accounts = list,
+            Err(e) => app.fail(e.message().to_string()),
+        }
     }
     let depth = theme::color_depth(|k| std::env::var(k).ok());
     match accounts.map(AccountStore::settings) {
@@ -111,7 +118,38 @@ pub(crate) fn run(
     if let Err(e) = execute!(io::stdout(), EnableBracketedPaste) {
         return setup_failed(e);
     }
-    let result = event_loop(&mut term, &mut app, &worker, accounts);
+    let forced = std::env::var("MSTDN_GRAPHICS")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    let protocol = forced
+        .as_deref()
+        .and_then(terminal_kit::terminal::parse_protocol);
+    if forced.is_some() && protocol.is_none() {
+        return restored(Err(Error::usage(
+            "MSTDN_GRAPHICS must be kitty, sixel, or iterm2",
+        )));
+    }
+    let mut images = match terminal_kit::terminal::detect_graphics(protocol) {
+        Some(p) => {
+            let dir = match std::env::var_os("MSTDN_CACHE_DIR") {
+                Some(v) if v == "off" => None,
+                Some(v) if !v.is_empty() => Some(std::path::PathBuf::from(v)),
+                _ => dirs::cache_dir().map(|p| p.join("mstdn")),
+            };
+            match Images::new(
+                p,
+                dir.map(|p| DiskCache::new(p.join("images"), CACHE_BYTES)),
+            ) {
+                Ok(images) => images,
+                Err(e) => {
+                    app.fail(format!("cannot show pictures: {e}"));
+                    Images::none()
+                }
+            }
+        }
+        None => Images::none(),
+    };
+    let result = event_loop(&mut term, &mut app, &mut worker, accounts, &mut images);
     restored(result)
 }
 
@@ -136,18 +174,32 @@ fn with_restore(result: Result<()>, restore: std::result::Result<(), String>) ->
 fn event_loop(
     term: &mut Term,
     app: &mut App,
-    worker: &Worker,
+    worker: &mut Worker,
     accounts: Option<&AccountStore>,
+    images: &mut Images,
 ) -> Result<()> {
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
     let mut input = terminal_kit::events::Input::new().map_err(io_err)?;
     let mut dirty = true;
     while !app.quit {
         if dirty {
-            term.draw(|f| view::draw(f, app)).map_err(io_err)?;
+            let viewer = matches!(app.overlay, Some(app::Overlay::Viewer { .. }));
+            if !viewer {
+                images.stop_video();
+            }
+            if let Some(delete) = images.viewer_closed(viewer) {
+                write_now(delete).map_err(io_err)?;
+                term.clear().map_err(io_err)?;
+            }
+            term.draw(|f| view::draw_with_images(f, app, images))
+                .map_err(io_err)?;
             dirty = false;
         }
-        let mut wait = if app.pending() > 0 { ANSWER_TICK } else { TICK };
+        let mut wait = if app.pending() > 0 || images.loading() || images.playing() {
+            ANSWER_TICK
+        } else {
+            TICK
+        };
         for _ in 0..EVENTS_PER_FRAME {
             if app.quit {
                 break;
@@ -163,6 +215,27 @@ fn event_loop(
                 }
                 TermEvent::Paste(text) => app.handle_paste(&text),
                 _ => {}
+            }
+            if let Some(session) = app.take_switch() {
+                let result = accounts
+                    .ok_or_else(|| Error::io("no config directory to keep the account in"))
+                    .and_then(|store| store.set_current(session.host()));
+                match result {
+                    Ok(()) => {
+                        worker.set_client(
+                            Client::new(&session.service).with_token(Some(session.token.clone())),
+                        );
+                        for (seq, job) in app.switched(session) {
+                            worker.send(seq, job);
+                        }
+                        images.stop_video();
+                        if let Some(delete) = images.delete_all() {
+                            write_now(delete).map_err(io_err)?;
+                        }
+                        term.clear().map_err(io_err)?;
+                    }
+                    Err(e) => app.fail(e.message().to_string()),
+                }
             }
             dirty = true;
             wait = Duration::ZERO;
@@ -182,6 +255,9 @@ fn event_loop(
             for (seq, job) in app.handle_answer(seq, ev) {
                 worker.send(seq, job);
             }
+            dirty = true;
+        }
+        if images.poll() {
             dirty = true;
         }
         if app.expire_message(Instant::now()) {

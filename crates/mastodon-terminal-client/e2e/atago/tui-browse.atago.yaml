@@ -1,0 +1,105 @@
+# Every request goes to an atago mock. Accounts and tokens are fixtures.
+version: "1"
+suite:
+  name: mstdn search and profiles
+secrets: [e2e-fake-stage2-browse]
+scenarios:
+  - name: search posts and accounts and open profiles with enter and 6
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/timelines/home, json: [{ id: home1, account: { id: "2", acct: bob, username: bob }, content: "<p>Home post</p>" }] }
+          - { method: GET, path: /api/v2/instance, json: {} }
+          - method: GET
+            path: /api/v2/search
+            json:
+              accounts: [{ id: "2", acct: bob, username: bob, display_name: "Bob 🦀", note: "<p>Writes Rust</p>" }]
+              statuses: [{ id: found1, account: { id: "2", acct: bob, username: bob }, content: "<p>Rust search result</p>" }]
+          - { method: GET, path: /api/v1/accounts/2, json: { id: "2", acct: bob, username: bob, note: "<p>Profile biography</p>", followers_count: 5, following_count: 2, statuses_count: 9 } }
+          - method: GET
+            path: /api/v1/accounts/2/statuses
+            header: { Link: '<${api.url}/api/v1/accounts/2/statuses?max_id=bp1>; rel="next"' }
+            json: [{ id: bp1, account: { id: "2", acct: bob, username: bob }, content: "<p>Bob profile post</p>" }]
+          - { method: GET, path: /api/v1/accounts/verify_credentials, json: { id: "7", acct: me, username: me, note: "<p>My biography</p>" } }
+          - { method: GET, path: /api/v1/accounts/7/statuses, json: [{ id: my1, account: { id: "7", acct: me }, content: "<p>My profile post</p>" }] }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service":"${api.url}","userId":"7","username":"me","token":"e2e-fake-stage2-browse","scopes":["read","write"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: '{"current":"127.0.0.1:${api.port}"}'
+      - pty:
+          command: mstdn
+          graphics: kitty
+          rows: 36
+          cols: 130
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 25s
+          session:
+            - expect_screen: { contains: ["Home post", "5 Search", "6 Profile"] }
+            - send: "5"
+            - expect_screen: { contains: ["Search", "enter search", "ctrl+t posts / accounts"] }
+            - send: rust
+            - send: { key: enter }
+            - expect_screen: { contains: "Rust search result" }
+            - send: t
+            - expect_screen: { contains: ["Bob 🦀", "Writes Rust"] }
+            - send: { key: enter }
+            - expect_screen: { contains: ["Profile biography", "5 followers · 2 following · 9 posts", "Bob profile post"] }
+            - send: j
+            - expect_screen: { contains: "Bob profile post", stable_for: 500ms }
+            - send: { key: esc }
+            - expect_screen: { contains: "Writes Rust", not_contains: "Profile biography" }
+            - send: "1"
+            - expect_screen: { contains: "Home post" }
+            - send: { key: enter }
+            - expect_screen: { contains: "Bob profile post" }
+            - send: j
+            - expect_screen: { contains: "Bob profile post", stable_for: 500ms }
+            - send: "6"
+            - expect_screen: { contains: ["My biography", "My profile post"] }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert:
+          mock: { name: api, path: /api/v2/search, count: 2, query: { name: type, equals: accounts }, header: { name: Authorization, equals: "Bearer e2e-fake-stage2-browse" } }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/verify_credentials, count: 1 }
+      - assert:
+          mock: { name: api, path: /api/v1/accounts/2/statuses, count: 4, query: { name: max_id, equals: bp1 } }
+
+  - name: visitors search hashtags and refuse account and full text searches
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/timelines/public, json: [] }
+          - { method: GET, path: /api/v1/timelines/tag/rust, json: [{ id: tag1, account: { acct: rustacean }, content: "<p>Visitor hashtag result</p>" }] }
+          - { method: GET, path: /api/v2/search, json: {} }
+    steps:
+      - pty:
+          command: mstdn --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "visitor" }
+            - send: /
+            - send: rust
+            - send: { key: enter }
+            - expect_screen: { contains: "log in to search accounts or posts" }
+            - send: /
+            - send: { key: home }
+            - send: "#"
+            - send: { key: enter }
+            - expect_screen: { contains: "Visitor hashtag result" }
+            - send: t
+            - expect_screen: { contains: "visitors can search #hashtags" }
+            - send: "6"
+            - expect_screen: { contains: "shows this only to accounts that are logged in" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { mock: { name: api, path: /api/v2/search, count: 0 } }
+      - assert: { mock: { name: api, path: /api/v1/timelines/tag/rust, count: 1 } }

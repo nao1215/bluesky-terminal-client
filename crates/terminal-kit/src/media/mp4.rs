@@ -91,7 +91,7 @@ fn child<'a>(buf: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
 pub(crate) fn video_track(file: &[u8]) -> Result<Track, String> {
     let (top, broken) = boxes_checked(file);
     if top.iter().any(|(k, _)| k == b"moof") {
-        return Err("the video is a fragmented MP4, which msky cannot play yet".into());
+        return Err("the video is a fragmented MP4, which this player cannot play".into());
     }
     let moov = top
         .iter()
@@ -131,7 +131,7 @@ pub(crate) fn video_track(file: &[u8]) -> Result<Track, String> {
     if codec != b"avc1" && codec != b"avc3" {
         let name = String::from_utf8_lossy(codec).into_owned();
         return Err(format!(
-            "the video is {name}, not H.264; msky decodes H.264 only (with OpenH264)"
+            "the video is {name}, not H.264; this player decodes H.264 only (with OpenH264)"
         ));
     }
     // A visual sample entry's fields take 78 bytes before its boxes.
@@ -326,7 +326,7 @@ mod tests {
     fn clip() -> Vec<u8> {
         std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/e2e/atago/testdata/clip.mp4"
+            "/src/media/testdata/clip.mp4"
         ))
         .unwrap()
     }
@@ -375,7 +375,7 @@ mod tests {
         }
         assert_eq!(
             video_track(&hevc).err().unwrap(),
-            "the video is hvc1, not H.264; msky decodes H.264 only (with OpenH264)"
+            "the video is hvc1, not H.264; this player decodes H.264 only (with OpenH264)"
         );
         assert_eq!(
             video_track(&clip()[..100]).err().unwrap(),
@@ -383,7 +383,7 @@ mod tests {
         );
         let file = clip();
         for cut in 0..file.len() {
-            let _ = video_track(&file[..cut]);
+            drop(video_track(&file[..cut]));
         }
         let mut x: u32 = 1;
         for _ in 0..2000 {
@@ -393,7 +393,7 @@ mod tests {
             x ^= x << 5;
             let i = x as usize % f.len();
             f[i] ^= (x >> 8) as u8;
-            let _ = video_track(&f);
+            drop(video_track(&f));
         }
     }
 

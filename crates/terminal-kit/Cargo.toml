@@ -15,7 +15,9 @@ categories = ["command-line-interface"]
 [dependencies]
 crossterm.workspace = true
 fast_image_resize.workspace = true
-image.workspace = true
+image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
+openh264.workspace = true
+ureq.workspace = true
 jiff.workspace = true
 ratatui.workspace = true
 ratatui-image.workspace = true
@@ -27,6 +29,7 @@ unicode-width.workspace = true
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
 
 [dev-dependencies]
+tempfile.workspace = true
 proptest.workspace = true
 rstest.workspace = true
 
