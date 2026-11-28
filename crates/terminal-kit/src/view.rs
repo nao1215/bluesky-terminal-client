@@ -168,41 +168,79 @@ pub fn draw_panel(
     inner
 }
 
-/// Draw a single-line dialog near the top of its parent, with a wrapping footer.
-/// The supplied block determines the title, border and input background.
-pub fn draw_input_box(
+/// Search editing hints, shared by every client and translated from one catalog.
+pub fn search_edit_hints(
+    accounts: bool,
+    lang: crate::i18n::Lang,
+) -> Vec<(&'static str, &'static str)> {
+    let text = if accounts {
+        "Enter search · Ctrl+T posts/accounts · Esc cancel"
+    } else {
+        "Enter search · Esc cancel"
+    };
+    vec![("", SEARCH_CATALOG.t(lang, text))]
+}
+
+static SEARCH_CATALOG: crate::i18n::Catalog = crate::i18n::Catalog::new(&[]);
+
+/// The usual list keys, followed by the route back to the preserved timeline.
+pub fn search_result_hints(
+    accounts: bool,
+    lang: crate::i18n::Lang,
+) -> Vec<(&'static str, &'static str)> {
+    let mut hints = vec![("?", "help"), ("j k", "move"), (".", "actions")];
+    if accounts {
+        hints.push(("enter / v", "open profile"));
+    } else {
+        hints.extend([("space", "view"), ("n", "post")]);
+    }
+    hints.extend([("/", "search"), ("q", "quit"), ("", "Esc back to timeline")]);
+    for (_, text) in &mut hints {
+        *text = SEARCH_CATALOG.t(lang, text);
+    }
+    hints
+}
+
+/// Draw the same search box in every client. Instructions belong in the bottom hints.
+/// Clear the whole band under the box, including the selected row's side margins.
+pub fn draw_search_box(
     frame: &mut Frame,
     area: Rect,
     input: &TextInput,
-    block: Block<'_>,
-    footer: &str,
-    footer_style: Style,
+    accounts: Option<bool>,
+    lang: crate::i18n::Lang,
+    t: &Theme,
 ) {
     let width = area.width.saturating_sub(4).min(76);
-    let lines: Vec<Line> = wrap(footer, usize::from(width.saturating_sub(4)).max(1))
-        .into_iter()
-        .map(|line| Line::styled(line, footer_style))
-        .collect();
-    let height = (lines.len() as u16 + 3).min(area.height);
+    let height = 3.min(area.height);
     let rect = Rect::new(
         area.x + (area.width - width) / 2,
         area.y + u16::from(area.height > height),
         width,
         height,
     );
+    let band = Rect {
+        x: area.x,
+        width: area.width,
+        ..rect
+    };
+    frame.render_widget(Clear, band);
+    frame.render_widget(Block::new().style(t.base()), band);
+    let title = SEARCH_CATALOG.t(lang, "Search");
+    let title = match accounts {
+        Some(accounts) => format!(
+            " {title} · {} ",
+            SEARCH_CATALOG.t(lang, if accounts { "Accounts" } else { "Posts" })
+        ),
+        None => format!(" {title} "),
+    };
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .title(title)
+        .style(t.base())
+        .border_style(t.accent());
     let inner = draw_panel(frame, rect, block, Some(area.x));
-    if inner.is_empty() {
-        return;
-    }
-    draw_single_input(frame, Rect { height: 1, ..inner }, input, true);
-    frame.render_widget(
-        Paragraph::new(lines),
-        Rect {
-            y: inner.y + 1,
-            height: inner.height - 1,
-            ..inner
-        },
-    );
+    draw_single_input(frame, inner, input, true);
 }
 
 /// Width of the key column in the two-column help layout.
@@ -333,7 +371,7 @@ pub fn draw_status_line(frame: &mut Frame, area: Rect, left: Option<Span<'_>>, r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{Terminal, backend::TestBackend, widgets::BorderType};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn an_empty_list_never_measures_an_item() {
@@ -350,15 +388,13 @@ mod tests {
             for height in 1..9 {
                 let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();
                 term.draw(|frame| {
-                    draw_input_box(
+                    draw_search_box(
                         frame,
                         frame.area(),
                         &input,
-                        Block::bordered()
-                            .border_type(BorderType::Rounded)
-                            .title("検索"),
-                        "Enter 検索 · Esc キャンセル",
-                        Style::default(),
+                        Some(false),
+                        crate::i18n::Lang::Ja,
+                        &crate::theme::THEMES[0],
                     )
                 })
                 .unwrap();
@@ -396,5 +432,93 @@ mod tests {
             tab_line(labels(), Some(Span::raw("name")), 8, 1).to_string(),
             "tab "
         );
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    use crate::i18n::Lang;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn results_use_one_order_and_one_profile_entry() {
+        assert_eq!(
+            search_result_hints(false, Lang::En),
+            vec![
+                ("?", "help"),
+                ("j k", "move"),
+                (".", "actions"),
+                ("space", "view"),
+                ("n", "post"),
+                ("/", "search"),
+                ("q", "quit"),
+                ("", "Esc back to timeline"),
+            ]
+        );
+        assert_eq!(
+            search_result_hints(true, Lang::En),
+            vec![
+                ("?", "help"),
+                ("j k", "move"),
+                (".", "actions"),
+                ("enter / v", "open profile"),
+                ("/", "search"),
+                ("q", "quit"),
+                ("", "Esc back to timeline"),
+            ]
+        );
+        for lang in Lang::ALL.into_iter().filter(|l| *l != Lang::En) {
+            for accounts in [false, true] {
+                for ((key, en), (translated_key, text)) in search_result_hints(accounts, Lang::En)
+                    .into_iter()
+                    .zip(search_result_hints(accounts, lang))
+                {
+                    assert_eq!(key, translated_key);
+                    assert!(
+                        SEARCH_CATALOG
+                            .fallback_table(lang)
+                            .iter()
+                            .any(|(source, translated)| *source == en && *translated == text),
+                        "{lang:?}: {en}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn box_has_only_input_and_clears_the_selected_band_including_both_margins() {
+        let theme = crate::theme::THEMES[0];
+        let mut term = Terminal::new(TestBackend::new(100, 12)).unwrap();
+        term.draw(|f| {
+            f.render_widget(
+                Paragraph::new(
+                    "selected row\nselected row\nselected row\nselected row\nselected row",
+                )
+                .style(theme.selected()),
+                f.area(),
+            );
+            draw_search_box(
+                f,
+                f.area(),
+                &TextInput::single("cats"),
+                Some(false),
+                Lang::En,
+                &theme,
+            );
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        assert_eq!(buf[(12, 1)].symbol(), "╭");
+        assert_eq!(buf[(12, 3)].symbol(), "╰");
+        for y in 1..=3 {
+            for x in [0, 11, 88, 99] {
+                assert_eq!(buf[(x, y)].symbol(), " ");
+                assert_eq!(buf[(x, y)].bg, theme.base().bg.unwrap());
+                assert_eq!(buf[(x, y)].modifier, theme.base().add_modifier);
+            }
+        }
+        assert!(!buf.content.iter().any(|c| c.symbol().contains("Enter")));
     }
 }

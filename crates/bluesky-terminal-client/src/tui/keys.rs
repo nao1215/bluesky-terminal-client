@@ -217,6 +217,16 @@ pub(crate) fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
 
 /// The bindings worth showing under the current view, most useful first.
 pub(crate) fn hints(app: &App) -> Vec<Hint> {
+    if matches!(app.overlay, Some(Overlay::Search)) {
+        return terminal_kit::view::search_edit_hints(true, crate::i18n::current());
+    }
+    if app.overlay.is_none() && app.threads.is_empty() && app.search_mode().is_some() {
+        return terminal_kit::view::search_result_hints(
+            app.search_mode() == Some(crate::tui::app::SearchMode::Accounts),
+            crate::i18n::current(),
+        );
+    }
+
     let mut v = view_hints(app);
     if !app.pictures {
         for h in &mut v {
@@ -246,7 +256,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
     }
     match &app.overlay {
         Some(Overlay::Search) => {
-            return vec![("", n!("Enter search · Ctrl+T posts/accounts · Esc cancel"))];
+            return terminal_kit::view::search_edit_hints(true, crate::i18n::current());
         }
         Some(Overlay::Compose(c)) if c.browser.is_some() => return browser_hints(),
         Some(Overlay::EditProfile(e)) if e.browser.is_some() => return browser_hints(),
@@ -363,12 +373,6 @@ fn view_hints(app: &App) -> Vec<Hint> {
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
-        Tab::Timeline if app.search.active.is_some() => vec![
-            ("", n!("Esc back to timeline")),
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("/", n!("search")),
-        ],
         Tab::Timeline => vec![
             ("j k", n!("move")),
             (".", n!("actions")),

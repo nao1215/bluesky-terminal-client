@@ -73,7 +73,9 @@ pub(super) const HELP: &[(&str, &str)] = &[
 ];
 
 use super::app::{App, Overlay};
-pub(super) fn hint(app: &App) -> &str {
+pub(super) fn search_hints(app: &App) -> Option<Vec<(&'static str, &'static str)>> {
+    let lang =
+        terminal_kit::i18n::Lang::from_code(app.language).unwrap_or(terminal_kit::i18n::Lang::En);
     if matches!(
         app.extra.dialog,
         Some(super::extras::Dialog::Input {
@@ -81,15 +83,19 @@ pub(super) fn hint(app: &App) -> &str {
             ..
         })
     ) {
-        return app.t("Enter search · Esc cancel");
+        return Some(terminal_kit::view::search_edit_hints(false, lang));
     }
     if app.searching()
         && app.threads.is_empty()
         && app.overlay.is_none()
         && app.extra.dialog.is_none()
     {
-        return app.t("Esc back to timeline");
+        return Some(terminal_kit::view::search_result_hints(false, lang));
     }
+    None
+}
+
+pub(super) fn hint(app: &App) -> &str {
     match app.overlay {
         Some(Overlay::Compose { .. }) => app.t("ctrl+s send   esc cancel"),
         Some(Overlay::Themes { .. }) => app.t("j k preview   enter apply   esc cancel"),

@@ -18,7 +18,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "（帖子未显示）"),
     ("1 picture", "1 张图片"),
     ("Account", "账户"),
-    ("Accounts", "账户"),
     ("Actions", "操作"),
     ("Add a column", "添加栏"),
     ("Attach pictures (up to {})", "附加图片（最多 {} 张）"),
@@ -72,7 +71,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "密码"),
     ("Picture cache", "图片缓存"),
     ("Pictures", "图片"),
-    ("Posts", "帖子"),
     ("Profile", "个人资料"),
     ("Quote @{}", "引用 @{}"),
     ("Reply to @{}", "回复 @{}"),
@@ -118,7 +116,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "accounts: switch, add, log out",
         "账户：切换、添加、退出登录",
     ),
-    ("actions", "操作"),
     ("add", "添加"),
     (
         "add a column: a pinned feed, notifications…",
@@ -322,7 +319,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("following", "关注"),
     ("follows you", "关注了你"),
     ("go back to the theme you had", "恢复原来的主题"),
-    ("help", "帮助"),
     ("hidden", "隐藏文件"),
     ("i continue:", "i 继续输入："),
     ("i write a message", "i 输入消息"),
@@ -382,7 +378,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "接近末尾时自动加载更多",
     ),
-    ("move", "移动"),
     ("move five items", "移动 5 项"),
     ("move the column left / right", "将此栏左移 / 右移"),
     ("move through the posts and replies", "在帖子和回复间移动"),
@@ -481,7 +476,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "图片：{}"),
     ("play the video again", "重新播放视频"),
     ("playing (no sound)", "播放中（无声音）"),
-    ("post", "发帖"),
     ("post deleted", "帖子已删除"),
     (
         "post keys act on the column's post",
@@ -568,7 +562,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "已保存 {}"),
     ("saving…", "正在保存…"),
     ("scroll", "滚动"),
-    ("search", "搜索"),
     ("search posts or accounts", "搜索帖子或账户"),
     (
         "search, then move through the results",
@@ -735,7 +728,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "认证了你"),
     ("video", "视频"),
     ("video: {}", "视频：{}"),
-    ("view", "查看"),
     ("view its pictures or video", "查看图片或视频"),
     (
         "view pictures or video, or open the link",

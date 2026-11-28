@@ -255,14 +255,12 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "まだ投稿はありません。R で更新します。",
     ),
     ("Notifications", "通知"),
-    ("Posts", "投稿"),
     ("Reply", "返信"),
     ("a poll has ended", "アンケートが終了しました"),
     (
         "a post for followers or the mentioned only cannot be boosted",
         "フォロワー限定・メンション限定の投稿はブーストできません",
     ),
-    ("actions", "操作"),
     (
         "add / take off a content warning",
         "注意書き (CW) を付ける / 外す",
@@ -309,7 +307,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("first / last item", "最初 / 最後の項目"),
     ("followed you", "があなたをフォローしました"),
     ("followers only", "フォロワー限定"),
-    ("help", "ヘルプ"),
     ("hide the text behind its warning", "注意書きの中身を隠す"),
     (
         "list what the keys do to the post",
@@ -327,7 +324,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "終わりが近づくと続きを自動で読む",
     ),
-    ("move", "移動"),
     ("move five items", "5 件移動"),
     ("move through the posts and replies", "投稿と返信の間を移動"),
     ("new post", "新しい投稿"),
@@ -350,7 +346,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "open the thread with its replies",
         "返信を含むスレッドを開く",
     ),
-    ("post", "投稿"),
     ("posted", "投稿しました"),
     ("posting…", "投稿中…"),
     ("preview", "プレビュー"),
@@ -452,7 +447,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "ブラウザから戻るのを待っています (最大 {} 秒。Ctrl-C でやめます)...",
     ),
     ("(no alt text)", "(代替テキストなし)"),
-    ("Accounts", "アカウント"),
     (
         "No saved accounts. Press a to log in.",
         "保存済みアカウントがありません。mstdn login を実行してください。",
@@ -471,7 +465,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "アカウント・投稿の検索にはログインが必要です。訪問者は #ハッシュタグ を検索できます",
     ),
     ("open pictures and videos", "画像・動画を開く"),
-    ("open profile", "プロフィールを開く"),
     ("open the author profile", "投稿者のプロフィールを開く"),
     ("playing (no sound)", "再生中 (音声なし)"),
     (
@@ -486,7 +479,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("save the post files", "投稿のファイルを保存"),
     ("saved {} files", "{} 件のファイルを保存しました"),
     ("saving files…", "ファイルを保存中…"),
-    ("search", "検索"),
     ("search / open profile", "検索 / プロフィールを開く"),
     ("settings", "設定"),
     (
@@ -499,7 +491,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this terminal cannot show pictures or video; d saves files, o opens the post",
         "この端末では画像・動画を表示できません。d で保存、o で投稿を開きます",
     ),
-    ("thread", "スレッド"),
     (
         "{} followers · {} following · {} posts",
         "フォロワー {} · フォロー {} · 投稿 {}",

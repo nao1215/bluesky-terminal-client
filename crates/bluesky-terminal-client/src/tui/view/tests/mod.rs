@@ -5,6 +5,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui_image::picker::Picker;
 use serde_json::json;
+use unicode_width::UnicodeWidthStr;
 
 mod compose;
 mod hints;

@@ -24,7 +24,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "(Beitrag nicht angezeigt)"),
     ("1 picture", "1 Bild"),
     ("Account", "Konto"),
-    ("Accounts", "Konten"),
     ("Actions", "Aktionen"),
     ("Add a column", "Spalte hinzufügen"),
     ("Attach pictures (up to {})", "Bilder anhängen (bis zu {})"),
@@ -81,7 +80,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "Passwort"),
     ("Picture cache", "Bild-Cache"),
     ("Pictures", "Bilder"),
-    ("Posts", "Beiträge"),
     ("Profile", "Profil"),
     ("Quote @{}", "@{} zitieren"),
     ("Reply to @{}", "@{} antworten"),
@@ -130,7 +128,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "accounts: switch, add, log out",
         "Konten: wechseln, hinzufügen, abmelden",
     ),
-    ("actions", "Aktionen"),
     ("add", "hinzufügen"),
     (
         "add a column: a pinned feed, notifications…",
@@ -382,7 +379,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "go back to the theme you had",
         "zum vorherigen Design zurück",
     ),
-    ("help", "Hilfe"),
     ("hidden", "versteckte"),
     ("i continue:", "i weiter:"),
     ("i write a message", "i Nachricht schreiben"),
@@ -448,7 +444,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "mehr lädt am Ende von selbst",
     ),
-    ("move", "bewegen"),
     ("move five items", "fünf Elemente weiter"),
     (
         "move the column left / right",
@@ -577,7 +572,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "Bilder: {}"),
     ("play the video again", "Video erneut abspielen"),
     ("playing (no sound)", "läuft (ohne Ton)"),
-    ("post", "posten"),
     ("post deleted", "Beitrag gelöscht"),
     (
         "post keys act on the column's post",
@@ -685,7 +679,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "{} gespeichert"),
     ("saving…", "wird gespeichert…"),
     ("scroll", "scrollen"),
-    ("search", "suchen"),
     ("search posts or accounts", "Beiträge oder Konten suchen"),
     (
         "search, then move through the results",
@@ -891,7 +884,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "hat dich verifiziert"),
     ("video", "Video"),
     ("video: {}", "Video: {}"),
-    ("view", "ansehen"),
     ("view its pictures or video", "Bilder oder Video ansehen"),
     (
         "view pictures or video, or open the link",

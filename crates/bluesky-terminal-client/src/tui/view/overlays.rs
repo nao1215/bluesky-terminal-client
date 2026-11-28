@@ -608,20 +608,12 @@ pub(super) fn draw_search_box(
     search: &crate::tui::app::Search,
     t: &Theme,
 ) {
-    let mode = match search.mode {
-        SearchMode::Posts => i18n::t("Posts"),
-        SearchMode::Accounts => i18n::t("Accounts"),
-    };
-    terminal_kit::view::draw_input_box(
+    terminal_kit::view::draw_search_box(
         frame,
         area,
         &search.input,
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(format!(" {} · {mode} ", i18n::t("Search")))
-            .style(t.base())
-            .border_style(t.accent()),
-        i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel"),
-        t.dim(),
+        Some(search.mode == SearchMode::Accounts),
+        i18n::current(),
+        t,
     );
 }

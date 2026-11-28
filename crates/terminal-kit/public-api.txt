@@ -291,10 +291,26 @@ pub fn terminal_kit::screen::FrameWriter<W>::new(W) -> Self
 impl<W: core::io::write::Write> core::io::write::Write for terminal_kit::screen::FrameWriter<W>
 pub fn terminal_kit::screen::FrameWriter<W>::flush(&mut self) -> core::io::error::Result<()>
 pub fn terminal_kit::screen::FrameWriter<W>::write(&mut self, &[u8]) -> core::io::error::Result<usize>
+pub struct terminal_kit::screen::TerminalBackend<W: core::io::write::Write>
+impl<W: core::io::write::Write> terminal_kit::screen::TerminalBackend<W>
+pub fn terminal_kit::screen::TerminalBackend<W>::new(W) -> Self
+impl<W: core::io::write::Write> ratatui_core::backend::Backend for terminal_kit::screen::TerminalBackend<W>
+pub type terminal_kit::screen::TerminalBackend<W>::Error = core::io::error::Error
+pub fn terminal_kit::screen::TerminalBackend<W>::append_lines(&mut self, u16) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::clear(&mut self) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::clear_region(&mut self, ratatui_core::backend::ClearType) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::draw<'a, I>(&mut self, I) -> core::io::error::Result<()> where I: core::iter::traits::iterator::Iterator<Item = (u16, u16, &'a ratatui_core::buffer::cell::Cell)>
+pub fn terminal_kit::screen::TerminalBackend<W>::flush(&mut self) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::get_cursor_position(&mut self) -> core::io::error::Result<ratatui_core::layout::position::Position>
+pub fn terminal_kit::screen::TerminalBackend<W>::hide_cursor(&mut self) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::set_cursor_position<P: core::convert::Into<ratatui_core::layout::position::Position>>(&mut self, P) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::show_cursor(&mut self) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::TerminalBackend<W>::size(&self) -> core::io::error::Result<ratatui_core::layout::size::Size>
+pub fn terminal_kit::screen::TerminalBackend<W>::window_size(&mut self) -> core::io::error::Result<ratatui_core::backend::WindowSize>
 pub fn terminal_kit::screen::init_terminal() -> core::io::error::Result<terminal_kit::screen::Term>
 pub fn terminal_kit::screen::restore_terminal() -> core::result::Result<(), alloc::string::String>
 pub fn terminal_kit::screen::write_now(&str) -> core::io::error::Result<()>
-pub type terminal_kit::screen::Term = ratatui_core::terminal::Terminal<ratatui_crossterm::CrosstermBackend<terminal_kit::screen::FrameWriter>>
+pub type terminal_kit::screen::Term = ratatui_core::terminal::Terminal<terminal_kit::screen::TerminalBackend<terminal_kit::screen::FrameWriter>>
 pub mod terminal_kit::terminal
 pub fn terminal_kit::terminal::detect_graphics(core::option::Option<ratatui_image::picker::ProtocolType>) -> core::option::Option<ratatui_image::picker::Picker>
 pub fn terminal_kit::terminal::is_interactive() -> bool
@@ -331,6 +347,8 @@ pub terminal_kit::test_support::i18n::SourceRoot::marks: &'a [&'a str]
 pub terminal_kit::test_support::i18n::SourceRoot::path: &'a str
 pub fn terminal_kit::test_support::i18n::marked_strings(&std::path::Path, &[terminal_kit::test_support::i18n::SourceRoot<'_>], &[&str]) -> core::io::error::Result<alloc::collections::btree::set::BTreeSet<alloc::string::String>>
 pub fn terminal_kit::test_support::i18n::validate_catalog(&alloc::collections::btree::set::BTreeSet<alloc::string::String>, &terminal_kit::i18n::Catalog, &[terminal_kit::i18n::Lang], usize) -> alloc::vec::Vec<alloc::string::String>
+pub mod terminal_kit::test_support::screen
+pub fn terminal_kit::test_support::screen::render_diff(&ratatui_core::buffer::buffer::Buffer, &ratatui_core::buffer::buffer::Buffer) -> core::io::error::Result<ratatui_core::buffer::buffer::Buffer>
 pub mod terminal_kit::text
 pub fn terminal_kit::text::cells(&str) -> usize
 pub fn terminal_kit::text::cluster_width(&str) -> usize
@@ -398,15 +416,17 @@ pub const fn terminal_kit::theme::palette(&'static str, [u32; 8]) -> terminal_ki
 pub mod terminal_kit::view
 pub const terminal_kit::view::HELP_KEYS: usize
 pub fn terminal_kit::view::centered_rect(ratatui_core::layout::rect::Rect, u16, u16) -> ratatui_core::layout::rect::Rect
-pub fn terminal_kit::view::draw_input_box(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, ratatui_widgets::block::Block<'_>, &str, ratatui_core::style::Style)
 pub fn terminal_kit::view::draw_multi_input(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, bool)
 pub fn terminal_kit::view::draw_panel(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, ratatui_widgets::block::Block<'_>, core::option::Option<u16>) -> ratatui_core::layout::rect::Rect
+pub fn terminal_kit::view::draw_search_box(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, core::option::Option<bool>, terminal_kit::i18n::Lang, &terminal_kit::theme::Theme)
 pub fn terminal_kit::view::draw_single_input(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, bool)
 pub fn terminal_kit::view::draw_status_line(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, core::option::Option<ratatui_core::text::span::Span<'_>>, ratatui_core::text::span::Span<'_>)
 pub fn terminal_kit::view::first_visible(usize, u16) -> usize
 pub fn terminal_kit::view::help_lines(alloc::vec::Vec<(&str, alloc::vec::Vec<(&str, &str)>)>, u16, &terminal_kit::theme::Theme) -> alloc::vec::Vec<ratatui_core::text::line::Line<'static>>
 pub fn terminal_kit::view::hint_lines(&[(&str, &str)], u16, &terminal_kit::theme::Theme) -> alloc::vec::Vec<ratatui_core::text::line::Line<'static>>
 pub fn terminal_kit::view::scroll_offset(usize, usize, usize, u16, impl core::ops::function::FnMut(usize) -> u16) -> usize
+pub fn terminal_kit::view::search_edit_hints(bool, terminal_kit::i18n::Lang) -> alloc::vec::Vec<(&'static str, &'static str)>
+pub fn terminal_kit::view::search_result_hints(bool, terminal_kit::i18n::Lang) -> alloc::vec::Vec<(&'static str, &'static str)>
 pub fn terminal_kit::view::tab_line(alloc::vec::Vec<ratatui_core::text::span::Span<'static>>, core::option::Option<ratatui_core::text::span::Span<'static>>, u16, usize) -> ratatui_core::text::line::Line<'static>
 pub fn terminal_kit::view::truncate_line(ratatui_core::text::line::Line<'static>, usize) -> ratatui_core::text::line::Line<'static>
 pub macro terminal_kit::n!

@@ -52,6 +52,10 @@ scenarios:
             - send: "/"
             - expect_screen:
                 contains: ["╭ Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+            - expect_screen:
+                matches: 'Enter search · Ctrl\+T posts/accounts · Esc cancel'
+                count: 1
+                not_contains: ["? help", "q quit", ". actions"]
             - send: "snow mountains"
             - send: { key: enter }
             - expect_screen:
@@ -482,6 +486,9 @@ scenarios:
             - expect_screen:
                 contains: ["Search: alps", "Esc back to timeline", "Carol @carol.test  ✓ following", "Dave @dave.test"]
                 not_contains: "Sunrise over the ridge"
+            - expect_screen:
+                contains: ["? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
+                not_contains: ["/ edit query", "enter open profile"]
             - send: { key: esc }
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
@@ -628,7 +635,7 @@ scenarios:
             # The account list, not the post whose author is also Dave: wait
             # for the description only an account row shows.
             - expect_screen:
-                contains: "Climbs things"
+                contains: ["Climbs things", "? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
             - send: j
             - expect_screen:
                 matches: "Climbs things"
@@ -707,7 +714,7 @@ scenarios:
             - send: "unique"
             - send: { key: enter }
             - expect_screen:
-                contains: ["1 Search: unique", "Only in search results", "Esc back to timeline"]
+                contains: ["1 Search: unique", "Only in search results", "? help  j k move  . actions  space view  n post  / search  q quit", "Esc back to timeline"]
                 not_contains: ["Timeline first post", "Timeline selected post", "╭ Search"]
             - send: { key: esc }
             - expect_screen:

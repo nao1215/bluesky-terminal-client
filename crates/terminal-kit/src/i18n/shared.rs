@@ -2,6 +2,15 @@
 use super::{Lang, Table};
 
 const JA: Table = &[
+    ("Accounts", "アカウント"),
+    ("Posts", "投稿"),
+    ("help", "ヘルプ"),
+    ("move", "移動"),
+    ("actions", "操作"),
+    ("open profile", "プロフィールを開く"),
+    ("view", "表示"),
+    ("post", "投稿"),
+    ("search", "検索"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter で検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
@@ -24,6 +33,15 @@ const JA: Table = &[
 ];
 
 const ZH: Table = &[
+    ("Accounts", "账户"),
+    ("Posts", "帖子"),
+    ("help", "帮助"),
+    ("move", "移动"),
+    ("actions", "操作"),
+    ("open profile", "打开个人资料"),
+    ("view", "查看"),
+    ("post", "发帖"),
+    ("search", "搜索"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter 搜索 · Ctrl+T 帖子/账号 · Esc 取消",
@@ -46,6 +64,15 @@ const ZH: Table = &[
 ];
 
 const KO: Table = &[
+    ("Accounts", "계정"),
+    ("Posts", "게시물"),
+    ("help", "도움말"),
+    ("move", "이동"),
+    ("actions", "동작"),
+    ("open profile", "프로필 열기"),
+    ("view", "보기"),
+    ("post", "게시"),
+    ("search", "검색"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter 검색 · Ctrl+T 게시물/계정 · Esc 취소",
@@ -68,6 +95,15 @@ const KO: Table = &[
 ];
 
 const RU: Table = &[
+    ("Accounts", "Аккаунты"),
+    ("Posts", "Посты"),
+    ("help", "справка"),
+    ("move", "двигать"),
+    ("actions", "действия"),
+    ("open profile", "открыть профиль"),
+    ("view", "смотреть"),
+    ("post", "пост"),
+    ("search", "искать"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter поиск · Ctrl+T посты/аккаунты · Esc отмена",
@@ -90,6 +126,15 @@ const RU: Table = &[
 ];
 
 const ES: Table = &[
+    ("Accounts", "Cuentas"),
+    ("Posts", "Publicaciones"),
+    ("help", "ayuda"),
+    ("move", "mover"),
+    ("actions", "acciones"),
+    ("open profile", "abrir el perfil"),
+    ("view", "ver"),
+    ("post", "publicar"),
+    ("search", "buscar"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter buscar · Ctrl+T publicaciones/cuentas · Esc cancelar",
@@ -112,6 +157,15 @@ const ES: Table = &[
 ];
 
 const FR: Table = &[
+    ("Accounts", "Comptes"),
+    ("Posts", "Posts"),
+    ("help", "aide"),
+    ("move", "déplacer"),
+    ("actions", "actions"),
+    ("open profile", "ouvrir le profil"),
+    ("view", "voir"),
+    ("post", "poster"),
+    ("search", "rechercher"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Entrée rechercher · Ctrl+T posts/comptes · Échap annuler",
@@ -137,6 +191,15 @@ const FR: Table = &[
 ];
 
 const DE: Table = &[
+    ("Accounts", "Konten"),
+    ("Posts", "Beiträge"),
+    ("help", "Hilfe"),
+    ("move", "bewegen"),
+    ("actions", "Aktionen"),
+    ("open profile", "Profil öffnen"),
+    ("view", "ansehen"),
+    ("post", "posten"),
+    ("search", "suchen"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter suchen · Strg+T Beiträge/Konten · Esc abbrechen",
@@ -159,6 +222,15 @@ const DE: Table = &[
 ];
 
 const PT: Table = &[
+    ("Accounts", "Contas"),
+    ("Posts", "Posts"),
+    ("help", "ajuda"),
+    ("move", "mover"),
+    ("actions", "ações"),
+    ("open profile", "abrir o perfil"),
+    ("view", "ver"),
+    ("post", "postar"),
+    ("search", "buscar"),
     (
         "Enter search · Ctrl+T posts/accounts · Esc cancel",
         "Enter buscar · Ctrl+T posts/contas · Esc cancelar",

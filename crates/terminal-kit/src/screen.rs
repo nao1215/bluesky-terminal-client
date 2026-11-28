@@ -8,9 +8,87 @@ use std::io::{self, Write};
 
 use crossterm::event::DisableBracketedPaste;
 use crossterm::execute;
+use ratatui::{
+    backend::{Backend, ClearType, CrosstermBackend, WindowSize},
+    buffer::{Cell, CellDiffOption},
+    layout::{Position, Size},
+};
 
 /// The terminal a client draws on: a frame goes out whole.
-pub type Term = ratatui::Terminal<ratatui::backend::CrosstermBackend<FrameWriter>>;
+pub type Term = ratatui::Terminal<TerminalBackend<FrameWriter>>;
+
+/// Crossterm output with wide-cell continuation updates removed before writing.
+/// Ratatui may emit the trailing cell of a VS16 emoji to clear old contents.
+/// Crossterm treats adjacent updates as one-cell writes, which shifts that clear
+/// and the following count right. Filter at the output boundary, including
+/// updates produced by invalidation of a previous wide cell, not just new glyphs.
+/// Graphics cells retain their explicit protocol width.
+pub struct TerminalBackend<W: Write> {
+    inner: CrosstermBackend<W>,
+}
+
+impl<W: Write> TerminalBackend<W> {
+    /// Write terminal updates to `writer`.
+    pub fn new(writer: W) -> Self {
+        Self {
+            inner: CrosstermBackend::new(writer),
+        }
+    }
+}
+
+impl<W: Write> Backend for TerminalBackend<W> {
+    type Error = io::Error;
+
+    fn draw<'a, I>(&mut self, content: I) -> io::Result<()>
+    where
+        I: Iterator<Item = (u16, u16, &'a Cell)>,
+    {
+        let mut covered = None;
+        self.inner.draw(content.filter(|(x, y, cell)| {
+            if covered.is_some_and(|(end, row)| *y == row && *x < end) {
+                return false;
+            }
+            let width = match cell.diff_option {
+                CellDiffOption::ForcedWidth(w) => w.get(),
+                _ => crate::text::cells(cell.symbol())
+                    .max(1)
+                    .min(u16::MAX as usize) as u16,
+            };
+            covered = Some((x.saturating_add(width), *y));
+            true
+        }))
+    }
+    fn append_lines(&mut self, n: u16) -> io::Result<()> {
+        self.inner.append_lines(n)
+    }
+    fn hide_cursor(&mut self) -> io::Result<()> {
+        self.inner.hide_cursor()
+    }
+    fn show_cursor(&mut self) -> io::Result<()> {
+        self.inner.show_cursor()
+    }
+    fn get_cursor_position(&mut self) -> io::Result<Position> {
+        self.inner.get_cursor_position()
+    }
+    fn set_cursor_position<P: Into<Position>>(&mut self, position: P) -> io::Result<()> {
+        self.inner.set_cursor_position(position)
+    }
+    fn clear(&mut self) -> io::Result<()> {
+        self.inner.clear()
+    }
+    fn clear_region(&mut self, clear_type: ClearType) -> io::Result<()> {
+        self.inner.clear_region(clear_type)
+    }
+    fn size(&self) -> io::Result<Size> {
+        self.inner.size()
+    }
+    fn window_size(&mut self) -> io::Result<WindowSize> {
+        self.inner.window_size()
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Backend::flush(&mut self.inner)
+    }
+}
 
 /// Raw mode and the alternate screen, as `ratatui::try_init` sets them up,
 /// with the frames written through a [`FrameWriter`]. On a failure the
@@ -18,9 +96,7 @@ pub type Term = ratatui::Terminal<ratatui::backend::CrosstermBackend<FrameWriter
 pub fn init_terminal() -> io::Result<Term> {
     crossterm::terminal::enable_raw_mode()?;
     execute!(io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
-    ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(FrameWriter::new(
-        io::stdout(),
-    )))
+    ratatui::Terminal::new(TerminalBackend::new(FrameWriter::new(io::stdout())))
 }
 
 /// Put the terminal back as the client found it: bracketed paste off, raw
@@ -199,5 +275,51 @@ mod tests {
         let writes = writes.0.borrow();
         assert_eq!(writes.len(), 1);
         assert!(writes[0].len() > 4096, "{} bytes", writes[0].len());
+    }
+}
+
+#[cfg(test)]
+mod wide_cell_tests {
+    use super::*;
+    use ratatui::{
+        buffer::Buffer,
+        layout::Rect,
+        style::{Color, Style},
+    };
+
+    #[test]
+    fn vs16_counts_are_positioned_after_the_emoji_on_initial_draw_and_tab_return() {
+        let area = Rect::new(0, 0, 40, 1);
+        let mut timeline = Buffer::empty(area);
+        timeline.set_string(25, 0, "🏛️ 4", Style::default().bg(Color::Blue));
+        let mut notification = Buffer::empty(area);
+        notification.set_string(0, 0, "notification", Style::default());
+        let mut previous = Buffer::filled(area, Cell::new("x"));
+        for next in [&timeline, &notification, &timeline] {
+            let mut bytes = Vec::new();
+            TerminalBackend::new(&mut bytes)
+                .draw(previous.diff(next).into_iter())
+                .unwrap();
+            let ansi = String::from_utf8(bytes).unwrap();
+            if next == &timeline {
+                // Column 26 is the emoji; column 28 is its following space.
+                // A continuation write without CUP moves the count to column 30.
+                assert!(ansi.contains("🏛️\x1b[1;28H 4"), "{ansi:?}");
+                assert!(!ansi.contains("🏛️  4"), "{ansi:?}");
+            }
+            previous = next.clone();
+        }
+    }
+
+    #[test]
+    fn image_protocol_width_is_not_measured_as_printable_escape_sequences() {
+        let mut image = Cell::new("\x1b_Ga=T;payload\x1b\\X");
+        image.diff_option = CellDiffOption::ForcedWidth(std::num::NonZeroU16::new(1).unwrap());
+        let count = Cell::new("4");
+        let mut bytes = Vec::new();
+        TerminalBackend::new(&mut bytes)
+            .draw([(0, 0, &image), (1, 0, &count)].into_iter())
+            .unwrap();
+        assert!(String::from_utf8(bytes).unwrap().contains("X4"));
     }
 }

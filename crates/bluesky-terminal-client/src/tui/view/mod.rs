@@ -15,8 +15,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use std::collections::HashMap;
 
-use unicode_width::UnicodeWidthStr;
-
 use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_problem};
 use crate::config::ColumnSource;
@@ -103,31 +101,6 @@ const MIN_H: u16 = 8;
 /// Draw the whole UI.
 pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_screen(frame, app, images);
-    keep_wide_cells_whole(frame.buffer_mut());
-}
-
-/// Have every character two cells wide written as one, its second cell
-/// left alone. ratatui writes the cell after a character with VS16 (`🏛️`,
-/// `❤️`) on its own, right after it, without moving the cursor there; the
-/// terminal has moved two cells on, so that cell and every one written
-/// after it on the line land one cell to the right of where ratatui
-/// thinks: on kitty the text after it stays on screen when the screen
-/// changes. A forced width writes the character and skips its second
-/// cell, as ratatui does for every other wide character.
-fn keep_wide_cells_whole(buf: &mut ratatui::buffer::Buffer) {
-    use ratatui::buffer::CellDiffOption;
-    for cell in buf.content.iter_mut() {
-        if cell.diff_option != CellDiffOption::None || !cell.symbol().contains('\u{FE0F}') {
-            continue;
-        }
-        if let Some(w) = u16::try_from(cell.symbol().width())
-            .ok()
-            .filter(|w| *w > 1)
-            .and_then(std::num::NonZeroU16::new)
-        {
-            cell.diff_option = CellDiffOption::ForcedWidth(w);
-        }
-    }
 }
 
 fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {

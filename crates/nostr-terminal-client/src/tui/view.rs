@@ -27,10 +27,16 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     }
     let message_lines = wrap(&app.message, usize::from(area.width));
     let status_height = (message_lines.len() as u16 + 1).clamp(2, (area.height / 3).max(2));
+    let search_hints = super::keys::search_hints(app)
+        .map(|hints| terminal_kit::view::hint_lines(&hints, area.width, &app.theme));
+    let hint_height = search_hints
+        .as_ref()
+        .map_or(1, |lines| lines.len() as u16)
+        .clamp(1, 3);
     let [tabs, body, hints, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
-        Constraint::Length(1),
+        Constraint::Length(hint_height),
         Constraint::Length(status_height),
     ])
     .areas(area);
@@ -65,8 +71,14 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
         })
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(Line::from(spans)), tabs);
-    let hint = super::keys::hint(app);
-    frame.render_widget(Paragraph::new(hint).style(app.theme.dim()), hints);
+    if let Some(lines) = search_hints {
+        frame.render_widget(Paragraph::new(lines), hints);
+    } else {
+        frame.render_widget(
+            Paragraph::new(super::keys::hint(app)).style(app.theme.dim()),
+            hints,
+        );
+    }
     frame.render_widget(
         Paragraph::new(format!(
             "nstr · {} {}/{} · {}{}\n{}",
@@ -199,7 +211,9 @@ fn draw_notes(
         app.t("Unread"),
         app.extra.columns.join(" | ")
     );
-    let title = if app.threads.is_empty() {
+    let title = if app.searching() && app.threads.is_empty() {
+        ""
+    } else if app.threads.is_empty() {
         summary.as_str()
     } else {
         app.t("Thread")
@@ -540,17 +554,14 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
         text,
     } = dialog
     {
-        terminal_kit::view::draw_input_box(
+        terminal_kit::view::draw_search_box(
             frame,
             area,
             text,
-            Block::bordered()
-                .border_type(ratatui::widgets::BorderType::Rounded)
-                .title(format!(" {} ", app.t("Search")))
-                .style(app.theme.base())
-                .border_style(app.theme.accent()),
-            app.t("Enter search · Esc cancel"),
-            app.theme.dim(),
+            None,
+            terminal_kit::i18n::Lang::from_code(app.language)
+                .unwrap_or(terminal_kit::i18n::Lang::En),
+            &app.theme,
         );
         return;
     }

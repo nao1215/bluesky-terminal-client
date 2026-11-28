@@ -21,6 +21,15 @@ scenarios:
             - expect_screen: { contains: "bob の二つ目", not_contains: "返信です" }
             - send: "/"
             - expect_screen: { contains: ["╭ Search", "Enter search · Esc cancel", "1 Home"], not_contains: "Ctrl+T" }
+            - expect_screen:
+                matches: "Enter search · Esc cancel"
+                count: 1
+                not_contains: ["? help", "q quit", ". actions"]
+                attrs:
+                  - { text: "                                ╭", row: 3, reverse: false }
+                  - { text: "╮                                ", row: 3, reverse: false }
+                  - { text: "                                │", row: 4, reverse: false }
+                  - { text: "│                                ", row: 4, reverse: false }
             - send: "discard this"
             - send: { key: esc }
             - expect_screen: { contains: "bob の二つ目", not_contains: ["╭ Search", "discard this", "返信です"] }
@@ -29,6 +38,9 @@ scenarios:
             - send: carol
             - send: { key: enter }
             - expect_screen: { contains: ["1 Search: carol", "carol is not followed", "Esc back to timeline"], not_contains: ["╭ Search", "bob の二つ目", "Loading…"], stable_for: 300ms }
+            - expect_screen:
+                contains: ["? help  j k move  . actions  space view  n post  / search  q quit", "Esc back to timeline"]
+                not_contains: ["Unread:", "Ctrl+T"]
             - send: "."
             - expect_screen: { contains: "Actions" }
             - send: { key: esc }

@@ -66,6 +66,10 @@ scenarios:
             - send: "/"
             - expect_screen:
                 contains: ["Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+            - expect_screen:
+                matches: 'Enter search · Ctrl\+T posts/accounts · Esc cancel'
+                count: 1
+                not_contains: ["? help", "q quit", ". actions"]
             - send: { key: esc }
             - expect_screen:
                 contains: "タイムラインのノート"
@@ -78,13 +82,17 @@ scenarios:
             - expect_screen:
                 contains: ["Search: rust", "cat @cat", "Rust の話 🦀", "Esc back to timeline"]
                 not_contains: ["$[x2", "タイムラインのノート", "Search · Posts"]
+            - expect_screen:
+                contains: ["? help  j k move  . actions  space view  n post  / search  q quit", "Esc back to timeline"]
+                not_contains: ["/ edit query", "enter open profile"]
             - send: /
             - send: { key: ctrl-t }
             - expect_screen:
                 contains: "Search · Accounts"
             - send: { key: enter }
             - expect_screen:
-                contains: ["Search: rust", "Ferris 🦀 @ferris@x.test", "crab"]
+                contains: ["Search: rust", "Ferris 🦀 @ferris@x.test", "crab", "? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
+                not_contains: ["enter open profile", "space view", "n post"]
             - send: v
             - expect_screen:
                 contains: "Go と Rust"

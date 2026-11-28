@@ -18,7 +18,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "(표시되지 않은 게시물)"),
     ("1 picture", "이미지 1개"),
     ("Account", "계정"),
-    ("Accounts", "계정"),
     ("Actions", "동작"),
     ("Add a column", "칼럼 추가"),
     ("Attach pictures (up to {})", "이미지 첨부 (최대 {}개)"),
@@ -72,7 +71,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "비밀번호"),
     ("Picture cache", "이미지 캐시"),
     ("Pictures", "이미지"),
-    ("Posts", "게시물"),
     ("Profile", "프로필"),
     ("Quote @{}", "@{} 인용"),
     ("Reply to @{}", "@{}에게 답글"),
@@ -121,7 +119,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "accounts: switch, add, log out",
         "계정: 전환, 추가, 로그아웃",
     ),
-    ("actions", "동작"),
     ("add", "추가"),
     (
         "add a column: a pinned feed, notifications…",
@@ -352,7 +349,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("following", "팔로잉"),
     ("follows you", "나를 팔로우함"),
     ("go back to the theme you had", "원래 테마로 되돌리기"),
-    ("help", "도움말"),
     ("hidden", "숨김 파일"),
     ("i continue:", "i 계속:"),
     ("i write a message", "i 메시지 쓰기"),
@@ -415,7 +411,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "끝에 가까워지면 자동으로 더 불러옴",
     ),
-    ("move", "이동"),
     ("move five items", "5개씩 이동"),
     (
         "move the column left / right",
@@ -532,7 +527,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "이미지: {}"),
     ("play the video again", "동영상 다시 재생"),
     ("playing (no sound)", "재생 중 (소리 없음)"),
-    ("post", "게시"),
     ("post deleted", "게시물 삭제됨"),
     (
         "post keys act on the column's post",
@@ -628,7 +622,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "{} 저장됨"),
     ("saving…", "저장하는 중…"),
     ("scroll", "스크롤"),
-    ("search", "검색"),
     ("search posts or accounts", "게시물 또는 계정 검색"),
     (
         "search, then move through the results",
@@ -819,7 +812,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "님이 나를 인증했습니다"),
     ("video", "동영상"),
     ("video: {}", "동영상: {}"),
-    ("view", "보기"),
     ("view its pictures or video", "이미지 또는 동영상 보기"),
     (
         "view pictures or video, or open the link",

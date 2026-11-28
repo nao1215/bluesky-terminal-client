@@ -1,14 +1,12 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    ("Posts", "投稿"),
     ("posts/accounts", "投稿/アカウント"),
     ("open the search box", "検索ボックスを開く"),
     (
         "cancel the box or return to the timeline",
         "検索ボックスを閉じるかタイムラインへ戻る",
     ),
-    ("Accounts", "アカウント"),
     ("Add a column", "カラムを追加"),
     (
         "add a column: an antenna, a list, a channel…",
@@ -82,7 +80,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("Viewer", "ビューア"),
     ("accounts: switch, log out", "アカウント: 切替、ログアウト"),
-    ("actions", "操作"),
     ("add", "追加"),
     (
         "add / take off a content warning",
@@ -149,7 +146,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("download", "保存"),
     ("download folder: {}", "保存先フォルダ: {}"),
     ("edit profile", "プロフィール編集"),
-    ("edit query", "検索語を編集"),
     (
         "edit your profile: name, description, avatar, banner",
         "プロフィールを編集: 名前、自己紹介、アバター、バナー",
@@ -178,7 +174,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "follow / unfollow the account shown",
         "表示中のアカウントをフォロー / 解除",
     ),
-    ("help", "ヘルプ"),
     ("hidden", "隠しファイル"),
     ("hide the text behind its warning", "注釈の中身を隠す"),
     ("in use", "使用中"),
@@ -214,7 +209,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "終わりが近づくと続きを自動で読む",
     ),
-    ("move", "移動"),
     ("move five items", "5 件移動"),
     (
         "move through the notes and replies",
@@ -334,7 +328,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "ノートのファイルを保存先フォルダに保存",
     ),
     ("scroll", "スクロール"),
-    ("search", "検索"),
     ("search emoji", "絵文字を検索"),
     (
         "search, then move through the results",
@@ -390,7 +383,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("up", "上へ"),
     ("use", "使う"),
     ("use the selected account", "選んだアカウントを使う"),
-    ("view", "表示"),
     ("view its pictures and files", "画像とファイルを表示"),
     ("view the pictures and files", "画像とファイルを表示"),
     ("visibility", "公開範囲"),

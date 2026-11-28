@@ -520,6 +520,8 @@ fn search_box_results_title_empty_message_and_cancel_in_both_languages() {
         let opened = screen(&mut app, 120, 30);
         assert!(opened.contains(title), "{opened}");
         assert!(opened.contains(hint), "{opened}");
+        assert_eq!(opened.matches(hint).count(), 1, "{opened}");
+        assert!(opened.lines().rev().take(5).any(|line| line.contains(hint)));
         assert!(opened.contains('╭') && opened.contains('╰'), "{opened}");
         app.handle_paste("rust");
         app.handle_key(KeyEvent::from(KeyCode::Esc));
@@ -569,4 +571,28 @@ fn cancel_search_box_preserves_scroll_at_the_bottom_of_a_short_screen() {
     app.handle_key(KeyEvent::from(KeyCode::Esc));
     assert_eq!(app.timelines[0].offset, offset);
     assert_eq!(screen(&mut app, 80, 12), before);
+}
+
+#[test]
+fn search_hints_share_labels_order_and_one_account_profile_entry() {
+    for lang in [crate::i18n::Lang::En, crate::i18n::Lang::Ja] {
+        crate::i18n::set(lang);
+        for accounts in [false, true] {
+            let mut app = app_with(vec![]);
+            app.search.back = Some(app.tab);
+            app.search.tab = app.tab;
+            app.search.result_accounts = accounts;
+            let expected = terminal_kit::view::search_result_hints(accounts, lang);
+            assert_eq!(crate::tui::keys::hints(&app), expected);
+            let rendered = screen(&mut app, 160, 24);
+            let hint = terminal_kit::view::hint_lines(&expected, 160, &app.theme)
+                .into_iter()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>();
+            for line in hint {
+                assert!(rendered.contains(line.trim_end()), "{rendered}");
+            }
+        }
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
 }

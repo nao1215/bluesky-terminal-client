@@ -152,24 +152,13 @@ pub(super) fn draw_search_results(
 
 /// A bordered input near the top, over the list it will replace.
 pub(super) fn draw_search_box(frame: &mut Frame, area: Rect, s: &Search, t: &Theme) {
-    terminal_kit::view::draw_input_box(
+    terminal_kit::view::draw_search_box(
         frame,
         area,
         &s.input,
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(format!(
-                " {} · {} ",
-                i18n::t("Search"),
-                i18n::t(match s.mode {
-                    SearchMode::Notes => n!("Posts"),
-                    SearchMode::Accounts => n!("Accounts"),
-                })
-            ))
-            .style(t.base())
-            .border_style(t.accent()),
-        i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel"),
-        t.dim(),
+        Some(s.mode == SearchMode::Accounts),
+        i18n::current(),
+        t,
     );
 }
 

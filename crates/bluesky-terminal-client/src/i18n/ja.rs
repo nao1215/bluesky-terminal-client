@@ -18,7 +18,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "(非表示の投稿)"),
     ("1 picture", "画像 1 枚"),
     ("Account", "アカウント"),
-    ("Accounts", "アカウント"),
     ("Actions", "操作"),
     ("Add a column", "カラムを追加"),
     ("Attach pictures (up to {})", "画像を添付 (最大 {} 枚)"),
@@ -72,7 +71,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "パスワード"),
     ("Picture cache", "画像キャッシュ"),
     ("Pictures", "画像"),
-    ("Posts", "投稿"),
     ("Profile", "プロフィール"),
     ("Quote @{}", "@{} を引用"),
     ("Reply to @{}", "@{} に返信"),
@@ -121,7 +119,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "accounts: switch, add, log out",
         "アカウント: 切替・追加・ログアウト",
     ),
-    ("actions", "操作"),
     ("add", "追加"),
     (
         "add a column: a pinned feed, notifications…",
@@ -346,7 +343,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("following", "フォロー"),
     ("follows you", "フォローされています"),
     ("go back to the theme you had", "元のテーマに戻す"),
-    ("help", "ヘルプ"),
     ("hidden", "隠し"),
     ("i continue:", "i 続きを入力:"),
     ("i write a message", "i メッセージを入力"),
@@ -415,7 +411,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "末尾近くで続きを自動で読み込む",
     ),
-    ("move", "移動"),
     ("move five items", "5 項目移動"),
     ("move the column left / right", "カラムを左 / 右へ移動"),
     ("move through the posts and replies", "投稿と返信の間を移動"),
@@ -526,7 +521,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "画像: {}"),
     ("play the video again", "動画をもう一度再生"),
     ("playing (no sound)", "再生中 (音声なし)"),
-    ("post", "投稿"),
     ("post deleted", "投稿を削除しました"),
     (
         "post keys act on the column's post",
@@ -625,7 +619,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "{} を保存しました"),
     ("saving…", "保存中…"),
     ("scroll", "スクロール"),
-    ("search", "検索"),
     ("search posts or accounts", "投稿やアカウントを検索"),
     (
         "search, then move through the results",
@@ -822,7 +815,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "があなたを認証しました"),
     ("video", "動画"),
     ("video: {}", "動画: {}"),
-    ("view", "表示"),
     ("view its pictures or video", "画像や動画を見る"),
     (
         "view pictures or video, or open the link",

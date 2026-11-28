@@ -3,25 +3,13 @@ use super::*;
 
 /// A single input line over the current list, near its top edge.
 pub(super) fn search_box(frame: &mut Frame, area: Rect, app: &App, th: &Theme) {
-    terminal_kit::view::draw_input_box(
+    terminal_kit::view::draw_search_box(
         frame,
         area,
         &app.search.input,
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(format!(
-                " {} · {} ",
-                t("Search"),
-                t(if app.search.accounts {
-                    n!("Accounts")
-                } else {
-                    n!("Posts")
-                })
-            ))
-            .style(th.base())
-            .border_style(th.accent()),
-        t("Enter search · Ctrl+T posts/accounts · Esc cancel"),
-        th.dim(),
+        Some(app.search.accounts),
+        crate::i18n::current(),
+        th,
     );
 }
 

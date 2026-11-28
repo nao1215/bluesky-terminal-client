@@ -45,7 +45,22 @@ fn screen(app: &App) -> String {
     let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
     term.draw(|f| crate::tui::view::draw(f, app, &mut terminal_kit::media::images::Images::none()))
         .unwrap();
-    format!("{:?}", term.backend().buffer())
+    term.backend()
+        .buffer()
+        .content
+        .chunks(100)
+        .map(|row| {
+            let mut text = String::new();
+            let mut x = 0;
+            while x < row.len() {
+                let symbol = row[x].symbol();
+                text.push_str(symbol);
+                x += terminal_kit::text::cells(symbol).max(1);
+            }
+            text
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn assert_list(actual: &List, expected: &List) {
@@ -286,12 +301,21 @@ fn view_has_bordered_box_bilingual_hints_result_title_and_empty_message() {
             "「猫」の検索結果はありません",
         ),
     ] {
-        let (mut app, _) = fixture();
+        let (mut app, notification) = fixture();
+        app.lists[1].notes.push(notification);
         app.language = language;
         ch(&mut app, '/');
         let box_screen = screen(&app);
         assert!(box_screen.contains(&format!("╭ {title}")), "{box_screen}");
         assert!(box_screen.contains(hint));
+        assert_eq!(box_screen.matches(hint).count(), 1, "{box_screen}");
+        assert!(
+            box_screen
+                .lines()
+                .rev()
+                .take(5)
+                .any(|line| line.contains(hint))
+        );
         assert!(box_screen.contains('╰'));
         assert!(!box_screen.contains("Ctrl+T"));
         assert!(!box_screen.contains("5 Chat"));
@@ -304,6 +328,7 @@ fn view_has_bordered_box_bilingual_hints_result_title_and_empty_message() {
         let results = screen(&app);
         assert!(results.contains(&format!("1 {title}: 猫")));
         assert!(results.contains(back));
+        assert!(!results.contains(app.t("Unread")), "{results}");
         assert!(results.contains(empty), "{results}");
         assert!(!results.contains(hint));
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
@@ -315,4 +340,33 @@ fn view_has_bordered_box_bilingual_hints_result_title_and_empty_message() {
         assert_eq!(selected.fg, app.theme.selected().fg);
         assert_eq!(selected.add_modifier, app.theme.selected().add_modifier);
     }
+}
+
+#[test]
+fn search_box_clears_the_selected_row_at_both_edges() {
+    let (mut app, _) = fixture();
+    ch(&mut app, '/');
+    let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
+    term.draw(|f| {
+        crate::tui::view::draw(f, &app, &mut terminal_kit::media::images::Images::none())
+    })
+    .unwrap();
+    let buf = term.backend().buffer();
+    for y in 2..=4 {
+        for x in [0, 11, 88, 99] {
+            let cell = &buf[(x, y)];
+            assert_eq!(cell.symbol(), " ");
+            assert_eq!(cell.bg, app.theme.base().bg.unwrap());
+            assert_eq!(cell.modifier, app.theme.base().add_modifier);
+        }
+    }
+    let seq = submit(&mut app, "cats");
+    app.answer(page(seq, vec![], false, false));
+    assert_eq!(
+        crate::tui::keys::search_hints(&app),
+        Some(terminal_kit::view::search_result_hints(
+            false,
+            terminal_kit::i18n::Lang::En
+        ))
+    );
 }

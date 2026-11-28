@@ -232,6 +232,16 @@ pub(crate) fn help(pictures: bool) -> Vec<(&'static str, Vec<Hint>)> {
 
 /// The bindings worth showing under the current view, most useful first.
 pub(crate) fn hints(app: &App) -> Vec<Hint> {
+    if app.overlay.is_none() && app.search.editing {
+        return terminal_kit::view::search_edit_hints(true, crate::i18n::current());
+    }
+    if app.overlay.is_none() && app.threads.is_empty() && app.search_shown() {
+        return terminal_kit::view::search_result_hints(
+            app.search_accounts(),
+            crate::i18n::current(),
+        );
+    }
+
     let mut v = view_hints(app);
     if !app.pictures {
         for h in &mut v {
@@ -403,13 +413,6 @@ fn view_hints(app: &App) -> Vec<Hint> {
         }
         None => {}
     }
-    if app.search.editing {
-        return vec![
-            ("Enter", n!("search")),
-            ("Ctrl+T", n!("posts/accounts")),
-            ("Esc", n!("cancel")),
-        ];
-    }
     if !app.threads.is_empty() {
         return vec![
             ("?", n!("help")),
@@ -419,15 +422,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("esc", n!("back")),
         ];
     }
-    if app.search_shown() {
-        return vec![
-            ("", n!("Esc back to timeline")),
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("/", n!("edit query")),
-            ("?", n!("help")),
-        ];
-    }
+
     if app.tab == Tab::Chat && app.chat.open.as_ref().is_some_and(|o| o.typing) {
         return vec![("enter", n!("send")), ("esc", n!("stop writing"))];
     }

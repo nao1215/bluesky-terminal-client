@@ -49,6 +49,20 @@ fn box_title_results_title_and_empty_message_are_translated(
             screen.contains("Enter search · Ctrl+T posts/accounts · Esc cancel"),
             "{screen}"
         );
+        assert_eq!(
+            screen
+                .matches("Enter search · Ctrl+T posts/accounts · Esc cancel")
+                .count(),
+            1,
+            "{screen}"
+        );
+        assert!(
+            screen
+                .lines()
+                .rev()
+                .take(3)
+                .any(|line| line.contains("Enter search · Ctrl+T posts/accounts · Esc cancel"))
+        );
     }
     app.handle_paste("cats");
     press(&mut app, KeyCode::Enter);
@@ -125,4 +139,30 @@ fn search_failure_stays_in_status_without_covering_the_previous_list() {
     );
     assert!(!screen.contains("any key closes this"), "{screen}");
     assert!(!screen.contains("Search: cats"), "{screen}");
+}
+
+#[test]
+fn search_hints_share_labels_order_and_one_account_profile_entry() {
+    for lang in [crate::i18n::Lang::En, crate::i18n::Lang::Ja] {
+        crate::i18n::set(lang);
+        for accounts in [false, true] {
+            let (mut app, _) = App::new(Some(session()), "x");
+            app.search.active = Some(if accounts {
+                SearchMode::Accounts
+            } else {
+                SearchMode::Posts
+            });
+            let expected = terminal_kit::view::search_result_hints(accounts, lang);
+            assert_eq!(crate::tui::keys::hints(&app), expected);
+            let rendered = render_text_only(&mut app, 160, 24);
+            let hint = terminal_kit::view::hint_lines(&expected, 160, &app.theme)
+                .into_iter()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>();
+            for line in hint {
+                assert!(rendered.contains(line.trim_end()), "{rendered}");
+            }
+        }
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
 }

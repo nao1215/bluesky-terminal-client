@@ -15,7 +15,6 @@ use ratatui::layout::{Constraint, Layout, Rect, Size};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
-use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{DriveFile, Note, Notification, User};
 use crate::cli::TimelineKind;
@@ -207,33 +206,6 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     }
     if let Some(s) = app.status.as_ref().filter(|s| s.error) {
         draw_error(frame, area, &s.text, &t);
-    }
-    keep_wide_cells_whole(frame.buffer_mut());
-}
-
-/// Have every character two cells wide written as one, its second cell
-/// left alone. ratatui writes the cell after a character with VS16 (`🏛️`,
-/// `❤️`) on its own, right after it, without moving the cursor there; the
-/// terminal has moved two cells on, so that cell and every one written
-/// after it on the line landed one cell to the right of where ratatui
-/// thought: on kitty the counts after such a reaction stayed on screen
-/// after the tab changed, and showed twice when it came back. A forced
-/// width writes the character and skips its second cell, as ratatui does
-/// for every other wide character.
-fn keep_wide_cells_whole(buf: &mut ratatui::buffer::Buffer) {
-    use ratatui::buffer::CellDiffOption;
-    for cell in buf.content.iter_mut() {
-        if cell.diff_option != CellDiffOption::None || !cell.symbol().contains('\u{FE0F}') {
-            continue;
-        }
-        let w = cell.symbol().width();
-        if let Some(w) = u16::try_from(w)
-            .ok()
-            .filter(|w| *w > 1)
-            .and_then(std::num::NonZeroU16::new)
-        {
-            cell.diff_option = CellDiffOption::ForcedWidth(w);
-        }
     }
 }
 

@@ -215,6 +215,16 @@ pub(crate) fn help() -> Vec<(&'static str, Vec<Hint>)> {
 
 /// The bindings worth showing under the current view, most useful first.
 pub(crate) fn hints(app: &App) -> Vec<Hint> {
+    if app.overlay.is_none() && app.search.editing {
+        return terminal_kit::view::search_edit_hints(true, crate::i18n::current());
+    }
+    if app.overlay.is_none() && app.threads.is_empty() && app.search_results() {
+        return terminal_kit::view::search_result_hints(
+            app.search.result_accounts,
+            crate::i18n::current(),
+        );
+    }
+
     translated(view_hints(app))
 }
 
@@ -356,23 +366,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("?", n!("help")),
         ];
     }
-    if app.search_results() && app.threads.is_empty() {
-        return vec![
-            ("", n!("Esc back to timeline")),
-            ("/", n!("search")),
-            ("enter", n!("open profile")),
-            (
-                "v",
-                if app.search.result_accounts {
-                    n!("open profile")
-                } else {
-                    n!("thread")
-                },
-            ),
-            (".", n!("actions")),
-            ("?", n!("help")),
-        ];
-    }
+
     if !app.threads.is_empty() {
         return vec![
             ("?", n!("help")),
