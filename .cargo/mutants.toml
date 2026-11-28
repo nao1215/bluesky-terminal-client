@@ -18,6 +18,9 @@
 # wrote on one line, and the full-screen client's lists: where the next page
 # starts, which answer is the one waited for, and how far in a reply is drawn.
 #
+# In nstr it covers event verification and tags, identifiers, encrypted
+# payloads, signer response validation, relay messages, attachment discovery and draft tags.
+#
 # The text layout, the picture scaling and the text field live in the
 # terminal-kit crate of the workspace, which the clients use, so
 # mutation.yml runs cargo mutants with --workspace.
@@ -37,6 +40,12 @@ examine_globs = [
   "crates/mastodon-terminal-client/src/html.rs",
   "crates/mastodon-terminal-client/src/text.rs",
   "crates/mastodon-terminal-client/src/tui/list.rs",
+  "crates/nostr-terminal-client/src/api/event.rs",
+  "crates/nostr-terminal-client/src/api/nip19.rs",
+  "crates/nostr-terminal-client/src/api/nip44.rs",
+  "crates/nostr-terminal-client/src/api/nip46.rs",
+  "crates/nostr-terminal-client/src/api/relay.rs",
+  "crates/nostr-terminal-client/src/tui/note.rs",
 ]
 
 # A mutant in terminal-kit is judged by the clients' tests too, which
