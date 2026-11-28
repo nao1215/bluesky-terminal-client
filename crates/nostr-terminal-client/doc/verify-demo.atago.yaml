@@ -1,0 +1,43 @@
+version: "1"
+suite:
+  name: nstr README demo
+scenarios:
+  - name: signed notes keys relay names zap story long text CW and decoded video
+    services:
+      - name: demo
+        command: python3 "${specdir}/demo-server.py" "${workdir}/port"
+        ready: { file: port, timeout: 30s }
+    steps:
+      - run: { command: 'mkdir -p "${workdir}/home"' }
+      - pty:
+          command: >-
+            sh -c 'exec env -i PATH="$PATH" HOME="${workdir}/home" XDG_CONFIG_HOME="${workdir}/home" XDG_CACHE_HOME="${workdir}/home" NSTR_CONFIG_DIR="${workdir}/cfg" NSTR_GRAPHICS=kitty TERM=xterm-kitty LANG=C.UTF-8 TZ=UTC nstr'
+          graphics: kitty
+          rows: 42
+          cols: 120
+          timeout: 60s
+          session:
+            - expect_screen: { stable_for: 300ms, contains: ["An animated scene", "NIP-05: yuna@atelier.example", "21 and 100 sat zaps", "relays 1/1", "npub1"], images: { min_count: 1 } }
+            - send: " "
+            - expect_screen: { stable_for: 300ms, contains: "scene.jpg", images: { min_count: 1 } }
+            - send: { key: esc }
+            - expect_screen: { stable_for: 300ms, contains: "An animated scene" }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: "video" }
+            - send: " "
+            - expect_screen: { stable_for: 300ms, contains: "scene.mp4", images: { min_count: 1 } }
+            - send: { key: esc }
+            - expect_screen: { stable_for: 300ms, contains: "The animation loop" }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: ["Relay notebook", "malik@relay.example", "End of relay notebook.", "not payment", "receipts."] }
+            - send: j
+            - expect_screen: { stable_for: 300ms, contains: "Key recovery exercise", not_contains: "The recovery drill" }
+            - send: w
+            - expect_screen: { stable_for: 300ms, contains: "The recovery drill" }
+            - send: g
+            - expect_screen: { stable_for: 300ms, contains: "An animated scene" }
+            - send: { key: enter }
+            - expect_screen: { stable_for: 300ms, contains: ["NIP-05: yuna@atelier.example", "Independent animation", "npub1"] }
+            - send: { key: esc }
+            - send: q
+      - assert: { exit_code: 0 }
