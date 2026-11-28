@@ -1,6 +1,19 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("Search: {}", "検索: {}"),
+    ("No results for \"{}\"", "「{}」の検索結果はありません"),
+    (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter 検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
+    ),
+    ("open search box", "検索ボックスを開く"),
+    ("posts/accounts", "投稿/アカウント"),
+    ("back to timeline", "タイムラインに戻る"),
+    (
+        "cancel / back to timeline",
+        "キャンセル / タイムラインに戻る",
+    ),
     (" (environment)", "（環境変数）"),
     (
         "Allow mstdn in your browser.",
@@ -455,8 +468,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(no alt text)", "(代替テキストなし)"),
     ("Accounts", "アカウント"),
     ("Language", "言語"),
-    ("No accounts found.", "アカウントが見つかりません。"),
-    ("No posts found.", "投稿が見つかりません。"),
     (
         "No saved accounts. Press a to log in.",
         "保存済みアカウントがありません。mstdn login を実行してください。",
@@ -470,9 +481,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "再生できません。d で保存、o で開きます",
     ),
     ("choose", "選択"),
-    ("edit the search", "検索語を編集"),
     ("ended  r plays it again", "終了  r で再生"),
-    ("leave the search field", "検索欄から出る"),
     ("loading the video…", "動画を読み込み中…"),
     (
         "log in to search accounts or posts; visitors can search #hashtags",
@@ -483,7 +492,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("open profile", "プロフィールを開く"),
     ("open the author profile", "投稿者のプロフィールを開く"),
     ("playing (no sound)", "再生中 (音声なし)"),
-    ("posts / accounts", "投稿 / アカウント"),
     (
         "press w to open the content warning first",
         "先に w で注意書きを開いてください",
@@ -510,10 +518,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "この端末では画像・動画を表示できません。d で保存、o で投稿を開きます",
     ),
     ("thread", "スレッド"),
-    (
-        "type a query and press enter",
-        "検索語を入力して enter を押してください",
-    ),
     (
         "{} followers · {} following · {} posts",
         "フォロワー {} · フォロー {} · 投稿 {}",

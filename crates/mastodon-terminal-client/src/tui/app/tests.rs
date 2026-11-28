@@ -783,7 +783,7 @@ proptest! {
 #[test]
 fn search_input_gates_visitors_and_stale_results_do_not_replace_new_queries() {
     let (mut app, _) = App::new(None, "http://127.0.0.1:9");
-    assert!(press(&mut app, KeyCode::Char('5')).is_empty());
+    assert!(press(&mut app, KeyCode::Char('/')).is_empty());
     assert!(app.search.editing);
     typed(&mut app, "rust");
     assert!(press(&mut app, KeyCode::Enter).is_empty());
@@ -820,7 +820,8 @@ fn search_input_gates_visitors_and_stale_results_do_not_replace_new_queries() {
     assert!(
         matches!(&jobs[0].1, Job::Search { next: Some(n), query, .. } if n == "cursor" && query == "#日本語")
     );
-    assert!(press(&mut app, KeyCode::Char('t')).is_empty());
+    press(&mut app, KeyCode::Char('/'));
+    assert!(app.handle_key(ctrl('t')).is_empty());
     assert!(app.search.accounts);
 }
 
@@ -892,8 +893,8 @@ fn search_accounts_and_profiles_use_the_selected_account_and_page_its_posts() {
     assert_eq!(app.selected().unwrap().id, "p1");
     assert_eq!(app.profile.posts.error.as_deref(), Some("offline"));
     press(&mut app, KeyCode::Esc);
-    assert_eq!(app.tab, Tab::Search);
-    let jobs = press(&mut app, KeyCode::Char('6'));
+    assert!(app.search_results());
+    let jobs = press(&mut app, KeyCode::Char('5'));
     assert_eq!(
         jobs[0].1,
         Job::Profile {
@@ -908,7 +909,7 @@ fn enter_opens_the_author_v_opens_the_thread_and_profiles_reject_old_answers() {
     let mut app = with_home(&["1", "2"]);
     let (seq, job) = press(&mut app, KeyCode::Enter).remove(0);
     assert!(matches!(job, Job::Profile { id: Some(_), .. }));
-    let current = press(&mut app, KeyCode::Char('6')).remove(0);
+    let current = press(&mut app, KeyCode::Char('5')).remove(0);
     app.handle_answer(
         seq,
         Event::Profile {
@@ -1719,7 +1720,7 @@ fn chat_marks_read_only_after_open_and_load_and_rolls_back_a_refusal() {
     let mut app = with_home(&[]);
     let mut dm = status("dm");
     dm.visibility = "direct".into();
-    let jobs = press(&mut app, KeyCode::Char('7'));
+    let jobs = press(&mut app, KeyCode::Char('6'));
     assert!(matches!(jobs[0].1, Job::Conversations { .. }));
     app.handle_answer(
         jobs[0].0,
@@ -2080,4 +2081,284 @@ fn saved_browser_and_download_folder_are_carried_with_the_jobs() {
     assert!(
         matches!(&press(&mut app, KeyCode::Char('d'))[0].1, Job::Download { directory: Some(directory), .. } if directory == "test-downloads")
     );
+}
+
+fn search_reply(app: &mut App, seq: u64, ids: &[&str], next: Option<&str>) {
+    app.handle_answer(
+        seq,
+        Event::Search {
+            next: None,
+            result: Ok(crate::tui::worker::SearchPage {
+                posts: ids.iter().map(|id| status(id)).collect(),
+                accounts: Vec::new(),
+                next: next.map(str::to_owned),
+            }),
+        },
+    );
+}
+
+#[test]
+fn search_box_cancels_without_changing_any_list_screen() {
+    for tab in Tab::ALL {
+        let mut app = with_home(&["1", "2", "3"]);
+        app.tab = tab;
+        app.timelines[0].selected = 2;
+        app.timelines[0].offset = 1;
+        press(&mut app, KeyCode::Char('/'));
+        assert!(app.search.editing);
+        assert_eq!(app.tab, tab);
+        assert!(press(&mut app, KeyCode::Enter).is_empty());
+        assert!(app.search.editing, "empty input stays open");
+        app.handle_paste("rust");
+        app.handle_key(ctrl('t'));
+        assert!(press(&mut app, KeyCode::Esc).is_empty());
+        assert!(!app.search.editing);
+        assert!(!app.search_results());
+        assert_eq!(app.tab, tab);
+        assert_eq!(app.timelines[0].selected, 2);
+        assert_eq!(app.timelines[0].offset, 1);
+        assert_eq!(app.timelines[0].items[2].id, "3");
+    }
+}
+
+#[test]
+fn search_pages_and_escape_restores_exact_timeline_without_a_request() {
+    for tab in [Tab::Home, Tab::Local, Tab::Federated] {
+        let mut app = with_home(&["1", "2", "3", "4"]);
+        let i = timeline_index(tab.kind().unwrap());
+        app.timelines[i] = app.timelines[0].clone();
+        app.tab = tab;
+        app.timelines[i].selected = 2;
+        app.timelines[i].offset = 1;
+        app.timelines[i].next = Some("older".into());
+        let before = format!("{:?}", app.timelines[i]);
+        press(&mut app, KeyCode::Char('/'));
+        typed(&mut app, "rust");
+        let seq = press(&mut app, KeyCode::Enter)[0].0;
+        assert!(!app.search.editing);
+        search_reply(&mut app, seq, &["found1", "found2"], Some("2"));
+        assert!(app.search_results());
+        assert_eq!(app.tab, tab);
+        assert_eq!(app.selected().unwrap().id, "found1");
+        let (seq, job) = press(&mut app, KeyCode::Down).remove(0);
+        assert_eq!(
+            job,
+            Job::Search {
+                query: "rust".into(),
+                accounts: false,
+                next: Some("2".into())
+            }
+        );
+        app.handle_answer(
+            seq,
+            Event::Search {
+                next: Some("2".into()),
+                result: Ok(crate::tui::worker::SearchPage {
+                    posts: vec![status("found3")],
+                    accounts: Vec::new(),
+                    next: None,
+                }),
+            },
+        );
+        assert_eq!(app.search.posts.items.len(), 3);
+        assert_eq!(app.selected().unwrap().id, "found2");
+        // Thread keys operate on the result and Esc closes the thread first.
+        let jobs = press(&mut app, KeyCode::Char('v'));
+        assert!(matches!(&jobs[0].1, Job::Thread { id } if id == "found2"));
+        assert!(press(&mut app, KeyCode::Esc).is_empty());
+        assert!(app.search_results());
+        assert!(press(&mut app, KeyCode::Esc).is_empty());
+        assert!(!app.search_results());
+        assert_eq!(app.tab, tab);
+        assert_eq!(format!("{:?}", app.timelines[i]), before);
+        assert_eq!(app.selected().unwrap().id, "3");
+        press(&mut app, KeyCode::Char('/'));
+        assert_eq!(app.search.input.text(), "rust");
+        let repeated = press(&mut app, KeyCode::Enter);
+        assert!(matches!(&repeated[0].1, Job::Search { query, next: None, .. } if query == "rust"));
+    }
+}
+
+#[test]
+fn failed_search_keeps_previous_content_and_reports_in_status_line() {
+    let mut app = with_home(&["home"]);
+    for previous_search in [false, true] {
+        if previous_search {
+            press(&mut app, KeyCode::Char('/'));
+            app.search.input = TextInput::single("good");
+            let seq = press(&mut app, KeyCode::Enter)[0].0;
+            search_reply(&mut app, seq, &["good-result"], None);
+        }
+        let before = app.selected().unwrap().id.clone();
+        press(&mut app, KeyCode::Char('/'));
+        app.search.input = TextInput::single("failed");
+        app.handle_key(ctrl('t'));
+        let seq = press(&mut app, KeyCode::Enter)[0].0;
+        app.handle_answer(
+            seq,
+            Event::Search {
+                next: None,
+                result: Err(Error::api("search offline")),
+            },
+        );
+        assert_eq!(app.selected().unwrap().id, before);
+        assert_eq!(app.search_results(), previous_search);
+        assert!(!app.search.result_accounts);
+        let message = app.message.as_ref().unwrap();
+        assert_eq!(message.text, "search offline");
+        assert!(
+            !message.error,
+            "search errors belong in the status line, not an overlay"
+        );
+    }
+}
+
+#[test]
+fn account_search_pages_opens_with_v_and_returns_through_results() {
+    let mut app = with_home(&["home"]);
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "alice");
+    app.handle_key(ctrl('t'));
+    let seq = press(&mut app, KeyCode::Enter)[0].0;
+    app.handle_answer(
+        seq,
+        Event::Search {
+            next: None,
+            result: Ok(crate::tui::worker::SearchPage {
+                posts: Vec::new(),
+                accounts: vec![account("alice")],
+                next: Some("1".into()),
+            }),
+        },
+    );
+    let (seq, job) = press(&mut app, KeyCode::Down).remove(0);
+    assert!(matches!(
+        job,
+        Job::Search {
+            accounts: true,
+            next: Some(_),
+            ..
+        }
+    ));
+    app.handle_answer(
+        seq,
+        Event::Search {
+            next: Some("1".into()),
+            result: Ok(crate::tui::worker::SearchPage {
+                posts: Vec::new(),
+                accounts: vec![account("bob")],
+                next: None,
+            }),
+        },
+    );
+    assert_eq!(app.search.users.current().unwrap().acct, "bob");
+    assert!(app.selected().is_none());
+    let jobs = press(&mut app, KeyCode::Char('v'));
+    assert!(matches!(&jobs[0].1, Job::Profile { id: Some(id), .. } if id == "id-bob"));
+    assert_eq!(app.tab, Tab::Profile);
+    press(&mut app, KeyCode::Esc);
+    assert!(app.search_results());
+    assert_eq!(app.search.users.current().unwrap().acct, "bob");
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.selected().unwrap().id, "home");
+}
+
+#[test]
+fn searching_from_a_column_restores_its_focus_and_selection() {
+    use crate::tui::columns::Source;
+    let mut app = with_home(&["home"]);
+    app.deck.add(Source::Search("column query".into()));
+    app.deck.focus = app.deck.columns.len() - 1;
+    let c = &mut app.deck.columns[app.deck.focus];
+    c.posts.items = vec![status("column1"), status("column2")];
+    c.posts.selected = 1;
+    c.posts.offset = 1;
+    let before = format!("{:?}", c.posts);
+    let focus = app.deck.focus;
+    assert!(app.in_deck());
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "rust");
+    let seq = press(&mut app, KeyCode::Enter)[0].0;
+    search_reply(&mut app, seq, &["found"], None);
+    assert!(!app.in_deck());
+    assert_eq!(app.selected().unwrap().id, "found");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.in_deck());
+    assert_eq!(app.deck.focus, focus);
+    assert_eq!(format!("{:?}", app.deck.columns[focus].posts), before);
+    assert_eq!(app.selected().unwrap().id, "column2");
+}
+
+#[test]
+fn changing_tabs_invalidates_pending_search_answers() {
+    let mut app = with_home(&["home"]);
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "rust");
+    let seq = press(&mut app, KeyCode::Enter)[0].0;
+    press(&mut app, KeyCode::Char('2'));
+    search_reply(&mut app, seq, &["late"], None);
+    assert_eq!(app.tab, Tab::Local);
+    assert!(!app.search_results());
+    assert!(app.search.posts.items.is_empty());
+}
+
+#[test]
+fn searching_from_profile_restores_the_original_profile_after_browsing_a_result() {
+    let mut app = with_home(&["home"]);
+    app.tab = Tab::Profile;
+    app.profile.account = Some(account("original"));
+    app.profile.id = Some("id-original".into());
+    app.profile.back = Some(Tab::Local);
+    app.profile.posts.items = vec![status("p1"), status("p2")];
+    app.profile.posts.selected = 1;
+    app.profile.posts.offset = 1;
+    let before = format!("{:?}", app.profile.posts);
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "rust");
+    let seq = press(&mut app, KeyCode::Enter)[0].0;
+    search_reply(&mut app, seq, &["result"], None);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.profile.account.as_ref().unwrap().acct, "alice");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.search_results());
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.tab, Tab::Profile);
+    assert_eq!(app.profile.account.as_ref().unwrap().acct, "original");
+    assert_eq!(app.profile.back, Some(Tab::Local));
+    assert_eq!(format!("{:?}", app.profile.posts), before);
+}
+
+#[test]
+fn cancelling_mode_change_and_failed_paging_keep_the_visible_results() {
+    let mut app = with_home(&["home"]);
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "rust");
+    let seq = press(&mut app, KeyCode::Enter)[0].0;
+    search_reply(&mut app, seq, &["result1", "result2"], Some("2"));
+    press(&mut app, KeyCode::Char('/'));
+    app.handle_key(ctrl('t'));
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.search.result_accounts);
+    let (seq, job) = press(&mut app, KeyCode::Down).remove(0);
+    assert!(matches!(
+        job,
+        Job::Search {
+            accounts: false,
+            ..
+        }
+    ));
+    app.handle_answer(
+        seq,
+        Event::Search {
+            next: Some("2".into()),
+            result: Err(Error::api("page offline")),
+        },
+    );
+    assert_eq!(app.selected().unwrap().id, "result2");
+    assert_eq!(app.search.posts.items.len(), 2);
+    assert!(app.search.posts.error.is_none());
+    assert!(app.search.posts.waiting.is_none());
+    assert_eq!(app.message.as_ref().unwrap().text, "page offline");
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.selected().unwrap().id, "home");
 }
