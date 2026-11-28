@@ -30,7 +30,7 @@ struct ReadThread {
 pub(crate) struct ReadAhead {
     /// The note the selection is on, since when, and whether its thread
     /// has been asked for while it rests there.
-    resting: Option<(String, Instant, bool)>,
+    resting: terminal_kit::dwell::Dwell,
     threads: Vec<ReadThread>,
     /// A thread read before this job may not show a write sent since.
     wrote_at: u64,
@@ -67,33 +67,21 @@ impl App {
         } else {
             None
         };
-        let Some(id) = shown else {
-            self.read_ahead.resting = None;
+        if !self.read_ahead.resting.ready(shown.as_deref(), now, REST) {
             return Vec::new();
-        };
-        match &mut self.read_ahead.resting {
-            Some((on, since, asked)) if *on == id => {
-                if *asked || now.saturating_duration_since(*since) < REST {
-                    return Vec::new();
-                }
-                *asked = true;
-                let fresh = self
-                    .read_ahead
-                    .threads
-                    .iter()
-                    .any(|t| t.id == id && t.at.elapsed() < FRESH);
-                if fresh || self.read_ahead.reading.contains(&id) {
-                    return Vec::new();
-                }
-                self.read_ahead.reading.push(id.clone());
-                self.sent += 1;
-                vec![(self.sent, Job::ReadAhead { id })]
-            }
-            _ => {
-                self.read_ahead.resting = Some((id, now, false));
-                Vec::new()
-            }
         }
+        let Some(id) = shown else { return Vec::new() };
+        let fresh = self
+            .read_ahead
+            .threads
+            .iter()
+            .any(|t| t.id == id && t.at.elapsed() < FRESH);
+        if fresh || self.read_ahead.reading.contains(&id) {
+            return Vec::new();
+        }
+        self.read_ahead.reading.push(id.clone());
+        self.sent += 1;
+        vec![(self.sent, Job::ReadAhead { id })]
     }
 
     /// A thread read ahead: kept, unless a write was sent after it was

@@ -297,6 +297,23 @@ scenarios:
       - assert:
           mock: { name: api, path: /page, count: 2 }
 
+      - run:
+          command: 'bsky post --quote at://did:plc:alice/app.bsky.feed.post/p1 ""'
+          env: *env
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 5
+            body:
+              json:
+                - { path: "$.record.text", equals: "" }
+                - { path: "$.record.embed['$type']", equals: "app.bsky.embed.record" }
+                - { path: "$.record.embed.record.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.embed.record.cid", equals: "cid-p1" }
+
   - name: a card links where the post does, and reads a relative picture against the page a redirect ended on
     mock_servers:
       - name: site

@@ -28,6 +28,9 @@
 
 pub mod clipboard;
 pub mod clock;
+pub mod columns;
+pub mod dwell;
+pub mod emoji;
 pub mod events;
 pub mod inflight;
 pub mod input;

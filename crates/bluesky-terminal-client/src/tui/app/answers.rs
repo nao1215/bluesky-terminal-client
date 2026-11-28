@@ -117,6 +117,29 @@ impl App {
         if seq < self.account_since {
             return true;
         }
+        // A cursor is opaque and can be reused after refreshing. Compare
+        // next pages with the accepted first page as well, without letting
+        // a next page supersede a first page that is still on its way.
+        let continuation = match event {
+            Event::More { feed, .. } => match feed {
+                Feed::Timeline => Some("timeline"),
+                Feed::SearchPosts(_) => Some("search posts"),
+                Feed::SearchActors(_) => Some("search accounts"),
+                Feed::Author(_) => Some("profile"),
+                Feed::Notifications => Some("notifications"),
+                Feed::Custom(_) => None,
+            },
+            Event::Convos {
+                cursor: Some(_), ..
+            } => Some("conversations"),
+            _ => None,
+        };
+        if let Some(list) = continuation {
+            return self
+                .first_pages
+                .get(list)
+                .is_some_and(|newest| seq < *newest);
+        }
         let list = match event {
             Event::Timeline(_) => "timeline".to_string(),
             Event::SearchPosts { .. } => "search posts".to_string(),
@@ -124,6 +147,11 @@ impl App {
             Event::Profile(_) => "profile".to_string(),
             Event::Notifications { .. } => "notifications".to_string(),
             Event::Convos { cursor: None, .. } => "conversations".to_string(),
+            Event::Messages {
+                convo_id,
+                cursor: None,
+                ..
+            } => format!("messages {convo_id}"),
             Event::Thread { uri, .. } => format!("thread {uri}"),
             _ => return false,
         };

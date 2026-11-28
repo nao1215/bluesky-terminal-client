@@ -411,6 +411,7 @@ fn local(alt: &str, size: usize, video: bool) -> Local {
 #[test]
 fn the_limits_take_what_is_at_them_and_refuse_one_past() {
     let l = Limits {
+        quotes: false,
         max_characters: 5,
         characters_reserved_per_url: 23,
         max_media_attachments: 2,

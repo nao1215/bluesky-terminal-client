@@ -1,3 +1,7 @@
+[![Build](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml)
+[![E2E](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml)
+[![measured with himorime](https://img.shields.io/badge/measured%20with-himorime-d9480f?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBkPSJNNC4yIDE4LjVBOSA5IDAgMSAxIDE5LjggMTguNSIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTEyIDE0LjUgMTYuNSA5Ii8%2BPGNpcmNsZSBmaWxsPSIjZmZmIiBjeD0iMTIiIGN5PSIxNC41IiByPSIyLjIiLz48L3N2Zz4=&logoColor=white)](https://github.com/nao1215/himorime)
+
 # nstr
 
 A full-screen Nostr client and commands for reading profile metadata, a home timeline and notifications, and publishing signed public text notes.
@@ -124,7 +128,27 @@ Text output removes terminal control characters and formats timestamps with term
 | 4 | Network, relay protocol, remote signer or event verification failure |
 | 5 | Unsupported feature |
 
-## Tests
+## Testing
+
+| Technique | Coverage |
+|---|---|
+| Unit and property tests | Events, signatures, identifiers, encryption and signer responses; nightly properties use 20,000 cases |
+| Fuzzing | Relay messages, events and tags, NIP-19, NIP-44, NIP-46 bunker URIs and responses |
+| Mutation tests | Protocol parsing, verification, attachment discovery and draft tags |
+| Benchmarks | Start-up, 100-event commands and the first post on screen |
+
+The fuzz harnesses include the client's source modules. The NIP-46 harness builds the URI and response parsers from `src/api/nip46.rs`, exposing the private response function only in the fuzz build; it encrypts and signs generated plaintext so malformed responses reach the parser after authentication. NIP-19 mutations also receive fresh Bech32 checksums to exercise the TLV reader. No fuzz target opens a connection or loads user configuration.
+
+From this crate's directory:
+
+```sh
+just bench                                  # himorime, Python 3
+just fuzz relay_message -max_total_time=60
+just properties                             # 20,000 cases per property
+just mutants                                # changes since main
+```
+
+[Benchmarks](bench/README.md) run against local stand-ins. Fuzz targets run over their committed seeds on pull requests and explore nightly for 300 seconds each; local exploration writes new inputs to `fuzz/work/`. Mutation testing reports changed lines on pull requests and the selected source files weekly, without a score gate.
 
 ```sh
 cargo test -p nostr-terminal-client

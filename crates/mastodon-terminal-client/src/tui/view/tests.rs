@@ -245,15 +245,13 @@ fn the_composer_shows_the_count_and_visibility() {
 fn the_help_lists_every_section() {
     let mut app = app_with(Vec::new());
     press(&mut app, '?');
-    let s = screen(&mut app, 100, 60);
-    for want in [
-        "Keys",
-        "General",
-        "Posts",
-        "favourite / take back",
-        "Composer",
-    ] {
-        assert!(s.contains(want), "{want:?} not in\n{s}");
+    let mut shown = String::new();
+    for _ in 0..20 {
+        shown.push_str(&screen(&mut app, 100, 30));
+        app.handle_key(KeyEvent::from(KeyCode::PageDown));
+    }
+    for section in crate::tui::keys::HELP {
+        assert!(shown.contains(section.title), "missing {}", section.title);
     }
 }
 
@@ -372,6 +370,98 @@ fn confirmation_and_report_draw_their_target_and_keys_in_both_languages() {
         );
         app.handle_key(KeyEvent::from(KeyCode::Enter));
         assert!(screen(&mut app, 100, 30).contains(confirm));
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
+}
+
+#[test]
+fn accepted_quotes_render_without_version_and_unapproved_quotes_hide_text() {
+    let mut app = App::new(None, "http://127.0.0.1:9").0;
+    let mut s: Status = serde_json::from_value(serde_json::json!({"id":"q","content":"Comment","quote":{"state":"accepted","quoted_status":{"id":"original","content":"Quoted body","account":{"acct":"alice"}}}})).unwrap();
+    app.timelines[1].loaded = true;
+    app.timelines[1].items = vec![s.clone()];
+    let render = |app: &mut App| {
+        let backend = ratatui::backend::TestBackend::new(120, 30);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| super::draw(f, app)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>()
+    };
+    assert!(render(&mut app).contains("Quoted body"));
+    s.quote.as_mut().unwrap().state = "pending".into();
+    app.timelines[1].items = vec![s];
+    assert!(!render(&mut app).contains("Quoted body"));
+}
+
+#[test]
+fn custom_emoji_resolve_from_the_entity_and_fall_back_without_graphics() {
+    let emojis = vec![crate::api::types::Emoji {
+        shortcode: "cat".into(),
+        url: "https://example.test/animated.gif".into(),
+        static_url: "https://example.test/static.png".into(),
+    }];
+    let mut urls = Vec::new();
+    assert_eq!(
+        emoji_text("猫 :cat: :missing:", &emojis, false, &mut urls),
+        "猫 :cat: :missing:"
+    );
+    assert!(urls.is_empty());
+    assert_eq!(
+        emoji_text("猫 :cat: :missing:", &emojis, true, &mut urls),
+        format!("猫 {} :missing:", terminal_kit::emoji::EMOJI_CELLS)
+    );
+    assert_eq!(urls, ["https://example.test/static.png"]);
+    let mut other = emojis;
+    other[0].static_url.clear();
+    emoji_text(":cat:", &other, true, &mut urls);
+    assert_eq!(urls[1], "https://example.test/animated.gif");
+}
+
+#[test]
+fn stage_four_screens_fit_in_both_languages() {
+    use crate::api::types::{AccountSource, Conversation};
+    use crate::tui::worker::Event;
+    for lang in crate::i18n::Lang::ALL {
+        crate::i18n::set(lang);
+        for width in [40, 80, 160] {
+            let mut app = app_with(vec![status("s", "body")]);
+            app.tab = Tab::Profile;
+            let id = app.session.as_ref().unwrap().user_id.clone();
+            let a = Account {
+                id,
+                display_name: "Me".into(),
+                source: Some(AccountSource::default()),
+                ..Account::default()
+            };
+            app.profile.account = Some(a.clone());
+            let jobs = app.handle_key(KeyEvent::from(KeyCode::Char('e')));
+            app.handle_answer(jobs[0].0, Event::ProfileEditor(Ok(a)));
+            assert!(screen(&mut app, width, 24).contains(t("Edit profile")));
+            for _ in 0..14 {
+                app.handle_key(KeyEvent::from(KeyCode::Tab));
+            }
+            assert!(screen(&mut app, width, 24).contains(t("Header (ctrl+o)")));
+            app.handle_key(KeyEvent::from(KeyCode::Esc));
+            app.tab = Tab::Chat;
+            app.chat.conversations.loaded = true;
+            app.chat.conversations.items = vec![Conversation {
+                id: "c".into(),
+                accounts: vec![Account {
+                    acct: "alice".into(),
+                    ..Account::default()
+                }],
+                ..Conversation::default()
+            }];
+            assert!(screen(&mut app, width, 24).contains("@alice"));
+            app.tab = Tab::Home;
+            app.handle_key(KeyEvent::from(KeyCode::Char('+')));
+            assert!(screen(&mut app, width, 24).contains(t("Add column")));
+        }
     }
     crate::i18n::set(crate::i18n::Lang::En);
 }

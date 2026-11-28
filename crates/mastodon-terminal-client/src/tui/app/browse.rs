@@ -226,7 +226,11 @@ impl App {
         self.origin = session.service.clone();
         self.session = Some(session);
         self.timelines = Default::default();
+        self.restore_deck();
         self.notifications = List::default();
+        self.read_ahead = Default::default();
+        self.unread = 0;
+        self.chat = Default::default();
         self.search = Search::default();
         self.profile = Profile::default();
         self.threads.clear();
@@ -244,6 +248,7 @@ impl App {
         self.limits = Limits::default();
         self.tab = Tab::Home;
         let mut jobs = self.load_tab(self.tab, false);
+        jobs.extend(self.load_deck());
         jobs.push(self.job(Job::Limits));
         if self.session.as_ref().is_some_and(|s| s.user_id.is_empty()) {
             jobs.push(self.job(Job::Identity));

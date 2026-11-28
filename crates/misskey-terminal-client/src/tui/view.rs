@@ -598,49 +598,7 @@ fn mfm_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     mfm_lines_urls(text, width, &mut |_| None, &mut Vec::new())
 }
 
-/// The two cells a custom emoji's picture is drawn over: what is laid out
-/// in its place, and found again on screen to draw it.
-pub(super) const EMOJI_CELLS: &str = "\u{E000}\u{E001}";
-
-/// `text` with each `:name:` that `picture` has a picture for put as
-/// [`EMOJI_CELLS`], the pictures' addresses pushed in order.
-fn with_emoji_cells(
-    text: &str,
-    picture: &mut dyn FnMut(&str) -> Option<String>,
-    urls: &mut Vec<String>,
-) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(start) = rest.find(':') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        let end = after.find(|c: char| {
-            !(c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '@' | '.'))
-        });
-        match end {
-            Some(e) if e > 0 && after[e..].starts_with(':') => {
-                let name = &after[..e];
-                match picture(name) {
-                    Some(url) => {
-                        urls.push(url);
-                        out.push_str(EMOJI_CELLS);
-                        rest = &after[e + 1..];
-                    }
-                    None => {
-                        out.push(':');
-                        rest = after;
-                    }
-                }
-            }
-            _ => {
-                out.push(':');
-                rest = after;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
+use terminal_kit::emoji::{EMOJI_CELLS, draw_emoji_cells, with_emoji_cells};
 
 /// [`mfm_lines`] with the custom emoji `picture` knows laid out as
 /// [`EMOJI_CELLS`], their addresses pushed to `urls` in order.
@@ -718,46 +676,6 @@ fn reaction_picture(n: &Note, key: &str, ctx: &Ctx) -> Option<String> {
         Some((name, ".")) => ctx.emojis.get(name).cloned(),
         Some(_) => n.reaction_emojis.get(inner).cloned(),
         None => ctx.emojis.get(inner).cloned(),
-    }
-}
-
-/// Draw `urls` over the [`EMOJI_CELLS`] of `area`, in order, row by row.
-fn draw_emoji_cells(frame: &mut Frame, area: Rect, urls: &[String], images: &mut Images) {
-    if urls.is_empty() {
-        return;
-    }
-    let area = area.intersection(frame.area());
-    let mut found = Vec::new();
-    {
-        let buf = frame.buffer_mut();
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                if buf[(x, y)].symbol() == "\u{E000}" {
-                    found.push((x, y));
-                }
-            }
-        }
-    }
-    for ((x, y), url) in found.into_iter().zip(urls) {
-        // Blank under the picture: one still loading draws a mark in the
-        // first cell only.
-        {
-            let buf = frame.buffer_mut();
-            buf[(x, y)].set_symbol(" ");
-            if x + 1 < area.right() {
-                buf[(x + 1, y)].set_symbol(" ");
-            }
-        }
-        images.draw(
-            frame,
-            Rect {
-                x,
-                y,
-                width: 2,
-                height: 1,
-            },
-            url,
-        );
     }
 }
 
@@ -1634,13 +1552,12 @@ fn draw_columns(
     if n == 0 {
         return;
     }
-    let fit = usize::from((body.width / COLUMN_MIN_W).max(1)).min(n);
+    let areas = terminal_kit::columns::visible(body, n, columns.focus, COLUMN_MIN_W);
+    let fit = areas.len();
+    let first = areas[0].0;
     let focus = columns.focus.min(n - 1);
-    let first = focus.saturating_sub(fit - 1).min(n - fit);
-    let areas = Layout::horizontal(vec![Constraint::Ratio(1, fit as u32); fit]).split(body);
     let t = &ctx.t;
-    for (slot, i) in (first..first + fit).enumerate() {
-        let area = areas[slot];
+    for (slot, &(i, area)) in areas.iter().enumerate() {
         let [head, list] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let col = &mut columns.items[i];

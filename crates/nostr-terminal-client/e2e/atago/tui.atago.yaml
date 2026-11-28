@@ -8,7 +8,7 @@ scenarios:
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py" --notice --dead
-        ready: { file: ready.txt, store: relay }
+        ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
           command: nstr
@@ -99,7 +99,7 @@ scenarios:
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py"
-        ready: { file: ready.txt, store: relay }
+        ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
           command: nstr
@@ -136,7 +136,7 @@ scenarios:
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py" --reject "blocked by fixture"
-        ready: { file: ready.txt, store: relay }
+        ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
           command: nstr
@@ -167,7 +167,7 @@ scenarios:
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py" --pages
-        ready: { file: ready.txt, store: relay }
+        ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
           command: nstr
@@ -198,7 +198,7 @@ scenarios:
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py" --pictures
-        ready: { file: ready.txt, store: relay }
+        ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
           command: nstr

@@ -229,7 +229,7 @@ impl App {
                     }
                     KeyCode::Char('s') if ctrl => {
                         let text = c.input.text();
-                        if text.trim().is_empty() && c.media.is_empty() {
+                        if text.trim().is_empty() && c.media.is_empty() && c.quote.is_none() {
                             self.error(n!("the post is empty"));
                         } else if let Some(why) = post_length_problem(text.trim_end()) {
                             self.error(why);

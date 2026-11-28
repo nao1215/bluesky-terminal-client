@@ -121,6 +121,8 @@ fn a_post_sends_the_draft_once_with_a_key() {
         w.send(
             1,
             Job::Post(Box::new(Draft {
+                quote: None,
+                quote_policy: None,
                 files: Vec::new(),
                 text: "こんにちは 🇯🇵".into(),
                 cw: cw.into(),
@@ -226,6 +228,8 @@ fn a_write_on_its_way_is_finished_before_quitting() {
 fn only_writes_change_the_server() {
     assert!(
         Job::Post(Box::new(Draft {
+            quote: None,
+            quote_policy: None,
             files: Vec::new(),
             text: String::new(),
             cw: String::new(),

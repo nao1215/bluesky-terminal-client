@@ -1,0 +1,488 @@
+version: '1'
+suite:
+  name: mstdn profile editing
+scenarios:
+- name: only changed display name is patched after ctrl+s
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/timelines/home
+      json: []
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        acct: me
+        username: me
+        display_name: Me
+        note: <p>Biography</p>
+        source:
+          note: Biography
+          fields: []
+    - method: GET
+      path: /api/v1/accounts/7/statuses
+      json: []
+    - method: PATCH
+      path: /api/v1/accounts/update_credentials
+      json:
+        id: '7'
+        acct: me
+        display_name: New
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-profile","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 40
+      cols: 130
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains: 1 Home
+      - send: '6'
+      - expect_screen:
+          contains: Biography
+      - send: e
+      - expect_screen:
+          contains:
+          - Edit profile
+          - Display name
+          - Biography
+      - send:
+          key: ctrl-u
+      - send: New
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: profile saved
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/update_credentials
+        method: PATCH
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              display_name: New
+- name: cancelling an edited profile sends no PATCH
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/timelines/home
+      json: []
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        acct: me
+        username: me
+        display_name: Me
+        note: <p>Biography</p>
+        source:
+          note: Biography
+          fields: []
+    - method: GET
+      path: /api/v1/accounts/7/statuses
+      json: []
+    - method: PATCH
+      path: /api/v1/accounts/update_credentials
+      json:
+        id: '7'
+        acct: me
+        display_name: New
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-profile","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 40
+      cols: 130
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains: 1 Home
+      - send: '6'
+      - expect_screen:
+          contains: Biography
+      - send: e
+      - expect_screen:
+          contains:
+          - Edit profile
+          - Display name
+          - Biography
+      - send:
+          key: ctrl-u
+      - send: New
+      - send:
+          key: esc
+      - expect_screen:
+          not_contains: Edit profile
+          contains: Biography
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: PATCH
+        count: 0
+- name: bio flags and profile fields are a single exact PATCH
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/timelines/home
+      json: []
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        acct: me
+        username: me
+        display_name: Me
+        note: <p>Biography</p>
+        source:
+          note: Biography
+          fields: []
+    - method: GET
+      path: /api/v1/accounts/7/statuses
+      json: []
+    - method: PATCH
+      path: /api/v1/accounts/update_credentials
+      json:
+        id: '7'
+        acct: me
+        display_name: New
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-profile","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 40
+      cols: 130
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains: 1 Home
+      - send: '6'
+      - expect_screen:
+          contains: Biography
+      - send: e
+      - expect_screen:
+          contains:
+          - Edit profile
+          - Display name
+          - Biography
+      - send:
+          key: tab
+      - send:
+          key: ctrl-u
+      - send: New bio
+      - send:
+          key: tab
+      - send:
+          key: space
+      - send:
+          key: tab
+      - send:
+          key: space
+      - send:
+          key: tab
+      - send:
+          key: space
+      - send:
+          key: tab
+      - send: Website
+      - send:
+          key: tab
+      - send: https://example.test
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: profile saved
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/update_credentials
+        method: PATCH
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              note: New bio
+              locked: true
+              bot: true
+              discoverable: true
+              fields_attributes:
+                '0':
+                  name: Website
+                  value: https://example.test
+                '1':
+                  name: ''
+                  value: ''
+                '2':
+                  name: ''
+                  value: ''
+                '3':
+                  name: ''
+                  value: ''
+- name: avatar and header strip metadata in one PATCH
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/timelines/home
+      json: []
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        acct: me
+        username: me
+        display_name: Me
+        note: <p>Biography</p>
+        source:
+          note: Biography
+          fields: []
+    - method: GET
+      path: /api/v1/accounts/7/statuses
+      json: []
+    - method: PATCH
+      path: /api/v1/accounts/update_credentials
+      json:
+        id: '7'
+        acct: me
+        display_name: New
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-profile","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - fixture:
+      file: pictures/gps.jpg
+      from: testdata/gps.jpg
+  - pty:
+      command: mstdn
+      rows: 40
+      cols: 130
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains: 1 Home
+      - send: '6'
+      - expect_screen:
+          contains: Biography
+      - send: e
+      - expect_screen:
+          contains:
+          - Edit profile
+          - Display name
+          - Biography
+      - send:
+          key: ctrl-o
+      - expect_screen:
+          contains: gps.jpg
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Avatar (ctrl+o)
+      - send:
+          key: tab
+      - send:
+          key: ctrl-o
+      - expect_screen:
+          contains: gps.jpg
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Header (ctrl+o)
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          contains: profile saved
+      - send: q
+      cwd: ${workdir}/pictures
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/update_credentials
+        method: PATCH
+        count: 1
+        header:
+          name: Content-Type
+          matches: ^multipart/form-data; boundary=mstdn-[0-9a-f]{32}$
+        body:
+          matches: '(?s)^--mstdn-[0-9a-f]{32}\r?\nContent-Disposition: form-data; name="avatar"; filename="gps\.jpg"\r?\nContent-Type: image/jpeg\r?\n\r?\n.+\r?\n--mstdn-[0-9a-f]{32}\r?\nContent-Disposition:
+            form-data; name="header"; filename="gps\.jpg"\r?\nContent-Type: image/jpeg\r?\n\r?\n.+\r?\n--mstdn-[0-9a-f]{32}--\r?\n$'
+          not_contains:
+          - SecretCam
+          - Taro Secret
+          - Exif
+- name: cancelling chosen profile pictures sends no PATCH
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/timelines/home
+      json: []
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        acct: me
+        username: me
+        display_name: Me
+        note: <p>Biography</p>
+        source:
+          note: Biography
+          fields: []
+    - method: GET
+      path: /api/v1/accounts/7/statuses
+      json: []
+    - method: PATCH
+      path: /api/v1/accounts/update_credentials
+      json:
+        id: '7'
+        acct: me
+        display_name: New
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-profile","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - fixture:
+      file: pictures/gps.jpg
+      from: testdata/gps.jpg
+  - pty:
+      command: mstdn
+      rows: 40
+      cols: 130
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains: 1 Home
+      - send: '6'
+      - expect_screen:
+          contains: Biography
+      - send: e
+      - expect_screen:
+          contains:
+          - Edit profile
+          - Display name
+          - Biography
+      - send:
+          key: ctrl-o
+      - expect_screen:
+          contains: gps.jpg
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Avatar (ctrl+o)
+      - send:
+          key: tab
+      - send:
+          key: ctrl-o
+      - expect_screen:
+          contains: gps.jpg
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Header (ctrl+o)
+      - send:
+          key: esc
+      - expect_screen:
+          not_contains: Edit profile
+      - send: q
+      cwd: ${workdir}/pictures
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/accounts/update_credentials
+        method: PATCH
+        count: 0

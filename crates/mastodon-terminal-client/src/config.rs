@@ -48,6 +48,9 @@ const SETTINGS_FILE: &str = "settings.json";
 /// What the full-screen client keeps between runs, in `settings.json`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Settings {
+    /// Column sources, separated by account.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub decks: std::collections::BTreeMap<String, Vec<crate::tui::columns::Source>>,
     /// The theme `T` chose, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,

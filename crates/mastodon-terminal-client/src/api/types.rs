@@ -16,15 +16,33 @@ pub(crate) struct Account {
     /// one of another.
     pub acct: String,
     pub display_name: String,
+    pub emojis: Vec<Emoji>,
     /// The profile's address on its own server.
     pub url: Option<String>,
     /// What the account says about itself, as HTML.
     pub note: String,
+    pub source: Option<AccountSource>,
+    pub discoverable: Option<bool>,
     pub locked: bool,
     pub bot: bool,
     pub followers_count: Option<u64>,
     pub following_count: Option<u64>,
     pub statuses_count: Option<u64>,
+}
+
+/// Unformatted fields returned only for the authenticated account.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct AccountSource {
+    pub note: String,
+    pub fields: Vec<ProfileField>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct ProfileField {
+    pub name: String,
+    pub value: String,
 }
 
 impl Account {
@@ -36,6 +54,15 @@ impl Account {
             _ => local,
         }
     }
+}
+
+/// Custom emoji supplied with the text that references them.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Emoji {
+    pub shortcode: String,
+    pub url: String,
+    pub static_url: String,
 }
 
 /// A file attached to a status (`MediaAttachment`).
@@ -125,7 +152,10 @@ pub(crate) struct Status {
     pub in_reply_to_account_id: Option<String>,
     /// The status this one boosts, for a boost.
     pub reblog: Option<Box<Status>>,
+    pub quote: Option<Quote>,
+    pub quote_approval: Option<QuoteApproval>,
     pub media_attachments: Vec<Media>,
+    pub emojis: Vec<Emoji>,
     pub mentions: Vec<Mention>,
     pub tags: Vec<Tag>,
     pub poll: Option<Poll>,
@@ -136,6 +166,18 @@ pub(crate) struct Status {
     pub favourited: Option<bool>,
     /// Whether the account asking boosted it.
     pub reblogged: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Quote {
+    pub state: String,
+    pub quoted_status: Option<Box<Status>>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct QuoteApproval {
+    pub current_user: String,
 }
 
 impl Status {
@@ -204,6 +246,7 @@ pub(crate) struct Token {
 /// default for a server that does not say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Limits {
+    pub quotes: bool,
     pub max_characters: usize,
     pub characters_reserved_per_url: usize,
     pub max_media_attachments: usize,
@@ -215,6 +258,7 @@ pub(crate) struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
+            quotes: false,
             max_characters: 500,
             characters_reserved_per_url: 23,
             max_media_attachments: 4,
@@ -237,6 +281,7 @@ impl Limits {
                 .filter(|n| *n > 0)
         };
         Limits {
+            quotes: supports_quotes(v["version"].as_str().unwrap_or_default()),
             max_characters: n(&c["statuses"]["max_characters"])
                 // An old version or a fork says it at the top.
                 .or_else(|| n(&v["max_toot_chars"]))
@@ -255,6 +300,14 @@ impl Limits {
                 .filter(|n| *n > 0),
         }
     }
+}
+
+/// Mastodon 4.5 introduced quote creation; unknown versions stay disabled.
+fn supports_quotes(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let major = parts.next().and_then(|s| s.parse::<u32>().ok());
+    let minor = parts.next().and_then(|s| s.parse::<u32>().ok());
+    matches!((major, minor), (Some(5..), Some(_)) | (Some(4), Some(5..)))
 }
 
 #[cfg(test)]
@@ -333,4 +386,14 @@ pub(crate) struct Relationship {
     pub muting: bool,
     #[serde(default)]
     pub blocking: bool,
+}
+
+/// A conversation and its latest direct status.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Conversation {
+    pub id: String,
+    pub unread: bool,
+    pub accounts: Vec<Account>,
+    pub last_status: Option<Status>,
 }

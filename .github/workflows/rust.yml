@@ -14,6 +14,8 @@ on:
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
       - ".github/workflows/release-msky.yml"
+      - ".github/workflows/release-mstdn.yml"
+      - ".github/workflows/release-nstr.yml"
       - ".github/workflows/rust.yml"
   pull_request:
 
@@ -183,6 +185,8 @@ jobs:
           }
           check .github/workflows/release.yml crates/bluesky-terminal-client/Cargo.toml
           check .github/workflows/release-msky.yml crates/misskey-terminal-client/Cargo.toml
+          check .github/workflows/release-mstdn.yml crates/mastodon-terminal-client/Cargo.toml
+          check .github/workflows/release-nstr.yml crates/nostr-terminal-client/Cargo.toml
 
   # The fuzz targets include source files by path: bsky's
   # (crates/bluesky-terminal-client/fuzz/) take its src/hls.rs,
@@ -190,7 +194,8 @@ jobs:
   # (crates/misskey-terminal-client/fuzz/) its src/mfm.rs, src/metadata.rs,
   # src/error.rs, src/tui/mp4.rs and src/api/types.rs, and mstdn's
   # (crates/mastodon-terminal-client/fuzz/) its src/html.rs and
-  # src/api/types.rs. A change there can
+  # src/api/, and nstr's src/api/, src/config.rs, src/error.rs and
+  # src/tui/note.rs. A change there can
   # break a build that only fuzz.yml runs, at night. When they or the fuzz
   # directory change, build the targets and run each over its committed
   # seeds (no exploration; that stays in fuzz.yml). Other changes skip the
@@ -222,8 +227,16 @@ jobs:
             dir: crates/mastodon-terminal-client/fuzz
             watched: >-
               crates/mastodon-terminal-client/src/html.rs
-              crates/mastodon-terminal-client/src/api/types.rs
+              crates/mastodon-terminal-client/src/api/
               crates/mastodon-terminal-client/fuzz/
+          - client: nstr
+            dir: crates/nostr-terminal-client/fuzz
+            watched: >-
+              crates/nostr-terminal-client/src/api/
+              crates/nostr-terminal-client/src/tui/note.rs
+              crates/nostr-terminal-client/src/config.rs
+              crates/nostr-terminal-client/src/error.rs
+              crates/nostr-terminal-client/fuzz/
     name: fuzz-build (${{ matrix.client }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
