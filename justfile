@@ -56,6 +56,22 @@ e2e-nstr *ARGS:
 # Run every end-to-end suite
 e2e: e2e-bsky e2e-msky e2e-mstdn e2e-nstr
 
+# Measure bsky with himorime
+bench-bsky *ARGS:
+    just --justfile crates/bluesky-terminal-client/justfile bench {{ARGS}}
+
+# Measure msky with himorime
+bench-msky *ARGS:
+    just --justfile crates/misskey-terminal-client/justfile bench {{ARGS}}
+
+# Measure mstdn with himorime
+bench-mstdn *ARGS:
+    just --justfile crates/mastodon-terminal-client/justfile bench {{ARGS}}
+
+# Measure nstr with himorime
+bench-nstr *ARGS:
+    just --justfile crates/nostr-terminal-client/justfile bench {{ARGS}}
+
 # The rules CI checks in .github/workflows/rules.yml (needs npx, cargo-machete, cargo-public-api and the nightly public_api.sh names)
 rules:
     ./scripts/rules/fast.sh

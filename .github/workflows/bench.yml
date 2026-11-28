@@ -11,9 +11,8 @@ concurrency:
 permissions:
   contents: read
 
-# bsky and msky are measured end to end with himorime, from
-# crates/bluesky-terminal-client/bench/himorime.yaml and
-# crates/misskey-terminal-client/bench/himorime.yaml, in one job each.
+# Each client is measured end to end with its bench/himorime.yaml,
+# in one job each.
 #
 # On a pull request, `himorime ci` checks the base of the pull request out
 # into a temporary worktree, builds it and the head, and measures both in
@@ -36,6 +35,10 @@ jobs:
             suite: crates/bluesky-terminal-client/bench
           - client: msky
             suite: crates/misskey-terminal-client/bench
+          - client: mstdn
+            suite: crates/mastodon-terminal-client/bench
+          - client: nstr
+            suite: crates/nostr-terminal-client/bench
     name: bench (${{ matrix.client }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -61,6 +64,10 @@ jobs:
       - uses: nao1215/setup-himorime@05b4d293796e34a46c59f1363e15841a18e83e92 # v0.2.1
         with:
           version: v0.6.1
+      - uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
+        if: matrix.client == 'mstdn'
+        with:
+          version: v0.27.1
       - name: Tell whether the base has the suite
         id: base
         env:
