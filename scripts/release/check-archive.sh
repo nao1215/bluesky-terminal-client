@@ -4,7 +4,7 @@
 # executable at its root with mode 0755, and, with --exec on a runner that can
 # run it, the executable reports the version of the tag.
 #
-# usage: [BIN=bsky|msky] check-archive.sh <archive> <tag> [--exec]
+# usage: [BIN=bsky|msky|mstdn|nstr] check-archive.sh <archive> <tag> [--exec]
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then

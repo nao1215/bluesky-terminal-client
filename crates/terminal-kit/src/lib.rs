@@ -28,6 +28,9 @@
 
 pub mod clipboard;
 pub mod clock;
+pub mod columns;
+pub mod dwell;
+pub mod emoji;
 pub mod events;
 pub mod inflight;
 pub mod input;
@@ -40,3 +43,12 @@ pub mod theme;
 pub mod media;
 
 pub mod files;
+
+pub mod locale;
+
+pub mod confirm;
+
+pub mod browser;
+
+/// Command errors and exit statuses used by the clients.
+pub mod error;

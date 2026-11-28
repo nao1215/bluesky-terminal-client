@@ -623,3 +623,69 @@ mod tests {
         assert_eq!(to_256(c), want);
     }
 }
+
+/// Bluesky's own looks, as bsky and msky offer them.
+const BLUESKY: [Theme; 3] = [
+    palette(
+        "bluesky",
+        [
+            0x161e27, 0xf1f3f5, 0x8b98a5, 0x1185fe, 0xff5c5c, 0x20bc07, 0xec4899, 0x20bc07,
+        ],
+    ),
+    palette(
+        "bluesky-dark",
+        [
+            0x000000, 0xffffff, 0x8b98a5, 0x1185fe, 0xff5c5c, 0x20bc07, 0xec4899, 0x20bc07,
+        ],
+    ),
+    palette(
+        "bluesky-light",
+        [
+            0xffffff, 0x0b0f14, 0x6e7d8c, 0x1185fe, 0xe0245e, 0x13a60b, 0xec4899, 0x13a60b,
+        ],
+    ),
+];
+
+/// The built-in themes, in the order bsky's and msky's pickers list them:
+/// Bluesky's looks, the terminal's palette (the default), the editor and
+/// terminal themes by name, and `monochrome` last.
+pub static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
+    let mut all = [MONOCHROME; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1];
+    let mut i = 0;
+    while i < BLUESKY.len() {
+        all[i] = BLUESKY[i];
+        i += 1;
+    }
+    all[BLUESKY.len()] = TERMINAL;
+    let mut j = 0;
+    while j < EDITOR_THEMES.len() {
+        all[BLUESKY.len() + 1 + j] = EDITOR_THEMES[j];
+        j += 1;
+    }
+    all
+};
+
+/// The theme a client starts in without a `theme` setting.
+const DEFAULT: &str = "terminal";
+
+/// The theme `name` (else the default) as a terminal of `depth` shows it,
+/// and its place in [`THEMES`].
+pub fn chosen(name: Option<&str>, depth: ColorDepth) -> (usize, Theme) {
+    let i = name
+        .and_then(index_of)
+        .or_else(|| index_of(DEFAULT))
+        .unwrap_or(0);
+    (i, THEMES[i].for_depth(depth))
+}
+
+/// Index of the theme named `name`, ignoring case.
+fn index_of(name: &str) -> Option<usize> {
+    let name = name.trim();
+    THEMES
+        .iter()
+        .position(|t| t.name.eq_ignore_ascii_case(name))
+}
+
+#[cfg(test)]
+#[path = "theme/picker_tests.rs"]
+mod picker_tests;

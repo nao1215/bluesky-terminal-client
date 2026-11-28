@@ -19,6 +19,7 @@ scenarios:
         ready:
           file: ready.txt
           store: relay
+          timeout: 30s
     steps:
       - run:
           command: nstr whoami
@@ -60,19 +61,18 @@ scenarios:
   # Nothing below needs a relay: nstr stops at the command line or the
   # config, with the usage status 1 or the local file status 3, and with
   # --json the error is a JSON line on stdout too.
-  - name: usage errors are exit 1 and a config nstr cannot use is exit 3
+  - name: terminal errors are exit 2, usage errors exit 1, and config errors exit 3
     steps:
       - run:
           command: nstr --json
       - assert:
-          exit_code: 1
+          exit_code: 2
           stdout:
             json:
-              - { path: "$.error", equals: no command given }
-              - { path: "$.hint", equals: "run `nstr --help` for usage" }
-              - { path: "$.status", equals: 1 }
+              - { path: "$.error", equals: nstr needs an interactive terminal }
+              - { path: "$.status", equals: 2 }
           stderr:
-            equals: "error: no command given\nhint: run `nstr --help` for usage\n"
+            contains: "error: nstr needs an interactive terminal"
       - run:
           command: nstr timeline -n 0
       - assert:

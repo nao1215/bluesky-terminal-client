@@ -15,7 +15,7 @@
 
 # social-terminal-clients
 
-Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mastodon](https://joinmastodon.org) and [Nostr](https://nostr.com) clients for the terminal: `bsky`, `msky`, `mstdn` and `nstr`. bsky, msky and mstdn open a full-screen client that draws pictures and videos in place, and each also has commands. nstr has only commands.
+Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mastodon](https://joinmastodon.org) and [Nostr](https://nostr.com) clients for the terminal: `bsky`, `msky`, `mstdn` and `nstr`. All four open a full-screen client and also have commands. bsky, msky and mstdn draw pictures and videos in place; nstr draws pictures.
 
 <table>
   <tr>
@@ -37,38 +37,52 @@ Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mas
 
 ## Install
 
+bsky and msky with Homebrew:
+
 ```sh
 brew install nao1215/tap/bsky nao1215/tap/msky
+```
+
+With Cargo:
+
+```sh
 cargo install --locked bluesky-terminal-client misskey-terminal-client
+```
+
+With cargo-binstall, which fetches a release binary:
+
+```sh
 cargo binstall bluesky-terminal-client misskey-terminal-client
 ```
 
-mstdn and nstr have no release and are not on crates.io. mstdn installs from this repository, and nstr is built in a clone of it:
+mstdn and nstr have no release yet and install from this repository:
 
 ```sh
-cargo install --locked --git https://github.com/nao1215/social-terminal-clients mastodon-terminal-client
-cargo build -p nostr-terminal-client
+cargo install --locked --git https://github.com/nao1215/social-terminal-clients mastodon-terminal-client nostr-terminal-client
 ```
 
-Binaries for Linux, macOS and Windows are on releases pages: bsky's on [this repository's](https://github.com/nao1215/social-terminal-clients/releases), tagged `v<version>`, and msky's (0.1.1 and earlier) on [nao1215/misskey-terminal-client's](https://github.com/nao1215/misskey-terminal-client/releases), tagged `v<version>`. Each release carries the license texts of the crates its binaries contain in `<client>-<version>-THIRD_PARTY_LICENSES.html`. Building needs Rust 1.90 or later.
+bsky's binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/social-terminal-clients/releases), tagged `v<version>`. Each release carries the license texts of the crates its binaries contain in `<client>-<version>-THIRD_PARTY_LICENSES.html`. Building needs Rust 1.90 or later.
 
 <details>
 <summary>Verifying a release</summary>
 
-A release carries `checksums.txt`, a cosign signature of it and SLSA provenance, and each archive has a GitHub build attestation (bsky from 0.13.0 on). In a directory with the downloaded files:
+A release carries `checksums.txt`, a cosign signature of it and SLSA provenance, and each archive has a GitHub build attestation (bsky from 0.13.0 on). Run each line in the directory with the downloaded files. `<tag>` is the release, for example `v0.15.0`, and `<archive>` is the file you downloaded.
 
 ```sh
 sha256sum --ignore-missing --check checksums.txt
-cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/<repo>/.github/workflows/release.yml@refs/tags/<tag>" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  checksums.txt
-slsa-verifier verify-artifact <archive> --provenance-path <client>-<tag>.intoto.jsonl \
-  --source-uri github.com/<repo> --source-tag <tag>
-gh attestation verify <archive> --repo <repo>
 ```
 
-`<repo>` is `nao1215/social-terminal-clients` for bsky and `nao1215/misskey-terminal-client` for msky, `<client>` is `bsky` or `msky`, and `<tag>` is the release, for example `v0.15.0`.
+```sh
+cosign verify-blob --bundle checksums.txt.sigstore.json --certificate-identity "https://github.com/nao1215/social-terminal-clients/.github/workflows/release.yml@refs/tags/<tag>" --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+```
+
+```sh
+slsa-verifier verify-artifact <archive> --provenance-path bsky-<tag>.intoto.jsonl --source-uri github.com/nao1215/social-terminal-clients --source-tag <tag>
+```
+
+```sh
+gh attestation verify <archive> --repo nao1215/social-terminal-clients
+```
 
 </details>
 
@@ -76,7 +90,7 @@ gh attestation verify <archive> --repo <repo>
 
 Run `bsky` or `msky` and log in: bsky with your handle and an [app password](https://bsky.app/settings/app-passwords), msky in the browser with MiAuth, so it never sees your password (`esc` reads a server as a visitor). mstdn logs in with `mstdn login`, by OAuth in the browser, and never sees the password either; `mstdn` without a login reads the local and federated timelines as a visitor. `?` lists every key, `.` what they do to the selected post.
 
-nstr reads `config.json` in its config folder: your public key, one to sixteen relays you choose, and, for posting, a key file you place yourself (`chmod 600` on Unix). It has no default relay, checks the ID and signature of every event it reads, and opens the key file only for `nstr post`.
+nstr reads `config.json` in its config folder: your public key, one to sixteen relays you choose, and, for posting, a key file you place yourself (`chmod 600` on Unix). It has no default relay, checks the ID and signature of every event it reads, and opens the key file only for writes.
 
 | Pictures with | Terminals |
 |---|---|
@@ -84,9 +98,9 @@ nstr reads `config.json` in its config folder: your public key, one to sixteen r
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts and notifications, and post photos and videos without their location data; bsky and msky also have columns and direct messages. All four clients print JSON in one shape from every command with `--json`.
+Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts and notifications, and post photos and videos without their location data; all three also have columns and direct messages. All four clients print JSON in one shape from every command with `--json`.
 
-Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). Only msky draws custom emoji and keeps MFM's bold; mstdn shows custom emoji as `:shortcode:`. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
+Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). msky and mstdn draw custom emoji on terminals with graphics and keep their shortcodes on other terminals; msky also keeps MFM's bold. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
 
 ## Screens
 
@@ -119,47 +133,74 @@ msky's screens and bsky's chat and accounts show made-up data served by each cli
 
 | Key | bsky | msky | mstdn |
 |---|---|---|---|
-| `1` … | `1`–`5`: Timeline, Chat, Search, Notifications, Profile | `1`–`7`: Home, Local, Global, Notifications, Search, Profile, Chat | `1`–`6`: Home, Local, Federated, Notifications, Search, Profile |
-| `+` `x` | Add a column, remove one | Add a column, remove one | |
+| `1` … | `1`–`5`: Timeline, Chat, Search, Notifications, Profile | `1`–`7`: Home, Local, Global, Notifications, Search, Profile, Chat | `1`–`7`: Home, Local, Federated, Notifications, Search, Profile, Chat |
+| `+` `x` | Add a column, remove one | Add a column, remove one | Add a column, remove one |
 | `j` `k` | Move | Move | Move |
-| `n` `r` `Q` | Post, reply, quote | Note, reply, quote | `n` `r`: post, reply |
+| `n` `r` `Q` | Post, reply, quote | Note, reply, quote | Post, reply, quote (Mastodon 4.5+) |
 | `l` | Like | React ❤ | Favourite |
-| `e` | Edit your profile (on it) | Choose a reaction; edit your profile (on it) | |
-| `b` `f` | Repost, follow | Renote, follow | `b`: boost |
-| `M` `B` `D` | Mute, block, delete your post | Mute, block, delete your note | |
-| `!` | | Report | |
+| `e` | Edit your profile (on it) | Choose a reaction; edit your profile (on it) | Edit your profile (on it) |
+| `b` `f` | Repost, follow | Renote, follow | Boost, follow |
+| `M` `B` `D` | Mute, block, delete your post | Mute, block, delete your note | Mute, block, delete your post |
+| `!` | | Report | Report |
 | `v` `space` | Thread, pictures or video | Thread, pictures or video | Thread, pictures or video |
 | `w` | | Content warning | Content warning |
 | `d` `o` `c` | `d` in the viewer: save; `o`: link | Save files, open in the browser, copy the address | Save files, open in the browser, copy the address |
-| `/` `m` | Search, message the profile shown | Search, message the profile shown | `/`: search |
+| `/` `m` | Search, message the profile shown | Search, message the profile shown | Search, message the profile shown |
 | `A` `T` `s` | Accounts, themes, settings | Accounts, themes, settings | Accounts, themes, settings |
 | `?` `q` | Help, quit | Help, quit | Help, quit |
 
-nstr has no full-screen client.
+nstr opens Home, Notifications and Profile with `1`, `2` and `3`. `j` and `k` move through notes, with more loading near the end; `v` opens the thread, `n` composes a new note and `r` replies, with Ctrl+S to send. `l` sends a `+` reaction, `b` reposts, `c` copies a `nostr:nevent1...` identifier, and Space opens pictures. `s` opens theme and language settings, `T` previews themes, `?` shows help and `q` quits. Theme and language are kept in `settings.json` beside `config.json`; the status row shows relay response counts and warnings. Writes use the configured key file or NIP-46 bunker.
 
 ## Commands
 
-```sh
-bsky tl -n 5
-bsky post "hello" --image cat.jpg
-bsky search rust --json | jq -r .uri
-bsky author alice.bsky.social -n 100 --filter no-replies
-bsky download https://bsky.app/profile/alice.bsky.social/post/3l... -o pics
+The four clients share command names and options. `-n` sets how many to print (20 by default), `--json` prints one JSON object per line with the same keys on every client, and `--help` lists the rest. msky and mstdn take `--host` for the server. Below, msky reads made-up notes from its `doc/demo-server.py`.
 
-msky timeline -n 5
-msky post "hello" --image cat.jpg
-msky search Misskey --json | jq -r .url
+```console
+$ msky timeline -n 2
+Alice Chen @alice · 2026-11-27 18:20
+Aquarium day 🐟 The tarpon are huge up close.
+And a sea lion pup was born this summer!
+[4 pictures]
+🐟 14  :todo: 9  ✨ 5
+♡ 28  ⟳ 4  ↩ 1
+http://127.0.0.1:40929/notes/n2
 
-mstdn timeline local --host fosstodon.org
-mstdn post "hello" --image cat.jpg --alt "a cat"
-mstdn search '#rust' --json | jq -r .url
-
-nstr timeline -n 5
-nstr post "hello"
-nstr notifications --json | jq -r .uri
+Ken @ken · 2026-11-27 18:12
+My dungeon crawler is playable 🎮 The Brass Warden goes down in four turns
+Shield Rush! 🛡️
+[1 video]
+🔥 31  ❤️ 18  👏🏽 6
+♡ 55  ⟳ 9  ↩ 2
+http://127.0.0.1:40929/notes/n1
 ```
 
-`bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `bsky download` saves a post's pictures and video where `d` in the viewer does, and `bsky author ... --download` saves those of every post it read; `mstdn download` and `mstdn author ... --download` do the same for Mastodon. msky and mstdn take an access token in `MSKY_TOKEN` and `MSTDN_TOKEN` for posting from CI. Without a login, `mstdn search` reads only a hashtag's posts, since Mastodon's full-text search finds nothing for a visitor. `nstr post` signs a public text note and sends it once to each configured relay, and succeeds when one of them accepts it. `--help` lists every command.
+`--json` with the keys every client prints, so the same `jq` works with `bsky`, `mstdn` and `nstr`:
+
+```console
+$ msky timeline -n 2 --json | jq -r '[.user.username, .likeCount, .url] | @tsv'
+alice	28	http://127.0.0.1:40929/notes/n2
+ken	55	http://127.0.0.1:40929/notes/n1
+```
+
+`--dry-run` checks a post and the login and sends nothing:
+
+```console
+$ msky post --dry-run 'Hello from the terminal'
+dry run: nothing was sent to 127.0.0.1:40929
+as @river@127.0.0.1:40929, public
+text:
+Hello from the terminal
+no preview: the text has no link Misskey previews
+```
+
+| Command | bsky | msky | mstdn | nstr |
+|---|---|---|---|---|
+| `timeline`, `notifications`, `search`, `post`, `whoami` | Yes | Yes | Yes | Yes |
+| `author`, `thread`, `profile`, `download` | Yes | Yes | Yes | |
+| `like`, `repost`, `follow`, `mute`, `block`, `delete`, `report`, `chat` and their undo | Yes | Yes | | |
+| `login`, `logout`, `accounts` | Yes | Yes | Yes | |
+
+`bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `download` saves a post's pictures and video where `d` in the viewer does, and `author ... --download` saves those of every post it read. msky and mstdn take an access token in `MSKY_TOKEN` and `MSTDN_TOKEN` for posting from CI. Without a login, `mstdn search` reads only a hashtag's posts, since Mastodon's full-text search finds nothing for a visitor. `nstr post` signs a public text note and sends it once to each configured relay, and succeeds when one of them accepts it.
 
 ## Environment
 
@@ -176,7 +217,7 @@ nstr notifications --json | jq -r .uri
 | Video upload service | `BSKY_VIDEO_SERVICE` | | | |
 | `off` for posts without a link card | `BSKY_LINK_CARDS` | | | |
 
-`LANG` picks the language unless one is chosen in the settings (mstdn reads `LC_ALL` and `LC_MESSAGES` before it), and `NO_COLOR` turns color off.
+`LANG` picks the language unless one is chosen in the settings (mstdn and nstr read `LC_ALL` and `LC_MESSAGES` before it), and `NO_COLOR` turns color off.
 
 ## Other terminal clients
 
@@ -225,9 +266,9 @@ From their READMEs, November 2026.
 | Unit tests | Wrong answers for the cases someone wrote down | All four |
 | Property-based tests | Split emoji, lines wider than the column, and text nobody listed | All four |
 | End-to-end tests ([atago](https://github.com/nao1215/atago)) | Wrong screens, pictures, requests and files from the real binary on Linux, macOS and Windows | All four |
-| Fuzzing | Panics and wrong answers on malformed videos, posts and web pages | bsky, msky, mstdn |
-| Mutation tests | Lines the tests run but whose answer no test checks | bsky, msky, mstdn |
-| Benchmarks ([himorime](https://github.com/nao1215/himorime)) | Slower start-up and commands slipping in unnoticed | bsky, msky |
+| Fuzzing | Panics and wrong answers on malformed videos, posts, web pages and protocol messages | All four |
+| Mutation tests | Lines the tests run but whose answer no test checks | All four |
+| Benchmarks ([himorime](https://github.com/nao1215/himorime)) | Slower start-up and commands slipping in unnoticed | All four |
 
 The end-to-end tests need no network or account: msky's and mstdn's talk to atago mocks of their APIs, and nstr's to a relay stand-in on 127.0.0.1 with throwaway keys.
 

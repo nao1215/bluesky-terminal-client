@@ -13,7 +13,7 @@ use std::time::Duration;
 use terminal_kit::inflight::InFlight;
 
 use crate::api::types::{Account, Limits, Media, Notification, Status};
-use crate::api::{Client, Next, Page};
+use crate::api::{self, Client, Next, Page};
 use crate::cli::{TimelineKind, Visibility};
 use crate::error::{Error, Result};
 
@@ -50,6 +50,28 @@ impl RelationAction {
 /// Work for the worker threads.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Job {
+    NotificationState,
+    MarkNotifications {
+        id: String,
+    },
+    Conversations {
+        next: Option<String>,
+    },
+    ChatThread {
+        id: String,
+    },
+    ReadConversation {
+        id: String,
+    },
+    ChatPost(Box<Draft>),
+    ColumnChoices,
+    Column {
+        id: u64,
+        source: super::columns::Source,
+        next: Option<String>,
+    },
+    ProfileEditor,
+    SaveProfile(Box<crate::api::profile::ProfileChange>),
     Identity,
     Relationship {
         id: String,
@@ -95,6 +117,7 @@ pub(crate) enum Job {
     /// Open an address in the web browser.
     OpenLink {
         url: String,
+        program: Option<String>,
     },
     /// A search page; hashtags use max_id, other searches an offset.
     Search {
@@ -109,6 +132,7 @@ pub(crate) enum Job {
     },
     /// Save the original attachments using the command's naming policy.
     Download {
+        directory: Option<String>,
         id: String,
         files: Vec<Media>,
     },
@@ -119,6 +143,8 @@ pub(crate) enum Job {
 /// A status to post, as the composer made it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Draft {
+    pub quote: Option<String>,
+    pub quote_policy: Option<String>,
     pub files: Vec<(std::path::PathBuf, String)>,
     pub text: String,
     /// The content warning; none when empty.
@@ -134,7 +160,11 @@ impl Job {
     pub(crate) fn changes_server(&self) -> bool {
         matches!(
             self,
-            Job::Favourite { .. }
+            Job::MarkNotifications { .. }
+                | Job::ChatPost(_)
+                | Job::ReadConversation { .. }
+                | Job::SaveProfile(_)
+                | Job::Favourite { .. }
                 | Job::Boost { .. }
                 | Job::Post(_)
                 | Job::Relate { .. }
@@ -157,6 +187,27 @@ pub(crate) struct Thread {
 /// A finished job.
 #[derive(Debug)]
 pub(crate) enum Event {
+    Retrying(String),
+    NotificationState(Result<(Option<String>, Option<usize>)>),
+    NotificationsMarked {
+        id: String,
+        result: Result<()>,
+    },
+    Conversations {
+        first: bool,
+        result: Result<Page<crate::api::types::Conversation>>,
+    },
+    ChatThread(Result<Box<Thread>>),
+    ConversationRead(Result<()>),
+    ChatPosted(Result<Box<Status>>),
+    ColumnChoices(Result<Vec<super::columns::Source>>),
+    Column {
+        id: u64,
+        first: bool,
+        result: Result<ColumnPage>,
+    },
+    ProfileEditor(Result<Account>),
+    ProfileSaved(Result<Account>),
     Identity(Result<Account>),
     Relationship {
         id: String,
@@ -215,6 +266,23 @@ impl Job {
     /// anything else, so the screen stops waiting for it.
     fn failed(self, e: Error) -> Event {
         match self {
+            Job::NotificationState => Event::NotificationState(Err(e)),
+            Job::MarkNotifications { id } => Event::NotificationsMarked { id, result: Err(e) },
+            Job::Conversations { next } => Event::Conversations {
+                first: next.is_none(),
+                result: Err(e),
+            },
+            Job::ChatThread { .. } => Event::ChatThread(Err(e)),
+            Job::ReadConversation { .. } => Event::ConversationRead(Err(e)),
+            Job::ChatPost(_) => Event::ChatPosted(Err(e)),
+            Job::ColumnChoices => Event::ColumnChoices(Err(e)),
+            Job::Column { id, next, .. } => Event::Column {
+                id,
+                first: next.is_none(),
+                result: Err(e),
+            },
+            Job::ProfileEditor => Event::ProfileEditor(Err(e)),
+            Job::SaveProfile(_) => Event::ProfileSaved(Err(e)),
             Job::Identity => Event::Identity(Err(e)),
             Job::Relationship { id } => Event::Relationship { id, result: Err(e) },
             Job::Relate { id, .. } => Event::Related { id, result: Err(e) },
@@ -259,6 +327,33 @@ impl Job {
 /// Do `job` as `client`.
 pub(crate) fn run(job: Job, client: &Client) -> Event {
     match job {
+        Job::NotificationState => {
+            Event::NotificationState(client.notification_marker().map(|marker| {
+                (
+                    marker.map(|m| m.last_read_id),
+                    client.unread_notifications().ok(),
+                )
+            }))
+        }
+        Job::MarkNotifications { id } => Event::NotificationsMarked {
+            result: client.mark_notifications(&id),
+            id,
+        },
+        Job::Conversations { next } => Event::Conversations {
+            first: next.is_none(),
+            result: client.conversations(next.as_deref()),
+        },
+        Job::ChatThread { id } => Event::ChatThread(thread(client, &id).map(Box::new)),
+        Job::ReadConversation { id } => Event::ConversationRead(client.read_conversation(&id)),
+        Job::ChatPost(d) => Event::ChatPosted(post(client, &d).map(Box::new)),
+        Job::ColumnChoices => Event::ColumnChoices(column_choices(client)),
+        Job::Column { id, source, next } => Event::Column {
+            id,
+            first: next.is_none(),
+            result: column(client, &source, next.as_deref()),
+        },
+        Job::ProfileEditor => Event::ProfileEditor(client.me()),
+        Job::SaveProfile(change) => Event::ProfileSaved(client.update_profile(&change)),
         Job::Identity => Event::Identity(client.me()),
         Job::Relationship { id } => Event::Relationship {
             result: client.relationship(&id),
@@ -304,7 +399,9 @@ pub(crate) fn run(job: Job, client: &Client) -> Event {
             on,
         },
         Job::Post(d) => Event::Posted(post(client, &d).map(Box::new)),
-        Job::OpenLink { url } => Event::Opened(crate::browser::open(&url)),
+        Job::OpenLink { url, program } => {
+            Event::Opened(crate::browser::open_with(&url, program.as_deref()))
+        }
         Job::Limits => Event::Limits(client.limits()),
         Job::Search {
             query,
@@ -318,7 +415,11 @@ pub(crate) fn run(job: Job, client: &Client) -> Event {
             more: max_id.is_some(),
             result: profile(client, id.as_deref(), max_id.as_deref()),
         },
-        Job::Download { id, files } => Event::Downloaded(download(&id, &files)),
+        Job::Download {
+            id,
+            files,
+            directory,
+        } => Event::Downloaded(download(&id, &files, directory)),
     }
 }
 
@@ -349,6 +450,7 @@ fn post(client: &Client, d: &Draft) -> Result<Status> {
         alts: Vec::new(),
         video: None,
         reply: d.reply.clone(),
+        quote: d.quote.clone(),
         cw: (!d.cw.trim().is_empty()).then(|| d.cw.clone()),
         sensitive: false,
         visibility: d.visibility,
@@ -365,7 +467,14 @@ fn post(client: &Client, d: &Draft) -> Result<Status> {
         }
         args.alts.push(alt.clone());
     }
-    crate::cli::post::composed(client, &args)
+    let mut extra = serde_json::json!({});
+    if let Some(id) = &d.quote {
+        extra["quoted_status_id"] = serde_json::json!(id);
+    }
+    if let Some(policy) = &d.quote_policy {
+        extra["quote_approval_policy"] = serde_json::json!(policy);
+    }
+    crate::cli::post::composed(client, &args, &extra)
 }
 
 /// Where the page after `page` starts: what its `Link` header says, else
@@ -428,6 +537,12 @@ impl Worker {
                         let Ok((seq, job, client, write)) = next else {
                             return;
                         };
+                        let notices = tx.clone();
+                        let client = client.with_retry_wait(Arc::new(move |wait, host| {
+                            let _sent = notices
+                                .send((seq, Event::Retrying(api::retry_message(wait, host))));
+                            std::thread::sleep(wait);
+                        }));
                         let event = guarded(job, |job| run(job, &client));
                         if write {
                             writes.done();
@@ -544,8 +659,13 @@ fn profile(client: &Client, id: Option<&str>, max_id: Option<&str>) -> Result<Pr
     )?;
     Ok(ProfilePage { account, posts })
 }
-fn download(id: &str, files: &[Media]) -> Result<usize> {
-    let dir = crate::download::download_dir(None)?;
+fn download(id: &str, files: &[Media], directory: Option<String>) -> Result<usize> {
+    let explicit = std::env::var(crate::download::DOWNLOAD_DIR_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or(directory)
+        .map(std::path::PathBuf::from);
+    let dir = crate::download::download_dir(explicit)?;
     let agent = crate::api::agent();
     for (i, file) in files.iter().enumerate() {
         crate::download::save(&agent, file, &dir, &crate::download::file_stem(id, i + 1))?;
@@ -555,3 +675,52 @@ fn download(id: &str, files: &[Media]) -> Result<usize> {
 
 #[cfg(test)]
 mod tests;
+
+/// One independent column page.
+#[derive(Debug)]
+pub(crate) enum ColumnPage {
+    Posts((Vec<Status>, Option<String>)),
+    Notifications(Page<Notification>),
+}
+fn column_choices(client: &Client) -> Result<Vec<super::columns::Source>> {
+    use super::columns::Source;
+    let mut sources: Vec<_> = client
+        .lists()?
+        .into_iter()
+        .map(|l| Source::List {
+            id: l.id,
+            title: l.title,
+        })
+        .collect();
+    sources.extend(
+        client
+            .followed_tags()?
+            .into_iter()
+            .map(|t| Source::Tag(t.name)),
+    );
+    Ok(sources)
+}
+fn column(
+    client: &Client,
+    source: &super::columns::Source,
+    next: Option<&str>,
+) -> Result<ColumnPage> {
+    use super::columns::Source;
+    let path = match source {
+        Source::Notifications => {
+            return client
+                .notifications(PAGE, next)
+                .map(ColumnPage::Notifications);
+        }
+        Source::Search(query) => {
+            let p = search(client, query, false, next)?;
+            return Ok(ColumnPage::Posts((p.posts, p.next)));
+        }
+        Source::Home => "v1/timelines/home".into(),
+        Source::List { id, .. } => format!("v1/timelines/list/{}", crate::api::percent_encode(id)),
+        Source::Tag(tag) => format!("v1/timelines/tag/{}", crate::api::percent_encode(tag)),
+    };
+    let p = client.timeline(&path, &[], PAGE, next)?;
+    let next = next_of(&p, |s: &Status| &s.id);
+    Ok(ColumnPage::Posts((p.items, next)))
+}

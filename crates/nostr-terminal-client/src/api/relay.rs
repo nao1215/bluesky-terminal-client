@@ -1,7 +1,11 @@
 //! Bounded synchronous WebSocket sessions, one per configured relay and operation.
 
-use super::event::Event;
+use super::{
+    event::Event,
+    nip11::{self, Limits},
+};
 use crate::error::{Error, Result};
+use k256::schnorr::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -17,6 +21,14 @@ use tungstenite::{Message, WebSocket, protocol::WebSocketConfig, stream::MaybeTl
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Filter {
     pub(crate) kinds: Vec<u16>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) search: Option<String>,
+    #[serde(rename = "#t", skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) hashtags: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) ids: Vec<String>,
+    #[serde(rename = "#e", skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) references: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) authors: Vec<String>,
     #[serde(rename = "#p", skip_serializing_if = "Vec::is_empty", default)]
@@ -29,6 +41,15 @@ pub(crate) struct Filter {
 impl Filter {
     pub(crate) fn matches(&self, event: &Event) -> bool {
         self.kinds.contains(&event.kind)
+            && (self.hashtags.is_empty()
+                || event
+                    .tag_values("t")
+                    .any(|tag| self.hashtags.iter().any(|wanted| wanted == tag)))
+            && (self.ids.is_empty() || self.ids.contains(&event.id))
+            && (self.references.is_empty()
+                || event
+                    .tag_values("e")
+                    .any(|id| self.references.iter().any(|r| r == id)))
             && (self.authors.is_empty() || self.authors.contains(&event.pubkey))
             && (self.mentions.is_empty()
                 || event
@@ -45,6 +66,7 @@ pub(crate) enum RelayMessage {
     Ok(String, bool, String),
     Notice(String),
     Closed(String, String),
+    Auth(String),
     Unknown,
 }
 
@@ -79,6 +101,7 @@ impl RelayMessage {
                     string(3)?,
                 ))
             }
+            "AUTH" if fields.len() == 2 => Ok(Self::Auth(string(1)?)),
             "NOTICE" if fields.len() == 2 => Ok(Self::Notice(string(1)?)),
             "CLOSED"
                 if (3..=4).contains(&fields.len())
@@ -86,7 +109,7 @@ impl RelayMessage {
             {
                 Ok(Self::Closed(string(1)?, string(2)?))
             }
-            "EVENT" | "EOSE" | "OK" | "NOTICE" | "CLOSED" => Err(invalid()),
+            "EVENT" | "EOSE" | "OK" | "NOTICE" | "CLOSED" | "AUTH" => Err(invalid()),
             _ => Ok(Self::Unknown),
         }
     }
@@ -128,6 +151,8 @@ pub(crate) struct Session<S = MaybeTlsStream<DeadlineStream>> {
     socket: WebSocket<S>,
     deadline: Instant,
     notices: Vec<String>,
+    limits: Limits,
+    incomplete: bool,
 }
 
 impl Session {
@@ -179,6 +204,8 @@ impl Session {
             socket,
             deadline,
             notices: Vec::new(),
+            limits: Limits::default(),
+            incomplete: false,
         })
     }
 }
@@ -186,17 +213,41 @@ impl Session {
 impl<S: Read + Write> Session<S> {
     pub(crate) fn send(&mut self, message: Value) -> Result<()> {
         remaining(self.deadline).map_err(Error::network)?;
+        let text = message.to_string();
+        if self
+            .limits
+            .max_message_length
+            .is_some_and(|max| text.len() > max)
+        {
+            return Err(Error::network(
+                "relay limitation: max_message_length exceeded",
+            ));
+        }
         self.socket
-            .send(Message::Text(message.to_string().into()))
+            .send(Message::Text(text.into()))
             .map_err(Error::network)
     }
 
     pub(crate) fn receive(&mut self) -> Result<RelayMessage> {
         loop {
-            remaining(self.deadline).map_err(Error::network)?;
-            match self.socket.read().map_err(Error::network)? {
+            remaining(self.deadline).map_err(|_timeout| Error::network("relay timeout"))?;
+            let message = self.socket.read().map_err(|error| match &error {
+                tungstenite::Error::Io(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    Error::network("relay timeout")
+                }
+                _ => Error::network(error),
+            })?;
+            match message {
                 Message::Text(text) => match RelayMessage::parse(&text)? {
                     RelayMessage::Notice(text) => {
+                        if text.starts_with("unsupported:") {
+                            return Err(Error::unsupported(text));
+                        }
                         if self.notices.len() < 16 {
                             self.notices.push(text);
                         }
@@ -216,7 +267,25 @@ impl<S: Read + Write> Session<S> {
         self.send(json!(["REQ", subscription, filter]))?;
         let mut events = HashMap::new();
         loop {
-            match self.receive()? {
+            let message = match self.receive() {
+                Ok(message) => message,
+                Err(e) if e.error == "relay timeout" => {
+                    self.incomplete = true;
+                    let reason = "EOSE unavailable before timeout; results may be incomplete";
+                    if events.is_empty() {
+                        return Err(Error::network(reason));
+                    }
+                    self.notices.push(reason.into());
+                    return Ok(events.into_values().collect());
+                }
+                Err(e) => return Err(e),
+            };
+            match message {
+                RelayMessage::Auth(_) => {
+                    return Err(Error::unsupported(
+                        "auth-required: relay requires auth; reads do not open a signing key",
+                    ));
+                }
                 RelayMessage::Event(sub, event) if sub == subscription => {
                     event.verify()?;
                     if !filter.matches(&event) {
@@ -234,49 +303,192 @@ impl<S: Read + Write> Session<S> {
                     return Ok(events.into_values().collect());
                 }
                 RelayMessage::Closed(sub, reason) if sub == subscription => {
-                    return Err(Error::network(format!("subscription closed: {reason}")));
+                    return Err(
+                        if reason.starts_with("unsupported:")
+                            || reason.starts_with("auth-required:")
+                        {
+                            Error::unsupported(format!("subscription closed: {reason}"))
+                        } else {
+                            Error::network(format!("subscription closed: {reason}"))
+                        },
+                    );
                 }
                 _ => (),
             }
         }
     }
 
-    fn publish(&mut self, event: &Event) -> Result<()> {
+    fn publish(&mut self, event: &Event, address: &str, key: Option<&SigningKey>) -> Result<()> {
+        if self.limits.payment_required {
+            return Err(Error::unsupported("unsupported: payment-required relay"));
+        }
+        if self.limits.auth_required && key.is_none() {
+            return Err(Error::unsupported(
+                "auth-required: relay requires auth; local signing key unavailable",
+            ));
+        }
         self.send(json!(["EVENT", event]))?;
+        let mut auth_id = None;
+        let mut authenticated = false;
+        let mut rejection = None;
+        let mut retried = false;
         loop {
-            if let RelayMessage::Ok(id, accepted, reason) = self.receive()?
-                && id == event.id
-            {
-                return if accepted {
-                    Ok(())
-                } else {
-                    Err(Error::network(format!("publish rejected: {reason}")))
-                };
+            let message = self.receive().map_err(|mut e| {
+                if let Some(reason) = &rejection {
+                    e.error = format!(
+                        "publish rejected: {reason}; authentication incomplete: {}",
+                        e.error
+                    );
+                }
+                e
+            })?;
+            match message {
+                RelayMessage::Auth(challenge) => {
+                    if auth_id.is_some() {
+                        return Err(Error::network("auth-required: repeated AUTH challenge"));
+                    }
+                    let key = key.ok_or_else(|| {
+                        Error::unsupported(
+                            "auth-required: relay requires auth; local signing key unavailable",
+                        )
+                    })?;
+                    let now = u64::try_from(jiff::Timestamp::now().as_second())
+                        .map_err(Error::network)?;
+                    let auth = Event::sign(
+                        key,
+                        now,
+                        22242,
+                        vec![
+                            vec!["relay".into(), address.into()],
+                            vec!["challenge".into(), challenge],
+                        ],
+                        String::new(),
+                    )?;
+                    self.send(json!(["AUTH", auth]))?;
+                    auth_id = Some(auth.id);
+                }
+                RelayMessage::Ok(id, accepted, reason) if auth_id.as_ref() == Some(&id) => {
+                    if !accepted {
+                        let message = format!("authentication rejected: {reason}");
+                        return Err(if reason.starts_with("unsupported:") {
+                            Error::unsupported(message)
+                        } else {
+                            Error::network(message)
+                        });
+                    }
+                    authenticated = true;
+                }
+                RelayMessage::Ok(id, accepted, reason) if id == event.id => {
+                    if accepted || reason.starts_with("duplicate:") {
+                        return Ok(());
+                    }
+                    if reason.starts_with("unsupported:") {
+                        return Err(Error::unsupported(format!("publish rejected: {reason}")));
+                    }
+                    if !reason.starts_with("auth-required:") || retried {
+                        return Err(Error::network(format!("publish rejected: {reason}")));
+                    }
+                    if key.is_none() {
+                        return Err(Error::unsupported(format!("publish rejected: {reason}")));
+                    }
+                    rejection = Some(reason);
+                }
+                _ => (),
+            }
+            if authenticated && rejection.is_some() && !retried {
+                self.send(json!(["EVENT", event]))?;
+                retried = true;
             }
         }
     }
 
     fn read(&mut self, filter: &Filter, count: usize) -> Result<Vec<Event>> {
+        if self.limits.payment_required {
+            return Err(Error::unsupported("unsupported: payment-required relay"));
+        }
+        if self.limits.auth_required {
+            return Err(Error::unsupported(
+                "auth-required: relay requires auth; reads do not open a signing key",
+            ));
+        }
+        if self.limits.max_subscriptions == Some(0) {
+            return Err(Error::unsupported(
+                "unsupported: subscriptions (max_subscriptions=0)",
+            ));
+        }
+        if self.limits.max_limit == Some(0) {
+            return Err(Error::unsupported("unsupported: reads (max_limit=0)"));
+        }
+        if filter.search.is_some() && !self.limits.supported_nips.contains(&50) {
+            return Err(Error::unsupported(
+                "unsupported: NIP-50 search is not advertised by this relay",
+            ));
+        }
         let mut query = filter.clone();
         query.limit = count.min(100);
         let mut events = HashMap::new();
         let mut page_number = 0;
+        let mut short_page_oldest = None;
         while events.len() < count {
-            let page = self.page(&query, &format!("nstr-{page_number}"))?;
+            if let Some(max) = self.limits.max_limit
+                && query.limit > max
+            {
+                if !self
+                    .notices
+                    .iter()
+                    .any(|n| n.starts_with("relay limitation: max_limit"))
+                {
+                    self.notices.push(format!(
+                        "relay limitation: max_limit={max}; using smaller pages"
+                    ));
+                }
+                query.limit = max;
+            }
+            let page = match self.page(&query, &format!("nstr-{page_number}")) {
+                Ok(page) => page,
+                Err(e) if self.incomplete && !events.is_empty() => {
+                    self.notices.push(e.error);
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             page_number += 1;
             let Some(oldest) = page.iter().map(|e| e.created_at).min() else {
                 break;
             };
+            if self.limits.max_limit.is_none()
+                && short_page_oldest.is_some_and(|previous| oldest < previous)
+                && !self.notices.iter().any(|n| n.starts_with("relay capped"))
+            {
+                self.notices.push(
+                    "relay capped results below the requested limit; using smaller pages".into(),
+                );
+            }
+            short_page_oldest = (page.len() < query.limit).then_some(oldest);
             let page_len = page.len();
             let before = events.len();
             for event in page {
                 events.insert(event.id.clone(), event);
             }
-            if events.len() >= count {
+            if self.incomplete || events.len() >= count {
                 break;
             }
             if events.len() == before {
-                if page_len >= query.limit {
+                if page_len >= query.limit
+                    && self.limits.max_limit.is_some_and(|max| query.limit >= max)
+                {
+                    if !self
+                        .notices
+                        .iter()
+                        .any(|n| n.contains("timestamp boundary"))
+                    {
+                        self.notices.push("relay limitation: timestamp boundary cannot be exhausted at max_limit; results may be incomplete".into());
+                    }
+                    let Some(earlier) = oldest.checked_sub(1) else {
+                        break;
+                    };
+                    query.until = Some(earlier);
+                } else if page_len >= query.limit {
                     query.limit = query.limit.saturating_mul(2);
                     if query.limit > 10000 {
                         return Err(Error::network(
@@ -306,6 +518,7 @@ impl<S: Read + Write> Session<S> {
 }
 
 pub(crate) struct Outcome<T> {
+    pub(crate) answered: usize,
     pub(crate) value: T,
     pub(crate) warnings: Vec<String>,
 }
@@ -318,7 +531,7 @@ pub(crate) struct Relays<'a> {
 impl Relays<'_> {
     fn each<T: Send>(
         &self,
-        operation: impl Fn(&mut Session) -> Result<T> + Sync,
+        operation: impl Fn(&mut Session, &str) -> Result<T> + Sync,
     ) -> Result<Outcome<Vec<T>>> {
         let results = thread::scope(|scope| {
             let handles: Vec<_> = self
@@ -327,20 +540,27 @@ impl Relays<'_> {
                 .map(|url| {
                     let operation = &operation;
                     scope.spawn(move || {
-                        let mut session = Session::open(url, self.timeout)?;
-                        let result = operation(&mut session);
+                        let deadline = Instant::now() + self.timeout;
+                        let limits = nip11::limits(url, self.timeout / 4);
+                        let mut session =
+                            Session::open(url, remaining(deadline).map_err(Error::network)?)?;
+                        session.limits = limits;
+                        let result = operation(&mut session, url);
                         let notices = session.notices.join("; ");
-                        result.map(|value| (value, notices.clone())).map_err(|e| {
-                            Error::network(format!(
-                                "{}{}",
-                                e.error,
-                                if notices.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!("; NOTICE: {notices}")
-                                }
-                            ))
-                        })
+                        result
+                            .map(|value| (value, notices.clone()))
+                            .map_err(|mut e| {
+                                e.error = format!(
+                                    "{}{}",
+                                    e.error,
+                                    if notices.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!("; NOTICE: {notices}")
+                                    }
+                                );
+                                e
+                            })
                     })
                 })
                 .collect();
@@ -354,6 +574,7 @@ impl Relays<'_> {
         });
         let mut values = Vec::new();
         let mut warnings = Vec::new();
+        let mut only_unsupported = true;
         for (url, result) in self.urls.iter().zip(results) {
             match result {
                 Ok((value, notices)) => {
@@ -362,23 +583,29 @@ impl Relays<'_> {
                         warnings.push(format!("{url}: {notices}"));
                     }
                 }
-                Err(e) => warnings.push(format!("{url}: {}", e.error)),
+                Err(e) => {
+                    only_unsupported &= e.status == 5;
+                    warnings.push(format!("{url}: {}", e.error));
+                }
             }
         }
         if values.is_empty() {
-            return Err(Error::network(format!(
-                "no relay completed the operation: {}",
-                warnings.join("; ")
-            )));
+            let message = format!("no relay completed the operation: {}", warnings.join("; "));
+            return Err(if only_unsupported {
+                Error::unsupported(message)
+            } else {
+                Error::network(message)
+            });
         }
         Ok(Outcome {
+            answered: values.len(),
             value: values,
             warnings,
         })
     }
 
     pub(crate) fn query(&self, filter: Filter, count: usize) -> Result<Outcome<Vec<Event>>> {
-        let results = self.each(|s| s.read(&filter, count))?;
+        let results = self.each(|s, _url| s.read(&filter, count))?;
         let mut seen = HashSet::new();
         let mut events: Vec<_> = results
             .value
@@ -393,15 +620,21 @@ impl Relays<'_> {
         });
         events.truncate(count);
         Ok(Outcome {
+            answered: results.answered,
             value: events,
             warnings: results.warnings,
         })
     }
 
-    pub(crate) fn publish(&self, event: &Event) -> Result<Outcome<usize>> {
+    pub(crate) fn publish(
+        &self,
+        event: &Event,
+        key: Option<&SigningKey>,
+    ) -> Result<Outcome<usize>> {
         event.verify()?;
-        let results = self.each(|s| s.publish(event))?;
+        let results = self.each(|s, url| s.publish(event, url, key))?;
         Ok(Outcome {
+            answered: results.answered,
             value: results.value.len(),
             warnings: results.warnings,
         })

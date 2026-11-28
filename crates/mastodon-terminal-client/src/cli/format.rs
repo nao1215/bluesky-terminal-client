@@ -192,7 +192,7 @@ pub(crate) fn status_json(s: &Status, origin: &str) -> Value {
         "tags": s.tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
         "poll": poll,
         "replyId": s.in_reply_to_id,
-        "quoteId": null,
+        "quoteId": s.quote.as_ref().and_then(|q| q.quoted_status.as_ref()).map(|q| &q.id),
         "repostOf": s.reblog.as_deref().map(|r| status_json(r, origin)),
     })
 }

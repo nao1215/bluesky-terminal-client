@@ -55,6 +55,7 @@ scenarios:
             BSKY_CACHE_DIR: ${workdir}/cache
             BSKY_DOWNLOAD_DIR: ${workdir}/downloads
             TZ: UTC
+            BSKY_INLINE_VIDEO: "0"
           timeout: 20s
           session:
             - expect_screen:
@@ -162,8 +163,8 @@ scenarios:
       - assert:
           image: { path: downloads/setup.png, width: 100, height: 100 }
 
-  - name: with BSKY_INLINE_VIDEO=1 selection switches inline videos and restores their thumbnails
-    mock_servers:
+  - name: by default selection switches inline videos and restores their thumbnails
+    mock_servers: &timeline_video_api
       - name: api
         routes:
           - method: GET
@@ -206,6 +207,12 @@ scenarios:
           - { method: GET, path: /watch/v2/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
           - { method: GET, path: /watch/v2/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
           - { method: GET, path: /watch/v2/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: Me }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getAuthorFeed
+            json: { feed: [] }
     steps:
       - *session
       - pty:
@@ -213,11 +220,10 @@ scenarios:
           graphics: kitty
           rows: 50
           cols: 100
-          env:
+          env: &inline_env
             BSKY_CONFIG_DIR: ${workdir}/cfg
             BSKY_CACHE_DIR: ${workdir}/cache
             BSKY_DOWNLOAD_DIR: ${workdir}/downloads
-            BSKY_INLINE_VIDEO: "1"
             TZ: UTC
           timeout: 20s
           session:
@@ -259,6 +265,185 @@ scenarios:
           mock: { name: api, path: /watch/v1/v/seg0.ts, count: 1 }
       - assert:
           mock: { name: api, path: /watch/v2/v/seg0.ts, count: 1 }
+
+  - name: timeline playback setting takes effect immediately and survives restart
+    mock_servers: *timeline_video_api
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 50
+          cols: 100
+          env: *inline_env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Watch this"
+                images:
+                  contains: [{ width: 360, height: 203 }]
+                stable_for: 3s
+            - send: "5"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: k
+            - expect_screen:
+                contains: "▶ Play videos in the timeline on"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "▶ Play videos in the timeline off"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: "1"
+            - expect_screen:
+                contains: "Watch this"
+                images:
+                  contains: [{ width: 220, height: 220 }]
+                timeout: 1s
+            - send: q
+      - assert:
+          exit_code: 0
+          file: { path: cfg/settings.json, json: { path: "$.inline_video", equals: false } }
+      # The same saved setting in a new process, without an env override.
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 50
+          cols: 100
+          env: *inline_env
+          timeout: 10s
+          session:
+            - expect_screen:
+                contains: "Watch this"
+                images:
+                  count: 2
+                  contains: [{ width: 220, height: 220 }]
+                stable_for: 1s
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /watch/v1/playlist.m3u8, count: 1 }
+      - assert:
+          mock: { name: api, path: /watch/v2/playlist.m3u8, count: 1 }
+
+  - name: timeline playback has a Japanese settings label
+    mock_servers: *timeline_video_api
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"inline_video":false,"language":"ja"}'
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 50
+          cols: 100
+          env: *inline_env
+          timeout: 10s
+          session:
+            - expect_screen:
+                contains: "Watch this"
+            - send: "5"
+            - expect_screen:
+                contains: "@me.test"
+            - send: s
+            - send: k
+            - expect_screen:
+                contains: "タイムラインで動画を再生"
+            - send: q
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /watch/v1/playlist.m3u8, count: 0 }
+
+  - name: BSKY_INLINE_VIDEO=0 overrides the saved timeline playback setting
+    mock_servers: *timeline_video_api
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"inline_video":true}'
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 50
+          cols: 100
+          env:
+            <<: *inline_env
+            BSKY_INLINE_VIDEO: "0"
+          timeout: 15s
+          session:
+            - expect_screen:
+                contains: "Watch this"
+                images:
+                  count: 2
+                  contains: [{ width: 220, height: 220 }]
+                stable_for: 1s
+            - send: "5"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: k
+            - expect_screen:
+                contains: ["▶ Play videos in the timeline off", "BSKY_INLINE_VIDEO"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: "▶ Play videos in the timeline off"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: q
+      - assert:
+          exit_code: 0
+          file: { path: cfg/settings.json, json: { path: "$.inline_video", equals: true } }
+      - assert:
+          mock: { name: api, path: /watch/v1/playlist.m3u8, count: 0 }
+
+  - name: BSKY_INLINE_VIDEO=1 overrides the saved timeline playback setting
+    mock_servers: *timeline_video_api
+    steps:
+      - *session
+      - fixture:
+          file: cfg/settings.json
+          content: '{"inline_video":false}'
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 50
+          cols: 100
+          env:
+            <<: *inline_env
+            BSKY_INLINE_VIDEO: "1"
+          timeout: 15s
+          session:
+            - expect_screen:
+                contains: "Watch this"
+                images:
+                  contains: [{ width: 360, height: 203 }]
+                stable_for: 1s
+            - send: "5"
+            - expect_screen:
+                contains: "[ s Settings ]"
+            - send: s
+            - send: k
+            - expect_screen:
+                contains: ["▶ Play videos in the timeline on", "BSKY_INLINE_VIDEO"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: "▶ Play videos in the timeline on"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Picture cache"
+            - send: q
+      - assert:
+          exit_code: 0
+          file: { path: cfg/settings.json, json: { path: "$.inline_video", equals: false } }
+      - assert:
+          mock: { name: api, path: /watch/v1/playlist.m3u8, count: 1 }
 
   - name: space plays a post's video, r plays it again, and esc stops it
     mock_servers:
@@ -368,9 +553,7 @@ scenarios:
           graphics: kitty
           rows: 50
           cols: 100
-          env:
-            <<: *env
-            BSKY_INLINE_VIDEO: "1"
+          env: *inline_env
           timeout: 30s
           session:
             # Six seconds of HTTP waits finish before this video is selected.
@@ -863,6 +1046,7 @@ scenarios:
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
+            - send: k
             - send: k
             - send: k
             - send: k

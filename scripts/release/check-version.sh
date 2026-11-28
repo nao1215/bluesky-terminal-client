@@ -2,17 +2,17 @@
 #
 # check-version.sh checks what a release tag is about to publish:
 #
-#   - the tag is the client's prefix (v for bsky, msky-v for msky; see
+#   - the tag is the client's prefix (v for bsky, <bin>-v otherwise; see
 #     client.sh) plus the version in the package's Cargo.toml;
 #   - the Rust toolchain the release is built with is an explicit version
 #     (not stable, which changes under a tag) and not older than rust-version;
 #   - CHANGELOG.md has a non-empty section for the version (release-notes.sh).
 #
-# usage: [BIN=bsky|msky] check-version.sh <tag> <pinned toolchain> [package dir]
+# usage: [BIN=bsky|msky|mstdn|nstr] check-version.sh <tag> <pinned toolchain> [package dir]
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
-	echo "usage: [BIN=bsky|msky] $0 <tag> <toolchain> [package dir]" >&2
+	echo "usage: [BIN=bsky|msky|mstdn|nstr] $0 <tag> <toolchain> [package dir]" >&2
 	exit 2
 fi
 # shellcheck source=client.sh

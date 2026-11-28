@@ -1,9 +1,10 @@
-//! nstr: synchronous Nostr API commands without a full-screen interface.
+//! nstr: Nostr commands and a full-screen client.
 
 mod api;
 mod config;
 mod error;
 mod output;
+mod tui;
 
 use crate::{
     api::{Client, event::Event},
@@ -23,7 +24,7 @@ use std::{
     name = "nstr",
     version,
     about,
-    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile or a bunker URI.\nExit status: 0 success, 1 usage, 3 local file, 4 network or relay."
+    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile or a bunker URI.\nWithout a command, open the full-screen client.\nExit status: 0 success, 1 usage, 2 terminal, 3 local file, 4 network or relay, 5 unsupported feature."
 )]
 struct Cli {
     /// Print JSON lines in the shared client format, including errors.
@@ -43,9 +44,16 @@ enum Command {
         #[arg(short = 'n', long, default_value = "20")]
         limit: NonZeroUsize,
     },
+    /// Search a hashtag using NIP-01, or text using advertised NIP-50 support.
+    Search {
+        query: String,
+        /// Maximum number of matching notes to print.
+        #[arg(short = 'n', long, default_value = "20")]
+        limit: NonZeroUsize,
+    },
     /// Sign and publish a public text note to the configured relays.
     Post { text: String },
-    /// Read kind-1 mentions and replies tagging the configured public key.
+    /// Read mentions, replies, reactions, reposts and contact lists tagging the account.
     Notifications {
         /// Maximum number of notifications to print; must be at least 1.
         #[arg(short = 'n', long, default_value = "20")]
@@ -66,9 +74,9 @@ fn diagnostics(message: &str) {
 }
 
 fn run(cli: Cli) -> Result<()> {
-    let command = cli
-        .command
-        .ok_or_else(|| Error::usage("no command given"))?;
+    let Some(command) = cli.command else {
+        return tui::run();
+    };
     if let Command::Post { text } = &command
         && text.trim().is_empty()
     {
@@ -101,15 +109,49 @@ fn run(cli: Cli) -> Result<()> {
                 notes.warnings,
             )
         }
+        Command::Search { query, limit } => {
+            if query.trim().is_empty() || query == "#" {
+                return Err(Error::usage("search query must not be empty"));
+            }
+            let mut filter = api::relay::Filter {
+                kinds: vec![1],
+                ..Default::default()
+            };
+            if let Some(tag) = query.strip_prefix('#') {
+                filter.hashtags.push(tag.into());
+            } else {
+                filter.search = Some(query);
+            }
+            let found = client.relays().query(filter, limit.get())?;
+            (
+                found
+                    .value
+                    .iter()
+                    .map(output::post)
+                    .collect::<Result<_>>()?,
+                found.warnings,
+            )
+        }
         Command::Post { text } => {
             let now = u64::try_from(jiff::Timestamp::now().as_second()).map_err(Error::usage)?;
+            let key = if config.bunker.is_none() {
+                Some(config.signing_key()?)
+            } else {
+                None
+            };
             let event = if let Some(bunker) = &config.bunker {
                 bunker.sign_note(&config.public, now, &text, config.timeout)?
             } else {
-                let key = config.signing_key()?;
-                Event::sign(&key, now, 1, Vec::new(), text)?
+                Event::sign(
+                    key.as_ref()
+                        .ok_or_else(|| Error::usage("signing key unavailable"))?,
+                    now,
+                    1,
+                    Vec::new(),
+                    text,
+                )?
             };
-            let published = client.relays().publish(&event)?;
+            let published = client.relays().publish(&event, key.as_ref())?;
             (
                 vec![output::publication(&event, published.value)?],
                 published.warnings,

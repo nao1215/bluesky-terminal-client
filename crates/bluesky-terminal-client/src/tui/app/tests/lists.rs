@@ -1,4 +1,103 @@
 use super::*;
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn overlapping_pages_keep_each_post_once(
+        ids in prop::collection::vec(0u8..12, 0..80),
+        split in 0usize..80,
+    ) {
+        let split = split.min(ids.len());
+        let posts = |ids: &[u8]| ids.iter()
+            .map(|id| post(&format!("at://p/{id}"), "did:plc:a", true))
+            .collect::<Vec<_>>();
+        let mut list = List::default();
+        list.set(page(posts(&ids[..split]), Some("next")));
+        list.more_pending = true;
+        list.append("next", page(posts(&ids[split..]), None));
+        let mut unique = Vec::new();
+        for id in &ids {
+            let uri = format!("at://p/{id}");
+            if !unique.contains(&uri) {
+                unique.push(uri);
+            }
+        }
+        prop_assert_eq!(&list.items.iter().map(|p| p.uri.clone()).collect::<Vec<_>>(), &unique);
+        list.renew(page(posts(&ids), None));
+        prop_assert_eq!(list.items.iter().map(|p| p.uri.clone()).collect::<Vec<_>>(), unique);
+    }
+}
+
+#[rstest::rstest]
+#[case::success(false)]
+#[case::failure(true)]
+fn an_old_page_with_the_same_cursor_cannot_answer_a_new_request(#[case] failed: bool) {
+    let mut app = timeline_with(3, Some("c1"));
+    let old = press(&mut app, key('j'))[0];
+    let refresh = press(&mut app, key('R'))[0];
+    app.handle_answer(
+        refresh,
+        Event::Timeline(Ok(page(
+            vec![post("at://fresh", "did:plc:a", true)],
+            Some("c1"),
+        ))),
+    );
+    let new = press(&mut app, key('j'))[0];
+    app.handle_answer(
+        old,
+        Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: if failed {
+                Err(Error::api("old failure"))
+            } else {
+                Ok(MorePage::Posts(page(
+                    vec![post("at://stale", "did:plc:a", true)],
+                    None,
+                )))
+            },
+        },
+    );
+    assert!(
+        app.timeline.more_pending,
+        "the current request is still outstanding"
+    );
+    assert_eq!(app.timeline.items.len(), 1);
+    assert!(app.status.as_ref().is_none_or(|s| !s.error));
+    app.handle_answer(
+        new,
+        Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(
+                vec![post("at://current", "did:plc:a", true)],
+                None,
+            ))),
+        },
+    );
+    assert_eq!(app.timeline.items[1].uri, "at://current");
+}
+
+#[test]
+fn a_failed_refresh_can_request_its_superseded_next_page_again() {
+    let mut app = timeline_with(3, Some("c1"));
+    let old = press(&mut app, key('j'))[0];
+    let refresh = press(&mut app, key('R'))[0];
+    app.handle_answer(refresh, Event::Timeline(Err(Error::api("refresh failed"))));
+    app.handle_answer(
+        old,
+        Event::More {
+            feed: Feed::Timeline,
+            cursor: "c1".into(),
+            result: Ok(MorePage::Posts(page(Vec::new(), None))),
+        },
+    );
+    let jobs = app.handle_key(key('j'));
+    assert!(
+        matches!(&jobs[..], [Job::More { cursor, .. }] if cursor == "c1"),
+        "{jobs:?}"
+    );
+}
 
 #[test]
 fn nothing_more_is_fetched_on_load_or_far_from_the_end() {

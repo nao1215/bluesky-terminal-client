@@ -1,6 +1,7 @@
-//! Failures use the workspace's usage, local I/O and network exit statuses.
+//! Failures use the workspace's usage, local I/O, network and unsupported statuses.
 
 use serde::Serialize;
+use terminal_kit::error::Kind;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Error {
@@ -16,7 +17,7 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: Some("run `nstr --help` for usage".into()),
-            status: 1,
+            status: Kind::Usage.exit_code(),
         }
     }
 
@@ -24,7 +25,15 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: None,
-            status: 3,
+            status: Kind::Io.exit_code(),
+        }
+    }
+
+    pub(crate) fn unsupported(message: impl ToString) -> Self {
+        Self {
+            error: message.to_string(),
+            hint: None,
+            status: 5,
         }
     }
 
@@ -32,19 +41,29 @@ impl Error {
         Self {
             error: message.to_string(),
             hint: None,
-            status: 4,
+            status: Kind::Api.exit_code(),
         }
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error: {}", self.error)?;
-        if let Some(next) = &self.hint {
-            write!(f, "\nhint: {next}")?;
-        }
-        Ok(())
+        terminal_kit::error::write_error(f, &self.error, self.hint.as_deref())
     }
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_json_names_the_feature_and_uses_shared_status_five() {
+        let error = Error::unsupported("unsupported: NIP-50 search");
+        assert_eq!(error.to_string(), "error: unsupported: NIP-50 search");
+        let json = serde_json::to_value(error).unwrap();
+        assert_eq!(json["status"], 5);
+        assert_eq!(json["hint"], serde_json::Value::Null);
+    }
+}

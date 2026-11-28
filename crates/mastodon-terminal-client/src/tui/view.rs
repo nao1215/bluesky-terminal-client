@@ -8,7 +8,11 @@
 
 use ratatui::Frame;
 use terminal_kit::media::images::Images;
+mod accounts;
 mod browse;
+mod chat;
+mod deck;
+mod edit_profile;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -67,6 +71,10 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
     };
     if let Some(thread) = app.threads.last_mut() {
         draw_thread(frame, body, &mut thread.rows, &ctx, images);
+    } else if app.tab == Tab::Chat {
+        chat::draw(frame, body, app, images, &ctx);
+    } else if app.in_deck() {
+        deck::draw(frame, body, app, images, &ctx);
     } else if matches!(app.tab, Tab::Search | Tab::Profile) {
         browse::draw_browse(frame, body, app, images, &ctx);
     } else {
@@ -92,7 +100,7 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
                 let host = app.host().to_string();
                 draw_needs_login(frame, body, &host, &th);
             }
-            None => draw_notifications(frame, body, &mut app.notifications, &ctx),
+            None => draw_notifications(frame, body, &mut app.notifications, &ctx, images),
         }
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
@@ -108,7 +116,35 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
             .collect(),
         _ => Vec::new(),
     };
+    let column_choices = app.column_choices();
+    let settings_rows = app.settings_rows();
     match &mut app.overlay {
+        Some(Overlay::Login {
+            input,
+            url,
+            waiting,
+        }) => accounts::login(frame, body, input, url.as_deref(), *waiting, &th),
+        Some(Overlay::Logout { host }) => {
+            let inner = popup(frame, body, 64, 6, t("Log out"), &th);
+            frame.render_widget(
+                wrapped(
+                    &tf("Remove the saved login for {}? y confirms", &[host]),
+                    inner.width,
+                ),
+                inner,
+            );
+        }
+        Some(Overlay::AddColumn { selected, query }) => {
+            deck::picker(frame, area, *selected, query, &column_choices, &th)
+        }
+        Some(Overlay::CloseColumn(_)) => {
+            let inner = popup(frame, area, 64, 5, t("Close column?"), &th);
+            frame.render_widget(
+                Paragraph::new(t("y confirms; any other key cancels")),
+                inner,
+            );
+        }
+        Some(Overlay::EditProfile(e)) => edit_profile::draw(frame, area, e, images, &th),
         Some(Overlay::Confirm(c)) => {
             let title = match c {
                 crate::tui::app::Confirmation::Delete(_) => t("Delete this post?"),
@@ -144,11 +180,28 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
             index,
             generation,
         }) => browse::draw_viewer(frame, body, files, *index, *generation, images, &th),
+        Some(Overlay::SettingText { row, input }) => {
+            let inner = popup(
+                frame,
+                body,
+                72,
+                7,
+                t(if *row == 2 {
+                    n!("Download folder")
+                } else {
+                    n!("Browser")
+                }),
+                &th,
+            );
+            let layout = input.layout(usize::from(inner.width.max(1)));
+            frame.render_widget(Paragraph::new(layout.lines.join("\n")), inner);
+            frame.set_cursor_position((
+                inner.x + (layout.cursor.1 as u16).min(inner.width.saturating_sub(1)),
+                inner.y,
+            ));
+        }
         Some(Overlay::Settings { selected }) => {
-            let rows = vec![
-                format!("{}: {}", t("Theme"), THEMES[app.theme_index].name),
-                format!("{}: {}", t("Language"), crate::i18n::current().code()),
-            ];
+            let rows = settings_rows;
             draw_choices(frame, body, t("Settings"), &rows, *selected, &th);
         }
         Some(Overlay::Languages { selected }) => draw_choices(
@@ -177,7 +230,7 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
                 })
                 .collect();
             let rows = if rows.is_empty() {
-                vec![t("No saved accounts. Run mstdn login.").into()]
+                vec![t("No saved accounts. Press a to log in.").into()]
             } else {
                 rows
             };
@@ -263,7 +316,12 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let th = app.theme;
     let mut spans = Vec::new();
     for (i, &tab) in Tab::ALL.iter().enumerate() {
-        let label = format!(" {} {} ", i + 1, t(tab.title()));
+        let count = if tab == Tab::Notifications && app.unread > 0 {
+            format!(" ({})", app.unread)
+        } else {
+            String::new()
+        };
+        let label = format!(" {} {}{} ", i + 1, t(tab.title()), count);
         let style = if tab == app.tab {
             th.selected()
         } else {
@@ -493,6 +551,32 @@ pub(crate) fn display_name(a: &Account) -> String {
     }
 }
 
+fn emoji_text(
+    text: &str,
+    emojis: &[crate::api::types::Emoji],
+    pictures: bool,
+    urls: &mut Vec<String>,
+) -> String {
+    let text = drawable(text);
+    if !pictures {
+        return text.into_owned();
+    }
+    terminal_kit::emoji::with_emoji_cells(
+        &text,
+        &mut |name| {
+            emojis.iter().find(|e| e.shortcode == name).and_then(|e| {
+                let url = if e.static_url.is_empty() {
+                    &e.url
+                } else {
+                    &e.static_url
+                };
+                (!url.is_empty()).then(|| url.clone())
+            })
+        },
+        urls,
+    )
+}
+
 /// The text of a status, as it reads.
 fn text_of(s: &Status) -> String {
     crate::html::to_text(&s.content)
@@ -561,6 +645,17 @@ fn files_summary(files: &[Media]) -> String {
 /// The lines a status is drawn in, at `width` cells: who boosted it, its
 /// header, its warning or its text, its files and its counts.
 fn status_lines(item: &Status, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
+    status_lines_nested(item, width, ctx, 0, false, &mut Vec::new())
+}
+
+fn status_lines_nested(
+    item: &Status,
+    width: u16,
+    ctx: &Ctx,
+    depth: usize,
+    pictures: bool,
+    urls: &mut Vec<String>,
+) -> Vec<Line<'static>> {
     let th = &ctx.t;
     let width = usize::from(width.max(1));
     let s = item.shown();
@@ -570,7 +665,15 @@ fn status_lines(item: &Status, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
             truncate(
                 &tf(
                     "⟳ boosted by {} {}",
-                    &[&display_name(&item.account), &acct(&item.account)],
+                    &[
+                        &emoji_text(
+                            &display_name(&item.account),
+                            &item.account.emojis,
+                            pictures,
+                            urls,
+                        ),
+                        &acct(&item.account),
+                    ],
                 ),
                 width,
             ),
@@ -578,7 +681,10 @@ fn status_lines(item: &Status, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
         ));
     }
     let mut header = vec![
-        Span::styled(display_name(&s.account), Style::new().bold()),
+        Span::styled(
+            emoji_text(&display_name(&s.account), &s.account.emojis, pictures, urls),
+            Style::new().bold(),
+        ),
         Span::styled(format!(" {}", acct(&s.account)), th.dim()),
         Span::styled(format!(" · {}", format_time(&s.created_at)), th.dim()),
     ];
@@ -604,6 +710,7 @@ fn status_lines(item: &Status, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
     }
     let text = text_of(s);
     if shown {
+        let text = emoji_text(&text, &s.emojis, pictures, urls);
         lines.extend(wrap(&text, width).into_iter().map(Line::from));
     } else {
         let chars = graphemes(&text).count().to_string();
@@ -636,11 +743,47 @@ fn status_lines(item: &Status, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
             }
         }
     }
+    if shown && let Some(card) = &s.card {
+        for line in [
+            card.title.as_str(),
+            card.description.as_str(),
+            card.url.as_str(),
+        ] {
+            if !line.is_empty() {
+                lines.extend(
+                    wrap(&crate::text::drawable(line), width.saturating_sub(2).max(1))
+                        .into_iter()
+                        .take(3)
+                        .map(|line| Line::styled(format!("│ {line}"), th.dim())),
+                );
+            }
+        }
+    }
     if shown && let Some(p) = &s.poll {
         for o in &p.options {
             let votes = o.votes_count.map(|v| format!(" ({v})")).unwrap_or_default();
             lines.push(Line::styled(
                 truncate(&format!("  ○ {}{votes}", o.title), width),
+                th.dim(),
+            ));
+        }
+    }
+    if shown && let Some(quote) = &s.quote {
+        lines.push(Line::styled(truncate(t("Quoted post"), width), th.repost()));
+        if quote.state == "accepted"
+            && depth < 2
+            && width > 4
+            && let Some(quoted) = &quote.quoted_status
+        {
+            for mut line in
+                status_lines_nested(quoted, (width - 2) as u16, ctx, depth + 1, pictures, urls)
+            {
+                line.spans.insert(0, Span::styled("│ ", th.repost()));
+                lines.push(line);
+            }
+        } else {
+            lines.push(Line::styled(
+                truncate(t("quote unavailable or awaiting approval"), width),
                 th.dim(),
             ));
         }
@@ -742,12 +885,20 @@ fn draw_statuses<T: StatusRow + Keyed>(
         empty_message(frame, area, list, empty, th);
         return;
     }
+    let mut emoji_urls = Vec::new();
     let lines: Vec<Vec<Line<'static>>> = list
         .items
         .iter()
         .map(|item| {
             let w = content_rect(area, item.indent()).width;
-            status_lines(item.status(), w, ctx)
+            let mut urls = Vec::new();
+            let lines = if images.shows() {
+                status_lines_nested(item.status(), w, ctx, 0, true, &mut urls)
+            } else {
+                status_lines(item.status(), w, ctx)
+            };
+            emoji_urls.push(urls);
+            lines
         })
         .collect();
     let pictures: Vec<_> = list
@@ -791,6 +942,7 @@ fn draw_statuses<T: StatusRow + Keyed>(
             drawn.splice(picture_line..picture_line, vec![Line::default(); 8]);
         }
         frame.render_widget(Paragraph::new(drawn), content);
+        terminal_kit::emoji::draw_emoji_cells(frame, content, &emoji_urls[i], images);
         let pic_y = content.y.saturating_add(picture_line as u16);
         if !pictures[i].is_empty() && pic_y + 8 <= area.bottom() {
             let count = pictures[i].len() as u16;
@@ -866,12 +1018,21 @@ fn happened(n: &Notification) -> String {
 }
 
 /// A notification's two lines.
-fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'static>> {
+fn notification_lines(
+    n: &Notification,
+    width: u16,
+    ctx: &Ctx,
+    pictures: bool,
+    urls: &mut Vec<String>,
+) -> Vec<Line<'static>> {
     let th = &ctx.t;
     let width = usize::from(width.max(1));
     let mut head = Vec::new();
     if let Some(a) = &n.account {
-        head.push(Span::styled(display_name(a), Style::new().bold()));
+        head.push(Span::styled(
+            emoji_text(&display_name(a), &a.emojis, pictures, urls),
+            Style::new().bold(),
+        ));
         head.push(Span::styled(format!(" {}", acct(a)), th.dim()));
         head.push(Span::raw(" "));
     }
@@ -883,7 +1044,15 @@ fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'stat
     let second = match &n.status {
         Some(s) => {
             let s = s.shown();
-            let line = truncate(&first_line(s, ctx.opened.contains(&s.id)), width);
+            let line = truncate(
+                &emoji_text(
+                    &first_line(s, ctx.opened.contains(&s.id)),
+                    &s.emojis,
+                    pictures,
+                    urls,
+                ),
+                width,
+            );
             // A mention is the post itself; a favourite or a boost is about
             // your own, drawn dim.
             if matches!(n.kind.as_str(), "mention" | "status" | "quote") {
@@ -897,7 +1066,13 @@ fn notification_lines(n: &Notification, width: u16, ctx: &Ctx) -> Vec<Line<'stat
     vec![truncate_line(Line::from(head), width), second]
 }
 
-fn draw_notifications(frame: &mut Frame, area: Rect, list: &mut List<Notification>, ctx: &Ctx) {
+fn draw_notifications(
+    frame: &mut Frame,
+    area: Rect,
+    list: &mut List<Notification>,
+    ctx: &Ctx,
+    images: &mut Images,
+) {
     let th = &ctx.t;
     if !list.loaded {
         frame.render_widget(
@@ -930,13 +1105,30 @@ fn draw_notifications(frame: &mut Frame, area: Rect, list: &mut List<Notificatio
             ..area
         };
         draw_marker(frame, row, H, i == list.selected, th);
+        let mut urls = Vec::new();
         frame.render_widget(
-            Paragraph::new(notification_lines(item, content.width, ctx)),
+            Paragraph::new(notification_lines(
+                item,
+                content.width,
+                ctx,
+                images.shows(),
+                &mut urls,
+            )),
             Rect {
                 y,
                 height: 2,
                 ..content
             },
+        );
+        terminal_kit::emoji::draw_emoji_cells(
+            frame,
+            Rect {
+                y,
+                height: 2,
+                ..content
+            },
+            &urls,
+            images,
         );
         y += H;
     }
@@ -1047,6 +1239,17 @@ fn draw_compose(
             truncate(&tf("replying to {}", &[to]), inner_w),
             th.dim(),
         ));
+    }
+    if c.quote.is_some() {
+        lines.push(Line::styled(t("Quote post"), th.repost()));
+    }
+    if let Some(policy) = &c.quote_policy {
+        let label = match policy.as_str() {
+            "public" => t("anyone"),
+            "followers" => t("followers only"),
+            _ => t("only me"),
+        };
+        lines.push(Line::styled(tf("Quote approval: {}", &[label]), th.dim()));
     }
     let mut cursor = None;
     if let Some(l) = &warning {

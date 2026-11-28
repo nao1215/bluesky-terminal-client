@@ -130,6 +130,12 @@ scenarios:
             - expect_screen:
                 contains: "profile updated"
                 not_contains: "╭ Edit profile"
+            # Saving clears the profile pane and starts a background reload.
+            # The success message confirms putRecord, not that reload: q can
+            # exit before either of its two requests reaches the mock. Wait
+            # for the profile and feed to be shown again before counting them.
+            - expect_screen:
+                contains: ["Old Name", "old bio", "My first post"]
             - send: q
       - assert:
           exit_code: 0

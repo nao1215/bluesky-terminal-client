@@ -73,7 +73,7 @@ mod tests {
         for (args, status) in [
             (vec!["--help"], 0),
             (vec!["--version"], 0),
-            (vec!["--json"], 1),
+            (vec!["--json"], 2),
             (vec!["timeline", "-n", "0", "--json"], 1),
             (vec!["post", "", "--json"], 1),
             (vec!["--config", "unused.json", "--json"], 1),
@@ -450,8 +450,13 @@ mod tests {
         let owner = key();
         let relay = Relay::start(vec![], Behavior::default());
         let fixture = Fixture::new(&owner, &[&relay], false);
+        // Without a command nstr opens the full-screen client, which, as in
+        // bsky, msky and mstdn, needs a terminal: status 2, nothing sent.
+        let output = fixture.run(&["--json"]);
+        assert_eq!(output.status.code(), Some(2));
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["status"], 2);
         for args in [
-            vec!["--json"],
             vec!["timeline", "-n", "0", "--json"],
             vec!["post", " ", "--json"],
             vec!["unknown", "--json"],
@@ -498,5 +503,267 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(!String::from_utf8_lossy(&output.stderr).contains("panicked"));
+    }
+    #[test]
+    fn nip11_is_fetched_once_per_relay_and_caps_all_timeline_pages() {
+        let owner = key();
+        let relay = Relay::start(
+            (0..6)
+                .map(|i| event(&owner, 1, i, "note", json!([])))
+                .collect(),
+            Behavior {
+                information: Some(json!({"limitation": {"max_limit": 2, "max_subscriptions": 1}})),
+                page_cap: Some(2),
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&relay], false);
+        let out = fixture.run(&["timeline", "-n", "10", "--json"]);
+        assert_eq!(lines(&out).len(), 6);
+        assert!(String::from_utf8_lossy(&out.stderr).contains("max_limit=2"));
+        let log = relay.log.lock().unwrap();
+        assert_eq!(log.iter().filter(|v| v[0] == "NIP11").count(), 1);
+        let mut active = false;
+        for message in log.iter() {
+            if message[0] == "REQ" {
+                assert!(!active);
+                active = true;
+                assert!(message[2]["limit"].as_u64().unwrap() <= 2);
+            } else if message[0] == "CLOSE" {
+                active = false;
+            }
+        }
+        assert!(!active);
+    }
+
+    #[test]
+    fn relay_limitations_leave_other_relays_usable() {
+        for limitation in [
+            json!({"max_subscriptions": 0}),
+            json!({"max_limit": 0}),
+            json!({"auth_required": true}),
+            json!({"payment_required": true}),
+            json!({"max_message_length": 10}),
+        ] {
+            let owner = key();
+            let limited = Relay::start(
+                vec![],
+                Behavior {
+                    information: Some(json!({"limitation": limitation})),
+                    ..Behavior::default()
+                },
+            );
+            let healthy = Relay::start(vec![], Behavior::default());
+            let fixture = Fixture::new(&owner, &[&limited, &healthy], false);
+            let out = fixture.run(&["whoami", "--json"]);
+            assert_eq!(lines(&out).len(), 1);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert!(stderr.contains(&limited.url));
+            assert!(
+                stderr.contains("relay limitation:")
+                    || stderr.contains("auth-required:")
+                    || stderr.contains("unsupported:")
+            );
+        }
+    }
+
+    #[test]
+    fn auth_challenge_signs_a_bound_event_and_read_never_opens_key() {
+        let owner = key();
+        let relay = Relay::start(
+            vec![],
+            Behavior {
+                auth: true,
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&relay], true);
+        assert_eq!(
+            lines(&fixture.run(&["post", "auth test", "--json"]))[0]["acceptedRelays"],
+            1
+        );
+        {
+            let log = relay.log.lock().unwrap();
+            let auth = &log.iter().find(|v| v[0] == "AUTH").unwrap()[1];
+            assert_eq!(auth["kind"], 22242);
+            assert_eq!(
+                auth["pubkey"],
+                hex::encode(owner.verifying_key().to_bytes())
+            );
+            assert_eq!(
+                auth["tags"],
+                json!([
+                    ["relay", format!("{}/", relay.url)],
+                    ["challenge", "local challenge"]
+                ])
+            );
+            let events: Vec<_> = log.iter().filter(|v| v[0] == "EVENT").collect();
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0], events[1]);
+        }
+        std::fs::remove_file(fixture.dir.path().join("generated-test-key")).unwrap();
+        let out = fixture.run(&["whoami", "--json"]);
+        assert_eq!(out.status.code(), Some(5));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("relay requires auth"));
+        assert_eq!(
+            relay
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|v| v[0] == "AUTH")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rejection_prefixes_and_closed_reasons_are_per_relay() {
+        for prefix in [
+            "blocked",
+            "rate-limited",
+            "invalid",
+            "pow",
+            "duplicate",
+            "restricted",
+            "auth-required",
+        ] {
+            let owner = key();
+            let reason = format!("{prefix}: test");
+            let relay = Relay::start(
+                vec![],
+                Behavior {
+                    reason: Some(reason.clone()),
+                    ..Behavior::default()
+                },
+            );
+            let healthy = Relay::start(vec![], Behavior::default());
+            let fixture = Fixture::new(&owner, &[&relay, &healthy], true);
+            let out = fixture.run(&["post", "test", "--json"]);
+            assert_eq!(
+                lines(&out)[0]["acceptedRelays"],
+                if prefix == "duplicate" { 2 } else { 1 }
+            );
+            if prefix != "duplicate" {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                assert!(stderr.contains(&relay.url));
+                assert!(stderr.contains(&reason));
+            }
+        }
+        let owner = key();
+        let closed = Relay::start(
+            vec![],
+            Behavior {
+                closed: true,
+                ..Behavior::default()
+            },
+        );
+        let healthy = Relay::start(vec![], Behavior::default());
+        let fixture = Fixture::new(&owner, &[&closed, &healthy], false);
+        let out = fixture.run(&["whoami", "--json"]);
+        assert_eq!(lines(&out).len(), 1);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("subscription closed: restricted: test"));
+        assert!(stderr.contains("local test relay"));
+        assert!(stderr.contains(&closed.url));
+    }
+
+    #[test]
+    fn missing_eose_preserves_partial_notifications_and_names_the_relay() {
+        let owner = key();
+        let public = hex::encode(owner.verifying_key().to_bytes());
+        let relay = Relay::start(
+            vec![event(&owner, 1, 1, "partial", json!([["p", public]]))],
+            Behavior {
+                no_eose: true,
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&relay], false);
+        let out = fixture.run(&["notifications", "--json"]);
+        assert_eq!(lines(&out)[0]["post"]["text"], "partial");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(&relay.url));
+        assert!(stderr.contains("EOSE unavailable"));
+    }
+    #[test]
+    fn malformed_nip11_falls_back_to_nip01_without_changing_output() {
+        let owner = key();
+        let relay = Relay::start(
+            vec![],
+            Behavior {
+                information: Some(json!({"limitation": {"max_limit": "invalid"}})),
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&relay], false);
+        let out = fixture.run(&["whoami", "--json"]);
+        assert_eq!(
+            lines(&out)[0]["id"],
+            hex::encode(owner.verifying_key().to_bytes())
+        );
+        assert!(!String::from_utf8_lossy(&out.stderr).contains("limitation"));
+        assert_eq!(
+            relay
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|v| v[0] == "NIP11")
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn search_capabilities_and_unsupported_status_survive_relay_aggregation() {
+        let owner = key();
+        let note = event(&owner, 1, 1, "matching word", json!([["t", "catalog"]]));
+        let plain = Relay::start(vec![note.clone()], Behavior::default());
+        let search = Relay::start(
+            vec![note],
+            Behavior {
+                information: Some(json!({"supported_nips": [1, 11, 50]})),
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&plain], false);
+        let out = fixture.run(&["search", "word", "--json"]);
+        assert_eq!(out.status.code(), Some(5));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&out.stdout).unwrap()["status"],
+            5
+        );
+        assert!(String::from_utf8_lossy(&out.stderr).contains("NIP-50 search"));
+        assert_eq!(
+            lines(&fixture.run(&["search", "#catalog", "--json"])).len(),
+            1
+        );
+        let fixture = Fixture::new(&owner, &[&plain, &search], false);
+        let out = fixture.run(&["search", "word", "--json"]);
+        assert_eq!(lines(&out).len(), 1);
+        assert!(String::from_utf8_lossy(&out.stderr).contains(&plain.url));
+    }
+
+    #[test]
+    fn notifications_include_reactions_reposts_and_contact_lists() {
+        let owner = key();
+        let author = key();
+        let public = hex::encode(owner.verifying_key().to_bytes());
+        let relay = Relay::start(
+            [3, 6, 7]
+                .into_iter()
+                .map(|kind| event(&author, kind, kind as u64, "+", json!([["p", public]])))
+                .collect(),
+            Behavior::default(),
+        );
+        let fixture = Fixture::new(&owner, &[&relay], false);
+        let values = lines(&fixture.run(&["notifications", "--json"]));
+        assert_eq!(
+            values
+                .iter()
+                .map(|v| v["type"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["reaction", "repost", "follow"]
+        );
     }
 }

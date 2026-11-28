@@ -6,6 +6,8 @@
 //! in use, as the commands do; as that account, or as a visitor.
 
 pub(crate) mod app;
+mod auth;
+pub(crate) mod columns;
 pub(crate) mod keys;
 pub(crate) mod list;
 pub(crate) mod theme;
@@ -84,6 +86,9 @@ pub(crate) fn run(
             app.fail(e.message().to_string());
         }
         None => app.apply_settings(None, depth),
+    }
+    for (seq, job) in app.load_deck() {
+        worker.send(seq, job);
     }
     let default_hook = std::panic::take_hook();
     let setup_failed = |e: io::Error| {
@@ -181,6 +186,7 @@ fn event_loop(
     let io_err = |e: io::Error| Error::new(Kind::Terminal, format!("terminal I/O failed: {e}"));
     let mut input = terminal_kit::events::Input::new().map_err(io_err)?;
     let mut dirty = true;
+    let mut login: Option<auth::Login> = None;
     while !app.quit {
         if dirty {
             let viewer = matches!(app.overlay, Some(app::Overlay::Viewer { .. }));
@@ -195,50 +201,112 @@ fn event_loop(
                 .map_err(io_err)?;
             dirty = false;
         }
-        let mut wait = if app.pending() > 0 || images.loading() || images.playing() {
+        let wait = if app.pending() > 0 || images.loading() || images.playing() {
             ANSWER_TICK
         } else {
             TICK
         };
-        for _ in 0..EVENTS_PER_FRAME {
-            if app.quit {
-                break;
-            }
-            let Some(ev) = input.next(wait).map_err(io_err)? else {
-                break;
-            };
-            match ev {
-                TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
-                    for (seq, job) in app.handle_key(k) {
-                        worker.send(seq, job);
-                    }
-                }
-                TermEvent::Paste(text) => app.handle_paste(&text),
-                _ => {}
-            }
-            if let Some(session) = app.take_switch() {
-                let result = accounts
-                    .ok_or_else(|| Error::io("no config directory to keep the account in"))
-                    .and_then(|store| store.set_current(session.host()));
-                match result {
-                    Ok(()) => {
-                        worker.set_client(
-                            Client::new(&session.service).with_token(Some(session.token.clone())),
-                        );
-                        for (seq, job) in app.switched(session) {
+        let handled = input
+            .drain(EVENTS_PER_FRAME, wait, |ev| {
+                match ev {
+                    TermEvent::Key(k) if k.kind != KeyEventKind::Release => {
+                        for (seq, job) in app.handle_key(k) {
                             worker.send(seq, job);
                         }
-                        images.stop_video();
-                        if let Some(delete) = images.delete_all() {
-                            write_now(delete).map_err(io_err)?;
-                        }
-                        term.clear().map_err(io_err)?;
                     }
-                    Err(e) => app.fail(e.message().to_string()),
+                    TermEvent::Paste(text) => app.handle_paste(&text),
+                    _ => {}
+                }
+                !app.quit
+            })
+            .map_err(io_err)?;
+        dirty |= handled > 0;
+        if !app.login_active() {
+            login = None;
+        }
+        if let Some(url) = app.take_login_open() {
+            crate::browser::open_with(&url, app.browser_setting().as_deref());
+        }
+        if let Some(origin) = app.take_login() {
+            let started = accounts
+                .ok_or_else(|| Error::io("no config directory to keep the account in"))
+                .and_then(|store| auth::Login::start(store.clone(), origin, app.browser_setting()));
+            match started {
+                Ok(started) => login = Some(started),
+                Err(e) => app.login_failed(&e),
+            }
+            dirty = true;
+        }
+        let updates: Vec<_> = login
+            .as_ref()
+            .map(|l| l.receiver.try_iter().collect())
+            .unwrap_or_default();
+        for update in updates {
+            if !app.login_active() {
+                break;
+            }
+            match update {
+                auth::Update::Url(url) => app.login_url(url),
+                auth::Update::Done(result) => {
+                    login = None;
+                    match result.and_then(|session| {
+                        accounts
+                            .ok_or_else(|| Error::io("no config directory to keep the account in"))?
+                            .save(&session)?;
+                        Ok(session)
+                    }) {
+                        Ok(session) => app.logged_in(session),
+                        Err(e) => app.login_failed(&e),
+                    }
                 }
             }
             dirty = true;
-            wait = Duration::ZERO;
+        }
+        if let Some(host) = app.take_logout() {
+            let result = accounts
+                .ok_or_else(|| Error::io("no config directory to keep the account in"))
+                .and_then(|store| store.remove(&host));
+            match result {
+                Ok(_) => {
+                    let jobs = app.logged_out(&host);
+                    worker.set_client(
+                        Client::new(&app.origin)
+                            .with_token(app.session.as_ref().map(|s| s.token.clone())),
+                    );
+                    for (seq, job) in jobs {
+                        worker.send(seq, job);
+                    }
+                    images.stop_video();
+                    if let Some(delete) = images.delete_all() {
+                        write_now(delete).map_err(io_err)?;
+                    }
+                    term.clear().map_err(io_err)?;
+                }
+                Err(e) => app.fail(e.message().to_string()),
+            }
+            dirty = true;
+        }
+        if let Some(session) = app.take_switch() {
+            dirty = true;
+            let result = accounts
+                .ok_or_else(|| Error::io("no config directory to keep the account in"))
+                .and_then(|store| store.set_current(session.host()));
+            match result {
+                Ok(()) => {
+                    worker.set_client(
+                        Client::new(&session.service).with_token(Some(session.token.clone())),
+                    );
+                    for (seq, job) in app.switched(session) {
+                        worker.send(seq, job);
+                    }
+                    images.stop_video();
+                    if let Some(delete) = images.delete_all() {
+                        write_now(delete).map_err(io_err)?;
+                    }
+                    term.clear().map_err(io_err)?;
+                }
+                Err(e) => app.fail(e.message().to_string()),
+            }
         }
         if let Some(text) = app.take_copy() {
             write_now(&terminal_kit::clipboard::osc52(&text)).map_err(io_err)?;
@@ -256,6 +324,12 @@ fn event_loop(
                 worker.send(seq, job);
             }
             dirty = true;
+        }
+        for (seq, job) in app.poll_chat(Instant::now()) {
+            worker.send(seq, job);
+        }
+        for (seq, job) in app.poll_read_ahead(Instant::now()) {
+            worker.send(seq, job);
         }
         if images.poll() {
             dirty = true;

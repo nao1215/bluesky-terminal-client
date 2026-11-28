@@ -147,6 +147,13 @@ scenarios:
                 contains: ["Gus 🐈‍⬛ @gus@x.test favourited your post", "あなたの投稿"]
             - send: "?"
             - expect_screen:
+                contains: "Keys"
+            # The chat and column keys come first; pgdn brings the post keys up.
+            - send: { key: pagedown }
+            - expect_screen:
+                contains: ["Keys", "Chat"]
+            - send: { key: pagedown }
+            - expect_screen:
                 contains: ["Keys", "favourite / take back your favourite"]
             - send: { key: esc }
             - expect_screen:
@@ -276,7 +283,8 @@ scenarios:
           command: mstdn --host ${api.url}
           graphics: kitty
           rows: 24
-          cols: 100
+          # Wide enough for the seven tabs and the server name beside them.
+          cols: 120
           env:
             MSTDN_CONFIG_DIR: ${workdir}/cfg
             TZ: UTC

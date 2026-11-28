@@ -1,0 +1,227 @@
+{
+  "custom-note": {
+    "id": "au3pn3kiz9un000d",
+    "createdAt": "2026-11-28T00:00:00.000Z",
+    "userId": "au3pn32nz9un0003",
+    "user": {
+      "id": "au3pn32nz9un0003",
+      "name": null,
+      "username": "compat_admin",
+      "host": null,
+      "avatarUrl": "http://127.0.0.1:3000/identicon/compat_admin@127.0.0.1:3000",
+      "avatarBlurhash": null,
+      "description": null,
+      "createdAt": "2026-11-28T00:00:00.000Z",
+      "avatarDecorations": [],
+      "isBot": false,
+      "isCat": false,
+      "noindex": false,
+      "enableRss": false,
+      "mandatoryCW": null,
+      "rejectQuotes": false,
+      "attributionDomains": [],
+      "isSilenced": false,
+      "speakAsCat": true,
+      "approved": true,
+      "followersCount": 0,
+      "followingCount": 0,
+      "notesCount": 2,
+      "emojis": {},
+      "onlineStatus": "unknown",
+      "badgeRoles": []
+    },
+    "text": "mskycompatfixture",
+    "cw": null,
+    "visibility": "public",
+    "localOnly": false,
+    "reactionAcceptance": null,
+    "renoteCount": 0,
+    "repliesCount": 1,
+    "reactionCount": 1,
+    "reactions": {
+      ":compat@.:": 1
+    },
+    "reactionEmojis": {},
+    "fileIds": [],
+    "files": [],
+    "replyId": null,
+    "renoteId": null,
+    "clippedCount": 0,
+    "processErrors": null
+  },
+  "custom-reactions": [
+    {
+      "id": "au3pn888z9un000o",
+      "createdAt": "2026-11-28T00:00:00.000Z",
+      "user": {
+        "id": "au3pn3adz9un0004",
+        "name": null,
+        "username": "compat_user",
+        "host": null,
+        "avatarUrl": "http://127.0.0.1:3000/identicon/compat_user@127.0.0.1:3000",
+        "avatarBlurhash": null,
+        "description": null,
+        "createdAt": "2026-11-28T00:00:00.000Z",
+        "avatarDecorations": [],
+        "isBot": false,
+        "isCat": false,
+        "noindex": false,
+        "enableRss": false,
+        "mandatoryCW": null,
+        "rejectQuotes": false,
+        "attributionDomains": [],
+        "isSilenced": false,
+        "speakAsCat": true,
+        "approved": true,
+        "followersCount": 0,
+        "followingCount": 0,
+        "notesCount": 2,
+        "emojis": {},
+        "onlineStatus": "unknown",
+        "badgeRoles": []
+      },
+      "type": ":compat@.:"
+    }
+  ],
+  "emojis": {
+    "emojis": [
+      {
+        "aliases": [],
+        "name": "compat",
+        "category": null,
+        "url": "http://127.0.0.1:3000/files/5e628236-f2a5-4b55-a1b4-2e920f4c6cd2.png"
+      }
+    ]
+  },
+  "media-note": {
+    "id": "au3pn4j9z9un000f",
+    "createdAt": "2026-11-28T00:00:00.000Z",
+    "userId": "au3pn32nz9un0003",
+    "user": {
+      "id": "au3pn32nz9un0003",
+      "name": null,
+      "username": "compat_admin",
+      "host": null,
+      "avatarUrl": "http://127.0.0.1:3000/identicon/compat_admin@127.0.0.1:3000",
+      "avatarBlurhash": null,
+      "description": null,
+      "createdAt": "2026-11-28T00:00:00.000Z",
+      "avatarDecorations": [],
+      "isBot": false,
+      "isCat": false,
+      "noindex": false,
+      "enableRss": false,
+      "mandatoryCW": null,
+      "rejectQuotes": false,
+      "attributionDomains": [],
+      "isSilenced": false,
+      "speakAsCat": true,
+      "approved": true,
+      "followersCount": 0,
+      "followingCount": 0,
+      "notesCount": 2,
+      "emojis": {},
+      "onlineStatus": "unknown",
+      "badgeRoles": []
+    },
+    "text": "compat picture",
+    "cw": null,
+    "visibility": "public",
+    "localOnly": false,
+    "reactionAcceptance": null,
+    "renoteCount": 0,
+    "repliesCount": 0,
+    "reactionCount": 0,
+    "reactions": {},
+    "reactionEmojis": {},
+    "fileIds": [
+      "au3pn4ijz9un000e"
+    ],
+    "files": [
+      {
+        "id": "au3pn4ijz9un000e",
+        "createdAt": "2026-11-28T00:00:00.000Z",
+        "name": "photo.png",
+        "type": "image/png",
+        "md5": "33c7af867338992c9483ef300b296a57",
+        "size": 242,
+        "isSensitive": false,
+        "blurhash": "e44pi1kbfQkbfQo,fRfQfRfQfQfQfQfQfQo,fRfQfRfQfQfQfQfQfQ",
+        "properties": {
+          "width": 120,
+          "height": 90
+        },
+        "url": "http://127.0.0.1:3000/files/5e628236-f2a5-4b55-a1b4-2e920f4c6cd2.png",
+        "thumbnailUrl": "http://127.0.0.1:3000/files/thumbnail-c4ac7005-9637-4326-9f2f-256e361d5a4b.png",
+        "comment": "A local compatibility picture",
+        "folderId": null,
+        "folder": null,
+        "userId": "au3pn32nz9un0003",
+        "user": null
+      }
+    ],
+    "replyId": null,
+    "renoteId": null,
+    "clippedCount": 0,
+    "processErrors": null
+  },
+  "search-unavailable": {
+    "status": 400,
+    "body": {
+      "error": {
+        "message": "Search of notes unavailable.",
+        "code": "UNAVAILABLE",
+        "id": "0b44998d-77aa-4427-80d0-d2c9b8523011",
+        "kind": "client"
+      }
+    }
+  },
+  "permission": {
+    "status": 403,
+    "body": {
+      "error": {
+        "message": "Your app does not have the necessary permissions to use this endpoint.",
+        "code": "PERMISSION_DENIED",
+        "id": "1370e5b7-d4eb-4566-bb1d-7748ee6a1838",
+        "kind": "permission"
+      }
+    }
+  },
+  "authentication": {
+    "status": 401,
+    "body": {
+      "error": {
+        "message": "Authentication failed. Please ensure your token is correct.",
+        "code": "AUTHENTICATION_FAILED",
+        "id": "b0a7f5f8-dc2f-4171-b91f-de88ad238e14",
+        "kind": "client"
+      }
+    }
+  },
+  "missing-note": {
+    "status": 400,
+    "body": {
+      "error": {
+        "message": "No such note.",
+        "code": "NO_SUCH_NOTE",
+        "id": "24fcbfc6-2e37-42b6-8388-c29b3861a08d",
+        "kind": "client"
+      }
+    }
+  },
+  "chat": {
+    "status": 200,
+    "body": []
+  },
+  "role": {
+    "status": 403,
+    "body": {
+      "error": {
+        "message": "You are not assigned to a required role.",
+        "code": "ROLE_PERMISSION_DENIED",
+        "id": "7f86f06f-7e15-4057-8561-f4b6d4ac755a",
+        "kind": "permission"
+      }
+    }
+  }
+}

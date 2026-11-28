@@ -4,13 +4,23 @@ version = "0.1.0"
 edition.workspace = true
 rust-version = "1.90"
 authors.workspace = true
-description = "Nostr commands for reading profiles, timelines and notifications, and publishing signed text notes."
+description = "Nostr full-screen client and commands for profiles, timelines, notifications and signed public notes."
 license.workspace = true
 readme = "README.md"
+homepage = "https://github.com/nao1215/social-terminal-clients/tree/main/crates/nostr-terminal-client"
 repository.workspace = true
 keywords = ["nostr", "cli", "terminal"]
 categories = ["command-line-utilities"]
-publish = false
+exclude = ["e2e/"]
+
+# cargo-binstall uses the same archives as release-nstr.yml.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/nstr-v{ version }/nstr-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [[bin]]
 name = "nstr"
@@ -22,6 +32,8 @@ bech32 = "0.11"
 chacha20 = { version = "0.9", features = ["zeroize"] }
 hmac = "0.13"
 clap.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
 dirs.workspace = true
 hex = "0.4"
 jiff.workspace = true
@@ -31,6 +43,7 @@ serde_json.workspace = true
 terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
 tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 url = "2"
+ureq.workspace = true
 zeroize = "1"
 
 [dev-dependencies]

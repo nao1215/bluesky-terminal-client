@@ -5,6 +5,8 @@
 notifications
 notifications --limit (-n)
 post
+search
+search --limit (-n)
 timeline
 timeline --limit (-n)
 whoami

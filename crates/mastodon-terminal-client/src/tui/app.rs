@@ -14,12 +14,18 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use terminal_kit::input::TextInput;
 
 use crate::api::types::{Account, Limits, Media, Notification, Status};
+mod accounts;
 mod browse;
+mod chat;
+mod deck;
+mod edit_profile;
+mod read_ahead;
+mod settings;
 mod write;
 use crate::api::types::Relationship;
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::{Session, Settings};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::i18n::{n, t, tf};
 use crate::tui::keys;
 use crate::tui::list::{List, Row, ThreadView};
@@ -27,6 +33,7 @@ use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::worker::RelationAction;
 use crate::tui::worker::{Draft, Event, Job, next_of};
 pub(crate) use browse::{Profile, Search};
+pub(crate) use edit_profile::EditProfile;
 pub(crate) use write::{Attached, Confirmation, Report};
 
 /// The jobs a key or an answer starts, each with its number.
@@ -48,16 +55,18 @@ pub(crate) enum Tab {
     Notifications,
     Search,
     Profile,
+    Chat,
 }
 
 impl Tab {
-    pub(crate) const ALL: [Tab; 6] = [
+    pub(crate) const ALL: [Tab; 7] = [
         Tab::Home,
         Tab::Local,
         Tab::Federated,
         Tab::Notifications,
         Tab::Search,
         Tab::Profile,
+        Tab::Chat,
     ];
 
     pub(crate) fn title(self) -> &'static str {
@@ -68,6 +77,7 @@ impl Tab {
             Tab::Notifications => n!("Notifications"),
             Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
+            Tab::Chat => n!("Chat"),
         }
     }
 
@@ -77,13 +87,13 @@ impl Tab {
             Tab::Home => Some(TimelineKind::Home),
             Tab::Local => Some(TimelineKind::Local),
             Tab::Federated => Some(TimelineKind::Public),
-            Tab::Notifications | Tab::Search | Tab::Profile => None,
+            Tab::Notifications | Tab::Search | Tab::Profile | Tab::Chat => None,
         }
     }
 
     /// Whether the server shows it to no visitor.
     pub(crate) fn needs_login(self) -> bool {
-        matches!(self, Tab::Home | Tab::Notifications)
+        matches!(self, Tab::Home | Tab::Notifications | Tab::Chat)
     }
 
     fn index(self) -> usize {
@@ -111,6 +121,8 @@ pub(crate) enum Field {
 /// The composer, for a new status or a reply.
 #[derive(Debug, Clone)]
 pub(crate) struct Compose {
+    pub quote: Option<String>,
+    pub quote_policy: Option<String>,
     pub media: Vec<Attached>,
     pub browser: Option<terminal_kit::files::Browser>,
     pub text: TextInput,
@@ -140,6 +152,8 @@ impl Compose {
             _ => String::new(),
         };
         Self {
+            quote: None,
+            quote_policy: None,
             media: Vec::new(),
             browser: None,
             text: TextInput::multi(&mentions),
@@ -198,6 +212,20 @@ pub(crate) fn visibility_label(v: Visibility) -> &'static str {
 /// A box over the screen.
 #[derive(Debug, Clone)]
 pub(crate) enum Overlay {
+    Login {
+        input: TextInput,
+        url: Option<String>,
+        waiting: bool,
+    },
+    Logout {
+        host: String,
+    },
+    AddColumn {
+        selected: usize,
+        query: Option<TextInput>,
+    },
+    CloseColumn(u64),
+    EditProfile(Box<edit_profile::EditProfile>),
     Confirm(Confirmation),
     Report(Box<Report>),
     /// The `?` help, scrolled this far.
@@ -214,6 +242,10 @@ pub(crate) enum Overlay {
         before: usize,
     },
     Compose(Box<Compose>),
+    SettingText {
+        row: usize,
+        input: TextInput,
+    },
     Settings {
         selected: usize,
     },
@@ -247,6 +279,10 @@ enum Act {
 
 /// The client's state.
 pub(crate) struct App {
+    pub chat: chat::Chat,
+    pub deck: crate::tui::columns::Deck,
+    read_ahead: read_ahead::ReadAhead,
+    pub unread: usize,
     pub relationships: HashMap<String, Relationship>,
     relation_pending: HashMap<String, RelationAction>,
     relation_before: HashMap<String, Relationship>,
@@ -265,6 +301,9 @@ pub(crate) struct App {
     pub profile: Profile,
     pub accounts: Vec<Session>,
     switch_to: Option<Session>,
+    login_host: Option<String>,
+    login_open: Option<String>,
+    logout_host: Option<String>,
     locale: crate::i18n::Lang,
     settings_return: bool,
     /// The threads opened, the last on top.
@@ -303,6 +342,10 @@ impl App {
             Tab::Local
         };
         let mut app = Self {
+            chat: Default::default(),
+            deck: Default::default(),
+            read_ahead: Default::default(),
+            unread: 0,
             relationships: HashMap::new(),
             relation_pending: HashMap::new(),
             relation_before: HashMap::new(),
@@ -318,6 +361,9 @@ impl App {
             profile: Profile::default(),
             accounts: Vec::new(),
             switch_to: None,
+            login_host: None,
+            login_open: None,
+            logout_host: None,
             locale: crate::i18n::current(),
             settings_return: false,
             threads: Vec::new(),
@@ -358,6 +404,9 @@ impl App {
         crate::i18n::set(lang);
         let name = settings.as_ref().and_then(|s| s.theme.clone());
         self.settings = settings;
+        if self.deck.columns.is_empty() {
+            self.restore_deck();
+        }
         let (i, t) = theme::chosen(name.as_deref(), depth);
         self.theme_index = i;
         self.theme = t;
@@ -418,6 +467,9 @@ impl App {
 
     /// `job` numbered, its answer waited for.
     fn job(&mut self, job: Job) -> (u64, Job) {
+        if job.changes_server() {
+            self.invalidate_read_ahead();
+        }
         self.seq += 1;
         self.waiting.insert(self.seq);
         (self.seq, job)
@@ -434,6 +486,7 @@ impl App {
         match tab {
             Tab::Search => return self.run_search(more),
             Tab::Profile => return self.load_profile(more),
+            Tab::Chat => return self.load_chat(more),
             _ => {}
         }
         if tab.needs_login() && self.session.is_none() {
@@ -468,6 +521,12 @@ impl App {
     fn show_tab(&mut self, tab: Tab) -> Jobs {
         self.tab = tab;
         self.threads.clear();
+        if tab == Tab::Notifications {
+            self.count_notifications();
+        }
+        if tab == Tab::Chat {
+            return self.load_chat(false);
+        }
         if tab == Tab::Search {
             self.search.editing = true;
             return Vec::new();
@@ -497,6 +556,13 @@ impl App {
         if let Some(th) = self.threads.last() {
             return th.rows.current().map(|r| r.status.shown());
         }
+        if self.in_deck() {
+            return self
+                .deck
+                .columns
+                .get(self.deck.focus)
+                .and_then(|c| c.selected());
+        }
         match self.tab {
             Tab::Search => {
                 return if self.search.accounts {
@@ -506,6 +572,19 @@ impl App {
                 };
             }
             Tab::Profile => return self.profile.posts.current().map(Status::shown),
+            Tab::Chat => {
+                return self
+                    .chat
+                    .open
+                    .as_ref()
+                    .and_then(|o| o.posts.current())
+                    .or_else(|| {
+                        self.chat
+                            .conversations
+                            .current()
+                            .and_then(|c| c.last_status.as_ref())
+                    });
+            }
             _ => {}
         }
         match self.tab.kind() {
@@ -529,6 +608,12 @@ impl App {
         if let Some(th) = self.threads.last_mut() {
             th.rows.step(by);
             return Vec::new();
+        }
+        if self.tab == Tab::Chat {
+            return self.step_chat(by);
+        }
+        if self.in_deck() {
+            return self.step_column(by);
         }
         if matches!(self.tab, Tab::Search | Tab::Profile) {
             return self.browse_step(by);
@@ -559,12 +644,16 @@ impl App {
 
     /// Ask for the view shown again: the thread on top, else the tab.
     fn refresh(&mut self) -> Jobs {
+        self.invalidate_read_ahead();
         if let Some(id) = self.threads.last().map(|t| t.id.clone()) {
             let (seq, job) = self.job(Job::Thread { id });
             if let Some(th) = self.threads.last_mut() {
                 th.rows.waiting = Some(seq);
             }
             return vec![(seq, job)];
+        }
+        if self.in_deck() {
+            return self.load_column(self.deck.columns[self.deck.focus].id, false);
         }
         if self.tab.needs_login() && self.session.is_none() {
             return Vec::new();
@@ -587,10 +676,28 @@ impl App {
             loaded: false,
             ..List::default()
         };
-        let (seq, job) = self.job(Job::Thread { id: s.id.clone() });
+        if let Some((thread, fresh)) = self.cached_thread(&s.id) {
+            rows.items = ThreadView::rows(thread);
+            rows.selected = rows.items.iter().position(|r| r.focus).unwrap_or(0);
+            rows.loaded = true;
+            if fresh {
+                self.threads.push(ThreadView { id: s.id, rows });
+                return Vec::new();
+            }
+        }
+        let mut jobs = Vec::new();
+        let seq = if let Some(seq) = self.reading_thread(&s.id) {
+            self.waiting.insert(seq);
+            seq
+        } else {
+            let job = self.job(Job::Thread { id: s.id.clone() });
+            let seq = job.0;
+            jobs.push(job);
+            seq
+        };
         rows.waiting = Some(seq);
         self.threads.push(ThreadView { id: s.id, rows });
-        vec![(seq, job)]
+        jobs
     }
 
     /// What to say when a write needs an account.
@@ -677,6 +784,22 @@ impl App {
                 f(b);
             }
         };
+        if let Some(o) = &mut self.chat.open {
+            o.posts.items.iter_mut().for_each(&mut visit);
+        }
+        for c in &mut self.chat.conversations.items {
+            if let Some(s) = &mut c.last_status {
+                visit(s);
+            }
+        }
+        for c in &mut self.deck.columns {
+            c.posts.items.iter_mut().for_each(&mut visit);
+            for n in &mut c.notifications.items {
+                if let Some(s) = &mut n.status {
+                    visit(s);
+                }
+            }
+        }
         for l in &mut self.timelines {
             l.items.iter_mut().for_each(&mut visit);
         }
@@ -713,6 +836,42 @@ impl App {
             to.as_ref(),
             me.as_deref(),
         ))));
+    }
+
+    fn quote(&mut self) {
+        if self.session.is_none() {
+            self.needs_account();
+            return;
+        }
+        let Some(s) = self.selected().cloned() else {
+            return;
+        };
+        // This field is the documented quote capability on a successfully
+        // read status. A compatibility version says nothing about it.
+        if s.quote_approval.is_none() {
+            self.fail(
+                Error::unsupported("quote posts", &self.origin)
+                    .message()
+                    .to_owned(),
+            );
+            return;
+        }
+        if s.visibility == "direct"
+            || (!self.own(&s.account)
+                && s.quote_approval
+                    .as_ref()
+                    .is_some_and(|p| p.current_user == "denied"))
+        {
+            self.say(t("this post does not allow quoting"));
+            return;
+        }
+        self.compose(false);
+        if let Some(Overlay::Compose(c)) = &mut self.overlay {
+            c.quote = Some(s.id);
+            if s.visibility == "private" {
+                c.visibility = Visibility::Private;
+            }
+        }
     }
 
     /// Show or hide the text behind the selected status's warning.
@@ -753,11 +912,44 @@ impl App {
         if self.tab == Tab::Search && self.threads.is_empty() && self.search.editing {
             return self.search_key(key);
         }
+        if let Some(jobs) = self.chat_key(key) {
+            return jobs;
+        }
         self.list_key(key)
     }
 
     /// Text pasted: into the composer's field, when it is open.
     pub(crate) fn handle_paste(&mut self, text: &str) {
+        if self.overlay.is_none()
+            && self.tab == Tab::Chat
+            && let Some(o) = &mut self.chat.open
+            && o.typing
+            && o.sending.is_none()
+        {
+            o.input.insert_str(text);
+        }
+        if let Some(Overlay::Login {
+            input,
+            waiting: false,
+            ..
+        }) = &mut self.overlay
+        {
+            input.insert_str(text);
+        }
+        if let Some(Overlay::SettingText { input, .. }) = &mut self.overlay {
+            input.insert_str(text);
+        }
+        if let Some(Overlay::AddColumn { query: Some(q), .. }) = &mut self.overlay {
+            q.insert_str(text);
+        }
+        if let Some(Overlay::EditProfile(e)) = &mut self.overlay
+            && e.waiting.is_none()
+            && e.browser.is_none()
+            && e.focus < 13
+            && !(2..5).contains(&e.focus)
+        {
+            e.fields[e.focus].insert_str(text);
+        }
         if let Some(Overlay::Report(r)) = &mut self.overlay
             && r.writing
             && !r.confirming
@@ -778,6 +970,32 @@ impl App {
 
     fn list_key(&mut self, key: KeyEvent) -> Jobs {
         match key.code {
+            KeyCode::Char('+') if self.tab == Tab::Home && self.threads.is_empty() => {
+                self.open_columns()
+            }
+            KeyCode::Char('x') if self.in_deck() => {
+                self.overlay = Some(Overlay::CloseColumn(self.deck.columns[self.deck.focus].id));
+                Vec::new()
+            }
+            KeyCode::Left | KeyCode::Char('H') if self.in_deck() => {
+                self.deck.focus = self.deck.focus.saturating_sub(1);
+                Vec::new()
+            }
+            KeyCode::Right | KeyCode::Char('L') if self.in_deck() => {
+                self.deck.focus = (self.deck.focus + 1).min(self.deck.columns.len() - 1);
+                Vec::new()
+            }
+            KeyCode::Char(c @ ('<' | '>')) if self.in_deck() => {
+                let to = self
+                    .deck
+                    .focus
+                    .saturating_add_signed(if c == '<' { -1 } else { 1 })
+                    .min(self.deck.columns.len() - 1);
+                self.deck.columns.swap(self.deck.focus, to);
+                self.deck.focus = to;
+                self.save_deck();
+                Vec::new()
+            }
             KeyCode::Char('q') => {
                 self.quit = true;
                 Vec::new()
@@ -789,7 +1007,7 @@ impl App {
                 self.threads.pop();
                 Vec::new()
             }
-            KeyCode::Char(c @ '1'..='6') => {
+            KeyCode::Char(c @ '1'..='7') => {
                 let i = usize::from(c as u8 - b'1');
                 self.show_tab(Tab::ALL[i])
             }
@@ -806,6 +1024,15 @@ impl App {
             KeyCode::Char('G') | KeyCode::End => self.jump(true),
             KeyCode::Char('R') | KeyCode::F(5) => self.refresh(),
             KeyCode::Char('v') => self.open_thread(),
+            KeyCode::Char('e') => self.edit_profile(),
+            KeyCode::Char('m') => {
+                self.message_profile();
+                Vec::new()
+            }
+            KeyCode::Char('Q') => {
+                self.quote();
+                Vec::new()
+            }
             KeyCode::Enter => self.open_profile(),
             KeyCode::Char('/') => {
                 self.tab = Tab::Search;
@@ -865,9 +1092,24 @@ impl App {
                 self.compose(false);
                 Vec::new()
             }
+            KeyCode::Char('O') => {
+                if let Some(s) = self.selected()
+                    && self.text_shown(s)
+                    && let Some(card) = &s.card
+                {
+                    let url = card.url.clone();
+                    let program = self.settings.as_ref().and_then(|s| s.browser.clone());
+                    vec![self.job(Job::OpenLink { url, program })]
+                } else {
+                    Vec::new()
+                }
+            }
             KeyCode::Char('o') => match self.address() {
                 Some(url) => {
-                    let (seq, job) = self.job(Job::OpenLink { url });
+                    let (seq, job) = self.job(Job::OpenLink {
+                        url,
+                        program: self.settings.as_ref().and_then(|s| s.browser.clone()),
+                    });
                     vec![(seq, job)]
                 }
                 None => Vec::new(),
@@ -902,6 +1144,20 @@ impl App {
 
     fn overlay_key(&mut self, overlay: Overlay, key: KeyEvent) -> Jobs {
         match overlay {
+            Overlay::AddColumn { selected, query } => self.column_key(selected, query, key),
+            Overlay::CloseColumn(id) => {
+                if key.code == KeyCode::Char('y') {
+                    self.deck.columns.retain(|c| c.id != id);
+                    self.deck.focus = self
+                        .deck
+                        .focus
+                        .min(self.deck.columns.len().saturating_sub(1));
+                    self.save_deck();
+                }
+                Vec::new()
+            }
+
+            Overlay::EditProfile(e) => self.edit_profile_key(e, key),
             Overlay::Confirm(c) => self.confirm_key(c, key),
             Overlay::Report(r) => self.report_key(r, key),
             Overlay::Help { scroll } => {
@@ -954,6 +1210,8 @@ impl App {
                     KeyCode::Char('k') | KeyCode::Up => Some(selected.saturating_sub(1)),
                     KeyCode::Char('g') | KeyCode::Home => Some(0),
                     KeyCode::Char('G') | KeyCode::End => Some(last),
+                    KeyCode::PageDown => Some((selected + PAGE_STEP).min(last)),
+                    KeyCode::PageUp => Some(selected.saturating_sub(PAGE_STEP)),
                     KeyCode::Enter => {
                         self.keep_theme(selected);
                         self.return_settings();
@@ -1030,6 +1288,14 @@ impl App {
                 }
             }
             KeyCode::Char('p') if ctrl => c.visibility = next_visibility(c.visibility),
+            KeyCode::Char('q') if ctrl => {
+                c.quote_policy = match c.quote_policy.as_deref() {
+                    None => Some("public".into()),
+                    Some("public") => Some("followers".into()),
+                    Some("followers") => Some("nobody".into()),
+                    _ => None,
+                };
+            }
             KeyCode::Tab | KeyCode::BackTab => {
                 let mut fields = vec![Field::Text];
                 if c.warning.is_some() {
@@ -1081,6 +1347,8 @@ impl App {
             return Vec::new();
         }
         let draft = Draft {
+            quote: c.quote.clone(),
+            quote_policy: c.quote_policy.clone(),
             files: c
                 .media
                 .iter()
@@ -1100,15 +1368,61 @@ impl App {
 
     /// Handle the answer to job `seq`; the jobs it starts.
     pub(crate) fn handle_answer(&mut self, seq: u64, ev: Event) -> Jobs {
-        if !self.waiting.remove(&seq) {
-            return Vec::new();
+        if matches!(ev, Event::Retrying(_)) {
+            if !self.waiting.contains(&seq) {
+                return Vec::new();
+            }
+        } else {
+            if self.read_ahead_answer(seq, &ev) {
+                return Vec::new();
+            }
+            if !self.waiting.remove(&seq) {
+                return Vec::new();
+            }
         }
+        let write_finished = matches!(
+            &ev,
+            Event::Favourited { .. }
+                | Event::Boosted { .. }
+                | Event::Posted(_)
+                | Event::Related { .. }
+                | Event::Deleted { .. }
+                | Event::Reported(_)
+                | Event::ProfileSaved(_)
+                | Event::ChatPosted(_)
+                | Event::ConversationRead(_)
+        );
         match ev {
+            Event::Retrying(message) => self.say(message),
+            Event::NotificationState(result) => self.notification_state(seq, result),
+            Event::NotificationsMarked { id, result } => self.notifications_marked(seq, id, result),
+            Event::Conversations { first, result } => self.conversations_answer(seq, first, result),
+            Event::ChatThread(result) => return self.chat_thread_answer(seq, result),
+            Event::ConversationRead(result) => self.chat_read_answer(seq, result),
+            Event::ChatPosted(result) => self.chat_post_answer(seq, result),
+
+            Event::Column { id, first, result } => self.column_answer(seq, id, first, result),
+            Event::ColumnChoices(result) => {
+                if self.deck.choices_waiting == Some(seq) {
+                    self.deck.choices_waiting = None;
+                    match result {
+                        Ok(choices) => self.deck.choices = choices,
+                        Err(e) => self.fail(e.message().to_owned()),
+                    }
+                }
+            }
+
+            Event::ProfileEditor(result) => self.profile_editor_answer(seq, result, false),
+            Event::ProfileSaved(result) => self.profile_editor_answer(seq, result, true),
             Event::Identity(result) => match result {
                 Ok(a) => {
                     if let Some(session) = &mut self.session {
                         session.user_id = a.id;
                         session.username = a.username;
+                    }
+                    if self.deck.columns.is_empty() {
+                        self.restore_deck();
+                        return self.load_deck();
                     }
                 }
                 Err(e) => self.fail(e.message().to_string()),
@@ -1141,7 +1455,9 @@ impl App {
                     let next = next_of(&p, |n: &Notification| &n.id);
                     (p.items, next)
                 });
-                self.notifications.take(seq, first, page);
+                if self.notifications.take(seq, first, page) {
+                    self.count_notifications();
+                }
             }
             Event::Thread { id, result } => {
                 if let Some(th) = self.threads.iter_mut().find(|t| t.id == id) {
@@ -1215,6 +1531,14 @@ impl App {
             }
         }
         self.hide_deleted();
+        if write_finished
+            && self
+                .threads
+                .last()
+                .is_some_and(|t| !t.rows.loaded && t.rows.waiting.is_none())
+        {
+            return self.refresh();
+        }
         Vec::new()
     }
 }

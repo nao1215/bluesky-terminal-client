@@ -1,0 +1,148 @@
+version: '1'
+suite:
+  name: mstdn columns
+scenarios:
+- name: list and followed tag sources beside Home and confirmed column close
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: h
+        content: <p>Home column post</p>
+    - method: GET
+      path: /api/v1/lists
+      json:
+      - id: '42'
+        title: Friends
+    - method: GET
+      path: /api/v1/followed_tags
+      json:
+      - name: rust
+    - method: GET
+      path: /api/v1/timelines/list/42
+      json:
+      - id: l
+        content: <p>Friends column post</p>
+    - method: GET
+      path: /api/v1/timelines/tag/rust
+      json:
+      - id: t
+        content: <p>Rust column post</p>
+    - method: GET
+      path: /api/v2/search
+      json:
+        statuses:
+        - id: s
+          content: <p>Search column post</p>
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-columns","scopes":["read"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 180
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 35s
+      session:
+      - expect_screen:
+          contains: Home column post
+      - send: +
+      - expect_screen:
+          contains:
+          - Friends
+          - '#rust'
+      - send: jjjj
+      - send:
+          key: enter
+      - expect_screen:
+          contains:
+          - Home column post
+          - Friends column post
+      - send: x
+      - expect_screen:
+          contains: Close column?
+      - send: n
+      - expect_screen:
+          contains: Friends column post
+          not_contains: Close column?
+      - send: +
+      - expect_screen:
+          contains: Add column
+      - send: jjjjj
+      - send:
+          key: enter
+      - expect_screen:
+          contains:
+          - Home column post
+          - Friends column post
+          - Rust column post
+      - send: +
+      - expect_screen:
+          contains: Add column
+      - send: jjj
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Hashtag or search query
+      - send: coffee
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Search column post
+      - send: xy
+      - expect_screen:
+          contains: Rust column post
+          not_contains: Search column post
+      - send: +
+      - expect_screen:
+          contains: Add column
+      - send: j
+      - send:
+          key: enter
+      - expect_screen:
+          contains: No notifications yet.
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/timelines/list/42
+        method: GET
+        count: 1
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/timelines/tag/rust
+        method: GET
+        count: 1
+  - assert:
+      mock:
+        name: api
+        path: /api/v2/search
+        method: GET
+        count: 1
+        query:
+          name: q
+          equals: coffee
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0

@@ -1,10 +1,6 @@
-# cargo-about (https://embarkstudios.github.io/cargo-about/) writes the license
-# texts of every crate compiled into bsky or msky, which the releases attach
-# as bsky-<tag>-THIRD_PARTY_LICENSES.html (from
-# crates/bluesky-terminal-client/about.hbs) and
-# msky-<tag>-THIRD_PARTY_LICENSES.html (from
-# crates/misskey-terminal-client/about.hbs). The accepted list is deny.toml's allow
-# list: cargo deny decides what may be linked, this ships the texts of what is.
+# cargo-about writes the dependency license texts attached to each release.
+# bsky uses crates/bluesky-terminal-client/about.hbs; the other clients use
+# scripts/release/about.hbs. The accepted list matches deny.toml.
 accepted = [
     "MIT",
     "Apache-2.0",

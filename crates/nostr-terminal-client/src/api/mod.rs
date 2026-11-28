@@ -1,6 +1,7 @@
 //! Private protocol and application modules for the command-line client.
 
 pub(crate) mod event;
+mod nip11;
 pub(crate) mod nip19;
 pub(crate) mod nip44;
 pub(crate) mod nip46;
@@ -33,12 +34,13 @@ impl Client<'_> {
             1,
         )?;
         Ok(Outcome {
+            answered: read.answered,
             value: read.value.into_iter().next(),
             warnings: read.warnings,
         })
     }
 
-    pub(crate) fn timeline(&self, limit: usize) -> Result<Outcome<Vec<Event>>> {
+    pub(crate) fn home_filter(&self) -> Result<Outcome<Filter>> {
         let contacts = self.latest(3)?;
         let mut authors = BTreeSet::from([self.config.public.clone()]);
         if let Some(event) = contacts.value {
@@ -49,22 +51,28 @@ impl Client<'_> {
                     .map(str::to_owned),
             );
         }
-        let mut notes = self.relays().query(
-            Filter {
+        Ok(Outcome {
+            value: Filter {
                 kinds: vec![1],
                 authors: authors.into_iter().collect(),
                 ..Filter::default()
             },
-            limit,
-        )?;
-        notes.warnings.extend(contacts.warnings);
+            warnings: contacts.warnings,
+            answered: contacts.answered,
+        })
+    }
+
+    pub(crate) fn timeline(&self, limit: usize) -> Result<Outcome<Vec<Event>>> {
+        let filter = self.home_filter()?;
+        let mut notes = self.relays().query(filter.value, limit)?;
+        notes.warnings.extend(filter.warnings);
         Ok(notes)
     }
 
     pub(crate) fn notifications(&self, limit: usize) -> Result<Outcome<Vec<Event>>> {
         self.relays().query(
             Filter {
-                kinds: vec![1],
+                kinds: vec![1, 3, 6, 7],
                 mentions: vec![self.config.public.clone()],
                 ..Filter::default()
             },

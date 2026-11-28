@@ -121,6 +121,8 @@ fn a_post_sends_the_draft_once_with_a_key() {
         w.send(
             1,
             Job::Post(Box::new(Draft {
+                quote: None,
+                quote_policy: None,
                 files: Vec::new(),
                 text: "こんにちは 🇯🇵".into(),
                 cw: cw.into(),
@@ -226,6 +228,8 @@ fn a_write_on_its_way_is_finished_before_quitting() {
 fn only_writes_change_the_server() {
     assert!(
         Job::Post(Box::new(Draft {
+            quote: None,
+            quote_policy: None,
             files: Vec::new(),
             text: String::new(),
             cw: String::new(),
@@ -270,7 +274,13 @@ fn only_writes_change_the_server() {
         }
         .changes_server()
     );
-    assert!(!Job::OpenLink { url: String::new() }.changes_server());
+    assert!(
+        !Job::OpenLink {
+            url: String::new(),
+            program: None
+        }
+        .changes_server()
+    );
 }
 
 // A job whose work panics is answered with its own failure.
@@ -281,4 +291,34 @@ fn a_job_that_panics_is_answered_with_its_failure() {
         panic!("{ev:?}");
     };
     assert_eq!(result.unwrap_err().message(), "internal error: boom");
+}
+
+#[test]
+fn retry_notices_reach_the_ui_before_the_completed_read() {
+    let (url, log) = serve(Arc::new(|_, n| {
+        if n == 0 {
+            Reply {
+                status: 429,
+                headers: vec![("Retry-After", "0".into())],
+                body: br#"{"error":"wait"}"#.to_vec(),
+            }
+        } else {
+            reply(200, "[]")
+        }
+    }));
+    let w = Worker::spawn(client(&url)).unwrap();
+    w.send(
+        9,
+        Job::Timeline {
+            kind: TimelineKind::Home,
+            max_id: None,
+        },
+    );
+    let (seq, notice) = wait(&w);
+    assert_eq!(seq, 9);
+    assert!(matches!(notice, Event::Retrying(s) if s.contains("trying again in 0 s")));
+    let (seq, event) = wait(&w);
+    assert_eq!(seq, 9);
+    assert!(matches!(event, Event::Timeline { result: Ok(_), .. }));
+    assert_eq!(log.lock().unwrap().len(), 2);
 }

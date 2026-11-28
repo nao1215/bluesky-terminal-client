@@ -60,6 +60,7 @@ pub(crate) struct PostArgs {
     pub alts: Vec<String>,
     pub video: Option<PathBuf>,
     pub reply: Option<String>,
+    pub quote: Option<String>,
     pub cw: Option<String>,
     pub sensitive: bool,
     pub visibility: Visibility,
@@ -220,6 +221,9 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read) -> Result<Draft> {
         );
     }
     let reply = a.reply.as_deref().map(parse_status).transpose()?;
+    if let Some(q) = &a.quote {
+        parse_status(q)?;
+    }
     let mut files = Vec::new();
     for (i, (path, video)) in paths.into_iter().enumerate() {
         let data = std::fs::read(&path)
@@ -262,6 +266,9 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.characters_reserved_per_url
         )));
     }
+    if !d.files.is_empty() && l.max_media_attachments == 0 {
+        return Err(Error::unsupported("media attachments", host));
+    }
     if d.files.len() > l.max_media_attachments {
         return Err(Error::usage(format!(
             "{host} takes up to {} files on a post",
@@ -289,10 +296,10 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             l.image_size_limit
         };
         if let Some(max) = max
-            && f.data.len() as u64 > max
+            && f.data.len() as u64 >= max
         {
             return Err(Error::usage(format!(
-                "{} is {} bytes; {host} takes files up to {max} bytes",
+                "{} is {} bytes; {host} takes files smaller than {max} bytes",
                 f.name,
                 f.data.len()
             )));
@@ -351,13 +358,24 @@ pub(super) fn post(
     // The limits are the server's own, from its instance's configuration.
     let limits = client.limits();
     too_much(&d, &limits, client.host())?;
-    // The account is asked for only to say who would post.
-    let me = if a.dry_run { me(ctx, &client)? } else { None };
     let reply = match (&d.reply, a.reply.as_deref()) {
         (Some((at, id)), Some(typed)) => Some(replied(ctx, &client, typed, at.as_deref(), id)?),
         _ => None,
     };
+    let quote = a
+        .quote
+        .as_deref()
+        .map(|typed| {
+            let (at, id) = parse_status(typed)?;
+            replied(ctx, &client, typed, at.as_deref(), &id)
+        })
+        .transpose()?;
+    if let Some(status) = &quote {
+        client.require_quotes(Some(&status.id))?;
+    }
     if a.dry_run {
+        // Identity is only for the preview, after capability checks succeed.
+        let me = me(ctx, &client)?;
         return dry_run(
             ctx,
             out,
@@ -366,6 +384,7 @@ pub(super) fn post(
             &d,
             me.as_ref(),
             reply.as_ref(),
+            quote.as_ref(),
             &limits,
         );
     }
@@ -375,6 +394,9 @@ pub(super) fn post(
         &d,
         reply.as_ref().map(|r| r.id.as_str()),
         clock,
+        &quote
+            .as_ref()
+            .map_or_else(|| json!({}), |q| json!({"quoted_status_id": q.id})),
         |e| ctx.explained(e),
     )?;
     let url = format::status_url(client.origin(), &made);
@@ -388,10 +410,21 @@ pub(super) fn post(
 }
 
 /// The same validation, uploads, processing wait and post used by the composer.
-pub(crate) fn composed(client: &Client, a: &PostArgs) -> Result<Status> {
+pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
+    if extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some() {
+        client.require_quotes(extra["quoted_status_id"].as_str())?;
+    }
     too_much(&d, &client.limits(), client.host())?;
-    submit(client, a, &d, a.reply.as_deref(), &mut WallClock, |e| e)
+    submit(
+        client,
+        a,
+        &d,
+        a.reply.as_deref(),
+        &mut WallClock,
+        extra,
+        |e| e,
+    )
 }
 
 fn submit(
@@ -400,6 +433,7 @@ fn submit(
     d: &Draft,
     reply: Option<&str>,
     clock: &mut dyn Clock,
+    extra: &serde_json::Value,
     explain: impl Fn(Error) -> Error,
 ) -> Result<Status> {
     let mut ids = Vec::new();
@@ -423,6 +457,9 @@ fn submit(
     }
     if !ids.is_empty() {
         body["media_ids"] = json!(ids);
+    }
+    if let (Some(extra), Some(body)) = (extra.as_object(), body.as_object_mut()) {
+        body.extend(extra.clone());
     }
     let key = api::random_hex("mstdn-")?;
     client.create_status(&body, &key).map_err(|e| {
@@ -480,6 +517,7 @@ fn dry_run(
     d: &Draft,
     me: Option<&Account>,
     reply: Option<&Status>,
+    quote: Option<&Status>,
     limits: &Limits,
 ) -> Result<()> {
     let n =
@@ -509,6 +547,7 @@ fn dry_run(
                     "sensitive": a.sensitive || d.cw.is_some(),
                     "visibility": a.visibility.name(),
                     "replyId": reply.map(|r| &r.id),
+                    "quoteId": quote.map(|q| &q.id),
                     "files": files,
                 },
                 "characters": n,
@@ -532,6 +571,12 @@ fn dry_run(
         s.push_str(&format!(
             "reply to: {}\n",
             format::status_url(client.origin(), r)
+        ));
+    }
+    if let Some(q) = quote {
+        s.push_str(&format!(
+            "quote: {}\n",
+            format::status_url(client.origin(), q)
         ));
     }
     for f in &d.files {

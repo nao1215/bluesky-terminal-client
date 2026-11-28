@@ -28,3 +28,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `D` deletes your own selected post after `y` confirms, removing it from the lists when the server accepts it.
 - `!` reports a post or account to the current server's moderators with an optional comment; nothing is sent until `y` confirms.
 - `ctrl+o` in the composer opens a file browser for up to four pictures or one video, with alt text edited using `tab` and attachments removed using `ctrl+x`; sending checks the instance limits, strips metadata and waits for uploads to finish processing.
+- The selected post's thread is read ahead after 400 ms, and Notifications shows the count newer than the latest notification viewed during the current run.
+- `e` on your own Profile edits the name, bio, profile fields, locked, bot and discoverable settings, avatar and header, saving only changes and stripping picture metadata.
+- `Q` creates quote posts on Mastodon 4.5 or later, with quote approval chosen using `ctrl+q`; received quotes are shown on any server that supplies them.
+- Custom emoji are drawn as pictures in posts, display names, profiles and notifications on terminals with graphics, with shortcodes kept on other terminals.
+- `+` adds list, hashtag, notification and search columns beside Home; `H` and `L` focus columns, `<` and `>` move them, and `x` then `y` closes one. Columns are saved per account.
+- Chat (`7`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.
+
+- Commands now favourite and boost posts, take those actions back, delete posts, follow, mute and block accounts, and list their related accounts. Favourites, bookmarks and Mastodon lists can be read from the command line.
+- `report` accepts a reason and comment with explicit confirmation; `chat` lists direct conversations, reads one-to-one history and sends direct posts. `search --accounts` finds accounts and `post --quote` quotes posts on Mastodon 4.5 or later.
+- JSON posts now expose the quoted post ID. New commands use the common account, message and action JSON shapes; `notifications --seen` saves the newest displayed notification as read.
+- The account picker adds browser OAuth login and confirmed local logout. Settings include the download folder and browser, with environment overrides preserved.
+- The full-screen client displays link cards and opens their URLs with `O`, and synchronizes notification markers and unread counts with the server. A rejected read-marker save restores the unread count.
+
+### Fixed
+
+- Unsupported server features now return exit status 5 and JSON `status: 5`, while authentication failures and missing resources remain API errors.
+- Quote posts check server support before uploading or publishing, preventing older servers from silently publishing an ordinary post instead.

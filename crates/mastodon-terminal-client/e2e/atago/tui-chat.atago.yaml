@@ -1,0 +1,404 @@
+version: '1'
+suite:
+  name: mstdn direct conversations
+scenarios:
+- name: enter opens and marks read then i and enter reply directly
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: h
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Home ready</p>
+    - method: GET
+      path: /api/v1/accounts/2
+      json:
+        id: '2'
+        acct: alice
+        note: <p>Alice profile</p>
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+    - method: GET
+      path: /api/v1/conversations
+      json:
+      - id: c1
+        unread: true
+        accounts:
+        - id: '2'
+          acct: alice
+        last_status:
+          id: dm1
+          visibility: direct
+          account:
+            id: '2'
+            acct: alice
+          content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1
+      json:
+        id: dm1
+        visibility: direct
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1/context
+      json:
+        ancestors: []
+        descendants:
+        - id: different-branch
+          visibility: direct
+          account:
+            id: '3'
+            acct: bob
+          content: <p>Different participants</p>
+    - method: POST
+      path: /api/v1/conversations/c1/read
+      json:
+        id: c1
+        unread: false
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: dm2
+        visibility: direct
+        account:
+          acct: me
+        content: <p>Private reply</p>
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-chat","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 160
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Home ready
+          - 7 Chat
+      - send: '7'
+      - expect_screen:
+          contains: Private incoming
+      - send:
+          key: enter
+      - expect_screen:
+          contains:
+          - Private incoming
+          - i to write a message
+          stable_for: 500ms
+          not_contains: Different participants
+      - send: i
+      - send: Reply
+      - send:
+          key: enter
+      - expect_screen:
+          contains:
+          - Private reply
+          - message sent
+      - send:
+          key: esc
+      # An esc right before another key reads as alt+that key, so wait.
+      - expect_screen:
+          contains: i write a message
+          stable_for: 300ms
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/conversations/c1/read
+        count: 1
+        body:
+          json:
+          - path: $
+            equals: {}
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/statuses
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              status: '@alice Reply'
+              visibility: direct
+              in_reply_to_id: dm1
+- name: viewing the list and cancelling a new profile message send no writes
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: h
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Home ready</p>
+    - method: GET
+      path: /api/v1/accounts/2
+      json:
+        id: '2'
+        acct: alice
+        note: <p>Alice profile</p>
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+    - method: GET
+      path: /api/v1/conversations
+      json:
+      - id: c1
+        unread: true
+        accounts:
+        - id: '2'
+          acct: alice
+        last_status:
+          id: dm1
+          visibility: direct
+          account:
+            id: '2'
+            acct: alice
+          content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1
+      json:
+        id: dm1
+        visibility: direct
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1/context
+      json:
+        ancestors: []
+        descendants: []
+    - method: POST
+      path: /api/v1/conversations/c1/read
+      json:
+        id: c1
+        unread: false
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: dm2
+        visibility: direct
+        account:
+          acct: me
+        content: <p>Private reply</p>
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-chat","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 160
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Home ready
+          - 7 Chat
+      - send: '7'
+      - expect_screen:
+          contains: Private incoming
+      - send: '1'
+      - expect_screen:
+          contains: Home ready
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Alice profile
+      - send: m
+      - expect_screen:
+          contains: Message (enter sends)
+      - send: Unsent
+      - send:
+          key: esc
+      - expect_screen:
+          contains: i write a message
+          stable_for: 300ms
+      - send:
+          key: esc
+      - expect_screen:
+          contains: Private incoming
+          stable_for: 300ms
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0
+- name: m on profile creates a direct post only on enter
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: h
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Home ready</p>
+    - method: GET
+      path: /api/v1/accounts/2
+      json:
+        id: '2'
+        acct: alice
+        note: <p>Alice profile</p>
+    - method: GET
+      path: /api/v1/accounts/2/statuses
+      json: []
+    - method: GET
+      path: /api/v1/conversations
+      json:
+      - id: c1
+        unread: true
+        accounts:
+        - id: '2'
+          acct: alice
+        last_status:
+          id: dm1
+          visibility: direct
+          account:
+            id: '2'
+            acct: alice
+          content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1
+      json:
+        id: dm1
+        visibility: direct
+        account:
+          id: '2'
+          acct: alice
+        content: <p>Private incoming</p>
+    - method: GET
+      path: /api/v1/statuses/dm1/context
+      json:
+        ancestors: []
+        descendants: []
+    - method: POST
+      path: /api/v1/conversations/c1/read
+      json:
+        id: c1
+        unread: false
+    - method: POST
+      path: /api/v1/statuses
+      json:
+        id: dm2
+        visibility: direct
+        account:
+          acct: me
+        content: <p>Private reply</p>
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-chat","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      rows: 36
+      cols: 160
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Home ready
+          - 7 Chat
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Alice profile
+      - send: m
+      - expect_screen:
+          contains: Message (enter sends)
+      - send: Hello
+      - send:
+          key: enter
+      - expect_screen:
+          contains: message sent
+      - send:
+          key: esc
+      - expect_screen:
+          contains: i write a message
+          stable_for: 300ms
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/conversations/c1/read
+        count: 0
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/statuses
+        count: 1
+        body:
+          json:
+          - path: $
+            equals:
+              status: '@alice Hello'
+              visibility: direct

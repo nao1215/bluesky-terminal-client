@@ -299,3 +299,40 @@ fn signed_note_must_match_every_requested_field() {
     );
     assert!(validate_note("{}", &public, 1, "original").is_err());
 }
+
+#[test]
+fn signed_reply_reaction_and_repost_must_keep_the_authorized_tags_and_kind() {
+    use super::super::event::Unsigned;
+    let (key, public) = signer();
+    for kind in [1, 6, 7] {
+        let request = Unsigned {
+            created_at: 7,
+            kind,
+            tags: vec![
+                vec!["e".into(), "ab".repeat(32), String::new(), "root".into()],
+                vec!["p".into(), public.clone()],
+            ],
+            content: if kind == 7 {
+                "+".into()
+            } else {
+                "requested content".into()
+            },
+        };
+        let signed = Event::sign(
+            &key,
+            request.created_at,
+            kind,
+            request.tags.clone(),
+            request.content.clone(),
+        )
+        .unwrap();
+        let encoded = serde_json::to_string(&signed).unwrap();
+        assert_eq!(validate_event(&encoded, &public, &request).unwrap(), signed);
+        let mut altered = request.clone();
+        altered.tags[0][1] = "cd".repeat(32);
+        assert!(validate_event(&encoded, &public, &altered).is_err());
+        altered = request.clone();
+        altered.kind = 2;
+        assert!(validate_event(&encoded, &public, &altered).is_err());
+    }
+}

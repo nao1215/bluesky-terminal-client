@@ -31,6 +31,37 @@ Mastodon stage; expanding the shared API for them is deferred. The existing
 bsky/msky viewer fit calculation also has a new fingerprint after moving
 the adjacent byte-count formatter. None of these entries adds copied code.
 
+The Nostr TUI extraction shares the theme inventory across all four clients
+and locale parsing between mstdn and nstr. Removing mstdn's locale helpers
+changed the fingerprint of its existing translation-table/process-state
+match with msky; that unchanged code stays client-local because their
+vocabulary and thread-local language selection belong to each application.
+The existing bsky/msky legacy theme-name lookup and its adjacent tests also
+have a new fingerprint after removing their local inventories; their old
+name aliases stay in those clients to preserve existing settings behavior.
+Their existing palette-readability tests now index the shared inventory
+instead of local BLUESKY arrays; matches with terminal-kit are retained tests.
+No Nostr TUI implementation is copied from another client.
+
+The fourth Mastodon stage moved emoji cell substitution and drawing, dwell
+tracking, and column geometry into terminal-kit. The changed HELP and terminal
+startup fingerprints remain client-specific for the reasons above. Extending
+Mastodon's multipart writer to avatar/header parts changed the adjacent existing
+retry-notice fingerprint; that unchanged command-line network retry notice does
+not belong in terminal-kit's drawing API. No new implementation copy is retained.
+
+The local Misskey/Sharkey compatibility work shares Error, Kind and their
+formatting in terminal-kit; bsky, msky and mstdn re-export that implementation,
+and nstr preserves its serializable shape while using the same formatter.
+The msky/mstdn startup match adjacent to --help has a new fingerprint after
+their exit-status text changed. Account selection remains client-specific;
+the removed error implementation fingerprints are dropped. Mastodon's
+unsupported-feature constructor now also lives in the shared Error type.
+
+Routing retry notices through the TUI removed the shared stderr formatting
+match and shifted the existing Client constructor match; neither adds copied
+implementation. The constructors keep their per-client API ownership.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 

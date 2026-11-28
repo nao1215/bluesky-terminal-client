@@ -16,6 +16,12 @@ pub(super) fn thumbnails<'a>(s: &'a Status, ctx: &Ctx, pictures: bool) -> Vec<&'
             "video" | "gifv" => m.preview_url.as_deref().filter(|u| !u.is_empty()),
             _ => None,
         })
+        .chain(
+            s.card
+                .as_ref()
+                .and_then(|c| c.image.as_deref())
+                .filter(|u| !u.is_empty()),
+        )
         .take(4)
         .collect()
 }
@@ -107,15 +113,27 @@ pub(super) fn draw_browse(
                         3.min(body.bottom() - (body.y + (i - list.offset) as u16 * 3)),
                     );
                     draw_marker(frame, row, 3, i == list.selected, &ctx.t);
+                    let mut urls = Vec::new();
                     let text = format!(
                         "{} {}\n{}",
-                        display_name(a),
+                        emoji_text(&display_name(a), &a.emojis, images.shows(), &mut urls),
                         acct(a),
-                        crate::html::to_text(&a.note)
+                        emoji_text(
+                            &crate::html::to_text(&a.note),
+                            &a.emojis,
+                            images.shows(),
+                            &mut urls
+                        )
                     );
                     frame.render_widget(
                         wrapped(&text, row.width.saturating_sub(3)),
                         content_rect(row, 0),
+                    );
+                    terminal_kit::emoji::draw_emoji_cells(
+                        frame,
+                        content_rect(row, 0),
+                        &urls,
+                        images,
                     );
                 }
             }
@@ -125,12 +143,18 @@ pub(super) fn draw_browse(
             draw_needs_login(frame, area, app.host(), &ctx.t);
             return;
         }
+        let mut urls = Vec::new();
         let mut header = match &app.profile.account {
             Some(a) => format!(
                 "{} {}\n{}\n{}",
-                display_name(a),
+                emoji_text(&display_name(a), &a.emojis, images.shows(), &mut urls),
                 acct(a),
-                crate::html::to_text(&a.note),
+                emoji_text(
+                    &crate::html::to_text(&a.note),
+                    &a.emojis,
+                    images.shows(),
+                    &mut urls
+                ),
                 tf(
                     "{} followers · {} following · {} posts",
                     &[
@@ -159,6 +183,7 @@ pub(super) fn draw_browse(
             Paragraph::new(lines.into_iter().map(Line::from).collect::<Vec<_>>()),
             head,
         );
+        terminal_kit::emoji::draw_emoji_cells(frame, head, &urls, images);
         draw_statuses(
             frame,
             body,

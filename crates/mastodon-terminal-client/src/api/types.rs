@@ -16,15 +16,33 @@ pub(crate) struct Account {
     /// one of another.
     pub acct: String,
     pub display_name: String,
+    pub emojis: Vec<Emoji>,
     /// The profile's address on its own server.
     pub url: Option<String>,
     /// What the account says about itself, as HTML.
     pub note: String,
+    pub source: Option<AccountSource>,
+    pub discoverable: Option<bool>,
     pub locked: bool,
     pub bot: bool,
     pub followers_count: Option<u64>,
     pub following_count: Option<u64>,
     pub statuses_count: Option<u64>,
+}
+
+/// Unformatted fields returned only for the authenticated account.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct AccountSource {
+    pub note: String,
+    pub fields: Vec<ProfileField>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct ProfileField {
+    pub name: String,
+    pub value: String,
 }
 
 impl Account {
@@ -36,6 +54,15 @@ impl Account {
             _ => local,
         }
     }
+}
+
+/// Custom emoji supplied with the text that references them.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Emoji {
+    pub shortcode: String,
+    pub url: String,
+    pub static_url: String,
 }
 
 /// A file attached to a status (`MediaAttachment`).
@@ -125,7 +152,11 @@ pub(crate) struct Status {
     pub in_reply_to_account_id: Option<String>,
     /// The status this one boosts, for a boost.
     pub reblog: Option<Box<Status>>,
+    pub quote: Option<Quote>,
+    pub card: Option<PreviewCard>,
+    pub quote_approval: Option<QuoteApproval>,
     pub media_attachments: Vec<Media>,
+    pub emojis: Vec<Emoji>,
     pub mentions: Vec<Mention>,
     pub tags: Vec<Tag>,
     pub poll: Option<Poll>,
@@ -136,6 +167,18 @@ pub(crate) struct Status {
     pub favourited: Option<bool>,
     /// Whether the account asking boosted it.
     pub reblogged: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Quote {
+    pub state: String,
+    pub quoted_status: Option<Box<Status>>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct QuoteApproval {
+    pub current_user: String,
 }
 
 impl Status {
@@ -154,6 +197,16 @@ impl Status {
             .map(|(i, m)| (s, i + 1, m))
             .collect()
     }
+}
+
+/// Link metadata supplied by Mastodon; never fetch arbitrary page HTML.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct PreviewCard {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub image: Option<String>,
 }
 
 /// A notification.
@@ -243,7 +296,9 @@ impl Limits {
                 .unwrap_or(d.max_characters),
             characters_reserved_per_url: n(&c["statuses"]["characters_reserved_per_url"])
                 .unwrap_or(d.characters_reserved_per_url),
-            max_media_attachments: n(&c["statuses"]["max_media_attachments"])
+            max_media_attachments: c["statuses"]["max_media_attachments"]
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok())
                 .unwrap_or(d.max_media_attachments),
             description_limit: n(&c["media_attachments"]["description_limit"])
                 .unwrap_or(d.description_limit),
@@ -333,4 +388,14 @@ pub(crate) struct Relationship {
     pub muting: bool,
     #[serde(default)]
     pub blocking: bool,
+}
+
+/// A conversation and its latest direct status.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct Conversation {
+    pub id: String,
+    pub unread: bool,
+    pub accounts: Vec<Account>,
+    pub last_status: Option<Status>,
 }
