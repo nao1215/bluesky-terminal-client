@@ -1,0 +1,81 @@
+# Standalone cargo-fuzz workspace; harnesses use the client's actual parsers.
+[package]
+name = "nostr-terminal-client-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# The included client files use these dependencies: config.rs (dirs, url,
+# zeroize), event.rs (jiff, serde), nip44.rs (chacha20, hmac, zeroize),
+# relay.rs (serde, tungstenite, url), and the generated NIP-46 parser
+# (serde, url, zeroize). cargo-machete does not follow those source paths.
+[package.metadata.cargo-machete]
+ignored = ["chacha20", "dirs", "hmac", "jiff", "serde", "tungstenite", "zeroize"]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+base64 = "0.22"
+bech32 = "0.11"
+chacha20 = { version = "0.9", features = ["zeroize"] }
+hmac = "0.13"
+dirs = "6"
+hex = "0.4"
+jiff = "1"
+k256 = { version = "0.14", default-features = false, features = ["schnorr", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+url = "2"
+zeroize = "1"
+
+[build-dependencies]
+syn = { version = "2", features = ["full", "printing"] }
+quote = "1"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "relay_message"
+path = "fuzz_targets/relay_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_json"
+path = "fuzz_targets/event_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nip19"
+path = "fuzz_targets/nip19.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nip44"
+path = "fuzz_targets/nip44.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nip46_bunker"
+path = "fuzz_targets/nip46_bunker.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nip46_response"
+path = "fuzz_targets/nip46_response.rs"
+test = false
+doc = false
+bench = false
