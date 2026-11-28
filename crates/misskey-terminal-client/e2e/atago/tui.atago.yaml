@@ -195,17 +195,27 @@ scenarios:
             body:
               json:
                 - { path: "$.untilId", equals: q1 }
-      # The first note's thread was read ahead while the pictures were
-      # waited for, v on the renote read its own, and the local note's was
-      # read ahead last, while the Local tab was held.
+      # The thread of the renoted note is read once: either read ahead while
+      # the selection rested on it, or by v, which then takes it.
       - assert:
           mock:
             name: api
             path: /api/notes/show
-            count: 3
-            body:
-              json:
-                - { path: "$.noteId", equals: l1 }
+            where:
+              body:
+                json:
+                  - { path: "$.noteId", equals: o1 }
+            count: 1
+      # The local note's is read ahead while the Local tab is held.
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/show
+            where:
+              body:
+                json:
+                  - { path: "$.noteId", equals: l1 }
+            count: 1
       # The renoted note answers nothing and has no replies: nothing more
       # is asked for its thread.
       - assert:
