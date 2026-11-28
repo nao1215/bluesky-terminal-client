@@ -295,6 +295,14 @@ class Relay(socketserver.BaseRequestHandler):
 
 
 
+class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind calls getfqdn, which can stall on macOS's
+        # resolver before ready.txt is written. These fixtures need no DNS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address
+
+
 class Pictures(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -340,7 +348,7 @@ def main():
         server.events += [make(BOB, T + 1000, 1, [], f"boundary {i:02}") for i in range(25)]
         server.events += [make(BOB, T + 900, 1, [], "older page note")]
     if args.pictures:
-        media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Pictures)
+        media = LoopbackHTTPServer(("127.0.0.1", 0), Pictures)
         threading.Thread(target=media.serve_forever, daemon=True).start()
         origin = f"http://127.0.0.1:{media.server_address[1]}"
         server.events.append(make(BOB, T + 700, 1, [["imeta", f"url {origin}/imeta", "m image/png"]], f"local picture {origin}/picture.png"))
@@ -360,7 +368,7 @@ def main():
     if args.parity:
         server.information = {"supported_nips": [1,11,50]}
         import blossom
-        media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), blossom.Blossom)
+        media = LoopbackHTTPServer(("127.0.0.1", 0), blossom.Blossom)
         threading.Thread(target=media.serve_forever, daemon=True).start()
         config.update(searchRelays=[relays[0]], dmRelays=[relays[0]], blossomServers=[f"http://127.0.0.1:{media.server_port}"])
         server.events += [make(k, T + 1, 10050, [["relay", relays[0]]], "") for k in (ALICE, BOB)]

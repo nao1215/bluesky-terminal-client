@@ -197,7 +197,7 @@ scenarios:
   - name: content URLs and imeta pictures use terminal graphics
     services:
       - name: relay
-        command: python3 "${specdir}/testdata/relay.py" --pictures
+        command: python3 "${specdir}/testdata/relay_without_dns.py" --pictures
         ready: { file: ready.txt, store: relay, timeout: 30s }
     steps:
       - pty:
