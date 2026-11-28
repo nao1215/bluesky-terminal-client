@@ -1894,6 +1894,25 @@ mod tests {
         );
     }
 
+    /// A context logged in as did:plc:me on a server nothing answers on:
+    /// for what is refused before anything is asked.
+    fn offline_ctx<'a>(dir: &'a std::path::Path, accounts: &'a AccountStore) -> Ctx<'a> {
+        Ctx {
+            dir,
+            accounts,
+            session: Some(crate::config::Session {
+                service: "http://127.0.0.1:9".into(),
+                did: "did:plc:me".into(),
+                handle: "me.test".into(),
+                access_jwt: "a".into(),
+                refresh_jwt: "r".into(),
+            }),
+            service: "http://127.0.0.1:9",
+            json: false,
+            raw: false,
+        }
+    }
+
     // A message that cannot be sent is refused before anything reaches the
     // server: getConvoForMembers starts a conversation when there is none,
     // so asking for it first left an empty conversation behind, and a usage
@@ -1906,20 +1925,7 @@ mod tests {
     fn a_message_that_cannot_be_sent_starts_no_conversation(#[case] body: &str) {
         let dir = tempfile::tempdir().unwrap();
         let accounts = AccountStore::open(dir.path());
-        let ctx = Ctx {
-            dir: dir.path(),
-            accounts: &accounts,
-            session: Some(crate::config::Session {
-                service: "http://127.0.0.1:9".into(),
-                did: "did:plc:me".into(),
-                handle: "me.test".into(),
-                access_jwt: "a".into(),
-                refresh_jwt: "r".into(),
-            }),
-            service: "http://127.0.0.1:9",
-            json: false,
-            raw: false,
-        };
+        let ctx = offline_ctx(dir.path(), &accounts);
         let mut out = Vec::new();
         let e = chat(
             &ctx,
@@ -1942,20 +1948,7 @@ mod tests {
     fn a_report_comment_over_the_limit_is_refused_before_it_is_sent(#[case] comment: &str) {
         let dir = tempfile::tempdir().unwrap();
         let accounts = AccountStore::open(dir.path());
-        let ctx = Ctx {
-            dir: dir.path(),
-            accounts: &accounts,
-            session: Some(crate::config::Session {
-                service: "http://127.0.0.1:9".into(),
-                did: "did:plc:me".into(),
-                handle: "me.test".into(),
-                access_jwt: "a".into(),
-                refresh_jwt: "r".into(),
-            }),
-            service: "http://127.0.0.1:9",
-            json: false,
-            raw: false,
-        };
+        let ctx = offline_ctx(dir.path(), &accounts);
         let mut out = Vec::new();
         let e = report(
             &ctx,
