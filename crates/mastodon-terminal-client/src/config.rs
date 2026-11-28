@@ -411,7 +411,7 @@ mod tests {
     /// A throwaway value in the place of a token; no server gave it.
     const FAKE: &str = "fake-token-for-tests";
 
-    fn account(service: &str, name: &str) -> Session {
+    fn kept(service: &str, name: &str) -> Session {
         Session {
             service: service.into(),
             user_id: format!("id-{name}"),
@@ -425,9 +425,9 @@ mod tests {
     // its secret.
     #[test]
     fn a_session_or_an_app_printed_for_debugging_hides_its_secret() {
-        let shown = format!("{:?}", account("https://mastodon.test", "alice"));
-        assert!(!shown.contains(FAKE), "{shown}");
-        assert!(shown.contains("alice"), "{shown}");
+        let shown = format!("{:?}", kept("https://mastodon.test", "alice"));
+        assert!(!shown.contains(FAKE));
+        assert!(shown.contains("alice"));
         let app = App {
             service: "https://mastodon.test".into(),
             client_id: "cid".into(),
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn a_scope_is_allowed_by_itself_or_by_the_whole_it_is_part_of() {
-        let mut s = account("https://a.test", "a");
+        let mut s = kept("https://a.test", "a");
         assert!(s.allows("write:statuses") && s.allows("read"));
         s.scopes = vec!["read".into(), "write:media".into()];
         assert!(s.allows("write:media") && !s.allows("write:statuses"));
@@ -467,11 +467,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = AccountStore::open(dir.path());
         store
-            .save(&account("https://mastodon.social", "alice"))
+            .save(&kept("https://mastodon.social", "alice"))
             .unwrap();
-        store
-            .save(&account("http://127.0.0.1:8080", "bob"))
-            .unwrap();
+        store.save(&kept("http://127.0.0.1:8080", "bob")).unwrap();
         assert!(dir.path().join("accounts/mastodon.social.json").exists());
         assert!(dir.path().join("accounts/127.0.0.1_8080.json").exists());
         assert_eq!(store.current().unwrap().unwrap().username, "bob");
@@ -480,7 +478,7 @@ mod tests {
             "alice"
         );
         store
-            .save(&account("https://mastodon.social", "carol"))
+            .save(&kept("https://mastodon.social", "carol"))
             .unwrap();
         assert_eq!(store.current().unwrap().unwrap().username, "carol");
         let hosts: Vec<String> = store
@@ -498,8 +496,8 @@ mod tests {
     fn logging_out_removes_the_file_and_moves_on() {
         let dir = tempfile::tempdir().unwrap();
         let store = AccountStore::open(dir.path());
-        store.save(&account("https://a.test", "alice")).unwrap();
-        store.save(&account("https://b.test", "bob")).unwrap();
+        store.save(&kept("https://a.test", "alice")).unwrap();
+        store.save(&kept("https://b.test", "bob")).unwrap();
         assert_eq!(store.current_host().as_deref(), Some("b.test"));
         assert!(store.remove("b.test").unwrap());
         assert!(!dir.path().join("accounts/b.test.json").exists());
@@ -536,7 +534,7 @@ mod tests {
     fn a_saved_account_reads_back_with_a_byte_order_mark_too() {
         let dir = tempfile::tempdir().unwrap();
         let store = AccountStore::open(dir.path());
-        let a = account("https://mastodon.social", "alice");
+        let a = kept("https://mastodon.social", "alice");
         store.save(&a).unwrap();
         let path = store.path_for("mastodon.social");
         let mut data = b"\xef\xbb\xbf".to_vec();
@@ -550,7 +548,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = AccountStore::open(dir.path());
         store
-            .save(&account("https://mastodon.social", "alice"))
+            .save(&kept("https://mastodon.social", "alice"))
             .unwrap();
         let names: Vec<String> = fs::read_dir(dir.path().join("accounts"))
             .unwrap()
@@ -593,7 +591,7 @@ mod tests {
         fs::write(&path, "{}").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
         store
-            .save(&account("https://mastodon.social", "alice"))
+            .save(&kept("https://mastodon.social", "alice"))
             .unwrap();
         store
             .save_app(&App {
@@ -624,7 +622,7 @@ mod tests {
         .unwrap();
         let store = AccountStore::open(dir.path());
         store
-            .save(&account("https://mastodon.social", "alice"))
+            .save(&kept("https://mastodon.social", "alice"))
             .unwrap();
         let v: serde_json::Value =
             serde_json::from_slice(&fs::read(dir.path().join(ACCOUNTS_FILE)).unwrap()).unwrap();

@@ -767,6 +767,29 @@ fn login_takes_the_code_on_the_listener_and_saves_the_token() {
     let dir = tempfile::tempdir().unwrap();
     let ctx = ctx_of(&url, dir.path(), false);
     for round in 0..2 {
+        if round == 1 {
+            // The app is used again on the port it was registered with
+            // when that port is free, and registered again when it is not.
+            // The port was seen still taken right after the first login on
+            // a macOS runner, so wait until it is free: this checks the
+            // reuse, not the runner's sockets.
+            let app = crate::config::AccountStore::open(dir.path())
+                .app(api::authority(&url))
+                .unwrap();
+            let port: u16 = app.redirect_uris[0]
+                .trim_start_matches("http://127.0.0.1:")
+                .trim_end_matches("/callback")
+                .parse()
+                .unwrap();
+            let start = std::time::Instant::now();
+            while std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
+                assert!(
+                    start.elapsed() < Duration::from_secs(30),
+                    "port {port} stays taken"
+                );
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
         let (tx, rx) = mpsc::channel();
         let browser = std::thread::spawn(move || {
             let said: String = rx

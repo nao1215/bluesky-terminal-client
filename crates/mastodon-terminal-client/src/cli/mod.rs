@@ -577,7 +577,7 @@ struct UserRef {
 /// `https://<server>/users/name`.
 fn parse_user(typed: &str) -> Result<UserRef> {
     let t = typed.trim();
-    let not_an_account = || {
+    let not_a_user = || {
         Error::usage(format!("{t:?} is not an account")).with_hint(
             "give name, @name, @name@host, or its address such as https://mastodon.social/@name",
         )
@@ -587,9 +587,9 @@ fn parse_user(typed: &str) -> Result<UserRef> {
             let acct = path
                 .strip_prefix('@')
                 .or_else(|| path.strip_prefix("users/"))
-                .ok_or_else(not_an_account)?;
+                .ok_or_else(not_a_user)?;
             if acct.contains('/') {
-                return Err(not_an_account());
+                return Err(not_a_user());
             }
             (Some(origin), acct.to_string())
         }
@@ -604,7 +604,7 @@ fn parse_user(typed: &str) -> Result<UserRef> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
     if !name_ok {
-        return Err(not_an_account());
+        return Err(not_a_user());
     }
     // The host after the name is a host alone: a scheme or a path there
     // is a typo, not a server to ask.
@@ -613,7 +613,7 @@ fn parse_user(typed: &str) -> Result<UserRef> {
             Ok(origin) if !h.contains("://") && !h.starts_with('@') => {
                 Some(api::authority(&origin).to_string())
             }
-            _ => return Err(not_an_account()),
+            _ => return Err(not_a_user()),
         },
         None => None,
     };
