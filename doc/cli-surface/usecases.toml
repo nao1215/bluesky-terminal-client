@@ -57,6 +57,7 @@
 "notifications [alias notif]" = { usecase = "", without = "" }
 "post" = { usecase = "debimate's scripts/bsky_announce.py posts each new article", without = "new articles would be announced by hand" }
 "post --alt" = { usecase = "", without = "" }
+"post --dry-run" = { usecase = "debimate's bsky-announce workflow shows the post and its link card without posting them (its dry_run input), as msky-announce does with msky", without = "the workflow could not be tried without posting to the real account" }
 "post --image" = { usecase = "", without = "" }
 "post --no-card" = { usecase = "", without = "" }
 "post --quote" = { usecase = "", without = "" }
@@ -81,6 +82,7 @@
 "unlike" = { usecase = "", without = "" }
 "unmute" = { usecase = "", without = "" }
 "unrepost" = { usecase = "", without = "" }
+"whoami" = { usecase = "debimate's scripts/bsky_announce.py can read its own account and then its own posts with bsky author --json to skip an article already announced, as msky_announce.py does", without = "the script keeps calling the public AppView directly to learn whose posts to check" }
 
 [msky]
 "--host" = { usecase = "", without = "" }
