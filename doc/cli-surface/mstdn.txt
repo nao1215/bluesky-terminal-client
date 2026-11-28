@@ -1,0 +1,43 @@
+# The commands, aliases and flags of mstdn, from its --help.
+# Written by `python3 scripts/rules/cli.py --update`; do not edit by hand.
+# What each is for is in usecases.toml.
+--host
+--json
+accounts
+accounts --use
+author
+author --download
+author --filter
+author --limit (-n)
+author --output (-o)
+author --reposts
+download
+download --output (-o)
+login
+login --oob
+login --timeout
+logout
+logout --all
+notifications
+notifications --limit (-n)
+notifications [alias notif]
+post
+post --alt
+post --cw
+post --dry-run
+post --image
+post --reply
+post --sensitive
+post --video
+post --visibility
+profile
+search
+search --limit (-n)
+status
+status [hidden alias note]
+thread
+timeline
+timeline --limit (-n)
+timeline --reposts
+timeline [alias tl]
+whoami

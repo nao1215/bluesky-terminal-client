@@ -6,3 +6,8 @@
 # "etcpasswd-2.png", which the generic API key rule takes for a key. The
 # commit is from msky's history, where the file was at src/download.rs.
 38d992ffad74a96f7fd1a4c0c3c35052887426d8:src/download.rs:generic-api-key:306
+
+# The nightly the Rules workflow reads terminal-kit's API with, set in an
+# environment variable whose name had "API" in it, which the generic API key
+# rule takes for a key. The variable is RUSTDOC_JSON_NIGHTLY since.
+642f6b91a461d96f648e6ebaa505bca47b63b21d:.github/workflows/rules.yml:generic-api-key:140
