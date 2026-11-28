@@ -269,7 +269,10 @@ pub(super) fn draw_columns(
                 l,
                 images,
                 n!("Nothing here yet."),
-                me.as_deref(),
+                PostContext {
+                    me: me.as_deref(),
+                    inline: i == focus && app.overlay.is_none(),
+                },
                 t,
             ),
             Rows::Notifications(l) => draw_notification_list(frame, list, l, images, t),
@@ -292,7 +295,10 @@ pub(super) fn draw_timeline(
         &mut app.timeline,
         images,
         n!("No posts from accounts you follow yet. Press R to refresh."),
-        None,
+        PostContext {
+            me: None,
+            inline: app.overlay.is_none(),
+        },
         t,
     );
 }
@@ -304,7 +310,7 @@ pub(super) fn draw_thread(
     area: Rect,
     th: &mut ThreadView,
     images: &mut Images,
-    me: Option<&str>,
+    context: PostContext<'_>,
     t: &Theme,
 ) {
     let [title, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
@@ -336,7 +342,7 @@ pub(super) fn draw_thread(
         &mut th.list,
         images,
         n!("The thread is empty."),
-        me,
+        context,
         t,
     );
 }
@@ -485,7 +491,10 @@ pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: 
                     &mut app.search.posts,
                     images,
                     n!("No posts found."),
-                    me,
+                    PostContext {
+                        me,
+                        inline: app.overlay.is_none(),
+                    },
                     t,
                 );
             }
@@ -636,7 +645,10 @@ pub(super) fn draw_profile(frame: &mut Frame, area: Rect, app: &mut App, images:
         &mut app.profile.posts,
         images,
         n!("No posts yet."),
-        None,
+        PostContext {
+            me: None,
+            inline: app.overlay.is_none(),
+        },
         t,
     );
 }

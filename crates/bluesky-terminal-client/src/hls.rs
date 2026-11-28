@@ -152,7 +152,6 @@ fn remove_dot_segments(path: &str) -> String {
 /// a media playlist.
 pub(crate) fn pick_variant(text: &str, base: &str) -> Option<String> {
     variants(text, base)
-        .into_iter()
         .min_by_key(|(b, _)| if *b == 0 { u64::MAX } else { *b })
         .map(|(_, u)| u)
 }
@@ -160,41 +159,48 @@ pub(crate) fn pick_variant(text: &str, base: &str) -> Option<String> {
 /// The stream to save from a master playlist: the one with the most
 /// bandwidth. `None` when `text` is already a media playlist.
 pub(crate) fn pick_best_variant(text: &str, base: &str) -> Option<String> {
-    variants(text, base)
-        .into_iter()
-        .max_by_key(|(b, _)| *b)
-        .map(|(_, u)| u)
+    variants(text, base).max_by_key(|(b, _)| *b).map(|(_, u)| u)
 }
 
-fn variants(text: &str, base: &str) -> Vec<(u64, String)> {
-    let mut out = Vec::new();
+fn variants<'a>(text: &'a str, base: &'a str) -> impl Iterator<Item = (u64, String)> + 'a {
     let mut lines = text.lines().map(str::trim);
-    while let Some(line) = lines.next() {
-        let Some(attrs) = line.strip_prefix("#EXT-X-STREAM-INF:") else {
-            continue;
-        };
-        let bandwidth = attrs
-            .split(',')
-            .find_map(|a| a.strip_prefix("BANDWIDTH="))
-            .and_then(|b| b.parse().ok())
-            .unwrap_or(0);
-        if let Some(uri) = lines
-            .by_ref()
-            .find(|l| !l.is_empty() && !l.starts_with('#'))
-        {
-            out.push((bandwidth, resolve(base, uri)));
+    std::iter::from_fn(move || {
+        while let Some(line) = lines.next() {
+            let Some(attrs) = line.strip_prefix("#EXT-X-STREAM-INF:") else {
+                continue;
+            };
+            let bandwidth = attrs
+                .split(',')
+                .find_map(|a| a.strip_prefix("BANDWIDTH="))
+                .and_then(|b| b.parse().ok())
+                .unwrap_or(0);
+            if let Some(uri) = lines
+                .by_ref()
+                .find(|l| !l.is_empty() && !l.starts_with('#'))
+            {
+                return Some((bandwidth, resolve(base, uri)));
+            }
         }
-    }
-    out
+        None
+    })
 }
 
 /// The segments of a media playlist, in order.
 pub(crate) fn segments(text: &str, base: &str) -> Vec<String> {
+    segment_urls(text, base).collect()
+}
+
+/// Resolve only the first segment for read-ahead. Expanding every relative
+/// URL against a long base can use far more memory than the playlist bytes.
+pub(crate) fn first_segment(text: &str, base: &str) -> Option<String> {
+    segment_urls(text, base).next()
+}
+
+fn segment_urls<'a>(text: &'a str, base: &'a str) -> impl Iterator<Item = String> + 'a {
     text.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .map(|l| resolve(base, l))
-        .collect()
 }
 
 /// One frame's worth of H.264 (Annex B), with its presentation time in

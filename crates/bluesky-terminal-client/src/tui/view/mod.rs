@@ -26,7 +26,7 @@ use crate::tui::files::{Browser, EntryKind};
 use crate::tui::images::Images;
 use crate::tui::input::TextInput;
 use crate::tui::keys;
-use crate::tui::player::State;
+use crate::tui::player::{State, inline_video};
 use crate::tui::text::{drawable, format_time, truncate, wrap};
 use crate::tui::theme::{THEMES, Theme};
 use crate::tui::thread::{MAX_INDENT, RowKind, ThreadRow};
@@ -176,7 +176,17 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_tabs(frame, top, app);
     if let Some(th) = app.threads.last_mut() {
         let me = app.session.as_ref().map(|s| s.did.as_str());
-        draw_thread(frame, body, th, images, me, &t);
+        draw_thread(
+            frame,
+            body,
+            th,
+            images,
+            PostContext {
+                me,
+                inline: app.overlay.is_none(),
+            },
+            &t,
+        );
     } else {
         draw_tab(frame, body, app, images, &t);
     }

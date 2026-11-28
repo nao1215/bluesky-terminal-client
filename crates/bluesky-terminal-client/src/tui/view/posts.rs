@@ -24,13 +24,6 @@ pub(super) struct PostLines {
 /// viewer's, so space starts the video over in the viewer.
 pub(super) const INLINE_REPLAY: u32 = u32::MAX;
 
-/// Whether the selected post's video plays in the timeline
-/// (BSKY_INLINE_VIDEO=1). A trial, off by default.
-pub(super) fn inline_video() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("BSKY_INLINE_VIDEO").is_some_and(|v| v == "1"))
-}
-
 /// Width in cells of each image box when `n` images share `width` columns.
 pub(super) fn image_box_width(width: u16, n: u16) -> u16 {
     if n == 0 || width < n {
@@ -434,13 +427,19 @@ pub(super) fn row_lines<T: PostRow>(
     }
 }
 
+/// Which account is viewing this list, and whether it owns keyboard focus.
+pub(super) struct PostContext<'a> {
+    pub(super) me: Option<&'a str>,
+    pub(super) inline: bool,
+}
+
 pub(super) fn draw_posts<T: PostRow>(
     frame: &mut Frame,
     area: Rect,
     list: &mut List<T>,
     images: &mut Images,
     empty: &str,
-    me: Option<&str>,
+    context: PostContext<'_>,
     t: &Theme,
 ) {
     if !list.loaded {
@@ -463,7 +462,15 @@ pub(super) fn draw_posts<T: PostRow>(
     list.offset = scroll_offset(selected, list.offset, list.items.len(), area.height, |i| {
         lines
             .entry(i)
-            .or_insert_with(|| row_lines(&items[i], content_width(content, &items[i]), cell, me, t))
+            .or_insert_with(|| {
+                row_lines(
+                    &items[i],
+                    content_width(content, &items[i]),
+                    cell,
+                    context.me,
+                    t,
+                )
+            })
             .height()
     });
 
@@ -475,7 +482,7 @@ pub(super) fn draw_posts<T: PostRow>(
         }
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, context.me, t));
         let h = pl.height();
         let visible = (area.bottom() - y).min(h);
         let row = Rect {
@@ -539,7 +546,7 @@ pub(super) fn draw_posts<T: PostRow>(
                 ..content
             };
             if whole {
-                let playlist = (i == list.selected && inline_video())
+                let playlist = (i == list.selected && context.inline && inline_video())
                     .then_some(pl.video.as_deref())
                     .flatten();
                 draw_post_media(frame, img_area, &pl.images, playlist, images);
@@ -561,7 +568,7 @@ pub(super) fn draw_posts<T: PostRow>(
     for (i, item) in list.items.iter().enumerate().skip(below).take(PREFETCH) {
         let pl = lines
             .entry(i)
-            .or_insert_with(|| row_lines(item, content_width(content, item), cell, me, t));
+            .or_insert_with(|| row_lines(item, content_width(content, item), cell, context.me, t));
         if let Some(url) = item.post().and_then(|p| p.author.avatar.as_ref()) {
             images.prefetch(&small_avatar(url), AVATAR.0, AVATAR.1);
         }
