@@ -6,8 +6,8 @@
 # script so the two cannot drift. What the archive records about the
 # container is pinned here:
 #
-#   - exactly one entry, the executable, at the archive root (`bsky` or
-#     `msky`, with .exe on Windows), with no directory entry or build-tree path;
+#   - exactly one entry, the executable, at the archive root (with .exe on
+#     Windows), with no directory entry or build-tree path;
 #   - mode 0755, so extracting on Unix always gives an executable;
 #   - owner and group 0 with empty names, so no runner account leaks in and
 #     `tar x` as root does not try to chown to a user that does not exist;

@@ -1,3 +1,7 @@
+[![Build](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/rust.yml)
+[![E2E](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/social-terminal-clients/actions/workflows/e2e.yml)
+[![measured with himorime](https://img.shields.io/badge/measured%20with-himorime-d9480f?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBkPSJNNC4yIDE4LjVBOSA5IDAgMSAxIDE5LjggMTguNSIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTEyIDE0LjUgMTYuNSA5Ii8%2BPGNpcmNsZSBmaWxsPSIjZmZmIiBjeD0iMTIiIGN5PSIxNC41IiByPSIyLjIiLz48L3N2Zz4=&logoColor=white)](https://github.com/nao1215/himorime)
+
 # mstdn
 
 A [Mastodon](https://joinmastodon.org) client for the terminal: a full-screen client with timelines, direct conversations, account management and media, and commands for reading, posting, favourites, boosts and moderation. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
@@ -187,6 +191,28 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | `LC_ALL` `LC_MESSAGES` `LANG` | English or 日本語; the full-screen language when settings name none, and the login directions |
 | `NO_COLOR` | The full-screen client in `monochrome` |
 | `TZ` | Time zone of the times shown |
+
+## Testing
+
+| Technique | Coverage |
+|---|---|
+| Unit and property tests | HTML, pagination, output and full-screen state; nightly properties use 20,000 cases |
+| Fuzzing | HTML-to-text, status JSON and Link headers |
+| Mutation tests | HTML, single-line text and full-screen lists |
+| Benchmarks | Start-up, 100-status commands and the first post on screen |
+
+`link_header` builds the `Next`, `next_of`, `percent_decode` and `percent_encode` items directly from `src/api/mod.rs`; the harness keeps no second parser implementation.
+
+From this crate's directory:
+
+```sh
+just bench                                  # himorime, Python 3, atago
+just fuzz link_header -max_total_time=60
+just properties                             # 20,000 cases per property
+just mutants                                # changes since main
+```
+
+[Benchmarks](bench/README.md) run against local stand-ins. Fuzz targets run over their committed seeds on pull requests and explore nightly for 300 seconds each; local exploration writes new inputs to `fuzz/work/`. Mutation testing reports changed lines on pull requests and the selected source files weekly, without a score gate.
 
 ## Contributing
 

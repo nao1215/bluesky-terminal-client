@@ -49,3 +49,6 @@ pub mod locale;
 pub mod confirm;
 
 pub mod browser;
+
+/// Command errors and exit statuses used by the clients.
+pub mod error;

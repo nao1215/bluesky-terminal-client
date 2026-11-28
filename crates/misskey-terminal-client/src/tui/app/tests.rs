@@ -304,6 +304,43 @@ fn a_failed_next_page_is_asked_again() {
     assert_eq!(app.handle_key(key('j')).len(), 1);
 }
 
+// A refresh failure must be visible even when the previous page remains.
+#[test]
+fn a_failed_refresh_keeps_cached_notes_and_reports_the_network_error() {
+    let mut app = logged_in(&["cached"]);
+    let seq = seq_of(&app.handle_key(key('R')), &home(None));
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Err(Error::api("notes/timeline: cannot reach the server")),
+        },
+    );
+    assert_eq!(
+        app.timelines[TimelineKind::Home.index()].items[0].id,
+        "cached"
+    );
+    let status = app
+        .status
+        .as_ref()
+        .expect("the retained page must not hide the error");
+    assert!(status.error && status.text.contains("cannot reach the server"));
+    let seq = seq_of(&app.handle_key(key('R')), &home(None));
+    app.handle_answer(
+        seq,
+        Event::Timeline {
+            kind: TimelineKind::Home,
+            until: None,
+            result: Ok(notes(&["recovered"])),
+        },
+    );
+    assert_eq!(
+        app.timelines[TimelineKind::Home.index()].items[0].id,
+        "recovered"
+    );
+}
+
 // R asks for the first page again; the answer to the earlier one, coming
 // late, is not applied over it.
 #[test]
@@ -2000,7 +2037,8 @@ fn a_server_without_chat_hides_the_tab_from_the_start() {
         .expect("chat asked at the start");
     app.handle_answer(
         seq,
-        Event::ChatHistory(Err(Error::api("chat/history failed: HTTP 404"))),
+        Event::ChatHistory(Err(Error::api("chat/history failed: NO_SUCH_ENDPOINT")
+            .with_api_code("NO_SUCH_ENDPOINT".into()))),
     );
     assert!(!app.tabs().contains(&Tab::Chat));
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
@@ -2023,7 +2061,8 @@ fn a_server_without_chat_takes_the_tab_away() {
         jobs[0].0,
         Event::ChatHistory(Err(Error::api(
             "chat/history failed: NO_SUCH_ENDPOINT: No such endpoint.",
-        ))),
+        )
+        .with_api_code("NO_SUCH_ENDPOINT".into()))),
     );
     assert!(!app.tabs().contains(&Tab::Chat));
     assert_ne!(app.tab, Tab::Chat);

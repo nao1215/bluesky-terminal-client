@@ -23,6 +23,49 @@ pub mod terminal_kit::emoji
 pub const terminal_kit::emoji::EMOJI_CELLS: &str
 pub fn terminal_kit::emoji::draw_emoji_cells(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &[alloc::string::String], &mut terminal_kit::media::images::Images)
 pub fn terminal_kit::emoji::with_emoji_cells(&str, &mut dyn core::ops::function::FnMut(&str) -> core::option::Option<alloc::string::String>, &mut alloc::vec::Vec<alloc::string::String>) -> alloc::string::String
+pub mod terminal_kit::error
+pub enum terminal_kit::error::Kind
+pub terminal_kit::error::Kind::Api
+pub terminal_kit::error::Kind::Io
+pub terminal_kit::error::Kind::Terminal
+pub terminal_kit::error::Kind::Unsupported
+pub terminal_kit::error::Kind::Usage
+impl terminal_kit::error::Kind
+pub fn terminal_kit::error::Kind::exit_code(self) -> u8
+impl core::clone::Clone for terminal_kit::error::Kind
+pub fn terminal_kit::error::Kind::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::error::Kind
+impl core::cmp::PartialEq for terminal_kit::error::Kind
+pub fn terminal_kit::error::Kind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::error::Kind
+pub fn terminal_kit::error::Kind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for terminal_kit::error::Kind
+impl core::marker::StructuralPartialEq for terminal_kit::error::Kind
+pub struct terminal_kit::error::Error
+impl terminal_kit::error::Error
+pub fn terminal_kit::error::Error::api(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn terminal_kit::error::Error::api_code(&self) -> core::option::Option<&str>
+pub fn terminal_kit::error::Error::hint(&self) -> core::option::Option<&str>
+pub fn terminal_kit::error::Error::io(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn terminal_kit::error::Error::kind(&self) -> terminal_kit::error::Kind
+pub fn terminal_kit::error::Error::message(&self) -> &str
+pub fn terminal_kit::error::Error::new(terminal_kit::error::Kind, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn terminal_kit::error::Error::usage(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn terminal_kit::error::Error::with_api_code(self, alloc::string::String) -> Self
+pub fn terminal_kit::error::Error::with_hint(self, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for terminal_kit::error::Error
+pub fn terminal_kit::error::Error::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::error::Error
+impl core::cmp::PartialEq for terminal_kit::error::Error
+pub fn terminal_kit::error::Error::eq(&self, &Self) -> bool
+impl core::error::Error for terminal_kit::error::Error
+impl core::fmt::Debug for terminal_kit::error::Error
+pub fn terminal_kit::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for terminal_kit::error::Error
+pub fn terminal_kit::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::error::Error
+pub fn terminal_kit::error::write_error(&mut core::fmt::Formatter<'_>, &str, core::option::Option<&str>) -> core::fmt::Result
+pub type terminal_kit::error::Result<T> = core::result::Result<T, terminal_kit::error::Error>
 pub mod terminal_kit::events
 pub struct terminal_kit::events::Input
 impl terminal_kit::events::Input

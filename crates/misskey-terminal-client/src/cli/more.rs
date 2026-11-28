@@ -26,7 +26,12 @@ pub(crate) fn thread(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
         Vec::new()
     };
     let replies = if n.replies_count > 0 {
-        client.children(&id, api::MAX_PAGE)?
+        pages(
+            usize::MAX,
+            false,
+            |_| true,
+            |limit, until| client.children_page(&id, limit, until),
+        )?
     } else {
         Vec::new()
     };
@@ -549,14 +554,7 @@ pub(crate) fn chat(
     stdin: &mut dyn std::io::Read,
 ) -> Result<()> {
     let client = ctx.account_client()?;
-    let explained = |e: Error| {
-        if api::chat_unavailable(&e) {
-            let host = client.host().to_string();
-            e.with_hint(format!("{host} has no chat for this account (a version before chat, or a role that may not chat)"))
-        } else {
-            ctx.explained(e)
-        }
-    };
+    let explained = |e: Error| ctx.explained(e);
     let Some(actor) = actor else {
         let mut all = client.chat_history(false, limit).map_err(explained)?;
         if let Ok(rooms) = client.chat_history(true, limit) {
@@ -648,6 +646,7 @@ mod tests {
     use super::*;
     use crate::api::stub_tests::{Calls, reply, serve};
     use crate::config::{AccountStore, Session};
+    use rstest::rstest;
     use std::sync::Arc;
 
     const FAKE: &str = "fake-token-for-tests";
@@ -811,6 +810,39 @@ mod tests {
         assert_eq!(
             run(|o| guarded(&c, o, Guard::Block, 10)).1,
             format!("@eve@{host}  {url}/@eve\n")
+        );
+    }
+
+    #[rstest]
+    #[case(include_str!("../testdata/compat/misskey-thread.json"))]
+    #[case(include_str!("../testdata/compat/sharkey-thread.json"))]
+    fn thread_reads_all_two_hundred_direct_replies(#[case] response: &str) {
+        let data: Value = serde_json::from_str(response).unwrap();
+        let id = data["root"]["id"].as_str().unwrap().to_string();
+        let (url, calls) = serve(Arc::new(move |path, body, _| {
+            if path == "/api/notes/show" {
+                return reply(200, &data["root"].to_string());
+            }
+            let body: Value = serde_json::from_str(body).unwrap();
+            let page = match body["untilId"].as_str() {
+                None => data["first"].clone(),
+                Some(cursor) if data["first"][99]["id"] == cursor => data["second"].clone(),
+                Some(cursor) if data["second"][99]["id"] == cursor => json!([]),
+                other => panic!("unexpected cursor: {other:?}"),
+            };
+            reply(200, &page.to_string())
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let c = ctx(&url, dir.path(), true);
+        let (result, output) = run(|out| thread(&c, out, &id));
+        result.unwrap();
+        assert_eq!(output.lines().count(), 201);
+        assert_eq!(
+            paths(&calls)
+                .iter()
+                .filter(|p| *p == "/api/notes/children")
+                .count(),
+            3
         );
     }
 

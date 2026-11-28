@@ -498,3 +498,13 @@ fn a_profile_over_the_lexicon_limits_is_refused_before_it_is_saved() {
     let jobs = app.handle_key(ctrl('s'));
     assert!(matches!(&jobs[..], [Job::SaveProfile { .. }]), "{jobs:?}");
 }
+#[test]
+fn a_quote_without_commentary_can_be_sent() {
+    let mut app = logged_in();
+    app.handle_key(key('Q'));
+    let jobs = app.handle_key(ctrl('s'));
+    assert!(
+        matches!(&jobs[..], [Job::Post { text, quote: Some(_), .. }] if text.is_empty()),
+        "{jobs:?}"
+    );
+}

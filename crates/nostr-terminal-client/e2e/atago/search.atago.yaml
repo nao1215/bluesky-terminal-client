@@ -1,0 +1,20 @@
+version: "1"
+suite:
+  name: nstr search capability
+scenarios:
+  - name: unadvertised NIP-50 is unsupported while hashtag search remains available
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready: { file: ready.txt, timeout: 30s }
+    steps:
+      - run:
+          command: nstr search words --json
+          env: &env
+            NSTR_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 5
+          stdout: { json: { path: "$.status", equals: 5 } }
+          stderr: { contains: "unsupported: NIP-50 search" }
+      - run: { command: 'nstr search "#absent" -n 1 --json', env: *env }
+      - assert: { exit_code: 0, stdout: { empty: true } }
