@@ -1,0 +1,75 @@
+# The commands, aliases and flags of bsky, from its --help.
+# Written by `python3 scripts/rules/cli.py --update`; do not edit by hand.
+# What each is for is in usecases.toml.
+--account (-a)
+--json
+--service
+accounts
+app-passwords
+app-passwords add
+app-passwords add --privileged
+app-passwords revoke
+author
+author --download
+author --filter
+author --limit (-n)
+author --reposts
+block
+blocks
+blocks --limit (-n)
+chat
+chat --limit (-n)
+delete
+download
+download --output (-o)
+feed
+feed --limit (-n)
+follow
+followers
+followers --limit (-n)
+follows
+follows --limit (-n)
+like
+likes
+likes --limit (-n)
+list
+list --limit (-n)
+lists
+lists --limit (-n)
+login
+login --password-stdin
+logout
+logout --all
+mute
+mutes
+mutes --limit (-n)
+notifications
+notifications --limit (-n)
+notifications --seen
+notifications [alias notif]
+post
+post --alt
+post --image
+post --no-card
+post --quote
+post --reply
+post --video
+profile
+report
+report --comment
+report --reason
+repost
+reposts
+reposts --limit (-n)
+search
+search --accounts
+search --limit (-n)
+thread
+timeline
+timeline --limit (-n)
+timeline [alias tl]
+unblock
+unfollow
+unlike
+unmute
+unrepost

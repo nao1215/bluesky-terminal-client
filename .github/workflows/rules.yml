@@ -1,0 +1,141 @@
+name: Rules
+
+# The rules of how this repository is written, checked by machine so a
+# change that breaks one fails here instead of waiting for a reviewer to
+# notice. Each job runs a script in scripts/rules/, and `just rules` runs
+# the same ones locally; CONTRIBUTING.md says what each checks and how to
+# make an exception.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # How the READMEs, CHANGELOGs and doc/ are written, no lint switched off
+  # in the source, and no co-author or session trailer in the pull
+  # request's commits and description.
+  docs-and-commits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Tests of the rule scripts
+        run: python3 scripts/rules/test_rules.py
+
+      - name: READMEs, CHANGELOGs and doc/
+        run: python3 scripts/rules/docs.py
+
+      - name: Lints left on in the source
+        run: python3 scripts/rules/source.py
+
+      - name: Commit messages
+        if: github.event_name == 'pull_request'
+        env:
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/rules/trailers.py --git "${RANGE}"
+
+      - name: Pull request description
+        if: github.event_name == 'pull_request'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "${BODY}" | python3 scripts/rules/trailers.py -
+
+  # Every command, alias and flag of each client listed, each one added
+  # with its use, and each command run by an atago spec.
+  cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build the clients
+        run: cargo build --locked --workspace --bins
+
+      - name: Commands, flags, their uses and their E2E specs
+        env:
+          RULES_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/rules/cli.py
+
+  # A dependency no code uses.
+  unused-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pinned so a new release cannot change the verdict on its own.
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-machete@0.10.1
+
+      - name: cargo machete
+        run: cargo machete
+
+  # Code copied that the baseline does not list.
+  duplicates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: jscpd against the baseline
+        run: python3 scripts/rules/duplicates.py
+
+  # What terminal-kit lets other crates reach, against its list.
+  public-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The nightly that rustdoc's JSON is read from, pinned with the
+      # cargo-public-api that reads its format (scripts/rules/public_api.sh).
+      - name: Install Rust nightly-2026-09-28
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: nightly-2026-09-28
+
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-public-api@0.52.0
+
+      - name: terminal-kit's public API
+        env:
+          PUBLIC_API_TOOLCHAIN: nightly-2026-09-28
+        run: ./scripts/rules/public_api.sh
