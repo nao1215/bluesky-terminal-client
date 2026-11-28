@@ -1,0 +1,197 @@
+version: "1"
+suite:
+  name: nstr parity protocol
+scenarios:
+  - name: exact signed writes and read commands on local relays
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --parity
+        ready:
+          file: ready.txt
+          timeout: 60s
+    steps:
+      - run:
+          command: "nstr profile 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr author 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 -n 2 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr note 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr thread 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr search bob --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr like 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 7"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr unlike 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 5"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr repost 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 6"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr unrepost 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 5"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr follow 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 3"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr unfollow 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 3"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr mute 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 10000"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr mutes --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr unmute 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr report 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --reason spam --comment \"fixture report\" --yes --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 1984"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr profile-update '{\"name\":\"updated\"}'  --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr dm-relays --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 10050"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr follows --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr followers --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr likes 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr reposts 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr post \"quote\" --quote 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --cw spoiler --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 1"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr delete 99570b44a0c1be6d814417bb5c02abec44d32c4c25fac68a11a304a98ed53662 --yes --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "python3 \"${specdir}/testdata/check_parity.py\" 5"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "exact event verified" }
+      - run:
+          command: "nstr accounts --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: "nstr chat 27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589 \"secret fixture message\" --json"
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert:
+          exit_code: 0
+      - run:
+          command: python3 "${specdir}/testdata/check_dm.py"
+      - assert:
+          exit_code: 0
+          stdout: { contains: "gift wraps verified independently" }

@@ -13,6 +13,13 @@ pub(crate) struct Error {
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
+    pub(crate) fn unavailable(message: impl ToString) -> Self {
+        Self {
+            error: message.to_string(),
+            hint: None,
+            status: 5,
+        }
+    }
     pub(crate) fn usage(message: impl ToString) -> Self {
         Self {
             error: message.to_string(),
@@ -30,11 +37,7 @@ impl Error {
     }
 
     pub(crate) fn unsupported(message: impl ToString) -> Self {
-        Self {
-            error: message.to_string(),
-            hint: None,
-            status: 5,
-        }
+        Self::unavailable(message)
     }
 
     pub(crate) fn network(message: impl ToString) -> Self {

@@ -2,6 +2,7 @@
 # Build official release sources, expose only loopback ports, run nstr's live suite.
 # Requires Docker with buildx, git, cargo, python3 and atago. Bootstrap downloads
 # source/build dependencies; relay ports are published only on 127.0.0.1.
+# NSTR_COMPAT_OFFLINE=1 uses existing images and a local strfry configuration.
 set -euo pipefail
 umask 077
 
@@ -54,6 +55,15 @@ checkout_release() {
 }
 
 echo "compat: strfry $STRFRY_VERSION; nostr-rs-relay $NOSTR_RS_VERSION"
+if [[ "${NSTR_COMPAT_OFFLINE:-0}" == 1 ]]; then
+    : "${NSTR_COMPAT_STRFRY_IMAGE:?offline mode requires an existing strfry 1.0.1 image}"
+    : "${NSTR_COMPAT_NOSTR_RS_IMAGE:?offline mode requires an existing nostr-rs-relay 0.10.0 image}"
+    : "${NSTR_COMPAT_STRFRY_CONFIG:?offline mode requires the local upstream strfry.conf}"
+    docker image inspect "$NSTR_COMPAT_STRFRY_IMAGE" >/dev/null
+    docker image inspect "$NSTR_COMPAT_NOSTR_RS_IMAGE" >/dev/null
+    mkdir "$RUN_DIR/strfry"
+    cp -- "$NSTR_COMPAT_STRFRY_CONFIG" "$RUN_DIR/strfry/strfry.conf"
+else
 checkout_release https://github.com/hoytech/strfry.git "$STRFRY_VERSION" "$RUN_DIR/strfry"
 checkout_release https://github.com/scsibug/nostr-rs-relay.git "$NOSTR_RS_VERSION" "$RUN_DIR/nostr-rs-relay"
 cat > "$RUN_DIR/strfry/Dockerfile.compat" <<'DOCKER'
@@ -84,6 +94,9 @@ for implementation in strfry nostr-rs-relay; do
     docker buildx build --builder "$BUILDER" --load --tag "$image" \
         --file "$RUN_DIR/$implementation/Dockerfile.compat" "$RUN_DIR/$implementation"
 done
+NSTR_COMPAT_STRFRY_IMAGE="$RUN_ID/strfry:local"
+NSTR_COMPAT_NOSTR_RS_IMAGE="$RUN_ID/nostr-rs-relay:local"
+fi
 
 python3 - "$RUN_DIR" <<'PY'
 from pathlib import Path
@@ -107,16 +120,20 @@ address = "0.0.0.0"
 port = 8080
 TOML
 
+# Internal bridge networks suppress published ports on some Docker versions.
+# Isolate this run on its own bridge and bind every published port to loopback.
 docker network create "$RUN_ID" >/dev/null
 NETWORK="$RUN_ID"
 start_relay() {
-    local implementation=$1 port=$2 config=$3 destination=$4 volume container
+    local implementation=$1 port=$2 config=$3 destination=$4 volume container image
+    if [[ "$implementation" == strfry ]]; then image="$NSTR_COMPAT_STRFRY_IMAGE"
+    else image="$NSTR_COMPAT_NOSTR_RS_IMAGE"; fi
     volume="$(docker volume create "$RUN_ID-$implementation")"
     VOLUMES+=("$volume")
-    container="$(docker run --detach --network "$NETWORK" --publish "127.0.0.1::$port" \
+    container="$(docker run --pull=never --detach --network "$NETWORK" --publish "127.0.0.1::$port" \
         --mount "type=volume,src=$volume,dst=/data" \
         --mount "type=bind,src=$config,dst=$destination,readonly" \
-        "$RUN_ID/$implementation:local")"
+        "$image")"
     CONTAINERS+=("$container")
 }
 # Media files are generated here and served only over loopback.
@@ -136,7 +153,7 @@ for ((attempt=0; attempt<300; attempt++)); do
 done
 NSTR_COMPAT_MEDIA="$(cat "$RUN_DIR/media-ready")"
 export NSTR_COMPAT_MEDIA
-export CARGO_TARGET_DIR="$RUN_DIR/target"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 cargo build --manifest-path "$ROOT/Cargo.toml" --locked -p nostr-terminal-client
 export PATH="$CARGO_TARGET_DIR/debug:$PATH"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8

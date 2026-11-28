@@ -2,7 +2,7 @@ version: "1"
 suite:
   name: nstr search capability
 scenarios:
-  - name: unadvertised NIP-50 is unsupported while hashtag search remains available
+  - name: missing search configuration and unadvertised NIP-50 are unsupported while hashtags work
     services:
       - name: relay
         command: python3 "${specdir}/testdata/relay.py"
@@ -16,5 +16,14 @@ scenarios:
           exit_code: 5
           stdout: { json: { path: "$.status", equals: 5 } }
           stderr: { contains: "unsupported: NIP-50 search" }
+      - run:
+          command: >-
+            python3 -c 'import json,pathlib; p=pathlib.Path("cfg/config.json"); c=json.loads(p.read_text()); c["searchRelays"]=c["relays"]; p.write_text(json.dumps(c))'
+      - assert: { exit_code: 0 }
+      - run: { command: nstr search words --json, env: *env }
+      - assert:
+          exit_code: 5
+          stdout: { json: { path: "$.status", equals: 5 } }
+          stderr: { contains: "not advertised" }
       - run: { command: 'nstr search "#absent" -n 1 --json', env: *env }
       - assert: { exit_code: 0, stdout: { empty: true } }

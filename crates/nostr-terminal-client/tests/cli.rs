@@ -739,6 +739,15 @@ mod tests {
             1
         );
         let fixture = Fixture::new(&owner, &[&plain, &search], false);
+        let mut config: Value =
+            serde_json::from_slice(&std::fs::read(&fixture.path).unwrap()).unwrap();
+        config["searchRelays"] = json!([plain.url]);
+        std::fs::write(&fixture.path, config.to_string()).unwrap();
+        let unsupported = fixture.run(&["search", "word", "--json"]);
+        assert_eq!(unsupported.status.code(), Some(5));
+        assert!(String::from_utf8_lossy(&unsupported.stderr).contains("not advertised"));
+        config["searchRelays"] = json!([plain.url, search.url]);
+        std::fs::write(&fixture.path, config.to_string()).unwrap();
         let out = fixture.run(&["search", "word", "--json"]);
         assert_eq!(lines(&out).len(), 1);
         assert!(String::from_utf8_lossy(&out.stderr).contains(&plain.url));
@@ -763,7 +772,108 @@ mod tests {
                 .iter()
                 .map(|v| v["type"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["reaction", "repost", "follow"]
+            ["like", "repost", "follow"]
         );
+    }
+    #[test]
+    fn parity_writes_use_auth_and_preserve_matching_ok_reasons() {
+        let owner = key();
+        let public = hex::encode(owner.verifying_key().to_bytes());
+        let target = event(&owner, 1, 1, "target", json!([]));
+        let id = target["id"].as_str().unwrap();
+        let directory = Relay::start(vec![target.clone()], Behavior::default());
+        let authenticated = Relay::start(
+            vec![],
+            Behavior {
+                auth: true,
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&directory, &authenticated], true);
+        let commands: Vec<(Vec<&str>, u64)> = vec![
+            (vec!["like", id], 7),
+            (vec!["repost", id], 6),
+            (vec!["delete", id, "--yes"], 5),
+            (vec!["follow", &public], 3),
+            (vec!["unfollow", &public], 3),
+            (vec!["mute", &public], 10000),
+            (vec!["unmute", &public], 10000),
+            (vec!["report", id, "--reason", "spam", "--yes"], 1984),
+            (vec!["profile-update", r#"{"name":"Updated"}"#], 0),
+        ];
+        for (mut args, kind) in commands {
+            authenticated.log.lock().unwrap().clear();
+            args.push("--json");
+            let result = lines(&fixture.run(&args));
+            assert_eq!(result[0]["acceptedRelays"], 2, "{args:?}");
+            let log = authenticated.log.lock().unwrap();
+            let auth: Vec<_> = log.iter().filter(|v| v[0] == "AUTH").collect();
+            assert_eq!(auth.len(), 1, "{args:?}");
+            assert_eq!(auth[0][1]["kind"], 22242);
+            assert_eq!(auth[0][1]["pubkey"], public);
+            let writes: Vec<_> = log.iter().filter(|v| v[0] == "EVENT").collect();
+            assert_eq!(writes.len(), 2, "{args:?}");
+            assert_eq!(
+                writes[0], writes[1],
+                "AUTH retry must preserve the signed event"
+            );
+            assert_eq!(writes[0][1]["kind"], kind);
+        }
+    }
+    #[test]
+    fn named_search_relays_and_author_reads_obey_advertised_limits() {
+        let owner = key();
+        let public = hex::encode(owner.verifying_key().to_bytes());
+        let notes: Vec<_> = (1..=5)
+            .map(|i| event(&owner, 1, i, "match", json!([])))
+            .collect();
+        let information = Some(
+            json!({"supported_nips":[1,11,50], "limitation":{"max_limit":2,"max_subscriptions":1}}),
+        );
+        let normal = Relay::start(
+            notes.clone(),
+            Behavior {
+                information: information.clone(),
+                ..Behavior::default()
+            },
+        );
+        let named = Relay::start(
+            notes,
+            Behavior {
+                information,
+                ..Behavior::default()
+            },
+        );
+        let fixture = Fixture::new(&owner, &[&normal], false);
+        let mut config: Value =
+            serde_json::from_slice(&std::fs::read(&fixture.path).unwrap()).unwrap();
+        config["searchRelays"] = json!([named.url]);
+        std::fs::write(&fixture.path, config.to_string()).unwrap();
+        assert_eq!(
+            lines(&fixture.run(&["search", "match", "-n", "5", "--json"])).len(),
+            5
+        );
+        assert!(
+            !normal
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|v| v[0] == "REQ" && v[2].get("search").is_some())
+        );
+        assert_eq!(
+            lines(&fixture.run(&["author", &public, "-n", "5", "--json"])).len(),
+            5
+        );
+        for relay in [&normal, &named] {
+            let log = relay.log.lock().unwrap();
+            let requests: Vec<_> = log.iter().filter(|v| v[0] == "REQ").collect();
+            assert!(requests.len() >= 3);
+            assert!(
+                requests
+                    .iter()
+                    .all(|v| v[2]["limit"].as_u64().unwrap() <= 2)
+            );
+        }
     }
 }

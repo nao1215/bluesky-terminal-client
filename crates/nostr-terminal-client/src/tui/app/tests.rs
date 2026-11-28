@@ -1,4 +1,5 @@
 use super::*;
+use crate::tui::worker::Target;
 use crate::{
     api::{event::Event, relay::Outcome},
     error::Error,
@@ -136,7 +137,14 @@ fn reactions_are_optimistic_and_no_acceptance_rolls_back_even_after_switching_ta
         } else {
             assert_eq!(serde_json::from_str::<Event>(&event.content).unwrap(), note);
         }
-        assert_eq!(event.tags[0], vec!["e", &note.id]);
+        assert_eq!(
+            event.tags[0],
+            if kind == 6 {
+                vec!["e", &note.id, ""]
+            } else {
+                vec!["e", &note.id]
+            }
+        );
         assert_eq!(event.tags[1], vec!["p", &note.pubkey]);
         assert!(app.marks.contains(&(note.id.clone(), kind)));
         assert!(ch(&mut app, c).is_empty());
@@ -392,4 +400,179 @@ fn esc_closes_the_settings_after_a_language_is_chosen() {
     assert_eq!(app.language, "ja");
     key(&mut app, KeyCode::Esc);
     assert!(app.overlay.is_none());
+}
+
+#[test]
+fn warning_hides_text_and_viewer_until_explicitly_opened() {
+    let (mut app, mut note) = fixture();
+    note.content = "hidden secret https://example.invalid/private.png".into();
+    note.tags = vec![vec!["content-warning".into(), "spoiler".into()]];
+    app.lists[0].notes = vec![note.clone()];
+    assert!(app.hidden(&note));
+    assert!(ch(&mut app, ' ').is_empty());
+    assert!(app.overlay.is_none());
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
+    terminal
+        .draw(|f| crate::tui::view::draw(f, &app, &mut terminal_kit::media::images::Images::none()))
+        .unwrap();
+    let screen = format!("{:?}", terminal.backend().buffer());
+    assert!(!screen.contains("hidden secret"));
+    assert!(!screen.contains("private.png"));
+    ch(&mut app, 'w');
+    assert!(!app.hidden(&note));
+    ch(&mut app, ' ');
+    assert!(matches!(app.overlay, Some(Overlay::Pictures { .. })));
+}
+
+#[test]
+fn declined_confirmations_emit_no_jobs_and_failed_profile_edits_keep_text() {
+    let (mut app, _) = fixture();
+    for code in ['D', 'f', 'M', 'B'] {
+        assert!(ch(&mut app, code).is_empty());
+        assert!(app.extra.dialog.is_some());
+        assert!(ch(&mut app, 'n').is_empty());
+        assert!(app.extra.dialog.is_none());
+    }
+    app.tab = Tab::Profile;
+    app.profile = r#"{"name":"keep me"}"#.into();
+    ch(&mut app, 'e');
+    let jobs = app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL));
+    let Job::Task { seq, .. } = jobs[0] else {
+        panic!()
+    };
+    app.answer(Answer::Task(seq, Err(Error::network("rejected"))));
+    assert!(
+        matches!(&app.extra.dialog,Some(crate::tui::extras::Dialog::Profile(editor)) if editor.fields[0].text().contains("keep me"))
+    );
+}
+
+#[test]
+fn quotes_use_q_tags_and_stale_extra_answers_are_discarded() {
+    let (mut app, note) = fixture();
+    ch(&mut app, 'Q');
+    app.paste("quoted");
+    let jobs = send(&mut app);
+    let Job::Write { event, .. } = &jobs[0] else {
+        panic!()
+    };
+    assert!(event.tags.iter().any(|t| t[0] == "q" && t[1] == note.id));
+    assert!(!event.tags.iter().any(|t| t[0] == "e"));
+    app.extra.task = Some(99);
+    app.answer(Answer::Task(
+        98,
+        Ok(serde_json::json!({"messages":[{"text":"stale"}]})),
+    ));
+    assert!(app.extra.messages.is_empty());
+    assert_eq!(app.extra.task, Some(99));
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::test_runner::Config::with_cases(64))]
+    #[test]
+    fn random_key_sequences_keep_selection_and_render_bounds(keys in proptest::collection::vec(0u8..30,0..120),width in 1u16..140,height in 1u16..50) {
+        let (mut app,_)=fixture();
+        let codes=['j','k','g','G','1','2','3','4','5','n','r','Q','D','f','M','!','w','A','.','+','H','L','<','>','x','/','e','m','i','?'];
+        for k in keys {
+            let _jobs=ch(&mut app,codes[usize::from(k)]);
+            key(&mut app,KeyCode::Esc);
+            let list=app.list();proptest::prop_assert!(list.notes.is_empty()||list.selected<list.notes.len());
+            let mut term=ratatui::Terminal::new(ratatui::backend::TestBackend::new(width,height)).unwrap();
+            term.draw(|f|crate::tui::view::draw(f,&app,&mut terminal_kit::media::images::Images::none())).unwrap();
+        }
+    }
+}
+
+#[test]
+fn attachment_alt_navigation_saves_each_edit_and_removes_only_selected_file() {
+    let (mut app, _) = fixture();
+    ch(&mut app, 'n');
+    app.extra.attachments = vec![
+        ("first.png".into(), String::new()),
+        ("second.png".into(), String::new()),
+    ];
+    key(&mut app, KeyCode::Tab);
+    app.paste("first alt");
+    key(&mut app, KeyCode::Tab);
+    app.paste("second alt");
+    key(&mut app, KeyCode::BackTab);
+    assert_eq!(app.extra.attachments[0].1, "first alt");
+    assert_eq!(app.extra.attachments[1].1, "second alt");
+    app.key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL));
+    key(&mut app, KeyCode::Enter);
+    let jobs = send(&mut app);
+    let Job::Task {
+        operation: crate::tui::extras::Operation::Post(_, files),
+        ..
+    } = &jobs[0]
+    else {
+        panic!()
+    };
+    assert_eq!(files, &vec![("second.png".into(), "second alt".into())]);
+}
+
+#[test]
+fn quote_previews_keep_warnings_folded_and_open_as_their_own_thread() {
+    let (mut app, mut root) = fixture();
+    let quoted = Event::sign(
+        &SigningKey::from_slice(&[2; 32]).unwrap(),
+        99,
+        1,
+        vec![vec!["content-warning".into(), "spoiler".into()]],
+        "quote private text".into(),
+    )
+    .unwrap();
+    root.tags = vec![vec!["q".into(), quoted.id.clone()]];
+    app.lists[0].notes = vec![root];
+    app.answer(Answer::Referenced(vec![quoted.clone()]));
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
+    terminal
+        .draw(|f| crate::tui::view::draw(f, &app, &mut terminal_kit::media::images::Images::none()))
+        .unwrap();
+    assert!(!format!("{:?}", terminal.backend().buffer()).contains("quote private text"));
+    let jobs = ch(&mut app, 'V');
+    assert!(matches!(&jobs[0], Job::Load { target: Target::Thread(e), .. } if e.id == quoted.id));
+    assert!(app.hidden(app.selected().unwrap()));
+    ch(&mut app, 'w');
+    assert!(!app.hidden(app.selected().unwrap()));
+}
+
+#[test]
+fn relationship_responses_cannot_replace_a_newer_action_or_another_profile() {
+    let (mut app, note) = fixture();
+    app.extra.author = Some(note.pubkey.clone());
+    app.answer(Answer::Relationship(10, note.pubkey.clone(), true, false));
+    app.answer(Answer::Relationship(9, note.pubkey.clone(), false, true));
+    app.answer(Answer::Relationship(11, "another".into(), false, true));
+    assert_eq!(app.extra.relationship, Some((note.pubkey, true, false)));
+}
+
+#[test]
+fn accepted_reply_invalidates_read_ahead_and_late_prefetch_cannot_restore_it() {
+    let (mut app, note) = fixture();
+    app.extra.cache.insert(note.id.clone(), vec![note.clone()]);
+    app.extra.prefetch.insert(900, note.id.clone());
+    ch(&mut app, 'r');
+    app.paste("new reply");
+    let jobs = send(&mut app);
+    let Job::Write { seq, .. } = jobs[0] else {
+        panic!()
+    };
+    app.answer(written(seq));
+    app.answer(Answer::Prefetched(
+        900,
+        Ok(Outcome {
+            value: vec![note.clone()],
+            answered: 1,
+            warnings: vec![],
+        }),
+    ));
+    let jobs = app.open_thread(note);
+    assert!(matches!(
+        &jobs[..],
+        [Job::Load {
+            target: Target::Thread(_),
+            ..
+        }]
+    ));
+    assert!(app.extra.cache.is_empty());
 }

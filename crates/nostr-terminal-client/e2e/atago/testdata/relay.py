@@ -144,7 +144,7 @@ def store(args):
         make(ALICE, T, 0, [], json.dumps({"name": "old name"})),
         make(ALICE, T + 10, 0, [], json.dumps({
             "name": "alice", "display_name": "Alice 🐈‍⬛", "about": "テスト用のアカウントです",
-            "picture": "https://example.invalid/alice.png",
+            "picture": "http://127.0.0.1:9/alice.png",
         }, ensure_ascii=False)),
     ]
     if not args.no_contacts:
@@ -173,6 +173,7 @@ def matches(f, event):
         and (not f.get("#p") or any(t[:1] == ["p"] and t[1] in f["#p"] for t in event["tags"] if len(t) > 1))
         and (not f.get("#t") or any(t[:1] == ["t"] and t[1] in f["#t"] for t in event["tags"] if len(t) > 1))
         and ("until" not in f or event["created_at"] <= f["until"])
+        and (not f.get("search") or f["search"].casefold() in event["content"].casefold())
     )
 
 
@@ -209,7 +210,7 @@ class Relay(socketserver.BaseRequestHandler):
                 raise ConnectionError("closed")
             data += chunk
         if b"accept: application/nostr+json" in data.lower():
-            body = b'{"supported_nips":[1,11]}'
+            body = json.dumps(getattr(self.server, "information", {"supported_nips": [1,11]})).encode()
             self.request.sendall(
                 b"HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\n"
                 + f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body
@@ -262,6 +263,14 @@ class Relay(socketserver.BaseRequestHandler):
         self.log(message)
         if message[0] == "REQ":
             sub, filters = message[1], message[2:]
+            overlap = getattr(self.server, "mute_started", None)
+            if overlap is not None:
+                kinds = {kind for f in filters for kind in f.get("kinds", [])}
+                if 10000 in kinds:
+                    overlap.set()
+                if 3 in kinds and not overlap.wait(4):
+                    self.send(["CLOSED", sub, "mute request did not overlap contacts"])
+                    return
             for f in filters:
                 found = sorted((e for e in self.server.events if matches(f, e)), key=lambda e: -e["created_at"])
                 for event in found[: f.get("limit", len(found))]:
@@ -284,6 +293,14 @@ class Relay(socketserver.BaseRequestHandler):
                 self.server.events.append(event)
             self.send(["OK", event["id"], True, ""])
 
+
+
+class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind calls getfqdn, which can stall on macOS's
+        # resolver before ready.txt is written. These fixtures need no DNS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address
 
 
 class Pictures(http.server.BaseHTTPRequestHandler):
@@ -314,6 +331,8 @@ def main():
     ap.add_argument("--many", action="store_true", help="store 120 more long notes by bob")
     ap.add_argument("--notice", action="store_true")
     ap.add_argument("--pictures", action="store_true")
+    ap.add_argument("--parity", action="store_true")
+    ap.add_argument("--overlap-mute", action="store_true", help="wait for concurrent mute lookup before contacts; mute bob")
     ap.add_argument("--pages", action="store_true", help="short notes with a timestamp boundary larger than one page")
     args = ap.parse_args()
 
@@ -322,11 +341,14 @@ def main():
     server.daemon_threads = True
     server.events = store(args)
     server.notice = args.notice
+    if args.overlap_mute:
+        server.mute_started = threading.Event()
+        server.events.append(make(ALICE, T + 2, 10000, [["p", public_of(BOB)]], ""))
     if args.pages:
         server.events += [make(BOB, T + 1000, 1, [], f"boundary {i:02}") for i in range(25)]
         server.events += [make(BOB, T + 900, 1, [], "older page note")]
     if args.pictures:
-        media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Pictures)
+        media = LoopbackHTTPServer(("127.0.0.1", 0), Pictures)
         threading.Thread(target=media.serve_forever, daemon=True).start()
         origin = f"http://127.0.0.1:{media.server_address[1]}"
         server.events.append(make(BOB, T + 700, 1, [["imeta", f"url {origin}/imeta", "m image/png"]], f"local picture {origin}/picture.png"))
@@ -343,6 +365,16 @@ def main():
     cfg = Path("cfg")
     cfg.mkdir(exist_ok=True)
     config = {"publicKey": public_of(ALICE), "relays": relays, "timeoutSeconds": 5}
+    if args.parity:
+        server.information = {"supported_nips": [1,11,50]}
+        import blossom
+        media = LoopbackHTTPServer(("127.0.0.1", 0), blossom.Blossom)
+        threading.Thread(target=media.serve_forever, daemon=True).start()
+        config.update(searchRelays=[relays[0]], dmRelays=[relays[0]], blossomServers=[f"http://127.0.0.1:{media.server_port}"])
+        server.events += [make(k, T + 1, 10050, [["relay", relays[0]]], "") for k in (ALICE, BOB)]
+        Path("seed.json").write_text(json.dumps(server.events, ensure_ascii=False), encoding="utf-8")
+        Path("bob.txt").write_text(public_of(BOB))
+        Path("alice.txt").write_text(public_of(ALICE))
     if not args.no_key:
         config["keyFile"] = "key"
         key = cfg / "key"
