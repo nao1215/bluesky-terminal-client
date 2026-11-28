@@ -3,20 +3,23 @@
 # render-formula.sh writes the Homebrew formula for a release from the
 # checksums.txt the release publishes, so Homebrew cannot disagree with it.
 #
-# usage: render-formula.sh <tag> <checksums.txt> <owner/repo>
+# usage: [BIN=bsky|msky] render-formula.sh <tag> <checksums.txt> <owner/repo>
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
 	echo "usage: $0 <tag> <checksums.txt> <owner/repo>" >&2
 	exit 2
 fi
+# shellcheck source=client.sh
+. "$(dirname "$0")/client.sh"
 tag="$1"
 sums="$2"
 repo="$3"
-version="${tag#v}"
+version="$(tag_version "$tag")"
 
 sha() {
-	local file="bsky-$tag-$1.tar.gz"
+	# bsky-vX.Y.Z-<target> and msky-vX.Y.Z-<target>, whatever the tag prefix.
+	local file="$bin-v$version-$1.tar.gz"
 	local sum
 	sum="$(awk -v f="$file" '$2 == f || $2 == "*" f { print $1 }' "$sums")"
 	if ! [[ "$sum" =~ ^[0-9a-f]{64}$ ]]; then
@@ -36,8 +39,8 @@ cat <<RUBY
 # typed: false
 # frozen_string_literal: true
 
-class Bsky < Formula
-  desc "Bluesky client for the terminal that shows pictures and videos inline"
+class $formula_class < Formula
+  desc "$formula_desc"
   homepage "https://github.com/$repo"
   version "$version"
   license "MIT"
@@ -63,11 +66,11 @@ $linux_arm
   end
 
   def install
-    bin.install "bsky"
+    bin.install "$bin"
   end
 
   test do
-    assert_match "bsky #{version}", shell_output("#{bin}/bsky --version")
+    assert_match "$bin #{version}", shell_output("#{bin}/$bin --version")
   end
 end
 RUBY

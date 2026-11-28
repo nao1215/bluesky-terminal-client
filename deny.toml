@@ -18,7 +18,7 @@ all-features = true
 [advisories]
 # Vulnerabilities always fail. unmaintained and unsound advisories fail too;
 # one that cannot be fixed goes in `ignore` as { id = "RUSTSEC-...", reason = "..." }
-# with why it does not reach bsky and when to remove it.
+# with why it does not reach bsky or msky and when to remove it.
 unmaintained = "all"
 yanked = "deny"
 ignore = []

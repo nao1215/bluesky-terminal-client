@@ -1,73 +1,6 @@
-[package]
-name = "bluesky-terminal-client"
-version = "0.15.0"
-edition = "2024"
-rust-version = "1.90"
-authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
-description = "Unofficial Bluesky client for the terminal that shows pictures and videos inline (kitty graphics, sixel, iTerm2)."
-license = "MIT"
-readme = "README.md"
-repository = "https://github.com/nao1215/sns-terminal-clients"
-keywords = ["bluesky", "atproto", "tui", "terminal", "sixel"]
-categories = ["command-line-utilities"]
-# The unit tests read e2e/atago/testdata, so it ships; the rest of the
-# repository's tooling does not.
-exclude = [
-    ".github/",
-    ".gitignore",
-    ".octocov.yml",
-    "about.hbs",
-    "about.toml",
-    "bench/",
-    "deny.toml",
-    "doc/",
-    "e2e/*.sh",
-    "e2e/atago/*.yaml",
-    "fuzz/",
-    "justfile",
-    "scripts/",
-]
-
-# `cargo binstall bluesky-terminal-client` fetches the release archive instead
-# of building it.
-[package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v{ version }/bsky-v{ version }-{ target }{ archive-suffix }"
-bin-dir = "{ bin }{ binary-ext }"
-pkg-fmt = "tgz"
-
-[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
-pkg-fmt = "zip"
-
-[[bin]]
-name = "bsky"
-path = "src/main.rs"
-
-[dependencies]
-clap = { version = "4", features = ["derive", "env"] }
-crossterm.workspace = true
-dirs = "7"
-image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
-jiff.workspace = true
-openh264 = "0.9"
-ratatui.workspace = true
-ratatui-image.workspace = true
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-terminal-kit = { path = "crates/terminal-kit", version = "0.1.0" }
-unicode-segmentation.workspace = true
-unicode-width.workspace = true
-ureq = "3"
-
-[dev-dependencies]
-proptest.workspace = true
-rstest.workspace = true
-tempfile = "3"
-
-[lints]
-workspace = true
-
-# The shared terminal drawing helpers live in crates/; the root package is a
-# member too, and bare cargo commands at the root act on it alone.
+# The workspace of the terminal clients: each client and the shared terminal
+# drawing helpers (terminal-kit) are a package in crates/, and the root holds
+# no package of its own. A bare cargo command at the root acts on every member.
 [workspace]
 members = ["crates/*"]
 resolver = "3"
@@ -76,25 +9,36 @@ resolver = "3"
 edition = "2024"
 authors = ["CHIKAMATSU Naohiro <n.chika156@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/nao1215/sns-terminal-clients"
+repository = "https://github.com/nao1215/social-terminal-clients"
 
 # Versions more than one member builds with, kept in step here.
 [workspace.dependencies]
+clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.29"
+dirs = "7"
 fast_image_resize = { version = "6.1.0", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false }
 jiff = "1"
+openh264 = "0.9"
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 ratatui = "0.30"
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
-rstest = "0.28"
+rstest = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
 unicode-segmentation = "1"
 # ratatui-core 0.1.2 adds 1 to the width of U+FF9E/U+FF9F, and 0.2.3 counts them too, so a half-width kana takes 3 cells; drop the cap once ratatui stops adding its own width.
 unicode-width = ">=0.2, <0.2.3"
+ureq = "3"
 
 # cargo-llvm-cov sets cfg(coverage); tests that never run under it opt out.
+# unreachable_pub keeps `pub` for what a crate's users can reach: terminal-kit's
+# API. The clients are binaries, so what another of their modules uses is
+# pub(crate), and the rest stays private to its module.
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+unreachable_pub = "warn"
 
 # An error is returned, shown, or kept with the reason it can be ignored: a
 # panic on the UI thread leaves the terminal in raw mode, and a swallowed
@@ -117,9 +61,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# What e2e/run.sh builds: the release optimizations without the link-time
-# optimization and the single codegen unit, which make the same code a little
-# faster and took most of the E2E job (3 minutes of the 4 on Windows).
+# What each client's e2e/run.sh builds: the release optimizations without the
+# link-time optimization and the single codegen unit, which make the same code
+# a little faster and took most of the E2E job (3 minutes of the 4 on Windows).
 [profile.e2e]
 inherits = "release"
 lto = false

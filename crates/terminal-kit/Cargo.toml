@@ -2,8 +2,8 @@
 name = "terminal-kit"
 version = "0.1.0"
 edition.workspace = true
-# The root package's rust-version, written out here too: CI and the release
-# scripts read it from the root [package] table.
+# Written out in each package: CI and the release scripts read it from the
+# package's own [package] table.
 rust-version = "1.90"
 authors.workspace = true
 description = "Drawing helpers for ratatui terminal clients: text laid out in cells by grapheme cluster, a text field, picture scaling, OSC 52, color themes, and terminal checks."

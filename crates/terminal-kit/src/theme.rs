@@ -37,7 +37,7 @@ pub struct Theme {
 }
 
 /// A 24-bit color written as `0xRRGGBB`.
-pub const fn rgb(hex: u32) -> Color {
+const fn rgb(hex: u32) -> Color {
     Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 

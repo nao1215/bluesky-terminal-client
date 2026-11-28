@@ -1,0 +1,6 @@
+# Every spec here runs msky with a home of its own, so no spec reads the
+# logins (the config directory) of whoever runs the suite. The specs that
+# log in name MSKY_CONFIG_DIR as well, to look at what was saved.
+defaults:
+  run:
+    sandbox_home: true

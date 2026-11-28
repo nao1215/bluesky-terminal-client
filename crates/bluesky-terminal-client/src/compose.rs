@@ -1,0 +1,161 @@
+//! Sending a post with its pictures or video: what the client's composer
+//! and `bsky post` both do, so a post is the same record whichever sent it.
+
+use std::path::PathBuf;
+
+use crate::api::types::{CreatedRecord, ReplyRef, StrongRef};
+use crate::api::{Client, PostImage, PostMedia, PostVideo};
+use crate::error::{Error, Kind, Result};
+use crate::{media, video};
+
+/// A picture or video on the user's disk to attach to a post.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Attachment {
+    pub path: PathBuf,
+    /// Text describing it for people who cannot see it.
+    pub alt: String,
+}
+
+/// The most a video's alt text may hold (`app.bsky.embed.video`): more is
+/// refused with the post, after the video was uploaded.
+const MAX_VIDEO_ALT_GRAPHEMES: usize = 1000;
+const MAX_VIDEO_ALT_BYTES: usize = 10000;
+
+/// Why `alt` cannot describe a video, if it cannot.
+pub(crate) fn video_alt_problem(alt: &str) -> Option<String> {
+    crate::api::length_problem(
+        alt.trim(),
+        (MAX_VIDEO_ALT_GRAPHEMES, MAX_VIDEO_ALT_BYTES),
+        (
+            crate::i18n::n!("the video's alt text is {} characters long; it can have {}"),
+            crate::i18n::n!("the video's alt text is {} bytes; the limit is {}"),
+        ),
+    )
+}
+
+/// How a post is sent, as the settings and the command line decide.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PostOptions {
+    /// The service videos are uploaded to.
+    pub video_service: String,
+    /// The language the user reads bsky in, which settles the post's
+    /// language where its letters do not (see [`crate::langs::guess`]).
+    pub writer: crate::i18n::Lang,
+    /// Whether a post without pictures, video or a quote carries a card for
+    /// its first link (see [`crate::card`]).
+    pub link_card: bool,
+}
+
+/// Send a post, uploading its pictures (up to four) or its one video first,
+/// or else the card of its first link. Everything is prepared before
+/// anything is uploaded, so a file that cannot be read stops the post before
+/// anything reaches the server. Nothing is sent twice: a failure is
+/// returned, not tried again.
+pub(crate) fn send_post(
+    client: &Client,
+    text: &str,
+    reply: Option<&ReplyRef>,
+    quote: Option<&StrongRef>,
+    media: &[Attachment],
+    options: &PostOptions,
+) -> Result<CreatedRecord> {
+    let videos = media
+        .iter()
+        .filter(|a| media::inspect(&a.path).kind == media::Kind::Video)
+        .count();
+    let embed = match (media.len(), videos) {
+        (0, _) if options.link_card && quote.is_none() => {
+            crate::card::fetch(client, text).map_or(PostMedia::None, PostMedia::External)
+        }
+        (0, _) => PostMedia::None,
+        (1, 1) => {
+            let a = &media[0];
+            if let Some(why) = video_alt_problem(&a.alt) {
+                return Err(Error::new(Kind::Usage, why));
+            }
+            let v = video::prepare(&a.path)?;
+            // The name the video service is told, which it may keep: what
+            // the file is, not what it was called on this computer.
+            let name = format!("video.{}", video::extension(v.mime));
+            let blob = client.upload_video(
+                &options.video_service,
+                &v.bytes,
+                v.mime,
+                &name,
+                &a.path
+                    .file_name()
+                    .map_or_else(|| name.clone(), |n| n.to_string_lossy().into_owned()),
+                std::time::Duration::from_secs(1),
+            )?;
+            PostMedia::Video(PostVideo {
+                blob,
+                alt: a.alt.trim().to_string(),
+                dims: v.dims,
+            })
+        }
+        (_, 0) => {
+            let prepared = media
+                .iter()
+                .map(|a| media::prepare(&a.path))
+                .collect::<Result<Vec<_>>>()?;
+            // The pictures go up side by side, each once: one after another
+            // they were a round trip each before the post itself. The post
+            // keeps them in the order they were attached, and the first
+            // failure in that order is the one reported.
+            let blobs: Vec<Result<serde_json::Value>> = std::thread::scope(|s| {
+                let sent: Vec<_> = prepared
+                    .iter()
+                    .map(|p| s.spawn(|| client.upload_blob(&p.bytes, p.mime)))
+                    .collect();
+                sent.into_iter()
+                    .map(|h| {
+                        h.join().unwrap_or_else(|_| {
+                            Err(Error::api(
+                                "com.atproto.repo.uploadBlob: the request thread failed",
+                            ))
+                        })
+                    })
+                    .collect()
+            });
+            let mut uploaded = Vec::with_capacity(media.len());
+            for ((a, p), blob) in media.iter().zip(prepared).zip(blobs) {
+                uploaded.push(PostImage {
+                    blob: blob?,
+                    alt: a.alt.trim().to_string(),
+                    width: p.width,
+                    height: p.height,
+                });
+            }
+            PostMedia::Images(uploaded)
+        }
+        _ => {
+            return Err(Error::new(
+                Kind::Usage,
+                crate::i18n::t("a post can have up to 4 pictures or one video, not both"),
+            ));
+        }
+    };
+    client.create_post(text, reply, quote, &embed, options.writer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Emoji reach the 10000 bytes long before the 1000 characters: the
+    // message then says the bytes, not a count under the limit it names.
+    #[test]
+    fn a_video_alt_text_says_which_limit_it_is_over() {
+        assert_eq!(video_alt_problem(&"a".repeat(1000)), None);
+        assert_eq!(
+            video_alt_problem(&"a".repeat(1001)).as_deref(),
+            Some("the video's alt text is 1001 characters long; it can have 1000")
+        );
+        let family = "👨‍👩‍👧‍👦"; // 25 bytes
+        assert_eq!(video_alt_problem(&family.repeat(400)), None);
+        assert_eq!(
+            video_alt_problem(&format!(" {} ", family.repeat(401))).as_deref(),
+            Some("the video's alt text is 10025 bytes; the limit is 10000")
+        );
+    }
+}

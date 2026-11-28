@@ -1,0 +1,354 @@
+# The Search tab (5) and the Profile tab (6), driven in a pty with bsky's
+# keys against an atago mock: notes and accounts searched (/ and t), an
+# author's profile opened with enter and left with esc, its notes paged,
+# and the account followed with f. The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky client search and profiles
+
+secrets:
+  - e2e-fake-token-0401
+
+scenarios:
+  - name: search finds notes and accounts, enter opens a profile, f follows it
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: t1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test, name: "ボブ" }, text: "タイムラインのノート" }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/notes/search
+            json:
+              - { id: s1, createdAt: "2026-11-26T09:00:00.000Z", userId: u-cat, user: { id: u-cat, username: cat }, text: "$[x2 Rust] の話 🦀" }
+          - method: POST
+            path: /api/users/search
+            json:
+              - { id: u-ferris, username: ferris, host: x.test, name: "Ferris 🦀", description: "**crab**", isFollowing: false }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: x.test, name: "ボブ", description: "<center>Go と Rust</center>", notesCount: 9, followingCount: 2, followersCount: 5, hasPendingFollowRequestFromYou: true }
+          - method: POST
+            path: /api/users/notes
+            json:
+              - { id: b1, createdAt: "2026-11-26T08:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test }, text: "ボブのノート" }
+          - { method: POST, path: /api/following/create, json: { id: u-bob } }
+          - { method: POST, path: /api/following/requests/cancel, json: { id: u-bob } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0401",
+             "permissions": ["read:account", "read:notifications", "read:following", "read:reactions", "write:notes", "write:drive", "write:following", "write:reactions", "write:notifications"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 36
+          cols: 100
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: ["タイムラインのノート", "5 Search", "6 Profile"]
+            - send: "5"
+            - expect_screen:
+                contains: ["Search notes:", "enter search", "ctrl+t notes / accounts"]
+            - send: "rust"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["cat @cat", "Rust の話 🦀"]
+                not_contains: "$[x2"
+            - send: t
+            - expect_screen:
+                contains: ["Search accounts: rust", "Ferris 🦀 @ferris@x.test", "crab"]
+            # A timeline note's author, opened with enter, and back.
+            - send: "1"
+            - expect_screen:
+                contains: "タイムラインのノート"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["@bob@x.test", "… requested", "5 followers  2 following  9 notes", "(f to toggle)", "Go と Rust", "ボブのノート"]
+                not_contains: "<center>"
+            # The request is pending: f takes it back, and the account as
+            # the server has it after says how it stands.
+            - send: f
+            - expect_screen:
+                contains: "asked to follow @bob@x.test; pending until it is accepted"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "タイムラインのノート"
+                not_contains: "ボブのノート"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/search
+            body:
+              json:
+                - { path: "$.query", equals: rust }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/search
+            body:
+              json:
+                - { path: "$.query", equals: rust }
+                - { path: "$.offset", equals: 0 }
+      - assert:
+          mock:
+            name: api
+            path: /api/users/notes
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+      # The request is pending, so f takes it back; the account is read
+      # again after.
+      - assert:
+          mock:
+            name: api
+            path: /api/following/requests/cancel
+            count: 1
+      - assert:
+          mock: { name: api, path: /api/following/create, count: 0 }
+
+  - name: m on someone's profile opens the conversation with them, and the profile says how you are related
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: t1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, host: x.test, name: "ボブ 🇯🇵" }, text: "タイムラインのノート" }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/chat/history, json: [] }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: x.test, name: "ボブ 🇯🇵", notesCount: 9, followingCount: 2, followersCount: 5, isFollowing: true, isFollowed: true, isMuted: true }
+          - { method: POST, path: /api/users/notes, json: [] }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m1, createdAt: "2026-11-26T09:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob, host: x.test }, toUserId: u-me, text: "久しぶり 👋" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0401",
+             "permissions": ["read:account", "read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["タイムラインのノート", "7 Chat"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["ボブ 🇯🇵", "@bob@x.test", "5 followers  2 following  9 notes", "✓ following  · follows you  · muted  (f to toggle)", "esc back to timeline"]
+                not_contains: "this is you"
+            - send: "."
+            - expect_screen:
+                contains: ["m      message them", "f      unfollow", "M      unmute them", "B      block them (y confirms)"]
+            - send: { key: esc }
+            - send: m
+            - expect_screen:
+                contains: ["@bob@x.test", "久しぶり 👋", "i write a message"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/messages/user-timeline
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+      # Opening the conversation writes nothing.
+      - assert:
+          mock: { name: api, path: /api/chat/messages/create-to-user, count: 0 }
+
+  - name: + on the Home tab adds an antenna as a column beside the home timeline, kept in settings.json; ← → choose the column, > moves it, x then y removes it
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: h1, createdAt: "2026-11-26T11:00:00.000Z", userId: u-amy, user: { id: u-amy, username: amy }, text: "ホームのノート 👩🏽‍💻", reactions: {} }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/chat/history, json: [] }
+          - method: POST
+            path: /api/antennas/list
+            json: [{ id: ant1, name: "ニュース 📰" }]
+          - method: POST
+            path: /api/users/lists/list
+            json: [{ id: lst1, name: "友達" }]
+          - { method: POST, path: /api/channels/followed, json: [] }
+          - { method: POST, path: /api/channels/my-favorites, json: [] }
+          - method: POST
+            path: /api/antennas/notes
+            json:
+              - { id: an1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, name: "ボブ" }, text: "アンテナに来たノート 🇯🇵", reactions: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0601", "permissions": ["read:account"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["7 Chat", "ホームのノート 👩🏽‍💻"]
+            - send: "+"
+            - expect_screen:
+                contains: ["Add a column", "Home", "📡 ニュース 📰  (antenna)", "☰ 友達  (list)", "Notifications", "Your notes (@me)", "Search…"]
+            - send: j
+            - send: { key: enter }
+            - expect_screen:
+                contains: [" Home", " 📡 ニュース 📰", "ホームのノート 👩🏽‍💻", "アンテナに来たノート 🇯🇵", "← → column", "2 columns"]
+            # The keys act on the focused column: the antenna's note, then
+            # the home one.
+            - send: "."
+            - expect_screen:
+                contains: "Actions"
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Actions"
+            - send: { key: left }
+            - send: ">"
+            - expect_screen:
+                contains: "📡 ニュース 📰"
+            - send: x
+            - expect_screen:
+                contains: "press y to remove the column Home"
+            - send: y
+            - expect_screen:
+                contains: "1 column"
+                not_contains: "ホームのノート"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/antennas/notes
+            body:
+              json:
+                - { path: "$.antennaId", equals: ant1 }
+      - assert:
+          file:
+            path: cfg/settings.json
+            contains: ["\"me@127.0.0.1:${api.port}\"", "\"kind\": \"antenna\"", "\"id\": \"ant1\"", "\"name\": \"ニュース 📰\""]
+      - assert:
+          file:
+            path: cfg/settings.json
+            not_contains: "\"kind\": \"home\""
+
+  - name: the columns settings.json keeps are on the Home tab from the start; a narrow terminal shows fewer and counts the rest; an old tabs setting is ignored
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - method: POST
+            path: /api/i/notifications
+            json:
+              - { id: nf1, createdAt: "2026-11-26T09:00:00.000Z", type: follow, user: { id: u-gus, username: gus, name: "Gus 🐈‍⬛" } }
+          - { method: POST, path: /api/chat/history, json: [] }
+          - method: POST
+            path: /api/notes/user-list-timeline
+            json:
+              - { id: ln1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob }, text: "リストのノート 👨‍👩‍👧", reactions: {} }
+          - method: POST
+            path: /api/notes/search
+            json:
+              - { id: s1, createdAt: "2026-11-26T08:00:00.000Z", userId: u-cat, user: { id: u-cat, username: cat }, text: "猫を見つけた 🐈", reactions: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0602", "permissions": ["read:account"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture:
+          file: cfg/settings.json
+          content: |
+            {"tabs": ["list/127.0.0.1:${api.port}/lst1/友達", "home"], "columns": {"me@127.0.0.1:${api.port}": [{"kind": "list", "id": "lst1", "name": "友達"}, {"kind": "notifications"}, {"kind": "search", "query": "猫"}]}}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 80
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 Home   2 Local", " ☰ 友達", "Notifications 1›", "リストのノート 👨‍👩‍👧", "Gus 🐈‍⬛"]
+                not_contains: "Error"
+            - send: { key: right }
+            - send: { key: right }
+            - expect_screen:
+                contains: ["‹1 Notifications", "Search: 猫", "猫を見つけた 🐈"]
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/user-list-timeline
+            body:
+              json:
+                - { path: "$.listId", equals: lst1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/search
+            body:
+              json:
+                - { path: "$.query", equals: "猫" }
+      # Shown in a column, the notifications are not marked read.
+      - assert:
+          mock: { name: api, path: /api/notifications/mark-all-as-read, count: 0 }

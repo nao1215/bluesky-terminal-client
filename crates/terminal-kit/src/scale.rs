@@ -27,7 +27,7 @@ fn fit(w: u32, h: u32, bw: u32, bh: u32) -> (u32, u32) {
 /// The pixel size ratatui-image's `Resize::Scale` makes `(w, h)` for a box
 /// of `area` cells of `cell` pixels: fitted in the box, rounded up to whole
 /// cells, then fitted in those cells.
-pub fn size_in_box(w: u32, h: u32, area: Size, cell: (u16, u16)) -> (u32, u32) {
+fn size_in_box(w: u32, h: u32, area: Size, cell: (u16, u16)) -> (u32, u32) {
     let (cw, ch) = (u32::from(cell.0.max(1)), u32::from(cell.1.max(1)));
     let (fw, fh) = fit(
         w,
@@ -445,5 +445,51 @@ mod tests {
             to_box(&img, Size::new(0, 5), (10, 20)).dimensions(),
             (200, 100)
         );
+        let empty = DynamicImage::new_rgb8(0, 5);
+        assert_eq!(
+            to_box(&empty, Size::new(4, 2), (10, 20)).dimensions(),
+            (0, 5)
+        );
+    }
+
+    // A picture 10 x 4 in a cell of 10 x 20 is laid on the top of a clear
+    // canvas of that cell, its own pixels as they are.
+    #[test]
+    fn a_picture_short_of_a_whole_cell_is_laid_on_a_clear_canvas() {
+        let rgba = RgbaImage::from_fn(10, 4, |x, y| Rgba([x as u8, y as u8, 7, 255]));
+        for img in [
+            DynamicImage::ImageRgb8(DynamicImage::ImageRgba8(rgba.clone()).to_rgb8()),
+            DynamicImage::ImageRgba8(rgba.clone()),
+        ] {
+            let laid = pad_to_cells(img, Size::new(1, 1), (10, 20)).to_rgba8();
+            assert_eq!(laid.dimensions(), (10, 20));
+            for (x, y, p) in laid.enumerate_pixels() {
+                let want = if y < 4 {
+                    *rgba.get_pixel(x, y)
+                } else {
+                    Rgba([0; 4])
+                };
+                assert_eq!(*p, want, "({x}, {y})");
+            }
+        }
+    }
+
+    // No size to make it, or larger one way though smaller the other: left
+    // to `image`, which interpolates where it enlarges.
+    #[test]
+    fn a_thumbnail_of_no_width_or_larger_one_way_is_left_to_image() {
+        let img = DynamicImage::new_rgb8(10, 10);
+        assert!(thumbnail_exact(&img, 0, 5).is_none());
+        assert!(thumbnail_exact(&img, 5, 0).is_none());
+        let strip = DynamicImage::new_rgb8(2, 10);
+        assert!(thumbnail_exact(&strip, 3, 5).is_none());
+    }
+
+    // Enlarging, a window may come out empty, and there are none then; one
+    // that is not stays inside the picture.
+    #[test]
+    fn thumbnail_windows_when_enlarging_are_none_or_inside_the_picture() {
+        assert_eq!(thumbnail_windows(10, 20), None);
+        assert_eq!(thumbnail_windows(2, 3), Some(vec![(0, 1), (1, 2), (1, 2)]));
     }
 }

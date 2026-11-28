@@ -1,12 +1,14 @@
 name: Fuzz
 
-# Explores the fuzz targets in fuzz/ (cargo-fuzz, libFuzzer) for a few minutes
-# each night. Pull requests do not explore: rust.yml builds the targets and
-# runs each over its seed corpus in fuzz/corpus/<target>/ when the code they
-# test changes.
+# Explores the fuzz targets (cargo-fuzz, libFuzzer) for a few minutes each
+# night: bsky's in crates/bluesky-terminal-client/fuzz/ and msky's in
+# crates/misskey-terminal-client/fuzz/.
+# Pull requests do not explore: rust.yml builds the targets and runs each over
+# its seed corpus in <fuzz dir>/corpus/<target>/ when the code they test
+# changes.
 #
 # A crash uploads its input as an artifact. Commit that input to
-# fuzz/corpus/<target>/ and to a unit test, then fix it on a fix/* branch.
+# <fuzz dir>/corpus/<target>/ and to a unit test, then fix it on a fix/* branch.
 # Never delete corpus entries to make this green.
 
 on:
@@ -31,11 +33,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Every [[bin]] in fuzz/Cargo.toml is a target, so adding one needs no edit here.
+      # Every [[bin]] in a fuzz directory's Cargo.toml is a target, so adding
+      # one needs no edit here.
       - id: list
         run: |
           set -o pipefail
-          list="$(grep -A1 '^\[\[bin\]\]' fuzz/Cargo.toml | sed -n 's/^name *= *"\(.*\)"/\1/p' | jq -R . | jq -cs .)"
+          list="$(for dir in crates/bluesky-terminal-client/fuzz crates/misskey-terminal-client/fuzz; do
+            grep -A1 '^\[\[bin\]\]' "${dir}/Cargo.toml" | sed -n 's/^name *= *"\(.*\)"/\1/p' | jq -R --arg dir "${dir}" '{dir: $dir, target: .}'
+          done | jq -cs .)"
           test "$list" != "[]"
           echo "list=${list}" >> "$GITHUB_OUTPUT"
 
@@ -46,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.targets.outputs.list) }}
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,7 +63,7 @@ jobs:
         with:
           toolchain: nightly
 
-      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-fuzz@0.13.2
 
@@ -66,13 +71,14 @@ jobs:
         env:
           SECONDS_PER_TARGET: ${{ inputs.seconds || '300' }}
           TARGET: ${{ matrix.target }}
+          FUZZ_DIR: ${{ matrix.dir }}
         # cargo-fuzz from install-action is a musl binary and would default to
         # building for musl, which AddressSanitizer does not support.
-        run: cargo fuzz run --target x86_64-unknown-linux-gnu "${TARGET}" -- -max_total_time="${SECONDS_PER_TARGET}"
+        run: cargo fuzz run --fuzz-dir "${FUZZ_DIR}" --target x86_64-unknown-linux-gnu "${TARGET}" -- -max_total_time="${SECONDS_PER_TARGET}"
 
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: crash-${{ matrix.target }}
-          path: fuzz/artifacts/${{ matrix.target }}/
+          path: ${{ matrix.dir }}/artifacts/${{ matrix.target }}/
           retention-days: 30

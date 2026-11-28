@@ -10,7 +10,7 @@
   "skipCi": true,
   "repoType": "github",
   "repoHost": "https://github.com",
-  "projectName": "sns-terminal-clients",
+  "projectName": "social-terminal-clients",
   "projectOwner": "nao1215",
   "contributors": [
     {

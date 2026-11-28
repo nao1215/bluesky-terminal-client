@@ -396,6 +396,14 @@ mod tests {
         assert_eq!(wrap("ﾊﾟﾊﾟﾊﾟ", 4), ["ﾊﾟﾊﾟ", "ﾊﾟ"]);
     }
 
+    // A cluster too wide for any line keeps the zero-width space before it
+    // on its line: alone, the space would be a line that shows nothing.
+    #[test]
+    fn a_zero_width_space_stays_with_a_cluster_too_wide() {
+        assert_eq!(wrap("\u{200b}日ﾞﾞ", 2), ["\u{200b}日ﾞﾞ"]);
+        assert_eq!(wrap("a\u{200b}日ﾞ", 2), ["a\u{200b}", "日ﾞ"]);
+    }
+
     // A hint row too long for its place loses pairs from the middle and
     // keeps the last, which says how to leave.
     #[rstest]
@@ -456,6 +464,12 @@ mod tests {
     #[case("hi 日本語", 5, &["hi 日", "本語"])]
     fn wraps_by_display_width(#[case] text: &str, #[case] width: usize, #[case] want: &[&str]) {
         assert_eq!(wrap(text, width), want);
+    }
+
+    #[test]
+    fn an_empty_paragraph_has_no_runs() {
+        assert!(split_keep_spaces("").is_empty());
+        assert_eq!(split_keep_spaces("ab  日本"), ["ab", "  ", "日", "本"]);
     }
 
     // A space that falls at the wrap point is dropped; it does not leave a

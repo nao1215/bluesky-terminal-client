@@ -1,0 +1,170 @@
+# The Misskey side of the rest of bsky's commands, against an atago mock
+# as the account of MSKY_TOKEN: thread, profile, reactions (bsky's likes),
+# renotes (reposts), like and unlike, repost and unrepost, delete, mute and
+# block with their lists. The token is a throwaway value.
+version: "1"
+
+suite:
+  name: msky more commands
+
+secrets:
+  - e2e-env-token-0501
+
+scenarios:
+  - name: thread, profile, reactions and renotes read what the note and account have
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/show
+            json: { id: n, createdAt: "2026-11-26T10:00:00.000Z", text: "本文 🇯🇵", replyId: p, repliesCount: 1, user: { username: me } }
+          - method: POST
+            path: /api/notes/conversation
+            json:
+              - { id: p, createdAt: "2026-11-26T09:00:00.000Z", text: "親", user: { username: ann } }
+          - method: POST
+            path: /api/notes/children
+            json:
+              - { id: c, createdAt: "2026-11-26T11:00:00.000Z", text: "返信 👨‍👩‍👧", user: { username: cat } }
+          - method: POST
+            path: /api/notes/reactions
+            json:
+              - { id: r1, createdAt: "t", type: ":blobcat@.:", user: { id: u1, username: ann } }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-bob, username: bob, host: x.test, name: "ボブ", description: "こんにちは", notesCount: 3, followingCount: 1, followersCount: 2 }
+    steps:
+      - run:
+          command: msky thread n --json --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{[^\n]*"id":"p"[^\n]*\}\n\{[^\n]*"id":"n"[^\n]*\}\n\{[^\n]*"id":"c"[^\n]*\}\n$'
+      - run:
+          command: msky likes n --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ":blobcat:  @ann@127.0.0.1:${api.port}  ${api.url}/@ann\n"
+      - run:
+          command: msky profile @bob@x.test --host ${api.url}
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["ボブ @bob@x.test", "3 notes", "こんにちは"]
+
+  - name: like, repost, delete, mute and block write once each, as the token's account
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/show, json: { id: n, user: { username: bob } } }
+          - { method: POST, path: /api/notes/reactions/create, status: 204, body: "" }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: rn1 } } }
+          - { method: POST, path: /api/notes/delete, status: 204, body: "" }
+          - { method: POST, path: /api/users/show, json: { id: u-bob, username: bob, host: x.test } }
+          - { method: POST, path: /api/mute/create, status: 204, body: "" }
+          - { method: POST, path: /api/blocking/create, status: 204, body: "" }
+          - method: POST
+            path: /api/mute/list
+            json:
+              - { id: m1, mutee: { id: u-bob, username: bob, host: x.test, name: "ボブ" } }
+    steps:
+      - run:
+          command: msky like n --reaction 👍🏽 --host ${api.url}
+          env: &env
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "reacted 👍🏽 to ${api.url}/notes/n\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/reactions/create
+            count: 1
+            body:
+              json:
+                - { path: "$.reaction", equals: "👍🏽" }
+                - { path: "$.i", equals: e2e-env-token-0501 }
+      - run:
+          command: msky repost n --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"id\":\"rn1\",\"uri\":\"${api.url}/notes/rn1\"}\n"
+      - run:
+          command: msky delete n --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "deleted ${api.url}/notes/n\n"
+      - run:
+          command: msky mute @bob@x.test --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "muted @bob@x.test\n"
+      - run:
+          command: msky block bob@x.test --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "{\"id\":\"u-bob\"}\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/blocking/create
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+      - run:
+          command: msky mutes --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "ボブ @bob@x.test  ${api.url}/@bob@x.test\n"
+
+  - name: report sends nothing until confirmed, and with --yes reports the note's author with its address
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/show, json: { id: n9, userId: u-bob, user: { id: u-bob, username: bob }, text: "x" } }
+          - { method: POST, path: /api/users/report-abuse, status: 204, body: "" }
+    steps:
+      - run:
+          command: msky report n9 --reason spam --host ${api.url}
+          stdin: ""
+          env:
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: ["a report is sent only once confirmed", "--yes"]
+      - assert:
+          mock:
+            name: api
+            path: /api/users/report-abuse
+            count: 0
+      - run:
+          command: msky report n9 --reason spam --comment "宣伝ばかり 📢" --yes --host ${api.url}
+          env:
+            MSKY_TOKEN: e2e-env-token-0501
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "reported @bob@127.0.0.1:${api.port} for ${api.url}/notes/n9\n"
+      - assert:
+          mock:
+            name: api
+            path: /api/users/report-abuse
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+                - { path: "$.comment", equals: "Spam\nNote: ${api.url}/notes/n9\n-----\n宣伝ばかり 📢" }

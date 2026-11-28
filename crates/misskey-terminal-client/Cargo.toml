@@ -1,0 +1,60 @@
+[package]
+name = "misskey-terminal-client"
+version = "0.1.1"
+edition.workspace = true
+# Written out in each package: CI and the release scripts read it from the
+# package's own [package] table.
+rust-version = "1.90"
+authors.workspace = true
+description = "Unofficial Misskey client for the terminal: a full-screen client that draws pictures inline (kitty graphics, sixel, iTerm2), and commands that read timelines, notifications and notes, save their files, post notes and follow accounts."
+license.workspace = true
+readme = "README.md"
+repository = "https://github.com/nao1215/social-terminal-clients"
+keywords = ["misskey", "fediverse", "tui", "terminal", "sixel"]
+categories = ["command-line-utilities"]
+exclude = [
+    "about.hbs",
+    "bench/",
+    "doc/",
+    "e2e/",
+    "fuzz/",
+    "justfile",
+]
+
+# `cargo binstall misskey-terminal-client` fetches the release archive instead
+# of building it. msky's releases are tagged msky-vX.Y.Z.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/msky-v{ version }/msky-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[[bin]]
+name = "msky"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+crossterm.workspace = true
+dirs.workspace = true
+getrandom = "0.4"
+image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
+openh264.workspace = true
+ratatui.workspace = true
+ratatui-image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rstest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

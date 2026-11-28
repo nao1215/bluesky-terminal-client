@@ -1,35 +1,38 @@
 name: Release smoke
 
-# release.yml runs only on a pushed tag, so a change that breaks a release
-# build, the archive layout or the binary on one platform would first show up
-# while a release is half published. This workflow builds every target in
-# release-targets.json the way release.yml does (the same compiler pin, the
-# release profile, pack-archive.sh and the glibc ceiling), uploads the archives,
-# then downloads each one on a fresh runner and runs it there. Nothing is
-# signed, attested or published.
+# release.yml (bsky) and release-msky.yml (msky) run only on a pushed tag, so a
+# change that breaks a release build, the archive layout or a binary on one
+# platform would first show up while a release is half published. This
+# workflow builds both clients for every target in release-targets.json the
+# way the release workflows do (the same compiler pin, the release profile,
+# pack-archive.sh and the glibc ceiling), uploads the archives, then downloads
+# each one on a fresh runner and runs it there. Nothing is signed, attested or
+# published.
 on:
   workflow_dispatch:
   push:
     branches:
       - main
     paths:
-      - "src/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "scripts/release/**"
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-msky.yml"
       - ".github/workflows/release-smoke.yml"
   pull_request:
     branches:
       - main
     paths:
-      - "src/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "scripts/release/**"
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-msky.yml"
       - ".github/workflows/release-smoke.yml"
 
 concurrency:
@@ -43,7 +46,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The build matrix, the compiler release.yml pins, and the version the
+  # The build matrix, the compiler the release workflows pin, and the tags the
   # binaries must report, each read from the file that owns it.
   plan:
     runs-on: ubuntu-latest
@@ -51,7 +54,7 @@ jobs:
     outputs:
       matrix: ${{ steps.read.outputs.matrix }}
       toolchain: ${{ steps.read.outputs.toolchain }}
-      tag: ${{ steps.read.outputs.tag }}
+      tags: ${{ steps.read.outputs.tags }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,13 +62,21 @@ jobs:
       - id: read
         run: |
           toolchain="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release.yml)"
-          version="$(grep -oP '^version\s*=\s*"\K[^"]+' Cargo.toml | head -n 1)"
+          msky_toolchain="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release-msky.yml)"
+          if [ "${toolchain}" != "${msky_toolchain}" ]; then
+            echo "::error title=Release toolchains differ::release.yml pins '${toolchain}' and release-msky.yml '${msky_toolchain}'"
+            exit 1
+          fi
+          bsky="$(grep -oP '^version\s*=\s*"\K[^"]+' crates/bluesky-terminal-client/Cargo.toml | head -n 1)"
+          msky="$(grep -oP '^version\s*=\s*"\K[^"]+' crates/misskey-terminal-client/Cargo.toml | head -n 1)"
           test -n "${toolchain}"
-          test -n "${version}"
+          test -n "${bsky}"
+          test -n "${msky}"
           {
             echo "matrix=$(jq -c . .github/release-targets.json)"
             echo "toolchain=${toolchain}"
-            echo "tag=v${version}"
+            # BIN=tag pairs, one per client.
+            echo "tags=bsky=v${bsky} msky=msky-v${msky}"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -100,21 +111,26 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release --locked -p bluesky-terminal-client --target "${TARGET}"
+        run: cargo build --release --locked -p bluesky-terminal-client -p misskey-terminal-client --target "${TARGET}"
 
       - name: Pack
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
           ARCHIVE_EXT: ${{ matrix.archive }}
-          TAG: ${{ needs.plan.outputs.tag }}
+          TAGS: ${{ needs.plan.outputs.tags }}
         run: |
-          bin="target/${TARGET}/release/bsky"
-          [ -f "${bin}.exe" ] && bin="${bin}.exe"
-          archive="bsky-${TAG}-${TARGET}.${ARCHIVE_EXT}"
-          ./scripts/release/pack-archive.sh "${bin}" "${archive}"
-          ./scripts/release/check-archive.sh "${archive}" "${TAG}"
-          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+          mkdir -p smoke
+          for pair in ${TAGS}; do
+            export BIN="${pair%%=*}"
+            tag="${pair#*=}"
+            bin="target/${TARGET}/release/${BIN}"
+            [ -f "${bin}.exe" ] && bin="${bin}.exe"
+            # bsky-vX.Y.Z-<target> and msky-vX.Y.Z-<target>, as the releases name them.
+            archive="smoke/${BIN}-v${tag#*v}-${TARGET}.${ARCHIVE_EXT}"
+            ./scripts/release/pack-archive.sh "${bin}" "${archive}"
+            ./scripts/release/check-archive.sh "${archive}" "${tag}"
+          done
 
       # The same ceiling as release.yml: the Linux binaries must start on
       # Ubuntu 22.04 and Debian 12.
@@ -125,19 +141,21 @@ jobs:
           MAX_GLIBC: "2.35"
         run: |
           set -o pipefail
-          need="$(objdump -T "target/${TARGET}/release/bsky" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/^GLIBC_//' | sort -uV | tail -n 1)"
-          test -n "${need}"
-          highest="$(printf '%s\n%s\n' "${need}" "${MAX_GLIBC}" | sort -V | tail -n 1)"
-          if [ "${highest}" != "${MAX_GLIBC}" ]; then
-            echo "::error title=glibc too new::${TARGET} requires GLIBC_${need}, the release allows up to ${MAX_GLIBC}"
-            exit 1
-          fi
-          echo "${TARGET} requires GLIBC_${need} (allowed up to ${MAX_GLIBC})"
+          for exe in bsky msky; do
+            need="$(objdump -T "target/${TARGET}/release/${exe}" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/^GLIBC_//' | sort -uV | tail -n 1)"
+            test -n "${need}"
+            highest="$(printf '%s\n%s\n' "${need}" "${MAX_GLIBC}" | sort -V | tail -n 1)"
+            if [ "${highest}" != "${MAX_GLIBC}" ]; then
+              echo "::error title=glibc too new::${exe} for ${TARGET} requires GLIBC_${need}, the release allows up to ${MAX_GLIBC}"
+              exit 1
+            fi
+            echo "${exe} for ${TARGET} requires GLIBC_${need} (allowed up to ${MAX_GLIBC})"
+          done
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-${{ matrix.target }}
-          path: ${{ env.ARCHIVE }}
+          path: smoke/
           if-no-files-found: error
           retention-days: 3
 
@@ -164,13 +182,16 @@ jobs:
           name: smoke-${{ matrix.target }}
           path: smoke
 
-      - name: Unpack and run the binary
+      - name: Unpack and run the binaries
         if: matrix.exec
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
           ARCHIVE_EXT: ${{ matrix.archive }}
-          TAG: ${{ needs.plan.outputs.tag }}
+          TAGS: ${{ needs.plan.outputs.tags }}
         run: |
-          archive="smoke/bsky-${TAG}-${TARGET}.${ARCHIVE_EXT}"
-          ./scripts/release/check-archive.sh "${archive}" "${TAG}" --exec
+          for pair in ${TAGS}; do
+            export BIN="${pair%%=*}"
+            tag="${pair#*=}"
+            ./scripts/release/check-archive.sh "smoke/${BIN}-v${tag#*v}-${TARGET}.${ARCHIVE_EXT}" "${tag}" --exec
+          done

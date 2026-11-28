@@ -8,11 +8,17 @@ use jiff::tz::TimeZone;
 /// record's author wrote, and an escape sequence in it must not reach the
 /// terminal.
 pub fn local_time(ts: &str) -> String {
+    local_time_in(ts, &TimeZone::system())
+}
+
+/// [`local_time`] in `tz`, so the tests do not depend on the zone of the
+/// machine they run on.
+fn local_time_in(ts: &str, tz: &TimeZone) -> String {
     match ts.parse::<Timestamp>() {
         // Written out by hand: `format` parses its pattern on every call,
         // which is most of what showing a post's time costs.
         Ok(t) => {
-            let t = t.to_zoned_datetime(TimeZone::system());
+            let t = t.to_zoned_datetime(tz.clone());
             format!(
                 "{:04}-{:02}-{:02} {:02}:{:02}",
                 t.year(),
@@ -29,6 +35,22 @@ pub fn local_time(ts: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::tz::offset;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case("2026-09-22T01:02:03.000Z", 0, "2026-09-22 01:02")]
+    #[case("2026-09-22T01:02:03.000Z", 9, "2026-09-22 10:02")]
+    #[case("2026-12-31T20:00:00Z", 9, "2027-01-01 05:00")]
+    #[case("0999-01-02T23:59:59+09:00", 0, "0999-01-02 14:59")]
+    #[case("2024-02-29T12:00:00-11:30", 0, "2024-02-29 23:30")]
+    fn a_time_is_put_in_the_time_zone_to_the_minute(
+        #[case] ts: &str,
+        #[case] hours: i8,
+        #[case] want: &str,
+    ) {
+        assert_eq!(local_time_in(ts, &TimeZone::fixed(offset(hours))), want);
+    }
 
     #[test]
     fn a_time_reads_as_strftime_formats_it() {
