@@ -13,7 +13,8 @@ trap 'rm -rf "$work"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # Each client of the repository: its executable, its tag prefix, its package.
-clients=("bsky v bluesky-terminal-client" "msky msky-v misskey-terminal-client")
+clients=("bsky v bluesky-terminal-client" "msky msky-v misskey-terminal-client"
+	"mstdn mstdn-v mastodon-terminal-client" "nstr nstr-v nostr-terminal-client")
 
 for client in "${clients[@]}"; do
 	read -r bin prefix package <<<"$client"
@@ -55,20 +56,40 @@ for client in "${clients[@]}"; do
 	printf '[package]\nname = "%s"\nversion = "1.2.3"\nrust-version = "1.90"\n\n[dependencies]\nversion = "9.9.9"\n' "$package" >"$dir/Cargo.toml"
 	printf '# Changelog\n\n## [1.2.3] - 2026-09-22\n\n- One thing.\n' >"$dir/CHANGELOG.md"
 	"$here/check-version.sh" "${prefix}1.2.3" 1.98.0 "$dir" >/dev/null || fail "$bin: a matching tag was refused"
-	other=v
-	[ "$prefix" = v ] && other=msky-v
-	for bad in "${prefix}1.2.4 1.98.0" "${prefix}1.2.3 stable" "${prefix}1.2.3 1.89.0" "${other}1.2.3 1.98.0" "1.2.3 1.98.0"; do
+	for other_client in "${clients[@]}"; do
+		read -r other_bin other_prefix _ <<<"$other_client"
+		[ "$other_bin" = "$bin" ] && continue
+		for script in check-version.sh check-archive.sh render-formula.sh; do
+			case "$script" in
+			check-version.sh) args=("${other_prefix}1.2.3" 1.98.0 "$dir") ;;
+			check-archive.sh) args=("$a" "${other_prefix}1.2.3") ;;
+			render-formula.sh) args=("${other_prefix}1.2.3" "$dir/checksums.txt" nao1215/social-terminal-clients) ;;
+			esac
+			if "$here/$script" "${args[@]}" >/dev/null 2>"$work/err"; then
+				fail "$bin: $script accepted $other_bin's tag"
+			fi
+			grep -q 'error: tag ' "$work/err" || fail "$bin: $script failed for a reason other than the tag"
+		done
+	done
+	for bad in "${prefix}1.2.4 1.98.0" "${prefix}1.2.3 stable" "${prefix}1.2.3 1.89.0" "1.2.3 1.98.0"; do
 		# shellcheck disable=SC2086
 		if "$here/check-version.sh" $bad "$dir" >/dev/null 2>"$work/err"; then
 			fail "$bin: check-version accepted: $bad"
 		fi
 	done
 
+	printf '# Changelog\n\n## [Unreleased]\n\n- Pending.\n' >"$dir/CHANGELOG.md"
+	if "$here/check-version.sh" "${prefix}1.2.3" 1.98.0 "$dir" >/dev/null 2>"$work/err"; then
+		fail "$bin: an Unreleased-only changelog passed"
+	fi
+
 	# The formula takes each archive's hash from checksums.txt, and refuses a gap.
 	for t in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
 		printf '%064d  %s-v1.2.3-%s.tar.gz\n' 1 "$bin" "$t"
 	done >"$dir/checksums.txt"
 	"$here/render-formula.sh" "${prefix}1.2.3" "$dir/checksums.txt" nao1215/social-terminal-clients >"$dir/$bin.rb"
+	grep -q "class $(printf '%s' "${bin:0:1}" | tr '[:lower:]' '[:upper:]')${bin:1} < Formula" "$dir/$bin.rb" || fail "$bin: wrong formula class"
+	grep -q "releases/download/${prefix}1.2.3/$bin-v1.2.3-" "$dir/$bin.rb" || fail "$bin: wrong archive URL"
 	grep -q 'version "1.2.3"' "$dir/$bin.rb" || fail "$bin: the formula has no version"
 	grep -q "bin.install \"$bin\"" "$dir/$bin.rb" || fail "$bin: the formula does not install $bin"
 	[ "$(grep -c 'sha256 "0\{63\}1"' "$dir/$bin.rb")" -eq 4 ] || fail "$bin: the formula does not carry four hashes"

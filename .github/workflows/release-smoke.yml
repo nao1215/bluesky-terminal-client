@@ -1,9 +1,9 @@
 name: Release smoke
 
-# release.yml (bsky) and release-msky.yml (msky) run only on a pushed tag, so a
+# The four release workflows run only on a pushed tag, so a
 # change that breaks a release build, the archive layout or a binary on one
 # platform would first show up while a release is half published. This
-# workflow builds both clients for every target in release-targets.json the
+# workflow builds every client for every target in release-targets.json the
 # way the release workflows do (the same compiler pin, the release profile,
 # pack-archive.sh and the glibc ceiling), uploads the archives, then downloads
 # each one on a fresh runner and runs it there. Nothing is signed, attested or
@@ -21,6 +21,8 @@ on:
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
       - ".github/workflows/release-msky.yml"
+      - ".github/workflows/release-mstdn.yml"
+      - ".github/workflows/release-nstr.yml"
       - ".github/workflows/release-smoke.yml"
   pull_request:
     branches:
@@ -33,6 +35,8 @@ on:
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
       - ".github/workflows/release-msky.yml"
+      - ".github/workflows/release-mstdn.yml"
+      - ".github/workflows/release-nstr.yml"
       - ".github/workflows/release-smoke.yml"
 
 concurrency:
@@ -62,21 +66,27 @@ jobs:
       - id: read
         run: |
           toolchain="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release.yml)"
-          msky_toolchain="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release-msky.yml)"
-          if [ "${toolchain}" != "${msky_toolchain}" ]; then
-            echo "::error title=Release toolchains differ::release.yml pins '${toolchain}' and release-msky.yml '${msky_toolchain}'"
-            exit 1
-          fi
-          bsky="$(grep -oP '^version\s*=\s*"\K[^"]+' crates/bluesky-terminal-client/Cargo.toml | head -n 1)"
-          msky="$(grep -oP '^version\s*=\s*"\K[^"]+' crates/misskey-terminal-client/Cargo.toml | head -n 1)"
           test -n "${toolchain}"
-          test -n "${bsky}"
-          test -n "${msky}"
+          tags=""
+          for BIN in bsky msky mstdn nstr; do
+            export BIN
+            . ./scripts/release/client.sh
+            workflow=".github/workflows/release-${BIN}.yml"
+            [ "${BIN}" = bsky ] && workflow=".github/workflows/release.yml"
+            pin="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' "${workflow}")"
+            if [ "${toolchain}" != "${pin}" ]; then
+              echo "::error title=Release toolchains differ::${workflow} pins '${pin}', expected '${toolchain}'"
+              exit 1
+            fi
+            version="$(grep -oP '^version\s*=\s*"\K[^"]+' "${package_dir}/Cargo.toml" | head -n 1)"
+            test -n "${version}"
+            tags="${tags}${tags:+ }${BIN}=${tag_prefix}${version}"
+          done
           {
             echo "matrix=$(jq -c . .github/release-targets.json)"
             echo "toolchain=${toolchain}"
             # BIN=tag pairs, one per client.
-            echo "tags=bsky=v${bsky} msky=msky-v${msky}"
+            echo "tags=${tags}"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -111,7 +121,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release --locked -p bluesky-terminal-client -p misskey-terminal-client --target "${TARGET}"
+        run: cargo build --release --locked -p bluesky-terminal-client -p misskey-terminal-client -p mastodon-terminal-client -p nostr-terminal-client --target "${TARGET}"
 
       - name: Pack
         shell: bash
@@ -126,7 +136,7 @@ jobs:
             tag="${pair#*=}"
             bin="target/${TARGET}/release/${BIN}"
             [ -f "${bin}.exe" ] && bin="${bin}.exe"
-            # bsky-vX.Y.Z-<target> and msky-vX.Y.Z-<target>, as the releases name them.
+            # <bin>-vX.Y.Z-<target>, as the releases name them.
             archive="smoke/${BIN}-v${tag#*v}-${TARGET}.${ARCHIVE_EXT}"
             ./scripts/release/pack-archive.sh "${bin}" "${archive}"
             ./scripts/release/check-archive.sh "${archive}" "${tag}"
@@ -141,7 +151,7 @@ jobs:
           MAX_GLIBC: "2.35"
         run: |
           set -o pipefail
-          for exe in bsky msky; do
+          for exe in bsky msky mstdn nstr; do
             need="$(objdump -T "target/${TARGET}/release/${exe}" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/^GLIBC_//' | sort -uV | tail -n 1)"
             test -n "${need}"
             highest="$(printf '%s\n%s\n' "${need}" "${MAX_GLIBC}" | sort -V | tail -n 1)"

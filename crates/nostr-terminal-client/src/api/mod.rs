@@ -1,6 +1,7 @@
 //! Private protocol and application modules for the command-line client.
 
 pub(crate) mod event;
+mod nip11;
 pub(crate) mod nip19;
 pub(crate) mod nip44;
 pub(crate) mod nip46;
@@ -71,7 +72,7 @@ impl Client<'_> {
     pub(crate) fn notifications(&self, limit: usize) -> Result<Outcome<Vec<Event>>> {
         self.relays().query(
             Filter {
-                kinds: vec![1],
+                kinds: vec![1, 3, 6, 7],
                 mentions: vec![self.config.public.clone()],
                 ..Filter::default()
             },

@@ -3,7 +3,7 @@ name: Mutation
 # Mutation testing rewrites one operator, constant or return value at a time and
 # checks that a unit test fails. Every mutant rebuilds the crate and reruns the
 # unit tests, so the whole set (the files `.cargo/mutants.toml` names in bsky,
-# msky, mstdn and terminal-kit) runs weekly in shards, and a pull request mutates
+# msky, mstdn, nstr and terminal-kit) runs weekly in shards, and a pull request mutates
 # only the lines it changes.
 #
 # The gate is off until the clients are released: the score is a report, not a check.

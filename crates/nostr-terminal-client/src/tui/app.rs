@@ -215,6 +215,8 @@ impl App {
                     let urls = note::pictures(note);
                     if !urls.is_empty() {
                         self.overlay = Some(Overlay::Pictures { urls, selected: 0 });
+                    } else if note::has_video(note) {
+                        self.message = "unsupported: video playback in nstr".into();
                     }
                 }
             }
@@ -422,6 +424,7 @@ impl App {
         };
         let seq = self.seq();
         self.pending.insert(seq, mark);
+        self.message = self.t("Sending…", "送信中…").into();
         vec![Job::Write {
             seq,
             event: note::draft(kind, content, Some(&note)),

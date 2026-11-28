@@ -1,0 +1,227 @@
+version: "1"
+suite:
+  name: nstr live relay catalog
+scenarios:
+  - name: "usable: generated identity and ordered contact timeline"
+    steps:
+      - run:
+          command: nstr whoami --json
+          env: &env
+            NSTR_CONFIG_DIR: ${env:NSTR_COMPAT_CONFIG}
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: "${env:NSTR_COMPAT_PUBLIC}" }
+              - { path: "$.name", equals: compat-user }
+      - run: { command: nstr timeline -n 1 --json, env: *env }
+      - assert:
+          exit_code: 0
+          stdout: { json: { path: "$.text", equals: compat reply } }
+      - run: { command: 'nstr search "#catalog" -n 2000 --json', env: *env, timeout: 30s }
+      - assert:
+          exit_code: 0
+          stdout: { matches: '(?m)^\{', count: 1056 }
+      - assert:
+          stdout: { contains: ['"text":"text 000 ', '"text":"video 099 ', '"text":"pictures 099"'] }
+
+  - name: "behavior: repeated multi-page reads are byte-identical"
+    steps:
+      - run: { command: nstr timeline -n 350 --json, env: *env, timeout: 30s }
+      - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 350 } }
+      - store: { name: first, from: { stdout: { trim: false } } }
+      - run: { command: nstr timeline -n 350 --json, env: *env, timeout: 30s }
+      - assert: { exit_code: 0, stdout: { equals: "${first}" } }
+
+  - name: "heavy: 806 notifications including 802 mentions reach the end"
+    steps:
+      - run: { command: nstr notifications -n 2000 --json, env: *env, timeout: 30s }
+      - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 806 } }
+      - assert:
+          stdout: { contains: ['"type":"reaction"', '"type":"repost"', '"type":"follow"', '"type":"reply"', '"type":"mention"'] }
+
+  - name: "heavy: fifty-deep ancestry and two hundred direct replies are stored"
+    steps:
+      - run: { command: 'nstr search "#deep" -n 100 --json', env: *env }
+      - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 51 } }
+      - assert: { stdout: { contains: ['"text":"depth 000"', '"text":"depth 050"', '"reply"', '"root"'] } }
+      - run: { command: 'nstr search "#wide" -n 300 --json', env: *env }
+      - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 201 } }
+
+  - name: "usable: content-warning and one to four pictures with imeta alt text survive reads"
+    steps:
+      - run: { command: 'nstr search "#cw" -n 1 --json', env: *env }
+      - assert: { exit_code: 0, stdout: { json: { path: "$.cw", equals: spoilers } } }
+      - run: { command: 'nstr search "#media-1" -n 1 --json', env: *env }
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.tags[0][1]", equals: 'url ${env:NSTR_COMPAT_MEDIA}/picture-0.png' }
+              - { path: "$.tags[1][0]", equals: t }
+      - run: { command: 'nstr search "#media-2" -n 1 --json', env: *env }
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.tags[1][1]", equals: 'url ${env:NSTR_COMPAT_MEDIA}/picture-1.png' }
+              - { path: "$.tags[2][0]", equals: t }
+      - run: { command: 'nstr search "#media-3" -n 1 --json', env: *env }
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.tags[2][1]", equals: 'url ${env:NSTR_COMPAT_MEDIA}/picture-2.png' }
+              - { path: "$.tags[3][0]", equals: t }
+      - run: { command: 'nstr search "#pictures" -n 1 --json', env: *env }
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.tags[0][1]", equals: 'url ${env:NSTR_COMPAT_MEDIA}/picture-0.png' }
+              - { path: "$.tags[3][1]", equals: 'url ${env:NSTR_COMPAT_MEDIA}/picture-3.png' }
+              - { path: "$.tags[0][3]", matches: '^alt CJK 日本語' }
+
+  - name: "usable: unadvertised text search is unsupported and hashtag search still works"
+    steps:
+      - run: { command: nstr search words --json, env: *env }
+      - assert: { exit_code: 5, stdout: { json: { path: "$.status", equals: 5 } }, stderr: { contains: "unsupported: NIP-50 search" } }
+      - run: { command: 'nstr search "#video" -n 200 --json', env: *env }
+      - assert: { exit_code: 0, stdout: { matches: '(?m)^\{', count: 100 } }
+      - assert: { stdout: { contains: [pattern.mp4, unsupported.webm, '"m video/mp4"', '"m video/webm"'] } }
+
+  - name: "heavy: picture profile navigation graphics and Unicode text"
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 40
+          cols: 140
+          env: &pictures
+            NSTR_CONFIG_DIR: ${env:NSTR_COMPAT_PICTURES_CONFIG}
+            LC_ALL: en_US.UTF-8
+          timeout: 45s
+          session:
+            - expect_screen: { contains: "compat reply", timeout: 10s }
+            - send: "3"
+            - expect_screen: { contains: ["compat-pictures", "4 pictures", "日本語", "q quit"], images: { min_count: 1 }, timeout: 10s }
+            - send: { key: down, times: 10 }
+            - expect_screen: { contains: "wide reply", images: { min_count: 1 }, timeout: 2s }
+            - send: { key: end }
+            - expect_screen: { contains: "wide reply", not_contains: "Loading…", stable_for: 200ms, timeout: 10s }
+            - send: g
+            - expect_screen: { contains: "compat reply", timeout: 2s }
+            - send: " "
+            - expect_screen: { contains: ["Pictures", "picture-0.png"], images: { min_count: 1 }, timeout: 10s }
+            - send: l
+            - expect_screen: { contains: "picture-1.png", images: { min_count: 1 }, timeout: 10s }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Pictures", timeout: 2s }
+            - send: q
+      - assert: { exit_code: 0 }
+
+  - name: "heavy: video profile stays responsive and names unsupported playback"
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 35
+          cols: 120
+          env:
+            NSTR_CONFIG_DIR: ${env:NSTR_COMPAT_VIDEOS_CONFIG}
+            LC_ALL: en_US.UTF-8
+          timeout: 45s
+          session:
+            - expect_screen: { contains: "compat reply", timeout: 10s }
+            - send: "3"
+            - expect_screen: { contains: ["compat-videos", "playback unsupported"], timeout: 10s }
+            - send: " "
+            - expect_screen: { contains: "unsupported: video playback in nstr", timeout: 2s }
+            - send: { key: down, times: 10 }
+            - expect_screen: { contains: "video 09", timeout: 2s }
+            - send: g
+            - expect_screen: { contains: "compat mention", timeout: 2s }
+            - send: q
+      - assert: { exit_code: 0 }
+
+  - name: "usable: full-screen thread reaction repost reply and composition"
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 40
+          cols: 140
+          env:
+            NSTR_CONFIG_DIR: ${env:NSTR_COMPAT_CONFIG}
+            LC_ALL: en_US.UTF-8
+          timeout: 60s
+          session:
+            - expect_screen: { contains: "compat reply", images: { min_count: 1 }, timeout: 10s }
+            - send: v
+            - expect_screen: { contains: ["Thread", "compat reply"], not_contains: "Loading…", timeout: 10s }
+            - send: k
+            - expect_screen: { contains: "compat own note", timeout: 2s }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Thread", timeout: 2s }
+            - send: l
+            - expect_screen: { contains: "Sent", timeout: 10s }
+            - send: b
+            - expect_screen: { contains: "Sent", stable_for: 200ms, timeout: 10s }
+            - send: r
+            - expect_screen: { contains: "Reply", timeout: 2s }
+            - send: "catalog live reply"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Sent", not_contains: "ctrl+s send", timeout: 10s }
+            - send: v
+            - expect_screen: { contains: ["Thread", "catalog live reply"], not_contains: "Loading…", timeout: 10s }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Thread", timeout: 2s }
+            - send: n
+            - expect_screen: { contains: "New note", timeout: 2s }
+            - send: "catalog live composition"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Sent", not_contains: "New note", timeout: 10s }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: nstr timeline -n 10 --json, env: *env }
+      - assert: { exit_code: 0, stdout: { contains: [catalog live reply, catalog live composition] } }
+
+  - name: "behavior: published reactions and reposts are readable by the target"
+    steps:
+      - run: { command: nstr notifications -n 100 --json, env: *pictures }
+      - assert:
+          exit_code: 0
+          stdout: { contains: ['"type":"reaction"', '"type":"repost"', '"text":"catalog live reply"'] }
+
+  - name: "speed: timeline 100"
+    steps:
+      - run: { command: nstr timeline -n 100 --json, env: *env }
+      - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
+  - name: "speed: notifications 100"
+    steps:
+      - run: { command: nstr notifications -n 100 --json, env: *env }
+      - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
+  - name: "speed: hashtag search 100"
+    steps:
+      - run: { command: 'nstr search "#video" -n 100 --json', env: *env }
+      - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
+  - name: "speed: post picture URL"
+    steps:
+      - run: { command: 'nstr post "catalog picture ${env:NSTR_COMPAT_MEDIA}/picture-0.png" --json', env: *env }
+      - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { json: { path: "$.action", equals: post } } }
+      - assert: { stdout: { contains: '"acceptedRelays":${env:NSTR_COMPAT_COUNT}' } }
+  - name: "speed: first paint and first picture session"
+    steps:
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 35
+          cols: 120
+          env: *pictures
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "catalog picture", timeout: 10s }
+            - expect_screen: { images: { min_count: 1 }, timeout: 10s }
+            - send: q
+      - assert: { exit_code: 0, duration: { lt: 20s } }

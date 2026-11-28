@@ -35,9 +35,9 @@ fn a_quote_of_a_picture_post_says_what_it_carries_as_text() {
 /// showed nothing at all, which reads as an empty post.
 #[test]
 fn a_quote_names_who_it_quotes_beside_a_picture_and_says_when_it_cannot() {
-    let quote_of = |embed: serde_json::Value| -> Post {
+    let quote_of = |uri: &str, embed: serde_json::Value| -> Post {
         serde_json::from_value(json!({
-            "uri": "at://p/q", "cid": "c",
+            "uri": uri, "cid": "c",
             "author": {"did": "did:plc:a", "handle": "alice.test", "displayName": "Alice"},
             "record": {"text": "look at this", "createdAt": "2026-09-22T00:00:00Z"},
             "embed": embed,
@@ -50,24 +50,33 @@ fn a_quote_names_who_it_quotes_beside_a_picture_and_says_when_it_cannot() {
         "author": {"did": "did:plc:bob", "handle": "bob.test"},
         "value": {"text": "今日は👨\u{200d}👩\u{200d}👧 the quoted words"}
     });
-    let with_picture = quote_of(json!({
-        "$type": "app.bsky.embed.recordWithMedia#view",
-        "record": {"$type": "app.bsky.embed.record#view", "record": viewed},
-        "media": {"$type": "app.bsky.embed.images#view", "images": [
-            {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": ""}
-        ]}
-    }));
-    let gone = quote_of(json!({
-        "$type": "app.bsky.embed.record#view",
-        "record": {"$type": "app.bsky.embed.record#viewNotFound",
-                   "uri": "at://did:plc:bob/app.bsky.feed.post/x", "notFound": true}
-    }));
-    let blocked = quote_of(json!({
-        "$type": "app.bsky.embed.record#view",
-        "record": {"$type": "app.bsky.embed.record#viewBlocked",
-                   "uri": "at://did:plc:bob/app.bsky.feed.post/y", "blocked": true,
-                   "author": {"did": "did:plc:bob"}}
-    }));
+    let with_picture = quote_of(
+        "at://p/picture",
+        json!({
+            "$type": "app.bsky.embed.recordWithMedia#view",
+            "record": {"$type": "app.bsky.embed.record#view", "record": viewed},
+            "media": {"$type": "app.bsky.embed.images#view", "images": [
+                {"thumb": "https://t/1", "fullsize": "https://f/1", "alt": ""}
+            ]}
+        }),
+    );
+    let gone = quote_of(
+        "at://p/gone",
+        json!({
+            "$type": "app.bsky.embed.record#view",
+            "record": {"$type": "app.bsky.embed.record#viewNotFound",
+                       "uri": "at://did:plc:bob/app.bsky.feed.post/x", "notFound": true}
+        }),
+    );
+    let blocked = quote_of(
+        "at://p/blocked",
+        json!({
+            "$type": "app.bsky.embed.record#view",
+            "record": {"$type": "app.bsky.embed.record#viewBlocked",
+                       "uri": "at://did:plc:bob/app.bsky.feed.post/y", "blocked": true,
+                       "author": {"did": "did:plc:bob"}}
+        }),
+    );
     let (mut app, _) = App::new(Some(session()), "x");
     app.handle_event(Event::Timeline(
         Ok(vec![with_picture, gone, blocked].into()),

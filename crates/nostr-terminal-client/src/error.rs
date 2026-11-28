@@ -1,4 +1,4 @@
-//! Failures use the workspace's usage, local I/O and network exit statuses.
+//! Failures use the workspace's usage, local I/O, network and unsupported statuses.
 
 use serde::Serialize;
 use terminal_kit::error::Kind;
@@ -29,6 +29,14 @@ impl Error {
         }
     }
 
+    pub(crate) fn unsupported(message: impl ToString) -> Self {
+        Self {
+            error: message.to_string(),
+            hint: None,
+            status: 5,
+        }
+    }
+
     pub(crate) fn network(message: impl ToString) -> Self {
         Self {
             error: message.to_string(),
@@ -45,3 +53,17 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_json_names_the_feature_and_uses_shared_status_five() {
+        let error = Error::unsupported("unsupported: NIP-50 search");
+        assert_eq!(error.to_string(), "error: unsupported: NIP-50 search");
+        let json = serde_json::to_value(error).unwrap();
+        assert_eq!(json["status"], 5);
+        assert_eq!(json["hint"], serde_json::Value::Null);
+    }
+}
