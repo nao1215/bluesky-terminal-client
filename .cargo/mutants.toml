@@ -14,8 +14,9 @@
 # one line.
 #
 # In mstdn (crates/mastodon-terminal-client) it is pointed at reading a
-# status's HTML back into the text its author wrote and putting text others
-# wrote on one line.
+# status's HTML back into the text its author wrote, putting text others
+# wrote on one line, and the full-screen client's lists: where the next page
+# starts, which answer is the one waited for, and how far in a reply is drawn.
 #
 # The text layout, the picture scaling and the text field live in the
 # terminal-kit crate of the workspace, which the clients use, so
@@ -35,6 +36,7 @@ examine_globs = [
   "crates/misskey-terminal-client/src/text.rs",
   "crates/mastodon-terminal-client/src/html.rs",
   "crates/mastodon-terminal-client/src/text.rs",
+  "crates/mastodon-terminal-client/src/tui/list.rs",
 ]
 
 # A mutant in terminal-kit is judged by the clients' tests too, which
