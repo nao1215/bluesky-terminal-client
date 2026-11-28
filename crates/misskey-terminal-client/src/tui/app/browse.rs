@@ -1,8 +1,4 @@
-//! The Search tab (3) and the Profile tab (5), as bsky's: notes or
-//! accounts that match a query, `/` or `i` to type it and `t` to switch
-//! what is searched; an account's header and its notes, `f` to follow or
-//! unfollow it, enter on a note's author or an account to open its
-//! profile, and esc back to where it was opened from.
+//! Search results in the timeline area, the search box, and profiles.
 
 use super::*;
 use crate::api::types::User;
@@ -15,20 +11,27 @@ impl Keyed for User {
     }
 }
 
-/// What the Search tab looks for.
+/// What the search box looks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SearchMode {
     Notes,
     Accounts,
 }
 
-/// The Search tab.
+/// Search input and results, kept apart from the timeline underneath.
 #[derive(Debug, Clone)]
 pub(crate) struct Search {
     pub input: TextInput,
     /// Keys go to the box.
     pub editing: bool,
     pub mode: SearchMode,
+    pub result_mode: SearchMode,
+    /// The timeline tab whose area holds the results.
+    pub tab: Option<Tab>,
+    /// Where Escape returns, without loading or moving any list.
+    pub return_to: Option<Tab>,
+    /// Only this initial request may replace the visible results.
+    pub pending: Option<(u64, SearchMode, String)>,
     pub notes: List<Note>,
     pub users: List<User>,
     /// The query each list is for: the box may have changed since.
@@ -42,6 +45,10 @@ impl Default for Search {
             input: TextInput::single(""),
             editing: false,
             mode: SearchMode::Notes,
+            result_mode: SearchMode::Notes,
+            tab: None,
+            return_to: None,
+            pending: None,
             notes: List::default(),
             users: List::default(),
             notes_query: String::new(),
@@ -85,6 +92,7 @@ fn users_cursor(list: &mut List<User>, before: usize) {
 impl App {
     /// Open the profile of `who`, remembering the tab it is opened from.
     pub(super) fn open_profile(&mut self, who: Who) -> Jobs {
+        self.search.pending = None;
         if who == Who::Me && self.session.is_none() {
             let host = self.host().to_string();
             self.tab = Tab::Profile;
@@ -127,6 +135,9 @@ impl App {
     /// notification's sender, or a note's author.
     pub(crate) fn selected_user_id(&self) -> Option<String> {
         if self.threads.is_empty() {
+            if self.search_accounts() {
+                return self.search.users.current().map(|u| u.id.clone());
+            }
             match self.tab {
                 Tab::Columns => {
                     if let Some(crate::tui::columns::Rows::Notifications(l)) =
@@ -135,9 +146,6 @@ impl App {
                     {
                         return Some(u.id.clone());
                     }
-                }
-                Tab::Search if self.search.mode == SearchMode::Accounts => {
-                    return self.search.users.current().map(|u| u.id.clone());
                 }
                 Tab::Notifications => {
                     if let Some(u) = self.notifications.current().and_then(|n| n.user.as_ref()) {
@@ -191,9 +199,11 @@ impl App {
         if !self.threads.is_empty() {
             return None;
         }
+        if self.search_accounts() {
+            return self.search.users.current();
+        }
         match self.tab {
             Tab::Profile => self.profile.user.as_ref(),
-            Tab::Search if self.search.mode == SearchMode::Accounts => self.search.users.current(),
             _ => None,
         }
     }
@@ -318,40 +328,69 @@ impl App {
         }
     }
 
-    /// enter in the search box: search for what it holds.
+    pub(crate) fn search_shown(&self) -> bool {
+        self.search.tab == Some(self.tab)
+    }
+
+    pub(crate) fn search_accounts(&self) -> bool {
+        self.search_shown() && self.search.result_mode == SearchMode::Accounts
+    }
+
+    pub(super) fn open_search(&mut self) {
+        self.search.pending = None;
+        self.search.input = TextInput::single(&self.search.input.text());
+        self.search.editing = true;
+    }
+
+    pub(super) fn close_search(&mut self) {
+        self.search.editing = false;
+        self.search.pending = None;
+        self.search.tab = None;
+        if let Some(tab) = self.search.return_to.take() {
+            self.tab = tab;
+        }
+    }
+
+    /// Publish a successful query without changing the underlying lists.
+    fn show_search(&mut self, mode: SearchMode) {
+        if self.search.return_to.is_none() {
+            self.search.return_to = Some(match self.tab {
+                Tab::Timeline(_) | Tab::Columns => self.tab,
+                _ => self.last_timeline,
+            });
+        }
+        let tab = match self.search.return_to {
+            Some(Tab::Timeline(kind)) => Tab::Timeline(kind),
+            _ => Tab::Timeline(TimelineKind::Home),
+        };
+        self.search.tab = Some(tab);
+        self.search.result_mode = mode;
+        self.search.pending = None;
+        self.tab = tab;
+        self.threads.clear();
+    }
+
+    /// Enter starts a request; only success replaces the displayed content.
     pub(super) fn run_search(&mut self) -> Jobs {
-        let q = self.search.input.text().trim().to_string();
-        if q.is_empty() {
+        let query = self.search.input.text().trim().to_string();
+        if query.is_empty() {
             return Vec::new();
         }
-        match self.search.mode {
-            SearchMode::Notes => {
-                if self.search.notes_query != q {
-                    self.search.notes = List::default();
-                }
-                self.search.notes_query = q.clone();
-                let (seq, job) = self.stamp(Job::SearchNotes {
-                    query: q,
-                    until: None,
-                });
-                self.search.notes.begin();
-                self.search.notes.asked = seq;
-                vec![(seq, job)]
-            }
-            SearchMode::Accounts => {
-                if self.search.users_query != q {
-                    self.search.users = List::default();
-                }
-                self.search.users_query = q.clone();
-                let (seq, job) = self.stamp(Job::SearchUsers {
-                    query: q,
-                    offset: 0,
-                });
-                self.search.users.begin();
-                self.search.users.asked = seq;
-                vec![(seq, job)]
-            }
-        }
+        self.search.editing = false;
+        let mode = self.search.mode;
+        let job = match mode {
+            SearchMode::Notes => Job::SearchNotes {
+                query: query.clone(),
+                until: None,
+            },
+            SearchMode::Accounts => Job::SearchUsers {
+                query: query.clone(),
+                offset: 0,
+            },
+        };
+        let (seq, job) = self.stamp(job);
+        self.search.pending = Some((seq, mode, query));
+        vec![(seq, job)]
     }
 
     pub(super) fn toggle_search_mode(&mut self) {
@@ -366,18 +405,8 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => self.search.editing = false,
-            // Tabs switch even while typing, so the box never traps you.
-            KeyCode::Tab => {
-                self.search.editing = false;
-                return self.switch_tab(self.next_tab(1));
-            }
-            KeyCode::BackTab => {
-                self.search.editing = false;
-                return self.switch_tab(self.next_tab(-1));
-            }
             KeyCode::Char('t') if ctrl => self.toggle_search_mode(),
             KeyCode::Enter => {
-                self.search.editing = false;
                 return self.run_search();
             }
             _ => {
@@ -387,10 +416,10 @@ impl App {
         Vec::new()
     }
 
-    /// The next page of the Search or Profile tab's list, near its end.
+    /// The next page of search results or profile notes, near their end.
     pub(super) fn step_browse(&mut self, delta: isize) -> Jobs {
         match self.tab {
-            Tab::Search if self.search.mode == SearchMode::Accounts => {
+            _ if self.search_accounts() => {
                 self.search.users.step(delta);
                 match self.search.users.want_more() {
                     Some(offset) => {
@@ -401,7 +430,7 @@ impl App {
                     None => Vec::new(),
                 }
             }
-            Tab::Search => {
+            _ if self.search_shown() => {
                 self.search.notes.step(delta);
                 match self.search.notes.want_more() {
                     Some(until) => {
@@ -428,11 +457,11 @@ impl App {
         }
     }
 
-    /// R on the Search or Profile tab.
+    /// R on search results or a profile.
     pub(super) fn refresh_browse(&mut self) -> Jobs {
         match self.tab {
-            Tab::Search => {
-                let q = match self.search.mode {
+            _ if self.search_shown() => {
+                let q = match self.search.result_mode {
                     SearchMode::Notes => self.search.notes_query.clone(),
                     SearchMode::Accounts => self.search.users_query.clone(),
                 };
@@ -440,6 +469,7 @@ impl App {
                     return Vec::new();
                 }
                 self.search.input = TextInput::single(&q);
+                self.search.mode = self.search.result_mode;
                 self.run_search()
             }
             Tab::Profile => match self.profile.who.clone() {
@@ -496,19 +526,37 @@ impl App {
                 until,
                 result,
             } => {
-                if query != self.search.notes_query {
+                if until.is_none() {
+                    if self.search.pending.as_ref()
+                        != Some(&(seq, SearchMode::Notes, query.clone()))
+                    {
+                        return;
+                    }
+                    self.search.pending = None;
+                    match result {
+                        Ok(notes) => {
+                            self.search.notes = List::default();
+                            self.search.notes.set(notes);
+                            self.search.notes.asked = seq;
+                            self.search.notes_query = query;
+                            self.show_search(SearchMode::Notes);
+                        }
+                        Err(e) => self.info(said(&e)),
+                    }
+                    return;
+                }
+                if query != self.search.notes_query || seq <= self.search.notes.asked {
                     return;
                 }
                 let list = &mut self.search.notes;
-                match (until, result) {
-                    (None, Ok(notes)) if list.asked == seq => list.set(notes),
-                    (None, Err(e)) if list.asked == seq => list.failed(said(&e)),
-                    (Some(u), Ok(notes)) => list.append(&u, notes),
-                    (Some(u), Err(e)) => {
-                        list.more_failed(&u);
-                        self.error(said(&e));
+                if let Some(until) = until {
+                    match result {
+                        Ok(notes) => list.append(&until, notes),
+                        Err(e) => {
+                            list.more_failed(&until);
+                            self.info(said(&e));
+                        }
                     }
-                    _ => {}
                 }
             }
             Event::SearchUsers {
@@ -516,17 +564,33 @@ impl App {
                 offset,
                 result,
             } => {
-                if query != self.search.users_query {
+                if offset == 0 {
+                    if self.search.pending.as_ref()
+                        != Some(&(seq, SearchMode::Accounts, query.clone()))
+                    {
+                        return;
+                    }
+                    self.search.pending = None;
+                    match result {
+                        Ok(users) => {
+                            self.search.users = List::default();
+                            self.search.users.set(users);
+                            self.search.users.asked = seq;
+                            users_cursor(&mut self.search.users, 0);
+                            self.search.users_query = query;
+                            self.show_search(SearchMode::Accounts);
+                        }
+                        Err(e) => self.info(said(&e)),
+                    }
+                    return;
+                }
+                if query != self.search.users_query || seq <= self.search.users.asked {
                     return;
                 }
                 let list = &mut self.search.users;
+                let asked = offset.to_string();
                 match result {
-                    Ok(users) if offset == 0 && list.asked == seq => {
-                        list.set(users);
-                        users_cursor(list, 0);
-                    }
-                    Ok(users) if offset > 0 => {
-                        let asked = offset.to_string();
+                    Ok(users) => {
                         let continues = list.more_pending && list.cursor.as_deref() == Some(&asked);
                         let before = list.items.len();
                         list.append(&asked, users);
@@ -534,12 +598,10 @@ impl App {
                             users_cursor(list, before);
                         }
                     }
-                    Err(e) if offset == 0 && list.asked == seq => list.failed(said(&e)),
                     Err(e) => {
-                        list.more_failed(&offset.to_string());
-                        self.error(said(&e));
+                        list.more_failed(&asked);
+                        self.info(said(&e));
                     }
-                    _ => {}
                 }
             }
             _ => {}

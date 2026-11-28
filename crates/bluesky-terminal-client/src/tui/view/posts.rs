@@ -1,5 +1,7 @@
 //! A list of posts: the rows a post takes (header, text, pictures, quote, counts), and drawing them with the selection in sight.
 
+pub(super) use terminal_kit::view::truncate_line;
+
 use super::*;
 
 /// Everything a post draws besides images, precomputed for a width.
@@ -184,49 +186,6 @@ pub(super) fn ref_post_line(p: &RefPost, width: usize, t: &Theme) -> Line<'stati
         RefPost::Other => format!("┆ {}", i18n::t("(post not shown)")),
     };
     Line::styled(truncate(&text, width), t.dim())
-}
-
-/// `line` cut to `width` columns as one piece: whole grapheme clusters up
-/// to the cut and one ellipsis there, in the style of the span it cuts.
-pub(super) fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
-    let spans: Vec<(String, Style)> = line
-        .spans
-        .into_iter()
-        .map(|s| (drawable(&s.content).into_owned(), s.style))
-        .collect();
-    if spans
-        .iter()
-        .map(|(t, _)| crate::tui::text::cells(t))
-        .sum::<usize>()
-        <= width
-    {
-        return Line::from(
-            spans
-                .into_iter()
-                .map(|(t, s)| Span::styled(t, s))
-                .collect::<Vec<_>>(),
-        );
-    }
-    // One column is kept for the ellipsis.
-    let mut left = width.saturating_sub(1);
-    let mut out = Vec::new();
-    for (text, style) in spans {
-        let mut kept = String::new();
-        for (_, g) in crate::tui::text::graphemes(&text) {
-            let gw = crate::tui::text::cluster_width(g);
-            if gw > left {
-                if width > 0 {
-                    kept.push('…');
-                }
-                out.push(Span::styled(kept, style));
-                return Line::from(out);
-            }
-            kept.push_str(g);
-            left -= gw;
-        }
-        out.push(Span::styled(kept, style));
-    }
-    Line::from(out)
 }
 
 /// What a post carries, for a terminal that cannot show it: the number of

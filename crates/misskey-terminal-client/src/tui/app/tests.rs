@@ -135,7 +135,7 @@ fn a_visitor_is_told_how_to_log_in_and_reads_local_and_global() {
             .unwrap()
             .contains("msky login")
     );
-    assert!(app.handle_key(key('6')).is_empty());
+    assert!(app.handle_key(key('5')).is_empty());
     assert!(app.profile.error.as_ref().unwrap().contains("log in"));
 }
 
@@ -212,8 +212,7 @@ fn each_timeline_tab_keeps_its_place_and_tab_goes_round() {
     }
 }
 
-// The tabs are always the same seven, numbered 1 to 7; Social is not one
-// of them, and there is no eighth.
+// The six remaining tabs have consecutive number keys.
 #[test]
 fn the_tabs_are_fixed_and_numbered_in_order() {
     let mut app = logged_in(&["a"]);
@@ -224,7 +223,6 @@ fn the_tabs_are_fixed_and_numbered_in_order() {
             Tab::Timeline(TimelineKind::Local),
             Tab::Timeline(TimelineKind::Global),
             Tab::Notifications,
-            Tab::Search,
             Tab::Profile,
             Tab::Chat
         ]
@@ -232,7 +230,7 @@ fn the_tabs_are_fixed_and_numbered_in_order() {
     for (i, want) in TABS.iter().enumerate() {
         app.handle_key(key(char::from(b'1' + i as u8)));
         assert_eq!(app.tab, *want);
-        // Esc leaves typing in the search box for the next number key.
+        // Esc leaves any profile detour before the next number key.
         app.handle_key(code(KeyCode::Esc));
     }
     app.handle_key(key('1'));
@@ -742,12 +740,12 @@ fn random_keys_and_answers_leave_the_state_consistent() {
         key('b'),
         key('D'),
         key('3'),
+        key('/'),
         key('5'),
-        key('6'),
         key('2'),
         key('M'),
         key('B'),
-        key('7'),
+        key('6'),
         key('i'),
         key('s'),
         key('T'),
@@ -1602,14 +1600,14 @@ fn user(v: Value) -> crate::api::types::User {
     serde_json::from_value(v).unwrap()
 }
 
-// 3 opens Search with the box focused; enter searches notes, t switches
-// to accounts and searches them; the accounts page by offset, the notes
+// / opens the search box; Enter searches notes, Ctrl+T switches
+// to accounts before Enter searches them; the accounts page by offset, the notes
 // by untilId, and an answer for another query is dropped.
 #[test]
-fn the_search_tab_searches_notes_and_accounts_and_pages_them() {
+fn the_search_box_searches_notes_and_accounts_and_pages_them() {
     let mut app = logged_in(&[]);
-    app.handle_key(key('5'));
-    assert_eq!(app.tab, Tab::Search);
+    app.handle_key(key('/'));
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     assert!(app.search.editing);
     type_str(&mut app, "猫 🐈");
     let jobs = app.handle_key(code(KeyCode::Enter));
@@ -1637,7 +1635,9 @@ fn the_search_tab_searches_notes_and_accounts_and_pages_them() {
             until: Some("s1".into())
         }
     );
-    let jobs = app.handle_key(key('t'));
+    app.handle_key(key('/'));
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    let jobs = app.handle_key(code(KeyCode::Enter));
     assert_eq!(
         jobs[0].1,
         Job::SearchUsers {
@@ -1717,7 +1717,7 @@ fn enter_opens_the_authors_profile_and_esc_goes_back() {
     app.handle_key(code(KeyCode::Esc));
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     // Your own by the ID the login has, so it is not asked for first.
-    let jobs = app.handle_key(key('6'));
+    let jobs = app.handle_key(key('5'));
     assert_eq!(
         jobs[0].1,
         Job::Profile {
@@ -1727,7 +1727,7 @@ fn enter_opens_the_authors_profile_and_esc_goes_back() {
     assert!(app.profile.own(Some("u-me")));
     // A visitor's 5 says how to log in, and asks nothing.
     let (mut visitor, _) = App::new(None, ORIGIN);
-    assert!(visitor.handle_key(key('6')).is_empty());
+    assert!(visitor.handle_key(key('5')).is_empty());
     assert!(visitor.profile.error.as_ref().unwrap().contains("log in"));
 }
 
@@ -1941,7 +1941,7 @@ fn the_chat_tab_lists_opens_and_sends() {
     let mut app = writer(vec![]);
     // As if the list asked at the start had not come yet.
     app.chat = ChatPane::default();
-    let jobs = app.handle_key(key('7'));
+    let jobs = app.handle_key(key('6'));
     assert_eq!(app.tab, Tab::Chat);
     assert_eq!(jobs[0].1, Job::ChatHistory);
     app.handle_answer(
@@ -2043,7 +2043,7 @@ fn a_server_without_chat_hides_the_tab_from_the_start() {
     assert!(!app.tabs().contains(&Tab::Chat));
     assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
     assert!(app.status.is_none(), "nothing said: the tab was not open");
-    app.handle_key(key('7'));
+    app.handle_key(key('6'));
     assert_ne!(app.tab, Tab::Chat, "7 opens no Chat tab");
     app.switched_to(Some(session()), ORIGIN);
     assert!(
@@ -2056,7 +2056,7 @@ fn a_server_without_chat_hides_the_tab_from_the_start() {
 fn a_server_without_chat_takes_the_tab_away() {
     let mut app = writer(vec![]);
     app.chat = ChatPane::default();
-    let jobs = app.handle_key(key('7'));
+    let jobs = app.handle_key(key('6'));
     app.handle_answer(
         jobs[0].0,
         Event::ChatHistory(Err(Error::api(
@@ -2069,7 +2069,7 @@ fn a_server_without_chat_takes_the_tab_away() {
     assert!(app.status.as_ref().unwrap().text.contains("has no chat"));
     // A visitor's Chat tab says how to log in.
     let (mut v, _) = App::new(None, ORIGIN);
-    assert!(v.handle_key(key('7')).is_empty());
+    assert!(v.handle_key(key('6')).is_empty());
     assert!(v.chat.convos.error.as_ref().unwrap().contains("log in"));
 }
 
@@ -2245,7 +2245,7 @@ fn the_language_is_the_settings_then_the_locale() {
 #[test]
 fn e_on_your_own_profile_edits_it() {
     let mut app = writer(vec![]);
-    let jobs = app.handle_key(key('6'));
+    let jobs = app.handle_key(key('5'));
     assert_eq!(app.tab, Tab::Profile);
     let seq = jobs[0].0;
     app.handle_answer(
@@ -2990,7 +2990,7 @@ fn e_edits_your_own_profile_opened_from_a_list() {
 #[test]
 fn a_paste_reaches_the_field_with_focus() {
     let mut app = logged_in(&["a"]);
-    app.tab = Tab::Search;
+    app.open_search();
     app.search.editing = true;
     app.handle_paste("pasted words 🏔️");
     assert_eq!(app.search.input.text(), "pasted words 🏔️");
@@ -3053,4 +3053,317 @@ fn a_paste_into_a_chat_waits_for_the_message_being_sent() {
     app.chat.open.as_mut().unwrap().sending = true;
     app.handle_paste(" more");
     assert_eq!(app.chat.open.as_ref().unwrap().input.text(), "hi 👋🏽");
+}
+
+fn search_notes(app: &mut App, query: &str, ids: &[&str]) {
+    app.handle_key(key('/'));
+    app.search.input = TextInput::single(query);
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchNotes {
+            query: query.into(),
+            until: None,
+            result: Ok(notes(ids)),
+        },
+    );
+}
+
+#[test]
+fn search_cancel_and_escape_restore_the_exact_timeline_without_jobs() {
+    let mut app = logged_in(&["a", "b", "c", "d", "e"]);
+    app.timelines[0].selected = 3;
+    app.timelines[0].offset = 2;
+    let saved = app.timelines[0].clone();
+    app.handle_key(key('/'));
+    type_str(&mut app, "cancel me");
+    assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+    assert!(!app.search.editing);
+    assert!(!app.search_shown());
+    assert_eq!(app.timelines[0], saved);
+    search_notes(&mut app, "rust", &["s2", "s1"]);
+    assert_eq!(app.shown_tab(), Tab::Timeline(TimelineKind::Home));
+    assert_eq!(app.shown_note().unwrap().id, "s2");
+    let jobs = app.handle_key(key('j'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchNotes {
+            query: "rust".into(),
+            until: Some("s1".into()),
+            result: Ok(notes(&["s0"])),
+        },
+    );
+    assert_eq!(app.search.notes.items.len(), 3);
+    assert_eq!(app.timelines[0], saved);
+    assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+    assert_eq!(app.shown_note().unwrap().id, "d");
+    assert_eq!(app.timelines[0], saved);
+    app.handle_key(key('/'));
+    assert_eq!(app.search.input.text(), "rust");
+    assert_eq!(app.search.input.layout(20).cursor, (0, 4));
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    assert_eq!(
+        jobs[0].1,
+        Job::SearchNotes {
+            query: "rust".into(),
+            until: None
+        }
+    );
+}
+
+#[test]
+fn search_box_opens_and_cancels_on_every_list_without_changing_its_tab() {
+    let mut app = logged_in(&["a"]);
+    for tab in [
+        Tab::Timeline(TimelineKind::Local),
+        Tab::Timeline(TimelineKind::Global),
+        Tab::Notifications,
+        Tab::Profile,
+        Tab::Columns,
+        Tab::Chat,
+    ] {
+        app.tab = tab;
+        assert!(app.handle_key(key('/')).is_empty());
+        assert!(app.search.editing, "{tab:?}");
+        assert_eq!(app.tab, tab);
+        assert!(app.handle_key(code(KeyCode::Enter)).is_empty());
+        assert!(app.search.editing, "empty Enter keeps the box open");
+        app.handle_key(code(KeyCode::Esc));
+        assert!(!app.search.editing);
+        assert_eq!(app.tab, tab);
+    }
+}
+
+#[test]
+fn account_search_profiles_return_to_results_then_to_the_same_timeline() {
+    for open in [code(KeyCode::Enter), key('v')] {
+        let mut app = logged_in(&["a", "b"]);
+        app.timelines[0].selected = 1;
+        let saved = app.timelines[0].clone();
+        app.handle_key(key('/'));
+        type_str(&mut app, "alice");
+        app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+        assert_eq!(app.search.mode, SearchMode::Accounts);
+        let jobs = app.handle_key(code(KeyCode::Enter));
+        app.handle_answer(
+            jobs[0].0,
+            Event::SearchUsers {
+                query: "alice".into(),
+                offset: 0,
+                result: Ok(vec![user(json!({"id":"alice", "username":"alice"}))]),
+            },
+        );
+        assert!(app.search_accounts());
+        let found = app.search.users.clone();
+        let jobs = app.handle_key(open);
+        assert_eq!(
+            jobs[0].1,
+            Job::Profile {
+                who: crate::tui::worker::Who::Id("alice".into())
+            }
+        );
+        app.handle_answer(
+            jobs[0].0,
+            Event::Profile(Ok(Box::new((
+                user(json!({"id":"alice", "username":"alice"})),
+                vec![],
+            )))),
+        );
+        assert_eq!(app.tab, Tab::Profile);
+        assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+        assert!(app.search_accounts());
+        assert_eq!(app.search.users, found);
+        assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+        assert!(!app.search_shown());
+        assert_eq!(app.timelines[0], saved);
+    }
+}
+
+#[test]
+fn cancelled_mode_changes_and_failed_searches_keep_previous_content() {
+    let mut app = logged_in(&["home"]);
+    search_notes(&mut app, "old", &["result"]);
+    let saved = app.search.notes.clone();
+    app.handle_key(key('/'));
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(!app.search_accounts());
+    assert_eq!(app.shown_note().unwrap().id, "result");
+    app.handle_key(key('/'));
+    app.search.input = TextInput::single("new");
+    let jobs = app.handle_key(code(KeyCode::Enter));
+    app.handle_answer(
+        jobs[0].0,
+        Event::SearchUsers {
+            query: "new".into(),
+            offset: 0,
+            result: Err(crate::error::Error::new(
+                crate::error::Kind::Api,
+                "search unavailable",
+            )),
+        },
+    );
+    assert_eq!(app.search.notes, saved);
+    assert_eq!(app.search.notes_query, "old");
+    assert!(!app.search_accounts());
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("search unavailable")
+    );
+    assert!(app.search.pending.is_none());
+}
+
+#[test]
+fn superseded_and_cancelled_search_answers_cannot_replace_the_current_screen() {
+    let mut app = logged_in(&["home"]);
+    app.handle_key(key('/'));
+    type_str(&mut app, "first");
+    let old = app.handle_key(code(KeyCode::Enter));
+    search_notes(&mut app, "second", &["new"]);
+    app.handle_answer(
+        old[0].0,
+        Event::SearchNotes {
+            query: "first".into(),
+            until: None,
+            result: Ok(notes(&["stale"])),
+        },
+    );
+    assert_eq!(app.shown_note().unwrap().id, "new");
+    app.handle_key(key('/'));
+    let pending = app.handle_key(code(KeyCode::Enter));
+    app.handle_key(code(KeyCode::Esc));
+    app.handle_answer(
+        pending[0].0,
+        Event::SearchNotes {
+            query: "second".into(),
+            until: None,
+            result: Ok(notes(&["late"])),
+        },
+    );
+    assert!(!app.search_shown());
+    assert_eq!(app.shown_note().unwrap().id, "home");
+}
+
+#[test]
+fn search_result_note_actions_update_the_result_and_overlays_escape_first() {
+    let mut app = logged_in(&["home"]);
+    search_notes(&mut app, "rust", &["result"]);
+    let jobs = app.handle_key(key('l'));
+    assert!(matches!(&jobs[0].1, Job::React { id, .. } if id == "result"));
+    app.reacted("result", Some("❤".into()), None, Ok(()));
+    assert_eq!(app.shown_note().unwrap().my_reaction.as_deref(), Some("❤"));
+    app.handle_key(key('.'));
+    assert!(matches!(app.overlay, Some(Overlay::Actions { .. })));
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.overlay.is_none());
+    assert!(app.search_shown());
+    let jobs = app.handle_key(key('v'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Thread {
+            id: "result".into()
+        }
+    );
+    app.handle_key(code(KeyCode::Esc));
+    assert!(app.threads.is_empty());
+    assert!(app.search_shown());
+    app.deleted("result", Ok(()));
+    assert!(app.search.notes.items.is_empty());
+}
+
+#[test]
+fn searching_from_notifications_or_profile_returns_to_the_last_timeline() {
+    for from in [Tab::Notifications, Tab::Profile] {
+        let mut app = logged_in(&["home"]);
+        app.timelines[TimelineKind::Local.index()].set(notes(&["l1", "l2", "l3"]));
+        app.timelines[TimelineKind::Local.index()].selected = 2;
+        app.timelines[TimelineKind::Local.index()].offset = 1;
+        app.switch_tab(Tab::Timeline(TimelineKind::Local));
+        let saved = app.timelines[TimelineKind::Local.index()].clone();
+        app.switch_tab(from);
+        search_notes(&mut app, "rust", &["result"]);
+        assert_eq!(app.tab, Tab::Timeline(TimelineKind::Local));
+        assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+        assert_eq!(app.tab, Tab::Timeline(TimelineKind::Local));
+        assert_eq!(app.timelines[TimelineKind::Local.index()], saved);
+    }
+}
+
+#[test]
+fn search_returns_to_the_same_column_focus_and_scroll_position() {
+    use crate::tui::columns::{Columns, Rows};
+    let mut app = logged_in(&["home"]);
+    app.columns = Columns::from_sources(&[
+        Source::Home,
+        Source::Search {
+            query: "column".into(),
+        },
+    ]);
+    app.columns.focus = 1;
+    for column in &mut app.columns.items {
+        if let Rows::Notes(list) = &mut column.rows {
+            list.set(notes(&["a", "b", "c"]));
+            list.selected = 2;
+            list.offset = 1;
+        }
+    }
+    app.switch_tab(Tab::Timeline(TimelineKind::Home));
+    assert_eq!(app.tab, Tab::Columns);
+    let saved = app.columns.clone();
+    search_notes(&mut app, "rust", &["result"]);
+    assert_eq!(app.tab, Tab::Timeline(TimelineKind::Home));
+    assert!(app.handle_key(code(KeyCode::Esc)).is_empty());
+    assert_eq!(app.tab, Tab::Columns);
+    assert_eq!(app.columns.focus, saved.focus);
+    for (actual, expected) in app.columns.items.iter().zip(&saved.items) {
+        if let (Rows::Notes(actual), Rows::Notes(expected)) = (&actual.rows, &expected.rows) {
+            assert_eq!(actual, expected);
+        } else {
+            panic!("expected note columns");
+        }
+    }
+}
+
+#[test]
+fn a_repeated_query_ignores_an_old_page_and_reopening_cancels_pending_search() {
+    let mut app = logged_in(&["home"]);
+    search_notes(&mut app, "rust", &["s2", "s1"]);
+    let old_page = app.handle_key(key('j'));
+    search_notes(&mut app, "rust", &["s2", "s1"]);
+    let new_page = app.handle_key(key('j'));
+    app.handle_answer(
+        old_page[0].0,
+        Event::SearchNotes {
+            query: "rust".into(),
+            until: Some("s1".into()),
+            result: Ok(notes(&["stale"])),
+        },
+    );
+    assert_eq!(app.search.notes.items.len(), 2);
+    assert!(app.search.notes.more_pending);
+    app.handle_answer(
+        new_page[0].0,
+        Event::SearchNotes {
+            query: "rust".into(),
+            until: Some("s1".into()),
+            result: Ok(notes(&["fresh"])),
+        },
+    );
+    assert_eq!(app.search.notes.items[2].id, "fresh");
+    app.handle_key(key('/'));
+    let pending = app.handle_key(code(KeyCode::Enter));
+    app.handle_key(key('/'));
+    app.handle_answer(
+        pending[0].0,
+        Event::SearchNotes {
+            query: "rust".into(),
+            until: None,
+            result: Ok(vec![]),
+        },
+    );
+    app.handle_key(code(KeyCode::Esc));
+    assert_eq!(app.search.notes.items.len(), 3);
 }

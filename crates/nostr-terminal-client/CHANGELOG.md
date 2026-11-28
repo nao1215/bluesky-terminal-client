@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- `/` opens a search box above the list, results replace the timeline, and Esc restores the previous list and selection without refetching. The Search tab is gone and Chat is now tab 4.
+
 ### Added
 
 - Private NIP-01 event hashing, BIP-340 signing and verification, and NIP-19 npub, nsec, note, nprofile and nevent encoding and decoding.

@@ -576,3 +576,5 @@ fn accepted_reply_invalidates_read_ahead_and_late_prefetch_cannot_restore_it() {
     ));
     assert!(app.extra.cache.is_empty());
 }
+
+mod search;

@@ -25,9 +25,6 @@ impl App {
         {
             return self.main_key(key);
         }
-        if self.tab == Tab::Search && self.search.editing {
-            return self.search_key(key);
-        }
         if self.tab == Tab::Chat
             && self.threads.is_empty()
             && let Some(jobs) = self.chat_key(key)
@@ -96,6 +93,7 @@ impl App {
         match overlay {
             // Taken above, before this borrow.
             Overlay::Actions { .. } => {}
+            Overlay::Search => return self.search_key(key),
             Overlay::Settings { selected, .. } => {
                 let selected = *selected;
                 return self.settings_key(key, selected);
@@ -336,75 +334,12 @@ impl App {
         Vec::new()
     }
 
-    pub(super) fn search_key(&mut self, key: KeyEvent) -> Vec<Job> {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        match key.code {
-            KeyCode::Esc => self.search.editing = false,
-            // Tabs switch even while typing, so the box never traps the user.
-            KeyCode::Tab => {
-                self.search.editing = false;
-                return self.switch_tab(self.tab.next(1));
-            }
-            KeyCode::BackTab => {
-                self.search.editing = false;
-                return self.switch_tab(self.tab.next(-1));
-            }
-            KeyCode::Char('t') if ctrl => self.toggle_search_mode(),
-            KeyCode::Enter => {
-                self.search.editing = false;
-                return self.run_search();
-            }
-            _ => {
-                self.search.input.handle_key(key);
-            }
-        }
-        Vec::new()
-    }
-
-    pub(super) fn toggle_search_mode(&mut self) {
-        self.search.mode = match self.search.mode {
-            SearchMode::Posts => SearchMode::Accounts,
-            SearchMode::Accounts => SearchMode::Posts,
-        };
-    }
-
-    pub(super) fn run_search(&mut self) -> Vec<Job> {
-        let q = self.search.input.text().trim().to_string();
-        if q.is_empty() {
-            return Vec::new();
-        }
-        // Another query's results are not this one's: they go, with the
-        // cursor that would page on from them. The same query again keeps
-        // them on screen while it loads.
-        match self.search.mode {
-            SearchMode::Posts => {
-                if self.search.posts_query != q {
-                    self.search.posts = List::default();
-                }
-                self.search.posts_query = q.clone();
-                self.search.posts.begin();
-                vec![Job::SearchPosts(q)]
-            }
-            SearchMode::Accounts => {
-                if self.search.actors_query != q {
-                    self.search.actors = List::default();
-                }
-                self.search.actors_query = q.clone();
-                self.search.actors.begin();
-                vec![Job::SearchActors(q)]
-            }
-        }
-    }
-
     pub(super) fn switch_tab(&mut self, tab: Tab) -> Vec<Job> {
         self.tab = tab;
         // Choosing a tab is a new place to be, not a detour to return from.
         self.profile.came_from = None;
         self.threads.clear();
-        // Arriving at an empty Search tab means wanting to type: letters go to
-        // the box, not to the commands they are bound to on the result list.
-        // With a query already there, the results keep the keys (/ or i types).
-        self.search.editing = tab == Tab::Search && self.search.input.is_empty();
+        self.leave_search();
         if tab == Tab::Profile
             && self.profile.profile.is_none()
             && self.profile.actor.is_none()
@@ -516,9 +451,8 @@ impl App {
             }
             KeyCode::Char('1') => return self.switch_tab(Tab::Timeline),
             KeyCode::Char('2') => return self.switch_tab(Tab::Chat),
-            KeyCode::Char('3') => return self.switch_tab(Tab::Search),
-            KeyCode::Char('4') => return self.switch_tab(Tab::Notifications),
-            KeyCode::Char('5') => return self.switch_tab(Tab::Profile),
+            KeyCode::Char('3') => return self.switch_tab(Tab::Notifications),
+            KeyCode::Char('4') => return self.switch_tab(Tab::Profile),
             KeyCode::Char('m') if self.tab == Tab::Profile && self.threads.is_empty() => {
                 return self.message_profile();
             }
@@ -572,18 +506,7 @@ impl App {
             KeyCode::PageUp => return self.step(-5),
             KeyCode::Char('g') | KeyCode::Home => return self.step(isize::MIN / 2),
             KeyCode::Char('G') | KeyCode::End => return self.step(isize::MAX / 2),
-            KeyCode::Char('/') => {
-                let jobs = self.switch_tab(Tab::Search);
-                self.search.editing = true;
-                return jobs;
-            }
-            KeyCode::Char('i') if self.tab == Tab::Search && self.threads.is_empty() => {
-                self.search.editing = true
-            }
-            KeyCode::Char('t') if self.tab == Tab::Search && self.threads.is_empty() => {
-                self.toggle_search_mode();
-                return self.run_search();
-            }
+            KeyCode::Char('/') if self.threads.is_empty() => self.open_search(),
             KeyCode::Char('n') => {
                 self.overlay = Some(Overlay::Compose(Compose::new(None)));
             }
@@ -624,10 +547,23 @@ impl App {
             KeyCode::Char('c') => self.copy_link(),
             KeyCode::Char('Q') => self.quote(),
             KeyCode::Char('D') => self.ask_delete(),
+            KeyCode::Char('v') if self.search_mode() == Some(SearchMode::Accounts) => {
+                if let Some(account) = self.selected_account() {
+                    return self.open_profile(Some(account.did));
+                }
+            }
             KeyCode::Char('v') => return self.open_thread(),
             KeyCode::Char(' ') => return self.open_viewer(),
             KeyCode::Char('o') => return self.open_link(true),
             KeyCode::Esc if self.tab == Tab::Profile => return self.go_back(),
+            KeyCode::Esc if self.search_mode().is_some() || self.search.requested.is_some() => {
+                self.leave_search();
+                self.tab = if self.columns.items.is_empty() {
+                    Tab::Timeline
+                } else {
+                    Tab::Columns
+                };
+            }
             KeyCode::Char('R') | KeyCode::F(5) => return self.refresh(),
             _ => {}
         }
@@ -640,8 +576,6 @@ impl App {
     pub(super) fn go_back(&mut self) -> Vec<Job> {
         if let Some(tab) = self.profile.came_from.take() {
             self.tab = tab;
-            // Back to the results, not to typing a new query.
-            self.search.editing = false;
             // The next visit to the Profile tab shows your own profile.
             self.profile = ProfilePane::default();
             // Back on the Notifications tab, what came meanwhile is seen,
@@ -666,14 +600,14 @@ impl App {
             return Vec::new();
         }
         let more = match self.tab {
-            Tab::Search if self.search.mode == SearchMode::Accounts => {
+            Tab::Timeline if self.search.active == Some(SearchMode::Accounts) => {
                 self.search.actors.step(delta);
                 self.search
                     .actors
                     .want_more()
                     .map(|c| (Feed::SearchActors(self.search.actors_query.clone()), c))
             }
-            Tab::Search => {
+            Tab::Timeline if self.search.active == Some(SearchMode::Posts) => {
                 self.search.posts.step(delta);
                 self.search
                     .posts

@@ -25,7 +25,7 @@ fn every_help_line_fits_on_one_line_in_every_language() {
     let _english = English;
     let room = usize::from(HELP_W - 2) - HELP_KEYS;
     let mut long = Vec::new();
-    for lang in Lang::ALL {
+    for lang in crate::i18n::ALL {
         i18n::set(lang);
         for (_, keys) in keys::help(true).into_iter().chain(keys::help(false)) {
             for (k, d) in keys {
@@ -44,7 +44,7 @@ fn every_help_line_fits_on_one_line_in_every_language() {
 #[test]
 fn the_screens_draw_in_every_language() {
     let _english = English;
-    for lang in Lang::ALL {
+    for lang in crate::i18n::ALL {
         let (mut app, _) = App::new(Some(session()), "x");
         let settings = crate::config::Settings {
             language: Some(lang.code().into()),
@@ -150,7 +150,7 @@ fn long_words_do_not_push_out_how_to_leave() {
 #[test]
 fn the_theme_picker_keeps_its_keys_whole_in_every_language() {
     let _english = English;
-    for lang in Lang::ALL {
+    for lang in crate::i18n::ALL {
         i18n::set(lang);
         let (mut app, _) = App::new(Some(session()), "x");
         app.handle_event(Event::Timeline(Ok(posts(3).into())));

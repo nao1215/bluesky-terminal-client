@@ -1,4 +1,5 @@
 //! bsky: a Bluesky client for the terminal.
+
 #![cfg_attr(
     test,
     allow(
@@ -6,6 +7,8 @@
         reason = "the stand-in servers of the tests answer best effort; a test fails on what it asserts"
     )
 )]
+
+use terminal_kit::output::first_paragraph;
 
 mod api;
 mod browser;
@@ -269,29 +272,18 @@ fn shown(err: &Error) -> String {
 
 /// An error as --json prints it on stdout.
 fn print_json_error(err: &Error) {
-    let v = serde_json::json!({
-        "error": err.message(),
-        "hint": err.hint(),
-        "status": err.kind().exit_code(),
-    });
+    let v = terminal_kit::output::error_json(
+        &serde_json::Value::from(err.message()).to_string(),
+        err.hint()
+            .map(|hint| serde_json::Value::from(hint).to_string())
+            .as_deref(),
+        err.kind().exit_code(),
+    );
     #[expect(
         clippy::let_underscore_must_use,
         reason = "the error is on stderr already and the exit status says it; a reader gone from stdout (`| head`) must not make it panic as `println!` would"
     )]
-    let _: std::io::Result<()> = writeln!(std::io::stdout(), "{v}");
-}
-
-/// clap's message without its `error: ` prefix and trailing usage block:
-/// its first paragraph on one line. A missing argument is named on the
-/// lines after the first, which the message must keep.
-fn first_paragraph(msg: &str) -> String {
-    let para: Vec<&str> = msg
-        .lines()
-        .take_while(|l| !l.trim().is_empty())
-        .map(str::trim)
-        .collect();
-    let line = para.join(" ");
-    line.strip_prefix("error: ").unwrap_or(&line).to_string()
+    let _: std::io::Result<()> = terminal_kit::output::write_json_line(&mut std::io::stdout(), &v);
 }
 
 #[cfg(test)]

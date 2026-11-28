@@ -98,8 +98,8 @@ scenarios:
       - expect_screen:
           contains:
           - Home ready
-          - 7 Chat
-      - send: '7'
+          - 6 Chat
+      - send: '6'
       - expect_screen:
           contains: Private incoming
       - send:
@@ -240,8 +240,8 @@ scenarios:
       - expect_screen:
           contains:
           - Home ready
-          - 7 Chat
-      - send: '7'
+          - 6 Chat
+      - send: '6'
       - expect_screen:
           contains: Private incoming
       - send: '1'
@@ -363,7 +363,7 @@ scenarios:
       - expect_screen:
           contains:
           - Home ready
-          - 7 Chat
+          - 6 Chat
       - send:
           key: enter
       - expect_screen:

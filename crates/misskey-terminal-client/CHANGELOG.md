@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- `/` opens a bordered search box. Results replace the timeline, and Esc returns with the selection and scroll position preserved. The Search tab is gone; Profile and Chat are now tabs 5 and 6. Ctrl+T switches posts/accounts in the box.
+
 - `--json` prints the shape bsky and mstdn print too (`doc/json.md` in the repository lists every key). This changes keys scripts may read:
 
   | 0.1.1 | Now |

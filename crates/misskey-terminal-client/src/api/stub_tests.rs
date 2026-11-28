@@ -2,23 +2,9 @@
 //! tries again when the server turns it away, and saving files.
 
 use super::*;
-use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Mutex;
 
-/// What the stand-in answers: status, extra headers, body.
-pub(crate) struct Reply {
-    pub status: u16,
-    pub headers: Vec<(&'static str, String)>,
-    pub body: Vec<u8>,
-}
-
-pub(crate) fn reply(status: u16, body: &str) -> Reply {
-    Reply {
-        status,
-        headers: Vec::new(),
-        body: body.as_bytes().to_vec(),
-    }
-}
+pub(crate) use terminal_kit::test_support::http::{Response as Reply, reply};
 
 /// The handler gets the request's path and body and the number of the
 /// request (from 0).
@@ -28,64 +14,20 @@ type Handler = Arc<dyn Fn(&str, &str, usize) -> Reply + Send + Sync>;
 pub(crate) type Calls = Arc<Mutex<Vec<(String, String)>>>;
 
 pub(crate) fn serve(h: Handler) -> (String, Calls) {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
     let log: Calls = Arc::default();
     let kept = Arc::clone(&log);
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let h = Arc::clone(&h);
-            let kept = Arc::clone(&kept);
-            std::thread::spawn(move || {
-                let mut r = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                if r.read_line(&mut line).is_err() {
-                    return;
-                }
-                let path = line.split(' ').nth(1).unwrap_or("").to_string();
-                let mut len = 0usize;
-                loop {
-                    let mut hd = String::new();
-                    if r.read_line(&mut hd).is_err() {
-                        return;
-                    }
-                    if hd.trim().is_empty() {
-                        break;
-                    }
-                    let (name, value) = hd.split_once(':').unwrap_or_default();
-                    if name.eq_ignore_ascii_case("content-length") {
-                        len = value.trim().parse().unwrap();
-                    }
-                }
-                let mut body = vec![0; len];
-                let _ = r.read_exact(&mut body);
-                let body = String::from_utf8_lossy(&body).into_owned();
-                let n = {
-                    let mut log = kept.lock().unwrap();
-                    log.push((path.clone(), body.clone()));
-                    log.len() - 1
-                };
-                let answer = h(&path, &body, n);
-                let mut head = format!(
-                    "HTTP/1.1 {} X\r\nContent-Type: application/json\r\nConnection: close\r\n",
-                    answer.status
-                );
-                let mut declared = false;
-                for (k, v) in &answer.headers {
-                    declared |= k.eq_ignore_ascii_case("content-length");
-                    head.push_str(&format!("{k}: {v}\r\n"));
-                }
-                if !declared {
-                    head.push_str(&format!("Content-Length: {}\r\n", answer.body.len()));
-                }
-                head.push_str("\r\n");
-                let _ = stream.write_all(head.as_bytes());
-                let _ = stream.write_all(&answer.body);
-            });
-        }
-    });
-    (url, log)
+    let server = terminal_kit::test_support::http::serve_http(move |request, _| {
+        let path = request.target.clone();
+        let body = String::from_utf8_lossy(&request.body).into_owned();
+        let n = {
+            let mut log = kept.lock().unwrap();
+            log.push((path.clone(), body.clone()));
+            log.len() - 1
+        };
+        Some(h(&path, &body, n))
+    })
+    .unwrap();
+    (server.url().to_owned(), log)
 }
 
 /// A client of `url` whose waits are written down instead of slept.

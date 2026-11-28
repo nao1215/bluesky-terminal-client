@@ -100,6 +100,7 @@ impl App {
             jobs.push(job);
         }
         let selected = (self.overlay.is_none()
+            && !self.search.editing
             && self.threads.is_empty()
             && self.session.is_some()
             && self.tab != Tab::Chat)

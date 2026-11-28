@@ -48,10 +48,14 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            # "/" jumps to the Search tab with the box focused.
+            # "/" opens a bordered box over the current list.
             - send: "/"
             - expect_screen:
-                contains: ["Posts", "Accounts", "search:"]
+                contains: ["╭ Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+            - expect_screen:
+                matches: 'Enter search · Ctrl\+T posts/accounts · Esc cancel'
+                count: 1
+                not_contains: ["? help", "q quit", ". actions"]
             - send: "snow mountains"
             - send: { key: enter }
             - expect_screen:
@@ -75,7 +79,7 @@ scenarios:
             query: { name: q, equals: "snow mountains" }
             header: { name: Authorization, equals: "Bearer acc" }
 
-  - name: arriving at the Search tab with 2 puts the cursor in the box
+  - name: slash opens the search box and repeats its last query
     mock_servers:
       - name: api
         routes:
@@ -91,21 +95,23 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "3"
+            - send: "/"
             - expect_screen:
-                contains: ["type, then enter", "enter search"]
+                contains: ["╭ Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
             # Letters bound to commands on a result list go into the box.
             - send: "quit like"
             - send: { key: enter }
             - expect_screen:
-                contains: "No posts found."
-            # With a query in the box, coming back leaves the keys to the
-            # results, and q quits as usual.
-            - send: "1"
-            - send: "3"
+                contains: 'No results for "quit like"'
+            - send: { key: esc }
             - expect_screen:
-                contains: ["quit like", "/ edit query"]
-                not_contains: "type, then enter"
+                contains: "No posts from accounts you follow yet"
+            - send: "/"
+            - expect_screen:
+                contains: ["quit like", "╭ Search · Posts"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: ['Search: quit like', 'No results for "quit like"']
             - send: q
       - assert:
           exit_code: 0
@@ -113,7 +119,7 @@ scenarios:
           mock:
             name: api
             path: /xrpc/app.bsky.feed.searchPosts
-            count: 1
+            count: 2
             query: { name: q, equals: "quit like" }
 
   - name: letters typed into the search box are text, not commands
@@ -140,7 +146,7 @@ scenarios:
             - send: "q l f 日本"
             - send: { key: enter }
             - expect_screen:
-                contains: "No posts found."
+                contains: 'No results for "q l f 日本"'
             - send: q
       - assert:
           exit_code: 0
@@ -171,9 +177,13 @@ scenarios:
             - send: "   "
             - send: { key: enter }
             - expect_screen:
-                contains: "search:"
-                not_contains: "No posts found."
+                contains: "╭ Search · Posts"
+                not_contains: "Search:"
                 stable_for: 300ms
+            - send: { key: esc }
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+                not_contains: "╭ Search"
             - send: q
       - assert:
           exit_code: 0
@@ -210,7 +220,7 @@ scenarios:
                 contains: "rust 👨‍👩‍👧‍👦 tui"
             - send: { key: enter }
             - expect_screen:
-                contains: "No posts found."
+                contains: 'No results for "rust 👨‍👩‍👧‍👦 tui"'
             - send: q
       - assert:
           exit_code: 0
@@ -245,7 +255,7 @@ scenarios:
                 contains: "rust👨‍👩‍👧‍👦 tui"
             - send: { key: enter }
             - expect_screen:
-                contains: "No posts found."
+                contains: 'No results for "rust👨‍👩‍👧‍👦 tui"'
             - send: q
       - assert:
           exit_code: 0
@@ -360,8 +370,10 @@ scenarios:
             - send: "alps"
             - send: { key: enter }
             - expect_screen:
-                contains: "No posts found."
-            - send: t
+                contains: 'No results for "alps"'
+            - send: "/"
+            - send: { key: ctrl-t }
+            - send: { key: enter }
             - expect_screen:
                 contains: "Carol @carol.test"
             - send: q
@@ -395,7 +407,7 @@ scenarios:
             - send: "nobody-here"
             - send: { key: enter }
             - expect_screen:
-                contains: "No accounts found."
+                contains: 'No results for "nobody-here"'
             - send: q
       - assert:
           exit_code: 0
@@ -472,8 +484,15 @@ scenarios:
             # Esc goes back to the search results, query and selection intact.
             - send: { key: esc }
             - expect_screen:
-                contains: ["search:", "alps", "Carol @carol.test  ✓ following", "Dave @dave.test"]
+                contains: ["Search: alps", "Esc back to timeline", "Carol @carol.test  ✓ following", "Dave @dave.test"]
                 not_contains: "Sunrise over the ridge"
+            - expect_screen:
+                contains: ["? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
+                not_contains: ["/ edit query", "enter open profile"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "No posts from accounts you follow yet"
+                not_contains: "Search: alps"
             - send: q
       - assert:
           exit_code: 0
@@ -610,11 +629,13 @@ scenarios:
                 count: 1
                 stable_for: 500ms
             # Accounts page the same way.
-            - send: t
+            - send: "/"
+            - send: { key: ctrl-t }
+            - send: { key: enter }
             # The account list, not the post whose author is also Dave: wait
             # for the description only an account row shows.
             - expect_screen:
-                contains: "Climbs things"
+                contains: ["Climbs things", "? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
             - send: j
             - expect_screen:
                 matches: "Climbs things"
@@ -635,3 +656,223 @@ scenarios:
             path: /xrpc/app.bsky.actor.searchActors
             count: 2
             query: { name: cursor, equals: "actors-page-2" }
+
+  - name: search results replace the timeline and Esc restores the selected post without fetching
+    mock_servers:
+      - name: api
+        routes:
+          - &selected_timeline
+            method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/first
+                    cid: first
+                    author: { did: did:plc:alice, handle: alice.test, viewer: { following: at://did:plc:me/app.bsky.graph.follow/a } }
+                    record: { text: "Timeline first post", createdAt: "2026-09-19T12:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:bob/app.bsky.feed.post/selected
+                    cid: selected
+                    author: { did: did:plc:bob, handle: bob.test, viewer: { following: at://did:plc:me/app.bsky.graph.follow/b } }
+                    record: { text: "Timeline selected post", createdAt: "2026-09-19T11:00:00.000Z" }
+          - &empty_notifications
+            method: GET
+            path: /xrpc/app.bsky.notification.listNotifications
+            json: { notifications: [] }
+          - method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              posts:
+                - uri: at://did:plc:carol/app.bsky.feed.post/result
+                  cid: result
+                  author: { did: did:plc:carol, handle: carol.test }
+                  record: { text: "Only in search results", createdAt: "2026-09-19T12:00:00.000Z" }
+          - &like_selected
+            method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.like/saved", cid: saved }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 24
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["Timeline first post", "Timeline selected post", "3 Notifications", "4 Profile"]
+                not_contains: "3 Search"
+            - send: j
+            - expect_screen:
+                contains: "▌      Timeline selected post"
+            - send: "/"
+            - expect_screen:
+                contains: ["╭ Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+            - send: "unique"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["1 Search: unique", "Only in search results", "? help  j k move  . actions  space view  n post  / search  q quit", "Esc back to timeline"]
+                not_contains: ["Timeline first post", "Timeline selected post", "╭ Search"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["1 Timeline", "▌      Timeline selected post"]
+                not_contains: ["Only in search results", "Search: unique"]
+            - send: l
+            - expect_screen:
+                contains: "liked"
+            - send: q
+      - assert:
+          exit_code: 0
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json: { path: "$.record.subject.uri", equals: "at://did:plc:bob/app.bsky.feed.post/selected" }
+
+  - name: Esc in the search box cancels without changing the timeline selection
+    mock_servers:
+      - name: api
+        routes:
+          - *selected_timeline
+          - *empty_notifications
+          - *no_posts
+          - *like_selected
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 24
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Timeline selected post"
+            - send: j
+            - send: "/"
+            - send: "cancelled query"
+            - send: { key: ctrl-t }
+            - expect_screen:
+                contains: ["╭ Search · Accounts", "cancelled query"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["1 Timeline", "▌      Timeline selected post"]
+                not_contains: ["╭ Search", "cancelled query"]
+            - send: l
+            - expect_screen:
+                contains: "liked"
+            - send: q
+      - assert:
+          exit_code: 0
+          mock: { name: api, path: /xrpc/app.bsky.feed.searchPosts, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json: { path: "$.record.subject.uri", equals: "at://did:plc:bob/app.bsky.feed.post/selected" }
+
+  - name: search plays the selected video inline and Esc restores timeline playback
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getTimeline
+            json:
+              feed:
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/plain
+                    cid: plain
+                    author: { did: did:plc:me, handle: me.test }
+                    record: { text: "Timeline plain post", createdAt: "2026-09-19T12:00:00.000Z" }
+                - post:
+                    uri: at://did:plc:me/app.bsky.feed.post/video
+                    cid: video
+                    author: { did: did:plc:me, handle: me.test }
+                    record: { text: "Timeline selected video", createdAt: "2026-09-19T11:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: video
+                      playlist: "${api.url}/timeline/playlist.m3u8"
+                      thumbnail: "${api.url}/thumb.png"
+                      aspectRatio: { width: 16, height: 9 }
+          - *empty_notifications
+          - method: GET
+            path: /xrpc/app.bsky.feed.searchPosts
+            json:
+              posts:
+                - uri: at://did:plc:carol/app.bsky.feed.post/plain
+                  cid: result-plain
+                  author: { did: did:plc:carol, handle: carol.test }
+                  record: { text: "Search plain post", createdAt: "2026-09-19T12:00:00.000Z" }
+                - uri: at://did:plc:carol/app.bsky.feed.post/video
+                  cid: result-video
+                  author: { did: did:plc:carol, handle: carol.test }
+                  record: { text: "Search selected video", createdAt: "2026-09-19T11:00:00.000Z" }
+                  embed:
+                    $type: app.bsky.embed.video#view
+                    cid: result-video
+                    playlist: "${api.url}/search/playlist.m3u8"
+                    thumbnail: "${api.url}/thumb.png"
+                    aspectRatio: { width: 16, height: 9 }
+          - { method: GET, path: /thumb.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /timeline/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /timeline/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /timeline/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+          - { method: GET, path: /search/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /search/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /search/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+    steps:
+      - *session
+      - pty:
+          command: bsky
+          graphics: kitty
+          rows: 40
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "Timeline selected video"
+            - send: j
+            - expect_screen:
+                contains: "▌      Timeline selected video"
+                images:
+                  contains: [{ width: 360, height: 203 }]
+            - send: "/"
+            - send: "videos"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Search: videos", "Search plain post", "Search selected video"]
+                not_contains: "Timeline selected video"
+            - send: j
+            - expect_screen:
+                contains: "▌      Search selected video"
+                not_contains: "1/1"
+                images:
+                  contains: [{ width: 360, height: 203 }]
+            - send: { key: esc }
+            - expect_screen:
+                contains: ["1 Timeline", "▌      Timeline selected video"]
+                not_contains: "Search: videos"
+                images:
+                  contains: [{ width: 360, height: 203 }]
+            - send: q
+      - assert:
+          exit_code: 0
+          mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, count: 1 }
+      - assert:
+          # Playback can fetch HLS again after search replaced the read-ahead set.
+          mock: { name: api, path: /timeline/v/seg0.ts, method: GET }
+      - assert:
+          mock: { name: api, path: /search/v/seg0.ts, method: GET }

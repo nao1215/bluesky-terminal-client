@@ -262,17 +262,24 @@ fn load_page(
     };
     match &target {
         Target::Search(text) => {
-            let out = client.search(text, count)?;
+            let out = client.search_page(text, count, until)?;
+            let more = out.value.len() >= count;
+            let next_until = out.value.iter().map(|e| e.created_at).min();
+            let boundary = out
+                .value
+                .iter()
+                .filter(|e| Some(e.created_at) == next_until)
+                .count();
             return Ok(Outcome {
                 answered: out.answered,
                 warnings: out.warnings,
                 value: Page {
                     notes: out.value,
                     profile: None,
-                    more: false,
-                    append: false,
-                    until: None,
-                    boundary: 0,
+                    more,
+                    append: until.is_some(),
+                    until: next_until,
+                    boundary,
                 },
             });
         }
@@ -282,8 +289,8 @@ fn load_page(
             warnings.extend(metadata.warnings);
             filter.authors = vec![author.clone()];
         }
-        Target::Tab(Tab::Search | Tab::Chat) => {
-            return Err(Error::usage("select a search or chat first"));
+        Target::Tab(Tab::Chat) => {
+            return Err(Error::usage("select a chat first"));
         }
         Target::Tab(Tab::Home) => {
             let home = client.home_filter()?;

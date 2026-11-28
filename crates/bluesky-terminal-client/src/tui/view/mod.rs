@@ -1,15 +1,19 @@
 //! Drawing. Every function here reads the [`App`] and writes to a frame;
 //! the only state it changes is each list's scroll offset.
 
+use terminal_kit::view::draw_multi_input;
+use terminal_kit::view::draw_single_input;
+use terminal_kit::view::first_visible as first_shown;
+use terminal_kit::view::hint_lines;
+use terminal_kit::view::scroll_offset;
+
 use crate::tui::images::small_avatar;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Position, Rect, Size};
+use ratatui::layout::{Constraint, Layout, Rect, Size};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use std::collections::HashMap;
-
-use unicode_width::UnicodeWidthStr;
 
 use crate::api::types::{Embed, Media, Post, Profile, RefPost, ReplyContext};
 use crate::api::{MAX_POST_BYTES, MAX_POST_GRAPHEMES, grapheme_len, post_length_problem};
@@ -82,7 +86,8 @@ const ACTIONS_W: u16 = 44;
 const SETTINGS_W: u16 = 72;
 /// Widest the help box gets, in cells, and the column its keys take.
 const HELP_W: u16 = 64;
-const HELP_KEYS: usize = 18;
+#[cfg(test)]
+const HELP_KEYS: usize = terminal_kit::view::HELP_KEYS;
 /// Size of a picture's thumbnail in the composer, in cells.
 const THUMB: (u16, u16) = (14, 5);
 /// Smallest terminal the client draws in, in cells. The rows are the tab
@@ -96,31 +101,6 @@ const MIN_H: u16 = 8;
 /// Draw the whole UI.
 pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     draw_screen(frame, app, images);
-    keep_wide_cells_whole(frame.buffer_mut());
-}
-
-/// Have every character two cells wide written as one, its second cell
-/// left alone. ratatui writes the cell after a character with VS16 (`🏛️`,
-/// `❤️`) on its own, right after it, without moving the cursor there; the
-/// terminal has moved two cells on, so that cell and every one written
-/// after it on the line land one cell to the right of where ratatui
-/// thinks: on kitty the text after it stays on screen when the screen
-/// changes. A forced width writes the character and skips its second
-/// cell, as ratatui does for every other wide character.
-fn keep_wide_cells_whole(buf: &mut ratatui::buffer::Buffer) {
-    use ratatui::buffer::CellDiffOption;
-    for cell in buf.content.iter_mut() {
-        if cell.diff_option != CellDiffOption::None || !cell.symbol().contains('\u{FE0F}') {
-            continue;
-        }
-        if let Some(w) = u16::try_from(cell.symbol().width())
-            .ok()
-            .filter(|w| *w > 1)
-            .and_then(std::num::NonZeroU16::new)
-        {
-            cell.diff_option = CellDiffOption::ForcedWidth(w);
-        }
-    }
 }
 
 fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
@@ -178,12 +158,17 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if let Some(th) = app.threads.last_mut() {
         let me = app.session.as_ref().map(|s| s.did.as_str());
         draw_thread(frame, body, th, images, PostContext { me, inline }, &t);
+    } else if matches!(app.overlay, Some(Overlay::Search)) {
+        // The box's hints can change the height available to the list. Do
+        // not let drawing underneath it move the saved scroll position.
+        draw_tab(frame, body, &mut app.clone(), images, &t);
     } else {
         draw_tab(frame, body, app, images, &t);
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
     draw_status(frame, status_row, app, images);
     match &mut app.overlay {
+        Some(Overlay::Search) => draw_search_box(frame, body, &app.search, &t),
         Some(Overlay::Compose(c)) => {
             draw_compose(frame, area, c, images, &t);
             if let Some(b) = &mut c.browser {
@@ -251,7 +236,7 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if !viewer_video && !inline_playing {
         images.stop_video();
     }
-    if let Some(s) = app.status.as_ref().filter(|s| s.error) {
+    if let Some(s) = app.status.as_ref().filter(|s| s.error && s.popup) {
         draw_error(frame, area, &s.text, &t);
     }
 }
@@ -314,20 +299,13 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
     lines.push(Line::default());
     lines.push(Line::styled(i18n::t("any key closes this"), t.dim()));
     let h = lines.len() as u16 + 2;
-    let r = Rect {
-        x: area.x + area.width.saturating_sub(w) / 2,
-        y: area.y + area.height.saturating_sub(h) / 2,
-        width: w.min(area.width),
-        height: h.min(area.height),
-    };
-    frame.render_widget(Clear, r);
+    let r = terminal_kit::view::centered_rect(area, w, h);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .title(format!(" {} ", i18n::t("Error")))
         .border_style(t.error())
         .style(t.base());
-    let inner = block.inner(r);
-    frame.render_widget(block, r);
+    let inner = terminal_kit::view::draw_panel(frame, r, block, None);
     frame.render_widget(
         Paragraph::new(lines),
         Rect {
@@ -341,8 +319,10 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
     let t = *t;
     match app.tab {
+        Tab::Timeline if app.search.active.is_some() => {
+            draw_search_results(frame, body, app, images)
+        }
         Tab::Timeline => draw_timeline(frame, body, app, images, &t),
-        Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
         Tab::Notifications => draw_notifications(frame, body, app, images),
         Tab::Columns => draw_columns(frame, body, app, images, &t),
@@ -355,7 +335,11 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     // No name of the app: the tabs start at the edge, and the room is theirs.
     let mut spans = Vec::new();
     for (i, tab) in Tab::ALL.iter().enumerate() {
-        let title = i18n::t(tab.title());
+        let title = if *tab == Tab::Timeline && app.search.active.is_some() {
+            i18n::tf("Search: {}", &[&drawable(app.search_query())])
+        } else {
+            i18n::t(tab.title()).to_string()
+        };
         let label = match (tab, app.unread) {
             (Tab::Notifications, n) if n > 0 => format!(" {} {title} ({n}) ", i + 1),
             (Tab::Chat, _) if app.chat.unread() > 0 => {
@@ -369,54 +353,18 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             t.dim()
         };
         spans.push(Span::styled(label, style));
-        spans.push(Span::raw(" "));
     }
-    // With several accounts, the one in use is named at the right, where
-    // it fits whole; with one it is on the Profile tab, and nowhere else.
-    let used: usize = spans
-        .iter()
-        .map(|s| crate::tui::text::cells(&s.content))
-        .sum();
-    if app.accounts.len() > 1
-        && let Some(s) = &app.session
-    {
-        let name = format!("@{} ", s.handle);
-        let room = usize::from(area.width).saturating_sub(used);
-        let name_w = crate::tui::text::cells(&name);
-        if name_w < room {
-            spans.push(Span::raw(" ".repeat(room - name_w)));
-            spans.push(Span::styled(name, t.accent()));
-        }
-    }
-    frame.render_widget(Line::from(spans), area);
-}
-
-/// The keys that work in the current view, packed into as many rows of
-/// `width` as they need; a hint is never split across rows.
-fn hint_lines(hints: &[keys::Hint], width: u16, t: &Theme) -> Vec<Line<'static>> {
-    let width = usize::from(width.max(1));
-    let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
-    let mut row: Vec<Span<'static>> = vec![Span::raw(" ")];
-    let mut used = 1;
-    for (key, what) in hints {
-        let w = crate::tui::text::cells(key) + 1 + crate::tui::text::cells(what);
-        let first = row.len() == 1;
-        if !first && used + 2 + w > width {
-            lines.push(std::mem::replace(&mut row, vec![Span::raw(" ")]));
-            used = 1;
-        } else if !first {
-            row.push(Span::raw("  "));
-            used += 2;
-        }
-        row.push(Span::styled(*key, t.accent().bold()));
-        row.push(Span::styled(format!(" {what}"), t.dim()));
-        used += w;
-    }
-    lines.push(row);
-    lines
-        .into_iter()
-        .map(|spans| truncate_line(Line::from(spans), width))
-        .collect()
+    let right = if app.accounts.len() > 1 {
+        app.session
+            .as_ref()
+            .map(|s| Span::styled(format!("@{} ", s.handle), t.accent()))
+    } else {
+        None
+    };
+    frame.render_widget(
+        terminal_kit::view::tab_line(spans, right, area.width, 1),
+        area,
+    );
 }
 
 /// The last message on the left; activity or the image protocol on the right.
@@ -430,77 +378,12 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
             false => format!("{} ", i18n::t("text")),
         }
     };
-    let w = crate::tui::text::cells(&right) as u16;
-    // Errors are drawn in the middle of the screen (draw_error); the row
-    // keeps the passing news, cut short of what is on the right.
-    if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
-        let room = usize::from(area.width.saturating_sub(w + 2));
-        frame.render_widget(
-            Line::from(Span::styled(
-                format!(" {}", truncate(i18n::t(&s.text), room)),
-                t.ok(),
-            )),
-            area,
-        );
-    }
-    if w < area.width {
-        frame.render_widget(
-            Paragraph::new(right).style(t.dim()),
-            Rect {
-                x: area.right() - w,
-                width: w,
-                ..area
-            },
-        );
-    }
-}
-
-/// The first item to draw so that `selected` is on screen: `offset` when it
-/// already is, otherwise the lowest start that still fits the selection.
-/// Only the items between the two are measured, so the cost is what one
-/// screen holds, however long the list and however far the jump.
-fn scroll_offset(
-    selected: usize,
-    offset: usize,
-    len: usize,
-    viewport: u16,
-    mut height: impl FnMut(usize) -> u16,
-) -> usize {
-    let viewport = u32::from(viewport);
-    let mut top = if selected <= offset {
-        selected
-    } else {
-        let mut used = u32::from(height(selected));
-        let mut top = selected;
-        while top > offset {
-            let h = u32::from(height(top - 1));
-            if used + h > viewport {
-                break;
-            }
-            used += h;
-            top -= 1;
-        }
-        top
-    };
-    // When the list ends on screen with room to spare (the terminal grew, or
-    // the selection is near the end), the room goes to the posts above
-    // rather than staying empty. Only the rows that fit are measured.
-    let mut used = 0;
-    for i in top..len {
-        used += u32::from(height(i));
-        if used >= viewport {
-            return top;
-        }
-    }
-    while top > 0 {
-        let h = u32::from(height(top - 1));
-        if used + h > viewport {
-            break;
-        }
-        used += h;
-        top -= 1;
-    }
-    top
+    let left = app
+        .status
+        .as_ref()
+        .filter(|s| !s.error || !s.popup)
+        .map(|s| Span::styled(i18n::t(&s.text), if s.error { t.error() } else { t.ok() }));
+    terminal_kit::view::draw_status_line(frame, area, left, Span::styled(right, t.dim()));
 }
 
 /// `text` wrapped to `width` cells by the client's own rule. Ratatui's
@@ -526,75 +409,15 @@ fn empty_message<T>(frame: &mut Frame, area: Rect, list: &List<T>, empty: &str, 
     frame.render_widget(p, area);
 }
 
-/// The first of a list's entries to draw in `rows` rows so the selected one
-/// is among them: a list over the screen taller than its box scrolls with
-/// its selection, or Enter would act on an entry that is not shown.
-fn first_shown(selected: usize, rows: u16) -> usize {
-    (selected + 1).saturating_sub(usize::from(rows.max(1)))
-}
-
 /// A box of `w` x `h` centered in `area`, cleared.
 fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, t: &Theme) -> Rect {
-    let w = w.min(area.width);
-    let h = h.min(area.height);
-    let r = Rect {
-        x: area.x + (area.width - w) / 2,
-        y: area.y + (area.height - h) / 2,
-        width: w,
-        height: h,
-    };
-    frame.render_widget(Clear, r);
-    // A wide character just left of the box has its second half under the
-    // left border, and a terminal draws it over the border: it goes.
-    if r.x > area.x {
-        let buf = frame.buffer_mut();
-        for y in r.y..r.bottom() {
-            let cell = &mut buf[(r.x - 1, y)];
-            if cell.symbol().width() > 1 {
-                cell.set_symbol(" ");
-            }
-        }
-    }
-    // Clear resets the cells to the terminal's colors; the block's style
-    // paints them back in the theme's.
+    let r = terminal_kit::view::centered_rect(area, w, h);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .style(t.base())
         .border_style(t.accent())
         .title(format!(" {} ", i18n::t(title)));
-    let inner = block.inner(r);
-    frame.render_widget(block, r);
-    inner
-}
-
-fn draw_single_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
-    let width = usize::from(area.width.max(1));
-    let layout = input.layout(width);
-    // Show the visual line holding the cursor, so long input scrolls.
-    let row = layout.cursor.0.min(layout.lines.len().saturating_sub(1));
-    let line = layout.lines.get(row).cloned().unwrap_or_default();
-    frame.render_widget(Paragraph::new(line), area);
-    if focused {
-        frame.set_cursor_position(Position::new(area.x + layout.cursor.1 as u16, area.y));
-    }
-}
-
-fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
-    let layout = input.layout(usize::from(area.width.max(1)));
-    let h = usize::from(area.height.max(1));
-    let first = layout.cursor.0.saturating_sub(h - 1);
-    let shown: Vec<Line> = layout
-        .lines
-        .iter()
-        .skip(first)
-        .take(h)
-        .map(|l| Line::from(l.clone()))
-        .collect();
-    frame.render_widget(Paragraph::new(shown), area);
-    if focused {
-        let y = area.y + (layout.cursor.0 - first) as u16;
-        frame.set_cursor_position(Position::new(area.x + layout.cursor.1 as u16, y));
-    }
+    terminal_kit::view::draw_panel(frame, r, block, Some(area.x))
 }
 
 /// A byte count the way a person reads it.

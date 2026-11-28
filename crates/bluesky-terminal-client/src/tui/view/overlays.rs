@@ -361,7 +361,7 @@ pub(super) fn draw_languages(
     now: i18n::Lang,
     t: &Theme,
 ) {
-    let langs = i18n::Lang::ALL;
+    let langs = i18n::ALL;
     let inner = popup(frame, area, 34, langs.len() as u16 + 2, n!("Language"), t);
     let lines: Vec<Line> = langs
         .iter()
@@ -578,43 +578,11 @@ pub(super) fn draw_help(
     pictures: bool,
     t: &Theme,
 ) {
-    // The popup is 64 wide where the screen allows it; knowing the width
-    // here decides whether a description fits beside its keys.
-    let inner_w = usize::from(HELP_W.min(area.width).saturating_sub(2));
-    // A description beside the keys needs the key column and enough cells
-    // after it to read a few words. On a narrower screen it goes under
-    // them, wrapped, rather than being cut to nothing.
-    let beside = inner_w >= HELP_KEYS + 20;
-    let mut lines: Vec<Line> = Vec::new();
-    for (i, (title, keys)) in keys::help(pictures).into_iter().enumerate() {
-        if i > 0 {
-            lines.push(Line::raw(""));
-        }
-        lines.push(Line::styled(format!(" {title}"), Style::new().bold()));
-        for (k, d) in keys {
-            if beside {
-                // A description too long for its column wraps onto more
-                // rows under itself instead of being cut off.
-                let mut parts = wrap(d, inner_w - HELP_KEYS).into_iter();
-                let first = parts.next().unwrap_or_default();
-                lines.push(Line::from(vec![
-                    Span::styled(format!("   {k:<15}"), t.accent().bold()),
-                    Span::raw(first),
-                ]));
-                lines.extend(parts.map(|l| Line::raw(format!("{:HELP_KEYS$}{l}", ""))));
-                continue;
-            }
-            lines.push(Line::from(vec![Span::styled(
-                format!("   {k}"),
-                t.accent().bold(),
-            )]));
-            lines.extend(
-                wrap(d, inner_w.saturating_sub(5).max(1))
-                    .into_iter()
-                    .map(|l| Line::raw(format!("     {l}"))),
-            );
-        }
-    }
+    let lines = terminal_kit::view::help_lines(
+        keys::help(pictures),
+        HELP_W.min(area.width).saturating_sub(2),
+        t,
+    );
     let inner = popup(frame, area, HELP_W, lines.len() as u16 + 3, n!("Keys"), t);
     let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     // Clamp here, where the viewport is known, and write it back so scrolling
@@ -630,5 +598,22 @@ pub(super) fn draw_help(
     frame.render_widget(
         Paragraph::new(format!(" {}{more}", i18n::t("esc/q/? close"))).style(t.dim()),
         foot,
+    );
+}
+
+/// A single input over the list near its top. The list underneath is unchanged.
+pub(super) fn draw_search_box(
+    frame: &mut Frame,
+    area: Rect,
+    search: &crate::tui::app::Search,
+    t: &Theme,
+) {
+    terminal_kit::view::draw_search_box(
+        frame,
+        area,
+        &search.input,
+        Some(search.mode == SearchMode::Accounts),
+        i18n::current(),
+        t,
     );
 }

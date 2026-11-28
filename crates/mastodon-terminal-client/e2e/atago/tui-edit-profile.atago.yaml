@@ -55,7 +55,7 @@ scenarios:
       session:
       - expect_screen:
           contains: 1 Home
-      - send: '6'
+      - send: '5'
       - expect_screen:
           contains: Biography
       - send: e
@@ -138,7 +138,7 @@ scenarios:
       session:
       - expect_screen:
           contains: 1 Home
-      - send: '6'
+      - send: '5'
       - expect_screen:
           contains: Biography
       - send: e
@@ -216,7 +216,7 @@ scenarios:
       session:
       - expect_screen:
           contains: 1 Home
-      - send: '6'
+      - send: '5'
       - expect_screen:
           contains: Biography
       - send: e
@@ -338,7 +338,7 @@ scenarios:
       session:
       - expect_screen:
           contains: 1 Home
-      - send: '6'
+      - send: '5'
       - expect_screen:
           contains: Biography
       - send: e
@@ -445,7 +445,7 @@ scenarios:
       session:
       - expect_screen:
           contains: 1 Home
-      - send: '6'
+      - send: '5'
       - expect_screen:
           contains: Biography
       - send: e

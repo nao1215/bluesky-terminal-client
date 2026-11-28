@@ -1,6 +1,7 @@
 //! Translations into French, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("open the search box", "ouvrir la zone de recherche"),
     ("Play videos in the timeline", "Lire les vidéos dans le fil"),
     (
         "enter turns timeline playback on or off",
@@ -20,7 +21,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "(post non affiché)"),
     ("1 picture", "1 image"),
     ("Account", "Compte"),
-    ("Accounts", "Comptes"),
     ("Actions", "Actions"),
     ("Add a column", "Ajouter une colonne"),
     ("Attach pictures (up to {})", "Joindre des images ({} max.)"),
@@ -52,9 +52,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, publié en vidéo"),
     ("Global", "Général"),
     ("Handle or email", "Identifiant ou e-mail"),
-    ("Help", "Aide"),
     ("Keys", "Touches"),
-    ("Language", "Langue"),
     ("Link cards", "Cartes de lien"),
     ("Lists", "Listes"),
     ("Log in to Bluesky", "Connexion à Bluesky"),
@@ -72,7 +70,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "No notifications yet.",
         "Aucune notification pour l’instant.",
     ),
-    ("No posts found.", "Aucun post trouvé."),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "Aucun post des comptes que tu suis. Appuie sur R pour actualiser.",
@@ -83,25 +80,18 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "Mot de passe"),
     ("Picture cache", "Cache des images"),
     ("Pictures", "Images"),
-    ("Posts", "Posts"),
     ("Profile", "Profil"),
     ("Quote @{}", "Citer @{}"),
     ("Reply to @{}", "Répondre à @{}"),
-    ("Search", "Rechercher"),
     ("Search posts for:", "Rechercher des posts :"),
-    ("Search: {}", "Recherche : {}"),
     ("Search…", "Rechercher…"),
     ("Service", "Service"),
-    ("Settings", "Réglages"),
     (
         "Settings → Privacy and security → App passwords",
         "Réglages → Confidentialité et sécurité → Mots de passe d’application",
     ),
-    ("Terminal too small", "Terminal trop petit"),
     ("The thread is empty.", "Le fil est vide."),
-    ("Theme", "Thème"),
     ("Theme picker", "Choix du thème"),
-    ("Thread", "Fil"),
     ("Timeline", "Fil"),
     ("Video service", "Service vidéo"),
     ("Viewer", "Visionneuse"),
@@ -134,12 +124,10 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "un réglage fixé par une variable BSKY_ reste",
     ),
-    ("accounts", "comptes"),
     (
         "accounts: switch, add, log out",
         "comptes : changer, ajouter, déconnecter",
     ),
-    ("actions", "actions"),
     ("add", "ajouter"),
     (
         "add a column: a pinned feed, notifications…",
@@ -154,7 +142,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "une touche pour fermer"),
     ("apply", "appliquer"),
-    ("attach", "joindre"),
     (
         "attach pictures or a video / an avatar",
         "joindre images ou vidéo / un avatar",
@@ -295,11 +282,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "supprimer ton post"),
     ("deleting…", "suppression…"),
     ("do it", "exécuter"),
-    ("done", "terminé"),
     ("download", "télécharger"),
     ("downloading…", "téléchargement…"),
     ("edit profile", "modifier le profil"),
-    ("edit query", "modifier la recherche"),
     ("edit your profile", "modifier ton profil"),
     ("ended  r plays it again", "terminé  r pour rejouer"),
     ("enter apply  esc cancel", "enter appliquer  esc annuler"),
@@ -391,7 +376,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("following", "abonnements"),
     ("follows you", "te suit"),
     ("go back to the theme you had", "revenir au thème précédent"),
-    ("help", "aide"),
     ("hidden", "cachés"),
     ("i continue:", "i continuer :"),
     ("i write a message", "i écrire un message"),
@@ -403,7 +387,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "valider"),
     ("language: {}", "langue : {}"),
-    ("leave the search box", "quitter le champ de recherche"),
     ("like / remove like", "j’aime / retirer le j’aime"),
     ("like it", "aimer"),
     ("like removed", "j’aime retiré"),
@@ -461,13 +444,11 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "la suite se charge seule vers la fin",
     ),
-    ("move", "déplacer"),
     ("move five items", "déplacer de cinq éléments"),
     (
         "move the column left / right",
         "déplacer la colonne à gauche / droite",
     ),
-    ("move the selection", "déplacer la sélection"),
     (
         "move through the posts and replies",
         "parcourir les posts et les réponses",
@@ -504,7 +485,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "champ suivant ou texte alt d’une image",
     ),
-    ("next tab", "onglet suivant"),
     ("no account yet", "aucun compte pour l’instant"),
     (
         "no folders here; space chooses this one",
@@ -532,7 +512,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "maintenant @{}"),
     ("off", "désactivé"),
     ("on", "activé"),
-    ("open", "ouvrir"),
     ("open / choose", "ouvrir / choisir"),
     ("open in browser", "ouvrir dans le navigateur"),
     ("open it in the web browser", "ouvrir dans le navigateur"),
@@ -596,7 +575,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "images : {}"),
     ("play the video again", "rejouer la vidéo"),
     ("playing (no sound)", "lecture (sans son)"),
-    ("post", "poster"),
     ("post deleted", "post supprimé"),
     (
         "post keys act on the column's post",
@@ -604,8 +582,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "publié"),
     ("posts", "posts"),
-    ("posts / accounts", "posts / comptes"),
-    ("press / or i to type", "appuie sur / ou i pour saisir"),
     (
         "press y to block @{}, any other key to leave them be",
         "appuie sur y pour bloquer @{}, une autre touche pour annuler",
@@ -634,7 +610,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "remettre le réglage par défaut",
     ),
-    ("quit", "quitter"),
     ("quote it in a new post", "le citer dans un nouveau post"),
     (
         "quote removed by the post's author",
@@ -704,7 +679,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "{} enregistré"),
     ("saving…", "enregistrement…"),
     ("scroll", "défiler"),
-    ("search", "rechercher"),
     (
         "search posts or accounts",
         "rechercher des posts ou des comptes",
@@ -713,7 +687,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "rechercher, puis parcourir les résultats",
     ),
-    ("search:", "recherche :"),
     ("searching…", "recherche…"),
     ("send", "envoyer"),
     (
@@ -803,10 +776,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     (
         "the profile was changed elsewhere since the editor opened; press Esc and e to start from the current version",
         "le profil a été modifié ailleurs depuis l’ouverture de l’éditeur ; appuie sur Esc puis e pour repartir de la version actuelle",
-    ),
-    (
-        "the search box has focus when you arrive",
-        "le champ de recherche a le focus à l’arrivée",
     ),
     (
         "the session expired; log in again",
@@ -900,11 +869,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "cette vidéo n’est pas en H.264 (type de flux 0x{}), que bsky ne sait pas décoder",
     ),
-    (
-        "type in the search box again",
-        "saisir à nouveau dans la recherche",
-    ),
-    ("type, then enter", "saisis, puis enter"),
     ("unblock them", "débloquer"),
     ("unblocked", "débloqué"),
     ("unfollow", "ne plus suivre"),
@@ -923,7 +887,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "t’a vérifié"),
     ("video", "vidéo"),
     ("video: {}", "vidéo : {}"),
-    ("view", "voir"),
     ("view its pictures or video", "voir ses images ou sa vidéo"),
     (
         "view pictures or video, or open the link",

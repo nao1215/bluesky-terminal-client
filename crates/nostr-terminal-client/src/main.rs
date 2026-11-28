@@ -5,6 +5,7 @@ mod api;
 mod commands;
 mod config;
 mod error;
+mod i18n;
 mod output;
 mod read_state;
 mod tui;
@@ -85,15 +86,9 @@ fn main() -> ExitCode {
         }
         Err(e) => {
             let message = e.to_string();
-            let first = message
-                .lines()
-                .take_while(|line| !line.trim().is_empty())
-                .map(str::trim)
-                .collect::<Vec<_>>()
-                .join(" ");
-            Err(Error::usage(
-                first.strip_prefix("error: ").unwrap_or(&first),
-            ))
+            Err(Error::usage(terminal_kit::output::first_paragraph(
+                &message,
+            )))
         }
     };
     match result {
@@ -101,12 +96,22 @@ fn main() -> ExitCode {
         Err(e) => {
             diagnostics(&e.to_string());
             if json_requested {
-                match serde_json::to_value(&e)
-                    .map_err(Error::file)
-                    .and_then(|v| output::emit(&mut io::stdout().lock(), &v, true))
-                {
+                match terminal_kit::output::write_json_line(
+                    &mut io::stdout().lock(),
+                    &terminal_kit::output::error_json(
+                        &serde_json::Value::from(e.error.as_str()).to_string(),
+                        e.hint
+                            .as_deref()
+                            .map(|hint| serde_json::Value::from(hint).to_string())
+                            .as_deref(),
+                        e.status,
+                    ),
+                ) {
                     Ok(_) => (),
-                    Err(output_error) => diagnostics(&output_error.to_string()),
+                    Err(error) if error.kind() == io::ErrorKind::BrokenPipe => (),
+                    Err(error) => diagnostics(
+                        &Error::file(format!("cannot write output: {error}")).to_string(),
+                    ),
                 }
             }
             ExitCode::from(e.status)

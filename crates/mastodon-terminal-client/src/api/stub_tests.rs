@@ -2,7 +2,6 @@
 //! waits and tries again when the server turns it away, and saving files.
 
 use super::*;
-use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Mutex;
 
 #[test]
@@ -33,20 +32,7 @@ fn unsupported_reads_discovery_without_sending_the_token() {
     assert!(calls[1..].iter().all(|c| c.auth.is_none()));
 }
 
-/// What the stand-in answers: status, extra headers, body.
-pub(crate) struct Reply {
-    pub status: u16,
-    pub headers: Vec<(&'static str, String)>,
-    pub body: Vec<u8>,
-}
-
-pub(crate) fn reply(status: u16, body: &str) -> Reply {
-    Reply {
-        status,
-        headers: Vec::new(),
-        body: body.as_bytes().to_vec(),
-    }
-}
+pub(crate) use terminal_kit::test_support::http::{Response as Reply, reply};
 
 /// A request the stand-in took.
 #[derive(Debug, Clone, Default)]
@@ -82,78 +68,26 @@ pub(crate) type Handler = Arc<dyn Fn(&Call, usize) -> Reply + Send + Sync>;
 pub(crate) type Calls = Arc<Mutex<Vec<Call>>>;
 
 pub(crate) fn serve(h: Handler) -> (String, Calls) {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
     let log: Calls = Arc::default();
     let kept = Arc::clone(&log);
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let h = Arc::clone(&h);
-            let kept = Arc::clone(&kept);
-            std::thread::spawn(move || {
-                let mut r = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                if r.read_line(&mut line).is_err() {
-                    return;
-                }
-                let mut parts = line.split(' ');
-                let mut call = Call {
-                    method: parts.next().unwrap_or("").to_string(),
-                    target: parts.next().unwrap_or("").to_string(),
-                    ..Default::default()
-                };
-                let mut len = 0usize;
-                loop {
-                    let mut hd = String::new();
-                    if r.read_line(&mut hd).is_err() {
-                        return;
-                    }
-                    if hd.trim().is_empty() {
-                        break;
-                    }
-                    let (name, value) = hd.split_once(':').unwrap_or_default();
-                    let value = value.trim().to_string();
-                    match name.to_ascii_lowercase().as_str() {
-                        "content-length" => len = value.parse().unwrap(),
-                        "authorization" => call.auth = Some(value),
-                        "idempotency-key" => call.idempotency = Some(value),
-                        "content-type" => call.content_type = Some(value),
-                        _ => {}
-                    }
-                }
-                let mut body = vec![0; len];
-                let _ = r.read_exact(&mut body);
-                call.body = String::from_utf8_lossy(&body).into_owned();
-                let n = {
-                    let mut log = kept.lock().unwrap();
-                    log.push(call.clone());
-                    log.len() - 1
-                };
-                let answer = h(&call, n);
-                let mut head = format!("HTTP/1.1 {} X\r\nConnection: close\r\n", answer.status);
-                if !answer
-                    .headers
-                    .iter()
-                    .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-                {
-                    head.push_str("Content-Type: application/json\r\n");
-                }
-                let mut declared = false;
-                for (k, v) in &answer.headers {
-                    declared |= k.eq_ignore_ascii_case("content-length");
-                    head.push_str(&format!("{k}: {v}\r\n"));
-                }
-                if !declared {
-                    head.push_str(&format!("Content-Length: {}\r\n", answer.body.len()));
-                }
-                head.push_str("\r\n");
-                let _ = stream.write_all(head.as_bytes());
-                let _ = stream.write_all(&answer.body);
-            });
-        }
-    });
-    (url, log)
+    let server = terminal_kit::test_support::http::serve_http(move |request, _| {
+        let call = Call {
+            method: request.method.clone(),
+            target: request.target.clone(),
+            auth: request.header("authorization").map(str::to_owned),
+            idempotency: request.header("idempotency-key").map(str::to_owned),
+            content_type: request.header("content-type").map(str::to_owned),
+            body: String::from_utf8_lossy(&request.body).into_owned(),
+        };
+        let n = {
+            let mut log = kept.lock().unwrap();
+            log.push(call.clone());
+            log.len() - 1
+        };
+        Some(h(&call, n))
+    })
+    .unwrap();
+    (server.url().to_owned(), log)
 }
 
 /// A client of `url` whose waits are written down instead of slept.

@@ -1,44 +1,15 @@
 //! The composer, its attachments, the file browser, and the reaction
 //! picker, drawn as bsky draws its composer and browser.
 
+pub(super) use terminal_kit::view::draw_multi_input;
+pub(super) use terminal_kit::view::draw_single_input;
+
 use super::*;
 use crate::tui::app::Compose;
-use crate::tui::input::TextInput;
 use crate::tui::theme::MisskeyStyles;
-use ratatui::layout::Position;
 
 /// Size of a picture's thumbnail in the composer, in cells, as bsky's.
 const THUMB: (u16, u16) = (14, 5);
-
-pub(super) fn draw_single_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
-    let width = usize::from(area.width.max(1));
-    let layout = input.layout(width);
-    // The visual line holding the cursor, so long input scrolls.
-    let row = layout.cursor.0.min(layout.lines.len().saturating_sub(1));
-    let line = layout.lines.get(row).cloned().unwrap_or_default();
-    frame.render_widget(Paragraph::new(line), area);
-    if focused {
-        frame.set_cursor_position(Position::new(area.x + layout.cursor.1 as u16, area.y));
-    }
-}
-
-pub(super) fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput, focused: bool) {
-    let layout = input.layout(usize::from(area.width.max(1)));
-    let h = usize::from(area.height.max(1));
-    let first = layout.cursor.0.saturating_sub(h - 1);
-    let shown: Vec<Line> = layout
-        .lines
-        .iter()
-        .skip(first)
-        .take(h)
-        .map(|l| Line::from(l.clone()))
-        .collect();
-    frame.render_widget(Paragraph::new(shown), area);
-    if focused {
-        let y = area.y + (layout.cursor.0 - first) as u16;
-        frame.set_cursor_position(Position::new(area.x + layout.cursor.1 as u16, y));
-    }
-}
 
 pub(super) fn draw_compose(
     frame: &mut Frame,

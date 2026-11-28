@@ -7,12 +7,22 @@ use super::{
 use crate::error::{Error, Result};
 impl Client<'_> {
     pub(crate) fn search(&self, text: &str, count: usize) -> Result<Outcome<Vec<Event>>> {
+        self.search_page(text, count, None)
+    }
+
+    pub(crate) fn search_page(
+        &self,
+        text: &str,
+        count: usize,
+        until: Option<u64>,
+    ) -> Result<Outcome<Vec<Event>>> {
         let text = text.trim();
         if text.is_empty() || text == "#" {
             return Err(Error::usage("search query must not be empty"));
         }
         let mut filter = Filter {
             kinds: vec![1],
+            until,
             ..Filter::default()
         };
         let urls = if let Some(tag) = text.strip_prefix('#') {

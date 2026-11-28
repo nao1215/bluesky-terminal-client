@@ -23,7 +23,7 @@ scenarios:
             - send: w
             - expect_screen: { contains: "bob の二つ目" }
             - send: "/"
-            - expect_screen: { contains: "Search · enter" }
+            - expect_screen: { contains: ["Search", "Enter search · Esc cancel"] }
             - send: bob
             - send: { key: enter }
             - expect_screen: { contains: "bob の一つ目", stable_for: 300ms }

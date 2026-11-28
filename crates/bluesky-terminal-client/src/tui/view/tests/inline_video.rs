@@ -185,3 +185,111 @@ fn stopping_inline_video_restores_thumbnails_in_the_next_frame(
         );
     }
 }
+
+#[test]
+fn search_plays_its_selection_and_escape_restores_timeline_video_and_read_ahead() {
+    use crate::tui::worker::Job;
+    use crossterm::event::{KeyCode, KeyEvent};
+
+    EVENTS.with_borrow_mut(Vec::clear);
+    let dir = tempfile::tempdir().unwrap();
+    let thumbnail = dir.path().join("thumbnail.png");
+    image::RgbImage::from_pixel(40, 40, image::Rgb([30; 3]))
+        .save(&thumbnail)
+        .unwrap();
+    let thumbnail = format!("file://{}", thumbnail.display());
+    let clip = |name: &str| -> Post {
+        serde_json::from_value(json!({
+            "uri": format!("at://clips/{name}"), "cid": name,
+            "author": {"did": "did:plc:clips", "handle": "clips.test"},
+            "record": {"text": name},
+            "embed": {"$type": "app.bsky.embed.video#view", "cid": name,
+                "playlist": format!("file:///{name}.m3u8"), "thumbnail": thumbnail,
+                "aspectRatio": {"width": 40, "height": 40}}
+        }))
+        .unwrap()
+    };
+    #[allow(
+        deprecated,
+        reason = "a deterministic cell size without querying a terminal"
+    )]
+    let mut picker = Picker::from_fontsize((10, 20).into());
+    picker.set_protocol_type(ProtocolType::Kitty);
+    let mut images = Images::new(picker, None).unwrap();
+    images.set_player(start);
+    let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    let (mut app, _) = App::new(Some(session()), "x");
+    app.kitty_graphics = true;
+    app.handle_event(Event::Timeline(Ok(vec![
+        clip("before"),
+        clip("timeline"),
+        clip("after"),
+    ]
+    .into())));
+    app.timeline.selected = 1;
+    app.timeline.offset = 1;
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert!(images.video_shown());
+    let before = format!("{:?}", app.timeline);
+    let ahead = app.videos_near_selection(true);
+    assert_eq!(ahead[0], "file:///timeline.m3u8");
+    let press = |app: &mut App, code| {
+        app.handle_key(KeyEvent::from(code));
+    };
+    press(&mut app, KeyCode::Char('/'));
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert!(!images.video_shown());
+    assert!(app.videos_near_selection(true).is_empty());
+    app.handle_paste("clips");
+    press(&mut app, KeyCode::Enter);
+    app.handle_event(Event::SearchPosts {
+        query: "clips".into(),
+        result: Ok(vec![clip("result-1"), clip("result-2")].into()),
+    });
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert!(images.video_shown());
+    assert_eq!(
+        app.videos_near_selection(true),
+        ["file:///result-1.m3u8", "file:///result-2.m3u8"]
+    );
+    press(&mut app, KeyCode::Char('j'));
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert_eq!(app.videos_near_selection(true)[0], "file:///result-2.m3u8");
+    let now = Instant::now();
+    app.poll_read_ahead(now);
+    assert!(
+        matches!(&app.poll_read_ahead(now + Duration::from_secs(1))[..], [Job::ReadAhead(uri)] if uri == "at://clips/result-2")
+    );
+    press(&mut app, KeyCode::Esc);
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert!(images.video_shown());
+    assert_eq!(format!("{:?}", app.timeline), before);
+    assert_eq!(app.videos_near_selection(true), ahead);
+    app.poll_read_ahead(now + Duration::from_secs(2));
+    assert!(
+        matches!(&app.poll_read_ahead(now + Duration::from_secs(3))[..], [Job::ReadAhead(uri)] if uri == "at://clips/timeline")
+    );
+    let started: Vec<_> = EVENTS.with_borrow(|events| {
+        events
+            .iter()
+            .filter(|e| e.starts_with("start "))
+            .cloned()
+            .collect()
+    });
+    assert_eq!(
+        started,
+        [
+            "start file:///timeline.m3u8",
+            "start file:///result-1.m3u8",
+            "start file:///result-2.m3u8",
+            "start file:///timeline.m3u8"
+        ]
+    );
+    // Cancelling a second box restores playback of the same timeline post.
+    press(&mut app, KeyCode::Char('/'));
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    press(&mut app, KeyCode::Esc);
+    term.draw(|f| draw(f, &mut app, &mut images)).unwrap();
+    assert_eq!(app.videos_near_selection(true), ahead);
+    assert!(images.video_shown());
+}

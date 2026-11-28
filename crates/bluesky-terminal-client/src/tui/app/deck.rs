@@ -7,7 +7,7 @@ impl App {
     /// The Timeline tab shows the columns when there are any, the timeline
     /// alone when there are none; the columns not asked for yet are loaded.
     pub(crate) fn settle_timeline(&mut self) -> Vec<Job> {
-        if !matches!(self.tab, Tab::Timeline | Tab::Columns) {
+        if self.search_mode().is_some() || !matches!(self.tab, Tab::Timeline | Tab::Columns) {
             return Vec::new();
         }
         if self.columns.items.is_empty() {
@@ -235,6 +235,7 @@ impl App {
         }
         let id = self.columns.add(source);
         self.save_columns();
+        self.leave_search();
         self.tab = Tab::Columns;
         jobs.extend(self.load_column(id));
         jobs

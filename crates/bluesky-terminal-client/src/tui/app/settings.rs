@@ -69,13 +69,13 @@ impl App {
     /// A key on the list of languages: the one chosen is used at once and
     /// kept, and the settings come back.
     pub(super) fn languages_key(&mut self, key: KeyEvent, selected: usize) {
-        let n = Lang::ALL.len();
+        let n = crate::i18n::ALL.len();
         let at = |selected| Some(Overlay::Languages { selected });
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => self.overlay = at((selected + 1) % n),
             KeyCode::Char('k') | KeyCode::Up => self.overlay = at((selected + n - 1) % n),
             KeyCode::Enter => {
-                let lang = Lang::ALL[selected.min(n - 1)];
+                let lang = crate::i18n::ALL[selected.min(n - 1)];
                 self.settings.language = Some(lang.code().to_string());
                 crate::i18n::set(lang);
                 self.back_to_settings();
@@ -404,7 +404,7 @@ impl App {
                 return;
             }
             "Language" => {
-                let at = Lang::ALL.iter().position(|l| *l == self.language());
+                let at = crate::i18n::ALL.iter().position(|l| *l == self.language());
                 self.overlay = Some(Overlay::Languages {
                     selected: at.unwrap_or(0),
                 });

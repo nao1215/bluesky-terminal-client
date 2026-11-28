@@ -62,6 +62,13 @@ Routing retry notices through the TUI removed the shared stderr formatting
 match and shifted the existing Client constructor match; neither adds copied
 implementation. The constructors keep their per-client API ownership.
 
+The shared-code extraction removes the i18n runtime and scanner, layout,
+private writer and HTTP fixture copies. Remaining fingerprints cover the
+required client-local language state (including cfg(test)), supported-language
+facades, settings handlers, translated popup styles and CLI error policy.
+The adjacent startup, key tables and config helpers remain client-specific;
+their smaller matches shifted as the shared implementations moved out.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 

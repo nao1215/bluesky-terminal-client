@@ -4,7 +4,7 @@ suite:
   name: mstdn search and profiles
 secrets: [e2e-fake-stage2-browse]
 scenarios:
-  - name: search posts and accounts and open profiles with enter and 6
+  - name: search posts and accounts and open profiles with enter and 5
     mock_servers:
       - name: api
         routes:
@@ -38,13 +38,15 @@ scenarios:
           env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
           timeout: 25s
           session:
-            - expect_screen: { contains: ["Home post", "5 Search", "6 Profile"] }
-            - send: "5"
-            - expect_screen: { contains: ["Search", "enter search", "ctrl+t posts / accounts"] }
+            - expect_screen: { contains: ["Home post", "5 Profile", "6 Chat"] }
+            - send: /
+            - expect_screen: { contains: ["Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"] }
             - send: rust
             - send: { key: enter }
-            - expect_screen: { contains: "Rust search result" }
-            - send: t
+            - expect_screen: { contains: ["Rust search result", "1 Search: rust", "Esc back to timeline"], not_contains: "Home post" }
+            - send: /
+            - send: { key: ctrl-t }
+            - send: { key: enter }
             - expect_screen: { contains: ["Bob 🦀", "Writes Rust"] }
             - send: { key: enter }
             - expect_screen: { contains: ["Profile biography", "5 followers · 2 following · 9 posts", "Bob profile post"] }
@@ -52,13 +54,13 @@ scenarios:
             - expect_screen: { contains: "Bob profile post", stable_for: 500ms }
             - send: { key: esc }
             - expect_screen: { contains: "Writes Rust", not_contains: "Profile biography" }
-            - send: "1"
-            - expect_screen: { contains: "Home post" }
+            - send: { key: esc }
+            - expect_screen: { contains: "Home post", not_contains: "Search: rust" }
             - send: { key: enter }
             - expect_screen: { contains: "Bob profile post" }
             - send: j
             - expect_screen: { contains: "Bob profile post", stable_for: 500ms }
-            - send: "6"
+            - send: "5"
             - expect_screen: { contains: ["My biography", "My profile post"] }
             - send: q
       - assert: { exit_code: 0 }
@@ -95,9 +97,11 @@ scenarios:
             - send: "#"
             - send: { key: enter }
             - expect_screen: { contains: "Visitor hashtag result" }
-            - send: t
+            - send: /
+            - send: { key: ctrl-t }
+            - send: { key: enter }
             - expect_screen: { contains: "visitors can search #hashtags" }
-            - send: "6"
+            - send: "5"
             - expect_screen: { contains: "shows this only to accounts that are logged in" }
             - send: q
       - assert: { exit_code: 0 }

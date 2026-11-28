@@ -1,12 +1,17 @@
 //! Search, profile, media, accounts and settings transitions.
 use super::*;
-use crate::i18n::{self, Lang};
+use crate::i18n;
 use crate::tui::worker::{ProfilePage, SearchPage};
 
 pub(crate) struct Search {
     pub input: TextInput,
     pub editing: bool,
     pub accounts: bool,
+    pub result_accounts: bool,
+    pub back: Option<Tab>,
+    pub tab: Tab,
+    pending: Option<(u64, String, bool)>,
+    previous_profile: Option<Profile>,
     pub query: String,
     pub posts: List<Status>,
     pub users: List<Account>,
@@ -17,6 +22,11 @@ impl Default for Search {
             input: TextInput::single(""),
             editing: false,
             accounts: false,
+            result_accounts: false,
+            back: None,
+            tab: Tab::Home,
+            pending: None,
+            previous_profile: None,
             query: String::new(),
             posts: List::default(),
             users: List::default(),
@@ -32,6 +42,22 @@ pub(crate) struct Profile {
 }
 
 impl App {
+    pub(crate) fn search_results(&self) -> bool {
+        self.search.back.is_some() && self.tab == self.search.tab
+    }
+
+    pub(super) fn leave_search(&mut self) {
+        if let Some(tab) = self.search.back.take() {
+            self.tab = tab;
+        }
+        if let Some(profile) = self.search.previous_profile.take() {
+            self.profile = profile;
+        }
+        self.search.pending = None;
+        self.search.posts.waiting = None;
+        self.search.users.waiting = None;
+    }
+
     pub(super) fn run_search(&mut self, more: bool) -> Jobs {
         let query = if more {
             self.search.query.clone()
@@ -41,15 +67,19 @@ impl App {
         if query.is_empty() {
             return Vec::new();
         }
-        if self.session.is_none() && (self.search.accounts || crate::cli::hashtag(&query).is_none())
-        {
+        let accounts = if more {
+            self.search.result_accounts
+        } else {
+            self.search.accounts
+        };
+        if self.session.is_none() && (accounts || crate::cli::hashtag(&query).is_none()) {
             self.say(t(
                 "log in to search accounts or posts; visitors can search #hashtags",
             ));
             return Vec::new();
         }
         let next = if more {
-            if self.search.accounts {
+            if accounts {
                 self.search.users.next.clone()
             } else {
                 self.search.posts.next.clone()
@@ -57,28 +87,21 @@ impl App {
         } else {
             None
         };
-        if !more {
-            self.search.posts = List::default();
-            self.search.users = List::default();
-        }
-        self.search.query = query.clone();
         let job = self.job(Job::Search {
-            query,
-            accounts: self.search.accounts,
+            query: query.clone(),
+            accounts,
             next,
         });
-        if self.search.accounts {
-            self.search.users.waiting = Some(job.0);
-        } else {
-            self.search.posts.waiting = Some(job.0);
-        }
+        self.search.pending = Some((job.0, query, accounts));
+        self.search.posts.waiting = Some(job.0);
+        self.search.users.waiting = Some(job.0);
         vec![job]
     }
 
     pub(super) fn search_key(&mut self, key: KeyEvent) -> Jobs {
         match key.code {
             KeyCode::Esc => self.search.editing = false,
-            KeyCode::Enter => {
+            KeyCode::Enter if !self.search.input.text().trim().is_empty() => {
                 self.search.editing = false;
                 return self.run_search(false);
             }
@@ -93,27 +116,55 @@ impl App {
     }
 
     pub(super) fn search_answer(&mut self, seq: u64, first: bool, result: Result<SearchPage>) {
+        if self.search.pending.as_ref().map(|p| p.0) != Some(seq) {
+            return;
+        }
+        let Some((_, query, accounts)) = self.search.pending.take() else {
+            return;
+        };
         match result {
             Ok(p) => {
+                if first {
+                    if self.search.back.is_none() {
+                        self.search.back = Some(self.tab);
+                        if self.tab == Tab::Profile {
+                            self.search.previous_profile = Some(std::mem::take(&mut self.profile));
+                        }
+                        self.search.tab = if self.tab.kind().is_some() {
+                            self.tab
+                        } else {
+                            Tab::Home
+                        };
+                    }
+                    self.tab = self.search.tab;
+                    self.threads.clear();
+                    self.search.posts = List::default();
+                    self.search.users = List::default();
+                    self.search.posts.waiting = Some(seq);
+                    self.search.users.waiting = Some(seq);
+                    self.search.query = query;
+                    self.search.result_accounts = accounts;
+                }
                 self.search
                     .posts
                     .take(seq, first, Ok((p.posts, p.next.clone())));
                 self.search.users.take(seq, first, Ok((p.accounts, p.next)));
             }
             Err(e) => {
-                self.search.posts.take(seq, first, Err(e.clone()));
-                self.search.users.take(seq, first, Err(e));
+                self.search.posts.waiting = None;
+                self.search.users.waiting = None;
+                self.say(e.message());
             }
         }
     }
 
     pub(super) fn open_profile(&mut self) -> Jobs {
-        let account = if self.tab == Tab::Search && self.threads.is_empty() && self.search.accounts
-        {
-            self.search.users.current().cloned()
-        } else {
-            self.selected().map(|s| s.account.clone())
-        };
+        let account =
+            if self.search_results() && self.threads.is_empty() && self.search.result_accounts {
+                self.search.users.current().cloned()
+            } else {
+                self.selected().map(|s| s.account.clone())
+            };
         let Some(account) = account else {
             return Vec::new();
         };
@@ -166,7 +217,7 @@ impl App {
                 self.profile.posts.step(by);
                 self.profile.posts.wants_more()
             }
-            _ if self.search.accounts => {
+            _ if self.search.result_accounts => {
                 self.search.users.step(by);
                 self.search.users.wants_more()
             }
@@ -176,6 +227,9 @@ impl App {
             }
         };
         if wants {
+            if self.search_results() {
+                return self.run_search(true);
+            }
             self.load_tab(self.tab, true)
         } else {
             Vec::new()
@@ -323,7 +377,7 @@ impl App {
                     KeyCode::Char('j') | KeyCode::Down => selected = 1,
                     KeyCode::Char('k') | KeyCode::Up => selected = 0,
                     KeyCode::Enter => {
-                        let lang = Lang::ALL[selected];
+                        let lang = crate::i18n::ALL[selected];
                         i18n::set(lang);
                         if let Some(s) = &mut self.settings {
                             s.language = Some(lang.code().into());

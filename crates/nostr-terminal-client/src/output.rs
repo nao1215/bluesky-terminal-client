@@ -126,12 +126,12 @@ pub(crate) fn text(value: &Value) -> String {
 }
 
 pub(crate) fn emit(out: &mut dyn Write, value: &Value, json: bool) -> Result<bool> {
-    let line = if json {
-        format!("{value}\n")
+    let written = if json {
+        terminal_kit::output::write_json_line(out, &value.to_string())
     } else {
-        terminal_kit::text::drawable(&text(value)).into_owned()
+        terminal_kit::output::write_text(out, &terminal_kit::text::drawable(&text(value)))
     };
-    match out.write_all(line.as_bytes()) {
+    match written {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(false),
         Err(e) => Err(Error::file(format!("cannot write output: {e}"))),

@@ -5,6 +5,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui_image::picker::Picker;
 use serde_json::json;
+use unicode_width::UnicodeWidthStr;
 
 mod compose;
 mod hints;
@@ -13,6 +14,7 @@ mod languages;
 mod panels;
 mod posts_and_help;
 mod screens;
+mod search;
 mod themes_and_lists;
 
 fn render(app: &mut App, w: u16, h: u16) -> String {

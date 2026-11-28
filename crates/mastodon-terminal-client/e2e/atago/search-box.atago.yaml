@@ -1,0 +1,96 @@
+# Search overlays and restoration use only local API mocks.
+version: "1"
+suite:
+  name: mstdn search box
+secrets: [fake-search-box]
+scenarios:
+  - name: slash opens a box and cancel and result escape preserve the selected timeline post
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/home
+            json:
+              - { id: first, account: { id: "1", acct: alice, username: alice }, content: "<p>First timeline post</p>" }
+              - { id: second, account: { id: "2", acct: bob, username: bob }, content: "<p>Selected timeline post</p>" }
+              - { id: third, account: { id: "1", acct: alice }, content: "<p>Third timeline post</p>" }
+              - { id: fourth, account: { id: "1", acct: alice }, content: "<p>Fourth timeline post</p>" }
+              - { id: fifth, account: { id: "1", acct: alice }, content: "<p>Fifth timeline post</p>" }
+          - { method: GET, path: /api/v2/instance, json: {} }
+          - { method: GET, path: /api/v1/notifications, json: [] }
+          - method: GET
+            path: /api/v2/search
+            json:
+              statuses: [{ id: result, account: { id: "3", acct: ferris, username: ferris }, content: "<p>Search result post</p>", visibility: public }]
+              accounts: [{ id: "2", acct: bob, username: bob, note: "<p>Account search result</p>" }]
+          - { method: GET, path: /api/v1/accounts/2, json: { id: "2", acct: bob, username: bob, note: "<p>Restored selected author</p>" } }
+          - { method: GET, path: /api/v1/accounts/2/statuses, json: [] }
+          - { method: POST, path: /api/v1/statuses/result/favourite, json: { id: result, account: { id: "3", acct: ferris }, content: "<p>Search result post</p>", favourited: true, visibility: public } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-search-box","scopes":["read","write"]}'
+      - fixture:
+          file: cfg/accounts.json
+          content: '{"current":"127.0.0.1:${api.port}"}'
+      - pty:
+          command: mstdn
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 25s
+          session:
+            - expect_screen: { contains: ["1 Home", "Selected timeline post", "5 Profile", "6 Chat"], not_contains: "5 Search" }
+            - send: j
+            - send: /
+            - expect_screen: { contains: ["Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel", "╭", "╰"] }
+            - expect_screen:
+                matches: 'Enter search · Ctrl\+T posts/accounts · Esc cancel'
+                count: 1
+                not_contains: ["? help", "q quit", ". actions"]
+            - send: rust
+            - send: { key: esc }
+            - expect_screen: { contains: ["1 Home", "Selected timeline post"], not_contains: "Search · Posts" }
+            - send: { key: enter }
+            - expect_screen: { contains: "Restored selected author" }
+            - send: { key: esc }
+            - expect_screen: { contains: ["First timeline post", "Selected timeline post"], not_contains: "Restored selected author" }
+            - send: /
+            - expect_screen: { contains: ["Search · Posts", "rust"] }
+            - send: { key: enter }
+            - expect_screen: { contains: ["1 Search: rust", "Search result post", "Esc back to timeline"], not_contains: ["First timeline post", "Selected timeline post", "Search · Posts"] }
+            - expect_screen:
+                contains: ["? help  j k move  . actions  space view  n post  / search  q quit", "Esc back to timeline"]
+                not_contains: ["/ edit query", "enter open profile"]
+            - send: l
+            - expect_screen: { contains: "favourited" }
+            - send: { key: esc }
+            - expect_screen: { contains: ["1 Home", "First timeline post", "Selected timeline post"], not_contains: ["Search: rust", "Search result post"] }
+            - send: { key: enter }
+            - expect_screen: { contains: "Restored selected author" }
+            - send: { key: esc }
+            - expect_screen: { contains: "Selected timeline post", not_contains: "Restored selected author" }
+            - send: /
+            - send: { key: ctrl-t }
+            - expect_screen: { contains: "Search · Accounts" }
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["Account search result", "? help  j k move  . actions  enter / v open profile  / search  q quit", "Esc back to timeline"]
+                not_contains: ["enter open profile", "space view", "n post"]
+            - send: v
+            - expect_screen: { contains: "Restored selected author" }
+            - send: { key: esc }
+            - expect_screen: { contains: ["Account search result", "enter / v open profile"] }
+            - send: { key: enter }
+            - expect_screen: { contains: "Restored selected author" }
+            - send: { key: esc }
+            - expect_screen: { contains: "Account search result" }
+            - send: { key: esc }
+            - expect_screen: { contains: "Selected timeline post", not_contains: ["Search: rust", "Account search result"] }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { mock: { name: api, path: /api/v1/timelines/home, count: 1 } }
+      - assert: { mock: { name: api, path: /api/v2/search, count: 2, query: { name: q, equals: rust } } }
+      - assert: { mock: { name: api, path: /api/v1/accounts/2, count: 4 } }
+      - assert: { mock: { name: api, path: /api/v1/statuses/result/favourite, count: 1 } }

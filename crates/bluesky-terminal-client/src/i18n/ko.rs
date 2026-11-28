@@ -1,6 +1,7 @@
 //! Translations into Korean, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("open the search box", "검색창 열기"),
     ("Play videos in the timeline", "타임라인에서 동영상 재생"),
     (
         "enter turns timeline playback on or off",
@@ -17,7 +18,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("(post not shown)", "(표시되지 않은 게시물)"),
     ("1 picture", "이미지 1개"),
     ("Account", "계정"),
-    ("Accounts", "계정"),
     ("Actions", "동작"),
     ("Add a column", "칼럼 추가"),
     ("Attach pictures (up to {})", "이미지 첨부 (최대 {}개)"),
@@ -46,9 +46,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, 동영상으로 게시"),
     ("Global", "전체"),
     ("Handle or email", "핸들 또는 이메일"),
-    ("Help", "도움말"),
     ("Keys", "키"),
-    ("Language", "언어"),
     ("Link cards", "링크 카드"),
     ("Lists", "목록"),
     ("Log in to Bluesky", "Bluesky에 로그인"),
@@ -63,7 +61,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "아직 대화가 없습니다. 다른 사람의 프로필에서 m으로 시작하세요.",
     ),
     ("No notifications yet.", "아직 알림이 없습니다."),
-    ("No posts found.", "게시물을 찾을 수 없습니다."),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "팔로우한 계정의 게시물이 아직 없습니다. R을 눌러 새로고침하세요.",
@@ -74,25 +71,18 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Password", "비밀번호"),
     ("Picture cache", "이미지 캐시"),
     ("Pictures", "이미지"),
-    ("Posts", "게시물"),
     ("Profile", "프로필"),
     ("Quote @{}", "@{} 인용"),
     ("Reply to @{}", "@{}에게 답글"),
-    ("Search", "검색"),
     ("Search posts for:", "게시물 검색:"),
-    ("Search: {}", "검색: {}"),
     ("Search…", "검색…"),
     ("Service", "서비스"),
-    ("Settings", "설정"),
     (
         "Settings → Privacy and security → App passwords",
         "설정 → 개인정보 및 보안 → 앱 비밀번호",
     ),
-    ("Terminal too small", "터미널이 너무 작습니다"),
     ("The thread is empty.", "스레드가 비어 있습니다."),
-    ("Theme", "테마"),
     ("Theme picker", "테마 선택"),
-    ("Thread", "스레드"),
     ("Timeline", "타임라인"),
     ("Video service", "동영상 서비스"),
     ("Viewer", "뷰어"),
@@ -125,12 +115,10 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "BSKY_ 변수로 정한 설정은 유지",
     ),
-    ("accounts", "계정"),
     (
         "accounts: switch, add, log out",
         "계정: 전환, 추가, 로그아웃",
     ),
-    ("actions", "동작"),
     ("add", "추가"),
     (
         "add a column: a pinned feed, notifications…",
@@ -145,7 +133,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "아무 키나 누르면 닫힘"),
     ("apply", "적용"),
-    ("attach", "첨부"),
     (
         "attach pictures or a video / an avatar",
         "이미지·동영상 / 아바타 첨부",
@@ -277,11 +264,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "내 게시물 삭제"),
     ("deleting…", "삭제하는 중…"),
     ("do it", "실행"),
-    ("done", "완료"),
     ("download", "다운로드"),
     ("downloading…", "다운로드하는 중…"),
     ("edit profile", "프로필 편집"),
-    ("edit query", "검색어 편집"),
     ("edit your profile", "내 프로필 편집"),
     ("ended  r plays it again", "끝남  r 다시 재생"),
     ("enter apply  esc cancel", "enter 적용  esc 취소"),
@@ -364,7 +349,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("following", "팔로잉"),
     ("follows you", "나를 팔로우함"),
     ("go back to the theme you had", "원래 테마로 되돌리기"),
-    ("help", "도움말"),
     ("hidden", "숨김 파일"),
     ("i continue:", "i 계속:"),
     ("i write a message", "i 메시지 쓰기"),
@@ -376,7 +360,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "저장"),
     ("language: {}", "언어: {}"),
-    ("leave the search box", "검색창 나가기"),
     ("like / remove like", "좋아요 / 좋아요 취소"),
     ("like it", "좋아요"),
     ("like removed", "좋아요 취소됨"),
@@ -428,13 +411,11 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "more loads by itself near the end",
         "끝에 가까워지면 자동으로 더 불러옴",
     ),
-    ("move", "이동"),
     ("move five items", "5개씩 이동"),
     (
         "move the column left / right",
         "칼럼을 왼쪽 / 오른쪽으로 이동",
     ),
-    ("move the selection", "선택 이동"),
     (
         "move through the posts and replies",
         "게시물과 답글 사이 이동",
@@ -462,7 +443,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "다음 입력란 또는 이미지 대체 텍스트",
     ),
-    ("next tab", "다음 탭"),
     ("no account yet", "아직 계정 없음"),
     (
         "no folders here; space chooses this one",
@@ -487,7 +467,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "현재 @{}"),
     ("off", "끔"),
     ("on", "켬"),
-    ("open", "열기"),
     ("open / choose", "열기 / 선택"),
     ("open in browser", "브라우저에서 열기"),
     ("open it in the web browser", "웹 브라우저에서 열기"),
@@ -548,7 +527,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("pictures: {}", "이미지: {}"),
     ("play the video again", "동영상 다시 재생"),
     ("playing (no sound)", "재생 중 (소리 없음)"),
-    ("post", "게시"),
     ("post deleted", "게시물 삭제됨"),
     (
         "post keys act on the column's post",
@@ -556,8 +534,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "게시했습니다"),
     ("posts", "게시물"),
-    ("posts / accounts", "게시물 / 계정"),
-    ("press / or i to type", "/ 또는 i를 눌러 입력"),
     (
         "press y to block @{}, any other key to leave them be",
         "y를 누르면 @{} 차단, 다른 키는 취소",
@@ -586,7 +562,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "설정을 기본값으로 되돌리기",
     ),
-    ("quit", "종료"),
     ("quote it in a new post", "새 게시물에서 인용"),
     (
         "quote removed by the post's author",
@@ -647,13 +622,11 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("saved {}", "{} 저장됨"),
     ("saving…", "저장하는 중…"),
     ("scroll", "스크롤"),
-    ("search", "검색"),
     ("search posts or accounts", "게시물 또는 계정 검색"),
     (
         "search, then move through the results",
         "검색 후 결과 사이 이동",
     ),
-    ("search:", "검색:"),
     ("searching…", "검색하는 중…"),
     ("send", "보내기"),
     (
@@ -737,10 +710,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     (
         "the profile was changed elsewhere since the editor opened; press Esc and e to start from the current version",
         "편집기를 연 뒤 다른 곳에서 프로필이 변경되었습니다. Esc 후 e를 눌러 최신 버전에서 다시 시작하세요",
-    ),
-    (
-        "the search box has focus when you arrive",
-        "진입 시 검색창에 포커스",
     ),
     (
         "the session expired; log in again",
@@ -828,8 +797,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "이 동영상은 H.264가 아니므로(스트림 유형 0x{}) bsky에서 디코딩할 수 없습니다",
     ),
-    ("type in the search box again", "검색창에 다시 입력"),
-    ("type, then enter", "입력 후 enter"),
     ("unblock them", "차단 해제"),
     ("unblocked", "차단 해제됨"),
     ("unfollow", "언팔로우"),
@@ -845,7 +812,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("verified you", "님이 나를 인증했습니다"),
     ("video", "동영상"),
     ("video: {}", "동영상: {}"),
-    ("view", "보기"),
     ("view its pictures or video", "이미지 또는 동영상 보기"),
     (
         "view pictures or video, or open the link",

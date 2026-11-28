@@ -12,6 +12,8 @@
 //!
 //! `msky logout` removes a server's file.
 
+use terminal_kit::paths::write_private;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,10 +79,12 @@ impl Session {
 
 /// The config directory from the environment.
 pub(crate) fn config_dir() -> Result<PathBuf> {
-    if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
-        return Ok(PathBuf::from(dir));
-    }
-    dirs::config_dir().map(|d| d.join("msky")).ok_or_else(|| {
+    terminal_kit::paths::resolve_app_dir(
+        std::env::var_os(CONFIG_DIR_ENV).as_deref(),
+        dirs::config_dir().as_deref(),
+        "msky",
+    )
+    .ok_or_else(|| {
         Error::io("cannot determine the config directory")
             .with_hint(format!("set {CONFIG_DIR_ENV} to a writable directory"))
     })
@@ -497,50 +501,6 @@ fn file_stem(host: &str) -> String {
             }
         })
         .collect()
-}
-
-/// Write `data` to `path` so that a crash leaves either the old file or the
-/// new one, never a truncated one.
-fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    // The process id keeps two running copies of msky from writing the same
-    // temporary file, which on Windows would make one of the renames fail.
-    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let write = || -> std::io::Result<()> {
-        let mut file = open_private(&tmp)?;
-        file.write_all(data)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&tmp, path)
-    };
-    // The temporary file holds the token; it must not be left behind, and
-    // when it cannot be removed the error says where it is.
-    write().map_err(|e| match fs::remove_file(&tmp) {
-        Err(left) if left.kind() != std::io::ErrorKind::NotFound => std::io::Error::new(
-            e.kind(),
-            format!("{e}; {} is left behind: {left}", tmp.display()),
-        ),
-        _ => e,
-    })
-}
-
-#[cfg(unix)]
-fn open_private(path: &Path) -> std::io::Result<fs::File> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
-    // A leftover file keeps its old mode through open(); tighten it explicitly.
-    file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    Ok(file)
-}
-
-#[cfg(not(unix))]
-fn open_private(path: &Path) -> std::io::Result<fs::File> {
-    fs::File::create(path)
 }
 
 #[cfg(test)]

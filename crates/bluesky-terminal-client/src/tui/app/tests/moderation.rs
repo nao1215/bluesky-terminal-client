@@ -56,7 +56,7 @@ fn an_unmute_or_an_unblock_loads_the_timeline_again() {
 #[test]
 fn m_on_a_muted_accounts_profile_unmutes_and_says_so_there() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({
@@ -110,7 +110,7 @@ fn b_blocks_only_after_a_y_and_b_again_unblocks_at_once() {
     assert_eq!(app.timeline.items.len(), 1);
     assert_eq!(app.timeline.items[0].author.did, "did:plc:bob");
     // On their profile, B unblocks with the record it made, without a y.
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({
@@ -198,7 +198,7 @@ fn questions_asked_before_the_session_expired_are_called_off() {
 #[test]
 fn m_on_an_account_muted_by_a_list_mutes_it_yourself() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({

@@ -1,6 +1,18 @@
 //! Search results, profiles and the full-screen media viewer.
 use super::*;
 
+/// A single input line over the current list, near its top edge.
+pub(super) fn search_box(frame: &mut Frame, area: Rect, app: &App, th: &Theme) {
+    terminal_kit::view::draw_search_box(
+        frame,
+        area,
+        &app.search.input,
+        Some(app.search.accounts),
+        crate::i18n::current(),
+        th,
+    );
+}
+
 pub(super) fn thumbnails<'a>(s: &'a Status, ctx: &Ctx, pictures: bool) -> Vec<&'a str> {
     if !pictures || (!s.spoiler_text.is_empty() && !ctx.opened.contains(&s.id)) {
         return Vec::new();
@@ -33,50 +45,11 @@ pub(super) fn draw_browse(
     images: &mut Images,
     ctx: &Ctx,
 ) {
-    if app.tab == Tab::Search {
-        let [query, body] =
-            Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(area);
-        let title = format!(
-            " {} · {} ",
-            t("Search"),
-            t(if app.search.accounts {
-                n!("Accounts")
-            } else {
-                n!("Posts")
-            })
-        );
-        let block = Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(title)
-            .border_style(if app.search.editing {
-                ctx.t.accent()
-            } else {
-                ctx.t.dim()
-            });
-        let inner = block.inner(query);
-        frame.render_widget(block, query);
-        let input = app.search.input.layout(usize::from(inner.width.max(1)));
-        let line = input.lines.get(input.cursor.0).cloned().unwrap_or_default();
-        frame.render_widget(Paragraph::new(line), inner);
-        if app.search.editing {
-            frame.set_cursor_position((inner.x + input.cursor.1 as u16, inner.y));
-        }
-        if !app.search.accounts {
-            if !app.search.posts.loaded && app.search.posts.waiting.is_none() {
-                frame.render_widget(
-                    wrapped(t("type a query and press enter"), body.width).style(ctx.t.dim()),
-                    body,
-                );
-            } else {
-                draw_statuses(
-                    frame,
-                    body,
-                    &mut app.search.posts,
-                    n!("No posts found."),
-                    ctx,
-                    images,
-                );
-            }
+    if app.search_results() {
+        let body = area;
+        let empty = tf("No results for \"{}\"", &[&app.search.query]);
+        if !app.search.result_accounts {
+            draw_statuses(frame, body, &mut app.search.posts, &empty, ctx, images);
         } else {
             let list = &mut app.search.users;
             if list.items.is_empty() {
@@ -87,7 +60,7 @@ pub(super) fn draw_browse(
                     if list.waiting.is_some() {
                         n!("loading…")
                     } else {
-                        n!("No accounts found.")
+                        &empty
                     },
                     &ctx.t,
                 );

@@ -53,18 +53,16 @@ pub(crate) enum Tab {
     Local,
     Federated,
     Notifications,
-    Search,
     Profile,
     Chat,
 }
 
 impl Tab {
-    pub(crate) const ALL: [Tab; 7] = [
+    pub(crate) const ALL: [Tab; 6] = [
         Tab::Home,
         Tab::Local,
         Tab::Federated,
         Tab::Notifications,
-        Tab::Search,
         Tab::Profile,
         Tab::Chat,
     ];
@@ -75,7 +73,6 @@ impl Tab {
             Tab::Local => n!("Local"),
             Tab::Federated => n!("Federated"),
             Tab::Notifications => n!("Notifications"),
-            Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
             Tab::Chat => n!("Chat"),
         }
@@ -87,7 +84,7 @@ impl Tab {
             Tab::Home => Some(TimelineKind::Home),
             Tab::Local => Some(TimelineKind::Local),
             Tab::Federated => Some(TimelineKind::Public),
-            Tab::Notifications | Tab::Search | Tab::Profile | Tab::Chat => None,
+            Tab::Notifications | Tab::Profile | Tab::Chat => None,
         }
     }
 
@@ -399,7 +396,7 @@ impl App {
         let lang = settings
             .as_ref()
             .and_then(|s| s.language.as_deref())
-            .and_then(crate::i18n::Lang::from_code)
+            .and_then(crate::i18n::from_code)
             .unwrap_or(self.locale);
         crate::i18n::set(lang);
         let name = settings.as_ref().and_then(|s| s.theme.clone());
@@ -484,7 +481,6 @@ impl App {
     /// the server shows no visitor is not asked for without an account.
     fn load_tab(&mut self, tab: Tab, more: bool) -> Jobs {
         match tab {
-            Tab::Search => return self.run_search(more),
             Tab::Profile => return self.load_profile(more),
             Tab::Chat => return self.load_chat(more),
             _ => {}
@@ -519,6 +515,7 @@ impl App {
 
     /// Show `tab`, asking for its first page when it has none yet.
     fn show_tab(&mut self, tab: Tab) -> Jobs {
+        self.leave_search();
         self.tab = tab;
         self.threads.clear();
         if tab == Tab::Notifications {
@@ -526,10 +523,6 @@ impl App {
         }
         if tab == Tab::Chat {
             return self.load_chat(false);
-        }
-        if tab == Tab::Search {
-            self.search.editing = true;
-            return Vec::new();
         }
         if tab == Tab::Profile {
             self.profile = Profile::default();
@@ -563,14 +556,14 @@ impl App {
                 .get(self.deck.focus)
                 .and_then(|c| c.selected());
         }
+        if self.search_results() {
+            return if self.search.result_accounts {
+                None
+            } else {
+                self.search.posts.current().map(Status::shown)
+            };
+        }
         match self.tab {
-            Tab::Search => {
-                return if self.search.accounts {
-                    None
-                } else {
-                    self.search.posts.current().map(Status::shown)
-                };
-            }
             Tab::Profile => return self.profile.posts.current().map(Status::shown),
             Tab::Chat => {
                 return self
@@ -615,7 +608,7 @@ impl App {
         if self.in_deck() {
             return self.step_column(by);
         }
-        if matches!(self.tab, Tab::Search | Tab::Profile) {
+        if self.search_results() || self.tab == Tab::Profile {
             return self.browse_step(by);
         }
         let wants = match self.tab.kind() {
@@ -644,6 +637,11 @@ impl App {
 
     /// Ask for the view shown again: the thread on top, else the tab.
     fn refresh(&mut self) -> Jobs {
+        if self.search_results() && self.threads.is_empty() {
+            self.search.input = TextInput::single(&self.search.query);
+            self.search.accounts = self.search.result_accounts;
+            return self.run_search(false);
+        }
         self.invalidate_read_ahead();
         if let Some(id) = self.threads.last().map(|t| t.id.clone()) {
             let (seq, job) = self.job(Job::Thread { id });
@@ -909,7 +907,7 @@ impl App {
         if let Some(overlay) = self.overlay.take() {
             return self.overlay_key(overlay, key);
         }
-        if self.tab == Tab::Search && self.threads.is_empty() && self.search.editing {
+        if self.search.editing {
             return self.search_key(key);
         }
         if let Some(jobs) = self.chat_key(key) {
@@ -920,6 +918,10 @@ impl App {
 
     /// Text pasted: into the composer's field, when it is open.
     pub(crate) fn handle_paste(&mut self, text: &str) {
+        if self.overlay.is_none() && self.search.editing {
+            self.search.input.insert_str(text);
+            return;
+        }
         if self.overlay.is_none()
             && self.tab == Tab::Chat
             && let Some(o) = &mut self.chat.open
@@ -956,9 +958,6 @@ impl App {
             && r.sending.is_none()
         {
             r.comment.insert_str(text);
-        }
-        if self.overlay.is_none() && self.tab == Tab::Search && self.search.editing {
-            self.search.input.insert_str(text);
         }
         if let Some(Overlay::Compose(c)) = &mut self.overlay
             && c.sending.is_none()
@@ -1001,13 +1000,17 @@ impl App {
                 Vec::new()
             }
             KeyCode::Esc => {
+                if self.threads.is_empty() && self.search_results() {
+                    self.leave_search();
+                    return Vec::new();
+                }
                 if self.threads.is_empty() && self.tab == Tab::Profile {
                     self.tab = self.profile.back.take().unwrap_or(Tab::Home);
                 }
                 self.threads.pop();
                 Vec::new()
             }
-            KeyCode::Char(c @ '1'..='7') => {
+            KeyCode::Char(c @ '1'..='6') => {
                 let i = usize::from(c as u8 - b'1');
                 self.show_tab(Tab::ALL[i])
             }
@@ -1023,6 +1026,13 @@ impl App {
             KeyCode::Char('g') | KeyCode::Home => self.jump(false),
             KeyCode::Char('G') | KeyCode::End => self.jump(true),
             KeyCode::Char('R') | KeyCode::F(5) => self.refresh(),
+            KeyCode::Char('v')
+                if self.search_results()
+                    && self.search.result_accounts
+                    && self.threads.is_empty() =>
+            {
+                self.open_profile()
+            }
             KeyCode::Char('v') => self.open_thread(),
             KeyCode::Char('e') => self.edit_profile(),
             KeyCode::Char('m') => {
@@ -1035,18 +1045,10 @@ impl App {
             }
             KeyCode::Enter => self.open_profile(),
             KeyCode::Char('/') => {
-                self.tab = Tab::Search;
-                self.threads.clear();
+                self.search.input = TextInput::single(&self.search.input.text());
+                self.search.accounts = self.search.result_accounts;
                 self.search.editing = true;
                 Vec::new()
-            }
-            KeyCode::Char('i') if self.tab == Tab::Search => {
-                self.search.editing = true;
-                Vec::new()
-            }
-            KeyCode::Char('t') if self.tab == Tab::Search && self.threads.is_empty() => {
-                self.search.accounts = !self.search.accounts;
-                self.run_search(false)
             }
             KeyCode::Char(' ') => {
                 self.open_viewer();

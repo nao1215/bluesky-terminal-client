@@ -23,28 +23,4 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CRATE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-WORKSPACE_ROOT="$(cd -- "$CRATE_DIR/../.." && pwd)"
-
-if ! command -v atago >/dev/null 2>&1; then
-	echo "e2e: atago is not installed. Install it from https://github.com/nao1215/atago" >&2
-	echo "e2e: e.g. 'go install github.com/nao1215/atago@latest' (CI uses the release pinned in the workspace's .github/workflows/e2e.yml)" >&2
-	exit 127
-fi
-
-cd "$CRATE_DIR"
-
-echo "e2e: building bsky (cargo build --profile e2e --locked -p bluesky-terminal-client)..."
-cargo build --profile e2e --locked -p bluesky-terminal-client
-
-export PATH="$WORKSPACE_ROOT/target/e2e:$PATH"
-# bsky picks its language from LC_ALL, LC_MESSAGES or LANG, and the specs
-# expect the English text, so pin the locale here: CI and a checkout running
-# under ja_JP.UTF-8 (or any other locale) then see the same screens.
-export LANG=C.UTF-8
-export LC_ALL=C.UTF-8
-unset LC_MESSAGES
-
-echo "e2e: $(bsky --version)"
-echo "e2e: $(atago --version)"
-# Extra args (e.g. --filter X) go before the path so the flag parser sees them.
-atago run "$@" e2e/atago
+exec "$CRATE_DIR/../../scripts/e2e/run.sh" bluesky-terminal-client bsky "$CRATE_DIR" "$@"

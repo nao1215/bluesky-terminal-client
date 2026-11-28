@@ -1,143 +1,124 @@
 //! English and Japanese key help for the full-screen client.
-pub(super) const HELP: &[(&str, &str, &str)] = &[
+pub(super) const HELP: &[(&str, &str)] = &[
     (
-        "1…5 / tab",
-        "Home / Notifications / Profile / Search / Chat",
-        "ホーム / 通知 / プロフィール / 検索 / チャット",
+        "1…4 / tab",
+        terminal_kit::n!("Home / Notifications / Profile / Chat"),
     ),
-    ("j k / ↓ ↑", "move the selection", "選択を移動"),
-    ("g G / home end", "first / last note", "最初 / 最後のノート"),
+    ("j k / ↓ ↑", terminal_kit::n!("move the selection")),
+    ("g G / home end", terminal_kit::n!("first / last note")),
     (
         "pgdn pgup",
-        "move five notes; more loads near the end",
-        "5件移動・末尾近くで続きを取得",
+        terminal_kit::n!("move five notes; more loads near the end"),
     ),
-    ("R F5", "refresh", "再読み込み"),
+    ("R F5", terminal_kit::n!("refresh")),
     (
         "v / V / esc",
-        "open thread / quoted note / back",
-        "スレッド / 引用先 / 戻る",
+        terminal_kit::n!("open thread / quoted note / back"),
     ),
-    ("n / r", "new note / reply", "新規ノート / 返信"),
+    ("n / r", terminal_kit::n!("new note / reply")),
     (
         "ctrl+s",
-        "send note / message; save profile",
-        "投稿 / メッセージ送信・プロフィール保存",
+        terminal_kit::n!("send note / message; save profile"),
     ),
     (
         "ctrl+u / esc",
-        "clear line / cancel composer",
-        "行頭まで削除 / 投稿を中止",
+        terminal_kit::n!("clear line / cancel composer"),
     ),
-    (
-        "l",
-        "reaction / deletion request",
-        "リアクション / 取消要求",
-    ),
-    ("b", "repost", "リポスト"),
-    (
-        "c",
-        "copy nostr:nevent identifier",
-        "nostr:nevent 識別子をコピー",
-    ),
-    ("space", "open pictures / video", "画像 / 動画を開く"),
+    ("l", terminal_kit::n!("reaction / deletion request")),
+    ("b", terminal_kit::n!("repost")),
+    ("c", terminal_kit::n!("copy nostr:nevent identifier")),
+    ("space", terminal_kit::n!("open pictures / video")),
     (
         "h l / ← →",
-        "previous / next picture in viewer",
-        "画像ビューアで前 / 次の画像",
+        terminal_kit::n!("previous / next picture in viewer"),
     ),
-    ("s / T", "settings / themes", "設定 / テーマ"),
-    (
-        "j k / enter",
-        "choose a setting or theme",
-        "設定やテーマを選択・決定",
-    ),
-    ("x", "reset the selected setting", "選択中の設定を初期化"),
-    ("? / esc", "help / close", "ヘルプ / 閉じる"),
-    (
-        "enter / esc",
-        "author profile / back",
-        "作者プロフィール / 戻る",
-    ),
+    ("s / T", terminal_kit::n!("settings / themes")),
+    ("j k / enter", terminal_kit::n!("choose a setting or theme")),
+    ("x", terminal_kit::n!("reset the selected setting")),
+    ("? / esc", terminal_kit::n!("help / close")),
+    ("enter / esc", terminal_kit::n!("author profile / back")),
     (
         "/ / m / i",
-        "search / chat recipient / message",
-        "検索 / チャット宛先 / 入力",
-    ),
-    (". / A", "actions / accounts", "操作一覧 / アカウント"),
-    (
-        "e",
-        "edit own profile / reaction",
-        "自分のプロフィール編集 / リアクション",
+        terminal_kit::n!("search / chat recipient / message"),
     ),
     (
-        "Q / w",
-        "quote / reveal content warning",
-        "引用 / 閲覧注意を開く",
+        "Esc",
+        terminal_kit::n!("back to timeline from search results"),
     ),
+    (". / A", terminal_kit::n!("actions / accounts")),
+    ("e", terminal_kit::n!("edit own profile / reaction")),
+    ("Q / w", terminal_kit::n!("quote / reveal content warning")),
     (
         "ctrl+o / tab / ctrl+x",
-        "attach / alt text (shift+tab previous) / remove attachment",
-        "添付 / 代替テキスト（shift+tab 前） / 添付を除去",
+        terminal_kit::n!("attach / alt text (shift+tab previous) / remove attachment"),
     ),
-    ("ctrl+w", "edit content warning", "閲覧注意文を編集"),
+    ("ctrl+w", terminal_kit::n!("edit content warning")),
     (
         "D / f / M B / !",
-        "delete / follow / mute / public report (confirm)",
-        "削除 / フォロー / ミュート / 公開通報（確認あり）",
+        terminal_kit::n!("delete / follow / mute / public report (confirm)"),
     ),
     (
         "d / viewer r",
-        "save attachments / replay video",
-        "添付を保存 / 動画を再生",
+        terminal_kit::n!("save attachments / replay video"),
     ),
     (
         "+ / H L / < >",
-        "pin search / select column / reorder",
-        "検索を固定 / 列を選択 / 並べ替え",
+        terminal_kit::n!("pin search / select column / reorder"),
     ),
     (
         "I",
-        "publish configured DM relay list (confirm)",
-        "設定済みDMリレー一覧を公開（確認あり）",
+        terminal_kit::n!("publish configured DM relay list (confirm)"),
     ),
-    ("q ctrl+c", "quit", "終了"),
+    ("q ctrl+c", terminal_kit::n!("quit")),
 ];
 
 use super::app::{App, Overlay};
+pub(super) fn search_hints(app: &App) -> Option<Vec<(&'static str, &'static str)>> {
+    let lang =
+        terminal_kit::i18n::Lang::from_code(app.language).unwrap_or(terminal_kit::i18n::Lang::En);
+    if matches!(
+        app.extra.dialog,
+        Some(super::extras::Dialog::Input {
+            purpose: super::extras::Purpose::Search,
+            ..
+        })
+    ) {
+        return Some(terminal_kit::view::search_edit_hints(false, lang));
+    }
+    if app.searching()
+        && app.threads.is_empty()
+        && app.overlay.is_none()
+        && app.extra.dialog.is_none()
+    {
+        return Some(terminal_kit::view::search_result_hints(false, lang));
+    }
+    None
+}
+
 pub(super) fn hint(app: &App) -> &str {
     match app.overlay {
-        Some(Overlay::Compose { .. }) => app.t("ctrl+s send   esc cancel", "ctrl+s 送信   esc 中止"),
-        Some(Overlay::Themes { .. }) => app.t("j k preview   enter apply   esc cancel", "j k プレビュー   enter 適用   esc 中止"),
-        Some(Overlay::Settings(_)) => app.t("j k move   enter choose   x reset   esc close", "j k 移動   enter 選択   x 初期化   esc 閉じる"),
-        Some(Overlay::Languages(_)) => app.t("j k move   enter choose   esc close", "j k 移動   enter 選択   esc 閉じる"),
-        Some(Overlay::Pictures { .. }) => app.t("h l previous / next   d save   r replay   esc close", "h l 前 / 次   d 保存   r 再生   esc 閉じる"),
-        Some(Overlay::Help(_)) => app.t("j k scroll   esc close", "j k スクロール   esc 閉じる"),
-        None => app.t("? help   j k move   tab next tab   n post   r reply   l like   b repost   v thread   c copy   s settings   T themes   q quit", "? ヘルプ   j k 移動   tab タブ   n 投稿   r 返信   l リアクション   b リポスト   v スレッド   c コピー   s 設定   T テーマ   q 終了"),
+        Some(Overlay::Compose { .. }) => app.t("ctrl+s send   esc cancel"),
+        Some(Overlay::Themes { .. }) => app.t("j k preview   enter apply   esc cancel"),
+        Some(Overlay::Settings(_)) => app.t("j k move   enter choose   x reset   esc close"),
+        Some(Overlay::Languages(_)) => app.t("j k move   enter choose   esc close"),
+        Some(Overlay::Pictures { .. }) => app.t("h l previous / next   d save   r replay   esc close"),
+        Some(Overlay::Help(_)) => app.t("j k scroll   esc close"),
+        None => app.t("? help   / search   1–4 tabs   j k move   tab next tab   n post   r reply   l like   b repost   v thread   c copy   s settings   T themes   q quit"),
     }
 }
 
 pub(super) fn browser_ja(value: &str) -> &str {
-    match value {
-        "Attach pictures (up to {}) or a video" => "画像（最大 {} 枚）または動画を添付",
-        "Attach pictures (up to {})" => "画像を添付（最大 {} 枚）",
-        "enter opens the folder" => "enter でフォルダーを開く",
-        "no folders, pictures, or videos here" => "フォルダー・画像・動画はありません",
-        "enter choose  space mark  h up  . hidden  esc cancel" => {
-            "enter 選択  space マーク  h 親へ  . 隠しファイル  esc 中止"
-        }
-        _ => value,
-    }
+    crate::i18n::CATALOG.t(terminal_kit::i18n::Lang::Ja, value)
 }
 
-pub(super) const ACTIONS: &[(char, &str, &str)] = &[
-    ('r', "Reply", "返信"),
-    ('Q', "Quote", "引用"),
-    ('l', "Like / undo", "リアクション / 取消"),
-    ('b', "Repost / undo", "リポスト / 取消"),
-    ('f', "Follow / unfollow", "フォロー / 解除"),
-    ('M', "Mute / unmute", "ミュート / 解除"),
-    ('D', "Deletion request", "削除要求"),
-    ('!', "Public report", "公開通報"),
-    ('d', "Save attachments", "添付を保存"),
+pub(super) const ACTIONS: &[(char, &str)] = &[
+    ('r', terminal_kit::n!("Reply")),
+    ('Q', terminal_kit::n!("Quote")),
+    ('l', terminal_kit::n!("Like / undo")),
+    ('b', terminal_kit::n!("Repost / undo")),
+    ('f', terminal_kit::n!("Follow / unfollow")),
+    ('M', terminal_kit::n!("Mute / unmute")),
+    ('D', terminal_kit::n!("Deletion request")),
+    ('!', terminal_kit::n!("Public report")),
+    ('d', terminal_kit::n!("Save attachments")),
 ];

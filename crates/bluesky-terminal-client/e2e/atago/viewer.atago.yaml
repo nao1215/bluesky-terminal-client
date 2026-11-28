@@ -283,7 +283,7 @@ scenarios:
                 images:
                   contains: [{ width: 360, height: 203 }]
                 stable_for: 3s
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -346,7 +346,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "Watch this"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "@me.test"
             - send: s
@@ -383,7 +383,7 @@ scenarios:
                   count: 2
                   contains: [{ width: 220, height: 220 }]
                 stable_for: 1s
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -425,7 +425,7 @@ scenarios:
                 images:
                   contains: [{ width: 360, height: 203 }]
                 stable_for: 1s
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -1042,7 +1042,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "Read this article"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -1189,7 +1189,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "One photo"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -1292,7 +1292,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "One photo"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s

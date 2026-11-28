@@ -92,7 +92,7 @@ fn the_home_timeline_draws_its_tabs_status_and_keys() {
         "アリス 👩🏽‍💻 @alice · 2026-11-26",
         "おはよう 👨‍👩‍👧 🇯🇵",
         "☆ 5   ⟳ 1   ↩ 0",
-        "? help  j k move  tab next tab",
+        "? help  / search  j k move  tab next tab",
     ] {
         assert!(s.contains(want), "{want:?} not in\n{s}");
     }
@@ -276,7 +276,7 @@ fn the_scroll_keeps_the_selection_on_screen() {
 
 #[test]
 fn new_screens_draw_in_both_languages_and_small_terminals() {
-    for lang in crate::i18n::Lang::ALL {
+    for lang in crate::i18n::ALL {
         crate::i18n::set(lang);
         let mut app = app_with(vec![status("1", "<script>bad</script> hello")]);
         app.accounts = vec![app.session.clone().unwrap()];
@@ -286,8 +286,9 @@ fn new_screens_draw_in_both_languages_and_small_terminals() {
             ..Default::default()
         });
         app.profile.posts.loaded = true;
-        for tab in [Tab::Search, Tab::Profile] {
+        for tab in [Tab::Home, Tab::Profile] {
             app.tab = tab;
+            app.search.editing = tab == Tab::Home;
             for (w, h) in [(120, 40), (24, 8), (10, 4)] {
                 let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
                 term.draw(|f| draw(f, &mut app)).unwrap();
@@ -333,11 +334,11 @@ fn search_scrolls_long_input_and_places_the_cursor_at_the_edit_position() {
     app.handle_paste(&"a".repeat(60));
     let mut term = Terminal::new(TestBackend::new(24, 12)).unwrap();
     term.draw(|f| draw(f, &mut app)).unwrap();
-    // The bordered field is 22 cells wide; the cursor is on the third line.
-    assert_eq!(term.get_cursor_position().unwrap(), (17, 2).into());
+    // The common popup has an 18-cell input; the last segment holds six characters.
+    assert_eq!(term.get_cursor_position().unwrap(), (9, 3).into());
     app.handle_key(KeyEvent::from(KeyCode::Home));
     term.draw(|f| draw(f, &mut app)).unwrap();
-    assert_eq!(term.get_cursor_position().unwrap(), (1, 2).into());
+    assert_eq!(term.get_cursor_position().unwrap(), (3, 3).into());
 }
 
 #[test]
@@ -426,7 +427,7 @@ fn custom_emoji_resolve_from_the_entity_and_fall_back_without_graphics() {
 fn stage_four_screens_fit_in_both_languages() {
     use crate::api::types::{AccountSource, Conversation};
     use crate::tui::worker::Event;
-    for lang in crate::i18n::Lang::ALL {
+    for lang in crate::i18n::ALL {
         crate::i18n::set(lang);
         for width in [40, 80, 160] {
             let mut app = app_with(vec![status("s", "body")]);
@@ -489,4 +490,109 @@ fn link_cards_follow_the_content_warning_and_open_only_on_explicit_key() {
     assert!(
         matches!(&app.handle_key(KeyEvent::new(KeyCode::Char('O'),KeyModifiers::NONE))[0].1,crate::tui::worker::Job::OpenLink {url,..} if url=="https://example.test/article")
     );
+}
+
+#[test]
+fn search_box_results_title_empty_message_and_cancel_in_both_languages() {
+    use crate::i18n::Lang;
+    for (lang, title, hint, results, back, empty) in [
+        (
+            Lang::En,
+            "Search · Posts",
+            "Enter search · Ctrl+T posts/accounts · Esc cancel",
+            "1 Search: rust",
+            "Esc back to timeline",
+            "No results for \"rust\"",
+        ),
+        (
+            Lang::Ja,
+            "検索 · 投稿",
+            "Enter で検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
+            "1 検索: rust",
+            "Esc タイムラインに戻る",
+            "「rust」の検索結果はありません",
+        ),
+    ] {
+        crate::i18n::set(lang);
+        let mut app = app_with(vec![status("1", "Original timeline")]);
+        let before = screen(&mut app, 120, 30);
+        press(&mut app, '/');
+        let opened = screen(&mut app, 120, 30);
+        assert!(opened.contains(title), "{opened}");
+        assert!(opened.contains(hint), "{opened}");
+        assert_eq!(opened.matches(hint).count(), 1, "{opened}");
+        assert!(opened.lines().rev().take(5).any(|line| line.contains(hint)));
+        assert!(opened.contains('╭') && opened.contains('╰'), "{opened}");
+        app.handle_paste("rust");
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(screen(&mut app, 120, 30), before);
+        press(&mut app, '/');
+        let seq = app.handle_key(KeyEvent::from(KeyCode::Enter))[0].0;
+        app.handle_answer(
+            seq,
+            Event::Search {
+                next: None,
+                result: Ok(crate::tui::worker::SearchPage {
+                    posts: Vec::new(),
+                    accounts: Vec::new(),
+                    next: None,
+                }),
+            },
+        );
+        let shown = screen(&mut app, 120, 30);
+        for text in [results, back, empty] {
+            assert!(shown.contains(text), "{text}: {shown}");
+        }
+        assert!(!shown.contains("Original timeline"));
+        assert!(!shown.contains(title));
+        let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let cell = &term.backend().buffer()[(1, 0)];
+        assert_eq!(cell.fg, app.theme.selected().fg.unwrap());
+        assert!(cell.modifier.contains(app.theme.selected().add_modifier));
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(screen(&mut app, 120, 30), before);
+    }
+    crate::i18n::set(Lang::En);
+}
+
+#[test]
+fn cancel_search_box_preserves_scroll_at_the_bottom_of_a_short_screen() {
+    let mut app = app_with(
+        (0..20)
+            .map(|i| status(&i.to_string(), "post body"))
+            .collect(),
+    );
+    app.timelines[0].selected = 19;
+    let before = screen(&mut app, 80, 12);
+    let offset = app.timelines[0].offset;
+    press(&mut app, '/');
+    screen(&mut app, 80, 12);
+    app.handle_key(KeyEvent::from(KeyCode::Esc));
+    assert_eq!(app.timelines[0].offset, offset);
+    assert_eq!(screen(&mut app, 80, 12), before);
+}
+
+#[test]
+fn search_hints_share_labels_order_and_one_account_profile_entry() {
+    for lang in [crate::i18n::Lang::En, crate::i18n::Lang::Ja] {
+        crate::i18n::set(lang);
+        for accounts in [false, true] {
+            let mut app = app_with(vec![]);
+            app.search.back = Some(app.tab);
+            app.search.tab = app.tab;
+            app.search.result_accounts = accounts;
+            let expected = terminal_kit::view::search_result_hints(accounts, lang);
+            assert_eq!(crate::tui::keys::hints(&app), expected);
+            let rendered = screen(&mut app, 160, 24);
+            let hint = terminal_kit::view::hint_lines(&expected, 160, &app.theme)
+                .into_iter()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>();
+            for line in hint {
+                assert!(rendered.contains(line.trim_end()), "{rendered}");
+            }
+        }
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
 }

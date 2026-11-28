@@ -54,7 +54,7 @@ Run `nstr` without a command in an interactive terminal. With no configuration f
 
 | Key | Action |
 |---|---|
-| `1` … `5` | Home, Notifications, Profile, Search, Chat |
+| `1` … `4` | Home, Notifications, Profile, Chat |
 | `tab` `shift+tab` | Next or previous tab |
 | `j` `k` `↓` `↑` | Move the selection |
 | `g` `G` `home` `end` | First or last loaded note |
@@ -76,7 +76,8 @@ Run `nstr` without a command in an interactive terminal. With no configuration f
 | `?` | Help; `j` `k` scroll and Esc closes |
 | `q` `ctrl+c` | Quit; `q` closes the picture viewer or help first |
 | `enter` | Open the selected author’s profile |
-| `/` | Enter a search query; Enter submits it |
+| `/` | Open the search box; Enter searches; Esc cancels |
+| `Esc` in search results | Return to the previous timeline and selection |
 | `m` / `i` | Choose a chat recipient / compose a message; Ctrl+S sends (Ctrl+Enter also works) |
 | `I` | Publish the configured DM relay list, with confirmation |
 | `V` | Open the quoted note; quoted content warnings remain folded |
@@ -89,6 +90,8 @@ Run `nstr` without a command in an interactive terminal. With no configuration f
 | `A` | Saved accounts; Enter switches, `a` adds `NAME JSON`, `x` requests removal |
 | `+` / `H` `L` / `<` `>` / `x` | Pin the view, focus a column, reorder columns, remove with confirmation |
 | `d` | Save attachments under the configuration directory’s `downloads/` folder |
+
+Press `/` on a list to open a bordered Search box above it. Enter searches for posts by text or hashtag and shows the results in the timeline area with the title `Search: <query>`. Results support the same navigation and post actions as the timeline, including loading more near the end. Esc returns to the previous list and selected note without fetching it again. The box remembers the last query, and Esc in the box cancels without changing the list. An empty search shows `No results for "<query>"`; a failed search keeps the previous content and shows the error in the status line. The Search tab has been removed. `+` still pins a search as a column.
 
 A thread shows the selected note, up to 32 NIP-10 ancestors and up to eight rounds of replies returned by the configured relays. Replies preserve root and reply references and tag the author and conversation participants. The composer sends only on Ctrl+S; Enter inserts a newline. Writes use the configured key file or bunker, and a failed send keeps the draft. Reactions and reposts appear immediately and are taken back locally if no relay accepts them; the client also reads existing reactions and reposts from relays. Cancellation publishes kind 5. A timeout can still leave a relay's acceptance unknown.
 

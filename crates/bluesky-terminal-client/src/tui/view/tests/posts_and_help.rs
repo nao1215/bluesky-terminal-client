@@ -270,26 +270,6 @@ fn half_width_katakana_with_sound_marks_wraps_without_losing_any() {
     }
 }
 
-/// Where each update of `prev` to `next` lands on a terminal that moves
-/// the cursor on by a character's width, as ratatui's crossterm backend
-/// writes them: a cell right after the last one written is written where
-/// the cursor is, without moving it there.
-fn landed(prev: &ratatui::buffer::Buffer, next: &ratatui::buffer::Buffer) -> Vec<(u16, u16, u16)> {
-    let mut out = Vec::new();
-    let mut last: Option<(u16, u16)> = None;
-    let mut cursor = 0;
-    for (x, y, cell) in prev.diff(next) {
-        let at = match last {
-            Some((lx, ly)) if ly == y && x == lx + 1 => cursor,
-            _ => x,
-        };
-        out.push((x, y, at));
-        cursor = at + (cell.symbol().width() as u16).max(1);
-        last = Some((x, y));
-    }
-    out
-}
-
 // A character with VS16 (🏛️, ❤️) is two cells wide. ratatui writes the
 // cell after it on its own, right after it, so the terminal would put
 // that cell and the rest of the line one cell to the right of where
@@ -314,9 +294,8 @@ fn the_cells_after_a_vs16_emoji_land_where_they_are_meant_to() {
     for c in prev.content.iter_mut() {
         c.set_symbol("x");
     }
-    let wrong: Vec<_> = landed(&prev, &next)
-        .into_iter()
-        .filter(|(x, _, at)| x != at)
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:?}");
+    let actual = terminal_kit::test_support::screen::render_diff(&prev, &next).unwrap();
+    for (actual, expected) in actual.content.iter().zip(&next.content) {
+        assert_eq!(actual.symbol(), expected.symbol());
+    }
 }

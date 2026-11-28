@@ -90,7 +90,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s

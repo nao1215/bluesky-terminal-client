@@ -47,7 +47,7 @@ def start(work, mock, count=100, delay=0):
 
 def first_post(mock, binary, terminal_ms, server_ms):
     client = "MSTDN" if "mastodon" in str(mock) else "NSTR"
-    with tempfile.TemporaryDirectory(prefix="stc-bench-") as directory:
+    with tempfile.TemporaryDirectory(prefix="stc-bench-", ignore_cleanup_errors=True) as directory:
         work = Path(directory)
         try:
             start(work, mock, 1, server_ms)

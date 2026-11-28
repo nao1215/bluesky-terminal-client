@@ -28,23 +28,24 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 
 ## Full-screen client
 
-`mstdn` opens seven tabs: Home, Local, Federated, Notifications, Search, Profile and Chat, as the account in use or, without one, as a visitor. Visitors can read Local, Federated, hashtag searches and public profiles. `--host` picks the server as it does for the commands.
+`mstdn` opens six tabs: Home, Local, Federated, Notifications, Profile and Chat, as the account in use or, without one, as a visitor. Visitors can read Local, Federated, hashtag searches and public profiles. `--host` picks the server as it does for the commands.
 
 | Key | What it does |
 |---|---|
-| `1`-`7`, `tab` | The tabs |
+| `1`-`6`, `tab` | The tabs |
 | `j` `k`, `g` `G`, `pgdn` `pgup` | Move; the next page loads near the end |
 | `v` | The thread of the post, with its replies |
 | `enter` | The selected post author or search account in Profile; `esc` returns |
-| `5`, `/` | Search; `t` switches posts and accounts, `ctrl+t` while typing, `enter` searches |
-| `6` | The account in use and its posts |
+| `/` | Open the search box; `ctrl+t` switches posts and accounts, `enter` searches, `esc` cancels |
+| `esc` on search results | Return to the previous timeline with its selection and scroll position |
+| `5` | The account in use and its posts |
 | `e` on your own Profile | Edit display name, bio, four profile fields, locked, bot and discoverable; `tab` moves, `space` toggles flags, `ctrl+o` chooses avatar or header, `ctrl+x` clears a chosen picture, `ctrl+s` saves, `esc` cancels |
 | `Q` | Quote the selected post when the server exposes the quote API; `ctrl+s` sends |
 | `ctrl+q` in the composer | Cycle quote approval between the account default, anyone, followers and only yourself when the server exposes the quote API |
 | `+` on Home | Add a list, followed or typed hashtag, Notifications or search beside Home |
 | `H` `L`, left/right | Focus the previous or next column; `<` `>` move the column |
 | `x` then `y` | Close the focused column; another key keeps it |
-| `7`, `m` on a profile | Direct conversations, or a new direct message to that account |
+| `6`, `m` on a profile | Direct conversations, or a new direct message to that account |
 | `enter`, `i` in Chat | Open a conversation and mark it read, then `i` writes and `enter` sends; `esc` stops writing or returns to the conversation list |
 | `space` | Pictures and videos full screen; `h` `l` or arrows change files, `r` replays video, `esc` closes |
 | `d` | Save the post files in the download folder |
@@ -68,7 +69,7 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 
 Pictures and video thumbnails are drawn in the lists with kitty graphics, sixel or iTerm2 inline images, detected from the terminal. `space` opens the original pictures and plays MP4/H.264 videos without sound. Other codecs show a reason; `d` saves the files and `o` opens the post. On a terminal without graphics, the files and their alt text appear as text. A content warning hides its pictures until `w` opens it. Custom emoji in posts, names and notifications use their supplied pictures, with `:shortcode:` as the fallback on terminals without graphics.
 
-Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for writes still on their way.
+Search opens a bordered box over the current list and keeps the last query. Enter replaces the timeline area with results under `Search: <query>`; Esc returns to the previous list without fetching it again. Ctrl+T in the box switches posts and accounts. Enter or `v` on an account opens its profile; Esc returns to the results. Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for writes still on their way.
 
 Favourites, boosts, follows, mutes and blocks show their new state immediately and restore it if the server refuses the write. Account actions read the relationship before the first toggle; the resulting state appears in the status line, the profile and the actions menu. Mute, block, deletion and reports require `y`; any other answer sends nothing. Deletion removes the post from the lists only after the server accepts it. Reports go to the current server's moderators and are not forwarded to another server.
 

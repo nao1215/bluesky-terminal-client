@@ -440,7 +440,7 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
 
 /// Print `v` as one line of JSON.
 pub(crate) fn json_line(out: &mut dyn Write, v: &Value) -> Result<()> {
-    writeln!(out, "{v}").map_err(write_err)
+    terminal_kit::output::write_json_line(out, &v.to_string()).map_err(write_err)
 }
 
 fn write_err(e: io::Error) -> Error {
@@ -451,7 +451,7 @@ fn write_err(e: io::Error) -> Error {
 }
 
 pub(crate) fn text(out: &mut dyn Write, s: &str) -> Result<()> {
-    out.write_all(s.as_bytes()).map_err(write_err)
+    terminal_kit::output::write_text(out, s).map_err(write_err)
 }
 
 /// Pages of `nsid` until `limit` items of `field` have come, or there are

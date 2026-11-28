@@ -5,7 +5,10 @@ use crate::tui::worker::ColumnPage;
 
 impl App {
     pub(crate) fn in_deck(&self) -> bool {
-        self.tab == Tab::Home && self.threads.is_empty() && !self.deck.columns.is_empty()
+        self.tab == Tab::Home
+            && !self.search_results()
+            && self.threads.is_empty()
+            && !self.deck.columns.is_empty()
     }
     fn deck_key(&self) -> Option<String> {
         self.session

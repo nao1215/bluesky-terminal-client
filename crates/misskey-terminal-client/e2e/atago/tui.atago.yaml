@@ -102,7 +102,7 @@ scenarios:
           session:
             - expect_screen:
                 contains:
-                  - "1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
+                  - "1 Home   2 Local   3 Global   4 Notifications   5 Profile   6 Chat"
                   - "4 Notifications"
                   - "@me@127.0.0.1:${api.port}"
                   - "アリス 👩🏽‍💻 @alice · 2026-11-26 10:00"
@@ -162,7 +162,7 @@ scenarios:
                 contains: "Gus 🐈‍⬛ @gus reacted :blobcat: to your note"
             - send: "?"
             - expect_screen:
-                contains: ["Keys", "1 2 3 4 5 6 7"]
+                contains: ["Keys", "1 2 3 4 5 6"]
             - send: { key: pagedown }
             - expect_screen:
                 contains: "show / hide the text behind a content"
@@ -648,7 +648,7 @@ scenarios:
             - send: "1"
             - expect_screen:
                 contains: ["見て", "🏛️ 4"]
-                not_contains: ["44", "22", "reacted"]
+                not_contains: [" 44", " 22", "4 4", "reacted"]
                 stable_for: 500ms
             - send: q
       - assert:
@@ -691,7 +691,7 @@ scenarios:
           timeout: 20s
           session:
             - expect_screen:
-                contains: "1 Home   2 Local   3 Global   4 Notifications   5 Search   6 Profile   7 Chat"
+                contains: "1 Home   2 Local   3 Global   4 Notifications   5 Profile   6 Chat"
                 not_contains: ["Error", "not a tab"]
             - send: s
             - expect_screen:
