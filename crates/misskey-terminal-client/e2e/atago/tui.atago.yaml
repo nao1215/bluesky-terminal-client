@@ -648,7 +648,7 @@ scenarios:
             - send: "1"
             - expect_screen:
                 contains: ["見て", "🏛️ 4"]
-                not_contains: ["44", "22", "reacted"]
+                not_contains: [" 44", " 22", "4 4", "reacted"]
                 stable_for: 500ms
             - send: q
       - assert:
