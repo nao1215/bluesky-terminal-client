@@ -579,9 +579,9 @@ dependencies = [
 
 [[package]]
 name = "data-encoding"
-version = "2.10.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
+checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "deltae"
@@ -1306,7 +1306,7 @@ dependencies = [
  "ecdsa",
  "elliptic-curve",
  "primeorder",
- "sha2 0.11.2",
+ "sha2 0.11.1",
  "signature",
  "wnaf",
 ]
@@ -1428,15 +1428,17 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
+ "crossterm",
  "dirs",
  "getrandom 0.4.3",
  "image",
  "jiff",
  "proptest",
+ "ratatui",
  "rstest",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "terminal-kit",
  "unicode-segmentation",
@@ -2659,9 +2661,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.2"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0e5c7d67bc53f435386b2130fdc900488c5703770f6d8a4633060e34288a27"
+checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",

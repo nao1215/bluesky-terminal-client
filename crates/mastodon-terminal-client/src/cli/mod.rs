@@ -8,9 +8,7 @@
 pub(crate) mod format;
 mod post;
 
-#[cfg(test)]
-pub(crate) use post::counted;
-pub(crate) use post::{PostArgs, Visibility};
+pub(crate) use post::{PostArgs, Visibility, counted};
 
 use std::collections::HashSet;
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -204,7 +202,7 @@ pub(crate) enum TimelineKind {
 
 impl TimelineKind {
     /// The API path, and the query that says which part of it.
-    fn path(self) -> (&'static str, &'static [(&'static str, &'static str)]) {
+    pub(crate) fn path(self) -> (&'static str, &'static [(&'static str, &'static str)]) {
         match self {
             TimelineKind::Home => ("v1/timelines/home", &[]),
             TimelineKind::Local => ("v1/timelines/public", &[("local", "true")]),
@@ -213,7 +211,7 @@ impl TimelineKind {
     }
 
     /// Whether it is an account's: the server shows it to no visitor.
-    fn needs_login(self) -> bool {
+    pub(crate) fn needs_login(self) -> bool {
         self == TimelineKind::Home
     }
 }
@@ -294,7 +292,7 @@ impl Ctx {
 
     /// The account saved for the server at `origin`. A token is only ever
     /// sent to the server that gave it, scheme and port included.
-    fn session(&self, origin: &str) -> Result<Option<Session>> {
+    pub(crate) fn session(&self, origin: &str) -> Result<Option<Session>> {
         if let Some(token) = &self.env_token
             && origin == self.origin
         {

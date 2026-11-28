@@ -466,13 +466,15 @@ scenarios:
           - { method: GET, path: /img/t.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
     steps:
       - *session
-      # Stands in for the browser: it writes down every URL it is given.
+      # Each opener hands its URL to the session through a FIFO; spawning a browser does not wait for it to write or exit.
+      - run:
+          command: mkfifo opened.fifo
       - fixture:
           file: opener.sh
           mode: "0755"
           content: |
             #!/bin/sh
-            printf '%s\n' "$@" >> "$(dirname "$0")/opened.txt"
+            printf '%s\n' "$@" > "$(dirname "$0")/opened.fifo"
       - pty:
           command: bsky
           graphics: kitty
@@ -490,11 +492,15 @@ scenarios:
             - send: " "
             - expect_screen:
                 contains: "opened https://example.com/article?a=1&b=2"
+            # EOF acknowledges the complete write before the next opener can start.
+            - &record_opened
+              exec: sh -c 'cat opened.fifo >> opened.txt'
             # Pictures: space shows them, and o opens the link instead.
             - send: j
             - send: o
             - expect_screen:
                 contains: "opened https://example.com/photo-page"
+            - *record_opened
             - send: j
             - send: " "
             - expect_screen:

@@ -2037,24 +2037,14 @@ scenarios:
   # refresh token works only once, so one of them refreshes and the others
   # take the new token instead of refreshing with the spent one.
   - name: loads that find the token expired together refresh it once
-    mock_servers:
+    # The barrier guarantees both reads used the old token; a delay cannot guarantee their scheduling order.
+    services:
       - name: api
-        routes:
-          - method: GET
-            path: /xrpc/app.bsky.feed.getTimeline
-            status: 400
-            delay: 300ms
-            json: { error: "ExpiredToken", message: "Token has expired" }
-          - method: GET
-            path: /xrpc/app.bsky.notification.listNotifications
-            status: 400
-            delay: 300ms
-            json: { error: "ExpiredToken", message: "Token has expired" }
-          - method: POST
-            path: /xrpc/com.atproto.server.refreshSession
-            json: { did: "did:plc:me", handle: "me.test", accessJwt: "acc-2", refreshJwt: "ref-2" }
+        command: python3 "${specdir}/testdata/refresh_server.py"
+        # The server writes the account file with its port before this file.
+        ready:
+          file: ready.txt
     steps:
-      - *session
       - pty:
           command: bsky
           graphics: kitty
@@ -2063,23 +2053,29 @@ scenarios:
           env: *env
           timeout: 20s
           session:
+            # The timeline can finish before notifications; neither read may be abandoned by q.
             - expect_screen:
-                contains: "ExpiredToken: Token has expired"
+                contains: "No posts from accounts you follow yet"
+                not_contains: "loading…"
+            - send: "4"
+            - expect_screen:
+                contains: "No notifications yet."
+                not_contains: "loading…"
             - send: q
       - assert:
           exit_code: 0
       - assert:
-          mock:
-            name: api
-            path: /xrpc/com.atproto.server.refreshSession
-            count: 1
-            header: { name: Authorization, equals: "Bearer ref" }
+          file:
+            path: refresh.log
+            equals: "Bearer ref\n"
       - assert:
-          mock:
-            name: api
-            path: /xrpc/app.bsky.notification.listNotifications
-            count: 2
-            header: { name: Authorization, equals: "Bearer acc-2" }
+          file:
+            path: timeline.log
+            equals: "Bearer acc\nBearer acc-2\n"
+      - assert:
+          file:
+            path: notifications.log
+            equals: "Bearer acc\nBearer acc-2\n"
       - assert:
           file:
             path: cfg/accounts/did_plc_me.json
