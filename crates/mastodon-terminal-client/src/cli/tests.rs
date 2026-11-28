@@ -621,8 +621,8 @@ fn download_saves_the_files_of_a_post() {
     assert_eq!(lines[0]["postId"], "88");
     assert_eq!(lines[0]["type"], "image");
     assert!(
-        terminal_kit::json::missing(
-            terminal_kit::json::SAVED,
+        crate::json_keys::missing(
+            crate::json_keys::SAVED,
             &lines[0]
                 .as_object()
                 .unwrap()

@@ -5,8 +5,7 @@
 //! are drawn in, reads key events (emoji included on Windows), puts text in
 //! the terminal's clipboard, names the colors a screen is drawn in, checks
 //! the terminal before the UI starts, takes the screen over and gives it
-//! back, waits for the writes still on their way when the user quits, and
-//! names the keys of the JSON the commands print.
+//! back, and waits for the writes still on their way when the user quits.
 //!
 //! - [`text`]: display width, wrapping and truncation by grapheme cluster.
 //! - [`input`]: a text field whose cursor steps over whole graphemes.
@@ -20,14 +19,18 @@
 //!   and the terminal put back.
 //! - [`clock`]: timestamps as local time.
 //! - [`inflight`]: the jobs on their way, waited for before quitting.
-//! - [`json`]: the keys every client prints with `--json`.
+
+// Every item another crate can reach says what it is for: the clients read
+// it from rustdoc, and an undocumented addition is the first sign of API
+// that nobody asked for. It is here rather than in Cargo.toml because a
+// package that takes the workspace's lints cannot add its own there.
+#![deny(missing_docs)]
 
 pub mod clipboard;
 pub mod clock;
 pub mod events;
 pub mod inflight;
 pub mod input;
-pub mod json;
 pub mod scale;
 pub mod screen;
 pub mod terminal;

@@ -4,7 +4,7 @@ With `--json`, bsky, msky and mstdn print one JSON object per line: one per post
 
 Every key is camelCase. Times are the server's own ISO 8601 strings. A list is read page by page until `-n` items have come; no cursor is printed, so every line is one item.
 
-`terminal_kit::json` holds the key lists below, and each client's tests check what it prints against them.
+`doc/json_keys.rs` holds the key lists below, and each client's tests include it and check what they print against them.
 
 ## Post
 

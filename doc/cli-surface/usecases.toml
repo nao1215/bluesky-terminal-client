@@ -1,0 +1,204 @@
+# What each command, alias and flag in <client>.txt is for, and what would
+# happen without it. scripts/rules/cli.py fails a pull request that adds one
+# without both: a flag is added for a use someone has (an ego search,
+# debimate's announcements), not because it might be handy. Taking one away
+# always passes; remove its entry with it.
+#
+# The empty entries were there before this file was; fill one in when its
+# use is known.
+
+[bsky]
+"--account (-a)" = { usecase = "", without = "" }
+"--json" = { usecase = "the imozuru research skills save search results as JSON lines for their sources", without = "scripts would have to parse the text meant for people" }
+"--raw" = { usecase = "a script written against bsky 0.15.0 --json, which printed the server's own objects, keeps working by switching the flag", without = "those scripts would break on the new --json shape with no way to get the AppView's objects (cid, labels, embeds as sent) from bsky" }
+"--service" = { usecase = "", without = "" }
+"accounts" = { usecase = "", without = "" }
+"app-passwords" = { usecase = "", without = "" }
+"app-passwords add" = { usecase = "", without = "" }
+"app-passwords add --privileged" = { usecase = "", without = "" }
+"app-passwords revoke" = { usecase = "", without = "" }
+"author" = { usecase = "", without = "" }
+"author --download" = { usecase = "", without = "" }
+"author --filter" = { usecase = "", without = "" }
+"author --limit (-n)" = { usecase = "", without = "" }
+"author --reposts" = { usecase = "", without = "" }
+"block" = { usecase = "", without = "" }
+"blocks" = { usecase = "", without = "" }
+"blocks --limit (-n)" = { usecase = "", without = "" }
+"chat" = { usecase = "", without = "" }
+"chat --limit (-n)" = { usecase = "", without = "" }
+"delete" = { usecase = "", without = "" }
+"download" = { usecase = "", without = "" }
+"download --output (-o)" = { usecase = "", without = "" }
+"feed" = { usecase = "", without = "" }
+"feed --limit (-n)" = { usecase = "", without = "" }
+"follow" = { usecase = "", without = "" }
+"followers" = { usecase = "", without = "" }
+"followers --limit (-n)" = { usecase = "", without = "" }
+"follows" = { usecase = "", without = "" }
+"follows --limit (-n)" = { usecase = "", without = "" }
+"like" = { usecase = "", without = "" }
+"likes" = { usecase = "", without = "" }
+"likes --limit (-n)" = { usecase = "", without = "" }
+"list" = { usecase = "", without = "" }
+"list --limit (-n)" = { usecase = "", without = "" }
+"lists" = { usecase = "", without = "" }
+"lists --limit (-n)" = { usecase = "", without = "" }
+"login" = { usecase = "debimate's bsky-announce workflow logs the account in from its secrets before posting new articles", without = "the workflow could not log in, and announcements would be posted by hand" }
+"login --password-stdin" = { usecase = "debimate's bsky-announce workflow pipes the app password from a secret", without = "the password would be on the command line, where other processes and logs see it" }
+"logout" = { usecase = "", without = "" }
+"logout --all" = { usecase = "", without = "" }
+"mute" = { usecase = "", without = "" }
+"mutes" = { usecase = "", without = "" }
+"mutes --limit (-n)" = { usecase = "", without = "" }
+"notifications" = { usecase = "", without = "" }
+"notifications --limit (-n)" = { usecase = "", without = "" }
+"notifications --seen" = { usecase = "", without = "" }
+"notifications [alias notif]" = { usecase = "", without = "" }
+"post" = { usecase = "debimate's scripts/bsky_announce.py posts each new article", without = "new articles would be announced by hand" }
+"post --alt" = { usecase = "", without = "" }
+"post --image" = { usecase = "", without = "" }
+"post --no-card" = { usecase = "", without = "" }
+"post --quote" = { usecase = "", without = "" }
+"post --reply" = { usecase = "", without = "" }
+"post --video" = { usecase = "", without = "" }
+"profile" = { usecase = "", without = "" }
+"report" = { usecase = "", without = "" }
+"report --comment" = { usecase = "", without = "" }
+"report --reason" = { usecase = "", without = "" }
+"repost" = { usecase = "", without = "" }
+"reposts" = { usecase = "", without = "" }
+"reposts --limit (-n)" = { usecase = "", without = "" }
+"search" = { usecase = "the imozuru research skills collect what people write about a person (`bsky search NAME`)", without = "mentions would be read on bsky.app by hand, with nothing saved to cite" }
+"search --accounts" = { usecase = "the imozuru research skills find a person's account by name", without = "the account would be looked up on bsky.app by hand" }
+"search --limit (-n)" = { usecase = "the imozuru research skills read up to 100 posts in one run (`-n 100`)", without = "a search would stop at the first page" }
+"thread" = { usecase = "", without = "" }
+"timeline" = { usecase = "", without = "" }
+"timeline --limit (-n)" = { usecase = "", without = "" }
+"timeline [alias tl]" = { usecase = "", without = "" }
+"unblock" = { usecase = "", without = "" }
+"unfollow" = { usecase = "", without = "" }
+"unlike" = { usecase = "", without = "" }
+"unmute" = { usecase = "", without = "" }
+"unrepost" = { usecase = "", without = "" }
+
+[msky]
+"--host" = { usecase = "", without = "" }
+"--json" = { usecase = "debimate's scripts/msky_announce.py reads whoami and author as JSON lines", without = "the script would have to parse the text meant for people" }
+"accounts" = { usecase = "", without = "" }
+"accounts --use" = { usecase = "", without = "" }
+"author" = { usecase = "debimate's scripts/msky_announce.py reads its own notes to skip an article already announced", without = "articles would be announced twice" }
+"author --download" = { usecase = "", without = "" }
+"author --filter" = { usecase = "debimate's scripts/msky_announce.py leaves replies out (`--filter no-replies`)", without = "replies would be read too, and a reply quoting the URL would stop an announcement" }
+"author --limit (-n)" = { usecase = "debimate's scripts/msky_announce.py reads as many notes back as it needs", without = "the check for an article already posted would see only one page" }
+"author --output (-o)" = { usecase = "", without = "" }
+"author --reposts" = { usecase = "", without = "" }
+"block" = { usecase = "", without = "" }
+"blocks" = { usecase = "", without = "" }
+"blocks --limit (-n)" = { usecase = "", without = "" }
+"chat" = { usecase = "", without = "" }
+"chat --limit (-n)" = { usecase = "", without = "" }
+"delete" = { usecase = "", without = "" }
+"download" = { usecase = "", without = "" }
+"download --output (-o)" = { usecase = "", without = "" }
+"follow" = { usecase = "", without = "" }
+"followers" = { usecase = "", without = "" }
+"followers --limit (-n)" = { usecase = "", without = "" }
+"followers --pending" = { usecase = "", without = "" }
+"follows" = { usecase = "", without = "" }
+"follows --limit (-n)" = { usecase = "", without = "" }
+"follows --pending" = { usecase = "", without = "" }
+"like" = { usecase = "", without = "" }
+"like --reaction" = { usecase = "", without = "" }
+"like [hidden alias react]" = { usecase = "", without = "" }
+"login" = { usecase = "", without = "" }
+"login --timeout" = { usecase = "", without = "" }
+"logout" = { usecase = "", without = "" }
+"logout --all" = { usecase = "", without = "" }
+"mute" = { usecase = "", without = "" }
+"mutes" = { usecase = "", without = "" }
+"mutes --limit (-n)" = { usecase = "", without = "" }
+"note" = { usecase = "", without = "" }
+"notifications" = { usecase = "", without = "" }
+"notifications --limit (-n)" = { usecase = "", without = "" }
+"post" = { usecase = "debimate's scripts/msky_announce.py posts each new article", without = "new articles would be announced by hand" }
+"post --alt" = { usecase = "", without = "" }
+"post --cw" = { usecase = "", without = "" }
+"post --dry-run" = { usecase = "debimate's msky-announce workflow shows the note it would post without posting it (its dry_run input)", without = "the workflow could not be tried without posting" }
+"post --image" = { usecase = "", without = "" }
+"post --no-card" = { usecase = "", without = "" }
+"post --quote" = { usecase = "", without = "" }
+"post --reply" = { usecase = "", without = "" }
+"post --video" = { usecase = "", without = "" }
+"post --visibility" = { usecase = "", without = "" }
+"profile" = { usecase = "", without = "" }
+"reactions" = { usecase = "", without = "" }
+"reactions --limit (-n)" = { usecase = "", without = "" }
+"reactions [hidden alias likes]" = { usecase = "", without = "" }
+"renotes" = { usecase = "", without = "" }
+"renotes --limit (-n)" = { usecase = "", without = "" }
+"renotes [hidden alias reposts]" = { usecase = "", without = "" }
+"report" = { usecase = "", without = "" }
+"report --comment" = { usecase = "", without = "" }
+"report --reason" = { usecase = "", without = "" }
+"report --yes (-y)" = { usecase = "", without = "" }
+"repost" = { usecase = "", without = "" }
+"repost [hidden alias renote]" = { usecase = "", without = "" }
+"search" = { usecase = "", without = "" }
+"search --limit (-n)" = { usecase = "", without = "" }
+"servers" = { usecase = "", without = "" }
+"servers --limit (-n)" = { usecase = "", without = "" }
+"thread" = { usecase = "", without = "" }
+"timeline" = { usecase = "", without = "" }
+"timeline --limit (-n)" = { usecase = "", without = "" }
+"timeline --reposts" = { usecase = "", without = "" }
+"unblock" = { usecase = "", without = "" }
+"unfollow" = { usecase = "", without = "" }
+"unlike" = { usecase = "", without = "" }
+"unlike [hidden alias unreact]" = { usecase = "", without = "" }
+"unmute" = { usecase = "", without = "" }
+"unrepost" = { usecase = "", without = "" }
+"unrepost [hidden alias unrenote]" = { usecase = "", without = "" }
+"whoami" = { usecase = "debimate's scripts/msky_announce.py reads its own account to look for notes it already posted", without = "the script could not tell whose notes to check, and would post an article twice" }
+
+[mstdn]
+"--host" = { usecase = "", without = "" }
+"--json" = { usecase = "", without = "" }
+"accounts" = { usecase = "", without = "" }
+"accounts --use" = { usecase = "", without = "" }
+"author" = { usecase = "", without = "" }
+"author --download" = { usecase = "", without = "" }
+"author --filter" = { usecase = "", without = "" }
+"author --limit (-n)" = { usecase = "", without = "" }
+"author --output (-o)" = { usecase = "", without = "" }
+"author --reposts" = { usecase = "", without = "" }
+"download" = { usecase = "", without = "" }
+"download --output (-o)" = { usecase = "", without = "" }
+"login" = { usecase = "", without = "" }
+"login --oob" = { usecase = "", without = "" }
+"login --timeout" = { usecase = "", without = "" }
+"logout" = { usecase = "", without = "" }
+"logout --all" = { usecase = "", without = "" }
+"notifications" = { usecase = "", without = "" }
+"notifications --limit (-n)" = { usecase = "", without = "" }
+"notifications [alias notif]" = { usecase = "", without = "" }
+"post" = { usecase = "", without = "" }
+"post --alt" = { usecase = "", without = "" }
+"post --cw" = { usecase = "", without = "" }
+"post --dry-run" = { usecase = "", without = "" }
+"post --image" = { usecase = "", without = "" }
+"post --reply" = { usecase = "", without = "" }
+"post --sensitive" = { usecase = "", without = "" }
+"post --video" = { usecase = "", without = "" }
+"post --visibility" = { usecase = "", without = "" }
+"profile" = { usecase = "", without = "" }
+"search" = { usecase = "", without = "" }
+"search --limit (-n)" = { usecase = "", without = "" }
+"status" = { usecase = "", without = "" }
+"status [hidden alias note]" = { usecase = "", without = "" }
+"thread" = { usecase = "", without = "" }
+"timeline" = { usecase = "", without = "" }
+"timeline --limit (-n)" = { usecase = "", without = "" }
+"timeline --reposts" = { usecase = "", without = "" }
+"timeline [alias tl]" = { usecase = "", without = "" }
+"whoami" = { usecase = "", without = "" }

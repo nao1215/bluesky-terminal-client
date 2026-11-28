@@ -1204,6 +1204,200 @@ scenarios:
           stdout:
             equals: "already muted @alice.test\n"
 
+  - name: follow sends the follow record once, and follows lists the accounts an account follows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: "did:plc:alice", handle: "alice.test", displayName: "家族👨‍👩‍👧 Alice" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/f1", cid: "cid-f1" }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getFollows
+            json:
+              subject: { did: did:plc:alice, handle: alice.test }
+              follows:
+                - { did: did:plc:bob, handle: bob.test, displayName: "Bob 🇯🇵" }
+    steps:
+      - *session
+      - run:
+          command: bsky follow @alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "following @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.record.subject", equals: "did:plc:alice" }
+      # Unfollowing an account you do not follow is a usage error.
+      - run:
+          command: bsky unfollow alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: you do not follow @alice.test"
+      - run:
+          command: bsky follows alice.test --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.username", equals: "bob.test" }
+              - { path: "$.id", equals: "did:plc:bob" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.getFollows, query: { name: actor, equals: "alice.test" } }
+
+  - name: unfollow deletes the follow record, and follow of an account already followed sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: "did:plc:alice"
+              handle: "alice.test"
+              viewer: { following: "at://did:plc:me/app.bsky.graph.follow/f1" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/f2", cid: "cid-f2" }
+    steps:
+      - *session
+      - run:
+          command: bsky unfollow alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "unfollowed @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.rkey", equals: "f1" }
+      - run:
+          command: bsky follow alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already following @alice.test\n"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: repost sends the repost record once, and unrepost of a post not reposted is a usage error
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "worth sharing 🔁" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.repost/r1", cid: "cid-r1" }
+    steps:
+      - *session
+      - run:
+          command: bsky repost https://bsky.app/profile/alice.test/post/p1 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.action", equals: repost }
+              - { path: "$.target", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.id", equals: "at://did:plc:me/app.bsky.feed.repost/r1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.subject.cid", equals: "cid-p1" }
+      - run:
+          command: bsky unrepost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not reposted"
+
+  - name: unrepost deletes the repost record, and repost of a post already reposted sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "worth sharing 🔁" }
+                  viewer: { repost: at://did:plc:me/app.bsky.feed.repost/r1 }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.repost/r2", cid: "cid-r2" }
+    steps:
+      - *session
+      - run:
+          command: bsky unrepost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "removed at://did:plc:me/app.bsky.feed.repost/r1\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.rkey", equals: "r1" }
+      - run:
+          command: bsky repost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already reposted: at://did:plc:me/app.bsky.feed.repost/r1\n"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
   - name: likes and reposts list who liked and reposted a post named by its bsky.app address
     mock_servers:
       - name: api

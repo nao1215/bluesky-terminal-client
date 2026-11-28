@@ -525,7 +525,7 @@ mod tests {
         assert_eq!(rn["repostOf"]["text"], "元");
     }
 
-    use terminal_kit::json::{self, missing};
+    use crate::json_keys::{self as json, missing};
 
     fn keys_of(v: &Value) -> Vec<&str> {
         v.as_object().unwrap().keys().map(String::as_str).collect()

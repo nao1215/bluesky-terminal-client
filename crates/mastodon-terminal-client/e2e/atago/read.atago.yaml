@@ -228,6 +228,47 @@ scenarios:
       - assert:
           mock: { name: api, path: /api/v2/search, count: 0 }
 
+  - name: notifications are read as the token's account, newest first, page by page
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/notifications
+            json:
+              - id: "31"
+                type: favourite
+                created_at: "2026-11-20T12:00:00Z"
+                account: { id: "8", username: bob, acct: bob, display_name: "ボブ 🇯🇵" }
+                status: { id: "200", created_at: "2026-11-20T10:00:00Z", account: { username: me, acct: me }, content: "<p>本文 🐈‍⬛</p>" }
+              - id: "30"
+                type: follow
+                created_at: "2026-11-20T11:00:00Z"
+                account: { id: "9", username: carol, acct: carol@far.test }
+    steps:
+      - run:
+          command: mstdn notifications -n 2 --json
+          env: &token
+            MSTDN_HOST: ${api.url}
+            MSTDN_TOKEN: e2e-fake-token-0001
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{[^\n]*"id":"31"[^\n]*\}\n\{[^\n]*"id":"30"[^\n]*\}\n$'
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/notifications
+            count: 1
+            header: { name: Authorization, equals: "Bearer e2e-fake-token-0001" }
+            query: { name: limit, equals: "2" }
+      - run:
+          command: mstdn notif -n 1
+          env: *token
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: ["ボブ 🇯🇵", "本文 🐈‍⬛"]
+
   - name: what the server refuses is exit 4 with its words, and a rate limit is waited for
     mock_servers:
       - name: api

@@ -1,11 +1,13 @@
-//! The keys every client prints with `--json`, as `doc/json.md` lists them.
+//! The keys every client prints with `--json`, as `doc/json.md` beside this
+//! file lists them.
 //!
 //! A client may print more keys beside these (what only its network has),
-//! never fewer: each client's tests check what it prints against these
-//! lists, so the three stay one shape.
+//! never fewer: each client's tests include this file (`#[path]`) and check
+//! what they print against these lists, so the three stay one shape. Only
+//! tests read it, so no crate exports it.
 
 /// A post.
-pub const POST: &[&str] = &[
+pub(crate) const POST: &[&str] = &[
     "id",
     "url",
     "uri",
@@ -23,10 +25,10 @@ pub const POST: &[&str] = &[
 ];
 
 /// The `user` of a post, a notification or a message.
-pub const USER: &[&str] = &["id", "username", "host", "name"];
+pub(crate) const USER: &[&str] = &["id", "username", "host", "name"];
 
 /// An account: a [`USER`] and these.
-pub const ACCOUNT: &[&str] = &[
+pub(crate) const ACCOUNT: &[&str] = &[
     "id",
     "username",
     "host",
@@ -40,33 +42,34 @@ pub const ACCOUNT: &[&str] = &[
 ];
 
 /// A file of a post.
-pub const FILE: &[&str] = &["id", "type", "mime", "url", "previewUrl", "description"];
+pub(crate) const FILE: &[&str] = &["id", "type", "mime", "url", "previewUrl", "description"];
 
 /// What a file's `type` can be.
-pub const FILE_TYPES: &[&str] = &["image", "video", "audio", "file"];
+pub(crate) const FILE_TYPES: &[&str] = &["image", "video", "audio", "file"];
 
 /// A notification.
-pub const NOTIFICATION: &[&str] = &["id", "createdAt", "type", "user", "postId", "post"];
+pub(crate) const NOTIFICATION: &[&str] = &["id", "createdAt", "type", "user", "postId", "post"];
 
 /// The `type`s of a notification every network has; another is the
 /// server's own word.
-pub const NOTIFICATION_TYPES: &[&str] = &["like", "repost", "follow", "mention", "reply", "quote"];
+pub(crate) const NOTIFICATION_TYPES: &[&str] =
+    &["like", "repost", "follow", "mention", "reply", "quote"];
 
 /// A direct message.
-pub const MESSAGE: &[&str] = &["id", "createdAt", "user", "text"];
+pub(crate) const MESSAGE: &[&str] = &["id", "createdAt", "user", "text"];
 
 /// An account logged in, as `accounts` and `login` print it.
-pub const LOGIN: &[&str] = &["id", "username", "host", "service"];
+pub(crate) const LOGIN: &[&str] = &["id", "username", "host", "service"];
 
 /// A file `download` saved.
-pub const SAVED: &[&str] = &["postId", "type", "url", "path"];
+pub(crate) const SAVED: &[&str] = &["postId", "type", "url", "path"];
 
 /// What a write did.
-pub const WROTE: &[&str] = &["action", "target", "id", "url", "already"];
+pub(crate) const WROTE: &[&str] = &["action", "target", "id", "url", "already"];
 
 /// The keys of `keys` that `have` lacks: what a printed object must still
 /// gain to be the shape. `have` is the object's keys.
-pub fn missing<'a>(keys: &[&'a str], have: &[&str]) -> Vec<&'a str> {
+pub(crate) fn missing<'a>(keys: &[&'a str], have: &[&str]) -> Vec<&'a str> {
     keys.iter().copied().filter(|k| !have.contains(k)).collect()
 }
 

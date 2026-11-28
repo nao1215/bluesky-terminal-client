@@ -1,0 +1,14 @@
+# The clients the rules in scripts/rules/ check: the binary cargo builds,
+# the crate it lives in, and whether running it without a command opens a
+# full-screen client (then an E2E spec must drive that in a pty).
+[bsky]
+crate = "crates/bluesky-terminal-client"
+tui = true
+
+[msky]
+crate = "crates/misskey-terminal-client"
+tui = true
+
+[mstdn]
+crate = "crates/mastodon-terminal-client"
+tui = false

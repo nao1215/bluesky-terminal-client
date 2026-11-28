@@ -1,0 +1,7 @@
+# Commands no atago spec runs, each with the reason, by client:
+#
+# [bsky]
+# "app-passwords add" = "why a spec cannot run it"
+#
+# scripts/rules/cli.py fails on a command that has neither a spec nor an
+# entry here, and warns about an entry whose command a spec now runs.
