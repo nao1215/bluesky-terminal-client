@@ -1066,7 +1066,7 @@ scenarios:
     routes:
     - method: GET
       path: /api/v2/instance
-      json: {}
+      json: {version: "4.5.0"}
       status: 200
     - method: GET
       path: /api/v1/accounts/verify_credentials

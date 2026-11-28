@@ -353,7 +353,7 @@ pub(super) fn post(
     }
     let client = ctx.writer(&scopes, "post")?;
     // The limits are the server's own, from its instance's configuration.
-    let limits = client.limits();
+    let limits = client.posting_limits(a.quote.is_some())?;
     too_much(&d, &limits, client.host())?;
     // The account is asked for only to say who would post.
     let me = if a.dry_run { me(ctx, &client)? } else { None };
@@ -406,7 +406,9 @@ pub(super) fn post(
 /// The same validation, uploads, processing wait and post used by the composer.
 pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
-    too_much(&d, &client.limits(), client.host())?;
+    let quote =
+        extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some();
+    too_much(&d, &client.posting_limits(quote)?, client.host())?;
     submit(
         client,
         a,

@@ -11,6 +11,7 @@
 //! (`Retry-After`, else `X-RateLimit-Reset`), a few times; a write is sent
 //! once, and anything else is returned at once.
 
+mod capabilities;
 mod chat;
 pub(crate) use chat::same_conversation;
 mod deck;
@@ -372,6 +373,11 @@ impl Client {
     /// The error for a call to `what` the server refused.
     fn refusal(&self, what: &str, r: Refusal) -> Error {
         let shown = crate::text::one_line(&r.said());
+        if self.unsupported_endpoint(what, r.status) {
+            return Error::new(Kind::Unsupported, format!("{what} failed: {shown}")).with_hint(
+                format!("{} does not support this server feature", self.host()),
+            );
+        }
         let err = Error::api(format!("{what} failed: {shown}"));
         let host = self.host();
         let said = shown.to_ascii_lowercase();
@@ -549,8 +555,7 @@ impl Client {
     /// `/api/v1/instance` on a version before 4.0, else Mastodon's defaults,
     /// which `POST /api/v1/statuses` then decides.
     pub(crate) fn limits(&self) -> Limits {
-        self.get_one("v2/instance", &[])
-            .or_else(|_| self.get_one("v1/instance", &[]))
+        self.instance()
             .map(|v| Limits::from_instance(&v))
             .unwrap_or_default()
     }
