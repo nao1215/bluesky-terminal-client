@@ -12,7 +12,9 @@
 //! once, and anything else is returned at once.
 
 mod chat;
+pub(crate) use chat::same_conversation;
 mod deck;
+mod parity;
 pub(crate) mod profile;
 pub(crate) mod types;
 

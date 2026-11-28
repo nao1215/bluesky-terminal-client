@@ -159,11 +159,25 @@ pub(crate) fn wait_for_code(
     host: &str,
     timeout: Duration,
 ) -> Result<String> {
+    wait_for_code_until(listener, state, host, timeout, || false)
+}
+
+/// The TUI can cancel while the browser is open without saving a session.
+pub(crate) fn wait_for_code_until(
+    listener: &TcpListener,
+    state: &str,
+    host: &str,
+    timeout: Duration,
+    cancelled: impl Fn() -> bool,
+) -> Result<String> {
     listener
         .set_nonblocking(true)
         .map_err(|e| Error::io(format!("cannot listen for the login: {e}")))?;
     let start = Instant::now();
     loop {
+        if cancelled() {
+            return Err(Error::usage("login cancelled"));
+        }
         match listener.accept() {
             Ok((stream, _)) => {
                 if let Some(done) = answer(stream, state, host) {
@@ -365,6 +379,29 @@ pub(crate) fn exchange(
             crate::text::one_line(&r.said())
         ))),
     }
+}
+
+/// Verify the exchanged token and build a session. Saving is the caller's decision.
+pub(crate) fn session(
+    client: &Client,
+    token: crate::api::types::Token,
+) -> Result<crate::config::Session> {
+    let me = Client::new(client.origin())
+        .with_token(Some(token.access_token.clone()))
+        .me()?;
+    let scopes: Vec<String> = if token.scope.trim().is_empty() {
+        SCOPES.split(' ').map(str::to_string).collect()
+    } else {
+        token.scope.split_whitespace().map(str::to_string).collect()
+    };
+    let saved = crate::config::Session {
+        service: client.origin().to_string(),
+        user_id: me.id,
+        username: me.username,
+        token: token.access_token,
+        scopes,
+    };
+    Ok(saved)
 }
 
 #[cfg(test)]
