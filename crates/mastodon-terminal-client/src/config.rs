@@ -12,6 +12,8 @@
 //! - `apps/<host>.json` holds the client ID and secret the server gave mstdn
 //!   when it registered (`POST /api/v1/apps`), owner-only too: the next
 //!   login on that server uses them again rather than registering anew.
+//! - `settings.json` holds what the full-screen client keeps between runs:
+//!   the theme. No secrets.
 //!
 //! `mstdn logout` removes a server's account file; its app stays.
 
@@ -41,6 +43,18 @@ pub(crate) fn env_token() -> Option<String> {
 const ACCOUNTS_DIR: &str = "accounts";
 const ACCOUNTS_FILE: &str = "accounts.json";
 const APPS_DIR: &str = "apps";
+const SETTINGS_FILE: &str = "settings.json";
+
+/// What the full-screen client keeps between runs, in `settings.json`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Settings {
+    /// The theme `T` chose, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Keys a newer version wrote, kept on saving.
+    #[serde(flatten)]
+    other: serde_json::Map<String, serde_json::Value>,
+}
 
 /// An account logged in on one server. Its `Debug` leaves the token out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +295,16 @@ impl AccountStore {
             .collect();
         files.sort();
         Ok(files)
+    }
+
+    /// The settings kept, the defaults when there are none.
+    pub(crate) fn settings(&self) -> Result<Settings> {
+        load(&self.dir.join(SETTINGS_FILE), "settings").map(Option::unwrap_or_default)
+    }
+
+    /// Keep `settings` for the next run.
+    pub(crate) fn save_settings(&self, settings: &Settings) -> Result<()> {
+        save_json(&self.dir.join(SETTINGS_FILE), settings)
     }
 
     fn read_current(&self) -> Current {
@@ -630,5 +654,26 @@ mod tests {
             v,
             serde_json::json!({"current": "mastodon.social", "later": [1]})
         );
+    }
+
+    // The theme is kept, what a newer version wrote stays, and no file is
+    // the defaults; a broken one is an error naming the file.
+    #[test]
+    fn the_settings_keep_the_theme_and_what_they_do_not_know() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path());
+        assert_eq!(store.settings().unwrap(), Settings::default());
+        std::fs::write(dir.path().join(SETTINGS_FILE), r#"{"columns": [1]}"#).unwrap();
+        let mut s = store.settings().unwrap();
+        s.theme = Some("dracula".into());
+        store.save_settings(&s).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(SETTINGS_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(v["theme"], "dracula");
+        assert_eq!(v["columns"][0], 1);
+        std::fs::write(dir.path().join(SETTINGS_FILE), "{").unwrap();
+        let e = store.settings().unwrap_err();
+        assert!(e.message().contains("settings.json"), "{}", e.message());
     }
 }

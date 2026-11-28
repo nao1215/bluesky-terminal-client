@@ -1,0 +1,331 @@
+# The full-screen client mstdn opens without a command, driven in a pty as
+# msky's suite drives msky: the home timeline with a boost, a content
+# warning opened with w, the next page by max_id, a thread, a favourite and
+# a boost, the local and federated timelines, the notifications, the help,
+# the theme picker, and the composer posting a reply. Every server is an
+# atago mock: nothing reaches a real Mastodon server. The tokens are
+# throwaway values.
+version: "1"
+
+suite:
+  name: mstdn client
+
+secrets:
+  - e2e-fake-token-0201
+  - e2e-fake-token-0202
+
+scenarios:
+  - name: the home timeline draws its posts, and the keys act on them
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/home
+            header:
+              Link: '<${api.url}/api/v1/timelines/home?max_id=s3>; rel="next"'
+            json:
+              - id: s1
+                created_at: "2026-11-26T10:00:00.000Z"
+                account: { id: "1", username: alice, acct: alice, display_name: "アリス 👩🏽‍💻" }
+                content: "<p>おはよう 👨‍👩‍👧 🇯🇵</p>"
+                visibility: public
+                favourites_count: 4
+                reblogs_count: 1
+                favourited: false
+                reblogged: false
+                media_attachments:
+                  - { id: m1, type: image, url: "${api.url}/files/m1.png", description: "山の写真" }
+              - id: s2
+                created_at: "2026-11-26T09:30:00.000Z"
+                account: { id: "3", username: carol, acct: carol, display_name: Carol }
+                reblog:
+                  id: o1
+                  created_at: "2026-11-26T09:00:00.000Z"
+                  account: { id: "2", username: bob, acct: bob@mastodon.test, display_name: "ボブ" }
+                  spoiler_text: "ネタバレ"
+                  content: "<p>犯人は執事</p>"
+                  visibility: public
+              - id: s3
+                created_at: "2026-11-26T08:00:00.000Z"
+                account: { id: "4", username: dave, acct: dave }
+                content: "<p>三つ目 <a href=\"https://debimate.jp/\">https://debimate.jp/</a></p>"
+                visibility: public
+          - method: GET
+            path: /api/v1/timelines/public
+            json:
+              - { id: p1, created_at: "2026-11-26T07:00:00.000Z", account: { id: "5", username: fay, acct: fay }, content: "<p>公開のトゥート</p>", visibility: public }
+          - method: GET
+            path: /api/v1/notifications
+            json:
+              - id: n1
+                type: favourite
+                created_at: "2026-11-26T06:00:00.000Z"
+                account: { id: "6", username: gus, acct: gus@x.test, display_name: "Gus 🐈‍⬛" }
+                status: { id: s9, content: "<p>あなたの投稿</p>" }
+          - { method: GET, path: /api/v2/instance, json: { configuration: { statuses: { max_characters: 500, characters_reserved_per_url: 23 } } } }
+          - method: GET
+            path: /api/v1/statuses/o1
+            json: { id: o1, created_at: "2026-11-26T09:00:00.000Z", account: { id: "2", username: bob, acct: bob@mastodon.test, display_name: "ボブ" }, spoiler_text: "ネタバレ", content: "<p>犯人は執事</p>", visibility: public }
+          - method: GET
+            path: /api/v1/statuses/o1/context
+            json:
+              ancestors: []
+              descendants:
+                - { id: r1, in_reply_to_id: o1, created_at: "2026-11-26T09:10:00.000Z", account: { id: "1", username: alice, acct: alice }, content: "<p>えっ</p>", visibility: public }
+          - { method: POST, path: /api/v1/statuses/s1/favourite, json: { id: s1, favourited: true } }
+          - { method: POST, path: /api/v1/statuses/s1/reblog, json: { id: b9, reblog: { id: s1 } } }
+    steps:
+      - fixture: &account
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "7", "username": "me", "token": "e2e-fake-token-0201", "scopes": ["read", "write"]}
+      - fixture: &in_use
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: mstdn
+          rows: 40
+          cols: 120
+          env: &env
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            MSTDN_BROWSER: "true"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains:
+                  - "1 Home   2 Local   3 Federated   4 Notifications"
+                  - "@me@127.0.0.1:${api.port}"
+                  - "アリス 👩🏽‍💻 @alice · 2026-11-26 10:00"
+                  - "おはよう 👨‍👩‍👧 🇯🇵"
+                  - "▣ 1 picture"
+                  - "ALT 山の写真"
+                  - "☆ 4   ⟳ 1   ↩ 0"
+                  - "⟳ boosted by Carol @carol"
+                  - "ボブ @bob@mastodon.test · 2026-11-26 09:00"
+                  - "⚠ CW: ネタバレ"
+                  - "w shows it (5 characters)"
+                  - "? help  j k move  tab next tab"
+                not_contains: "犯人は執事"
+            - send: l
+            - expect_screen:
+                contains: ["★ 5", "favourited"]
+            - send: b
+            - expect_screen:
+                contains: ["⟳ 2", "boosted"]
+            - send: j
+            - send: w
+            - expect_screen:
+                contains: "犯人は執事"
+            - send: v
+            - expect_screen:
+                contains: ["Thread", "えっ", "esc back"]
+            # Each esc is waited out: a key right after it reads as alt+key.
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Thread"
+            # j onto the last post asks for the page older than it.
+            - send: j
+            - expect_screen:
+                contains: "三つ目 https://debimate.jp/"
+                stable_for: 500ms
+            - send: "3"
+            - expect_screen:
+                contains: "公開のトゥート"
+            - send: "2"
+            - expect_screen:
+                contains: "公開のトゥート"
+                stable_for: 500ms
+            - send: "4"
+            - expect_screen:
+                contains: ["Gus 🐈‍⬛ @gus@x.test favourited your post", "あなたの投稿"]
+            - send: "?"
+            - expect_screen:
+                contains: ["Keys", "favourite / take back your favourite"]
+            - send: { key: esc }
+            - expect_screen:
+                not_contains: "Keys"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/timelines/home
+            method: GET
+            header: { name: Authorization, equals: "Bearer e2e-fake-token-0201" }
+            query: { name: limit, equals: "30" }
+      # The next page starts where the Link header said; it repeats the
+      # last post, which ends the list.
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/timelines/home
+            method: GET
+            count: 2
+            query: { name: max_id, equals: s3 }
+      # Federated first, then Local: the last asked for is the local one.
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/timelines/public
+            method: GET
+            count: 2
+            query: { name: local, equals: "true" }
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/statuses/s1/favourite
+            method: POST
+            count: 1
+            header: { name: Authorization, equals: "Bearer e2e-fake-token-0201" }
+      - assert:
+          mock: { name: api, path: /api/v1/statuses/s1/reblog, method: POST, count: 1 }
+      - assert:
+          mock: { name: api, path: /api/v1/statuses/o1/context, method: GET, count: 1 }
+
+  - name: the composer posts a reply with a warning, once, and the theme is kept
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/home
+            json:
+              - id: s1
+                created_at: "2026-11-26T10:00:00.000Z"
+                account: { id: "2", username: bob, acct: bob@mastodon.test, display_name: "ボブ" }
+                content: "<p>猫の写真 🐈‍⬛</p>"
+                visibility: unlisted
+                mentions: [{ id: "8", username: carol, acct: carol }]
+          - { method: GET, path: /api/v2/instance, json: {} }
+          - method: POST
+            path: /api/v1/statuses
+            json: { id: "900", account: { acct: me }, content: "<p>reply</p>" }
+    steps:
+      - fixture: *account
+      - fixture: *in_use
+      - pty:
+          command: mstdn
+          rows: 30
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "猫の写真 🐈‍⬛"
+            - send: r
+            - expect_screen:
+                contains: ["Reply", "replying to @bob@mastodon.test", "@bob@mastodon.test @carol", "quiet public"]
+            - send: "かわいい 🇯🇵"
+            - send: { key: ctrl-w }
+            - send: "猫"
+            - send: { key: ctrl-p }
+            - expect_screen:
+                contains: ["CW: 猫", "followers only"]
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "posted"
+                not_contains: "replying to"
+            # T, G to the last theme, enter keeps it.
+            - send: T
+            - expect_screen:
+                contains: "Theme"
+            - send: G
+            - send: { key: enter }
+            - expect_screen:
+                not_contains: "Theme"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/statuses
+            method: POST
+            count: 1
+            header: { name: Idempotency-Key, matches: "^mstdn-[0-9a-f]{32}$" }
+            body:
+              json:
+                - { path: "$.status", equals: "@bob@mastodon.test @carol かわいい 🇯🇵" }
+                - { path: "$.spoiler_text", equals: "猫" }
+                - { path: "$.visibility", equals: private }
+                - { path: "$.in_reply_to_id", equals: s1 }
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.theme", equals: monochrome }
+
+  - name: a visitor reads the local timeline and is told how to log in
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            json:
+              - { id: p1, created_at: "2026-11-26T07:00:00.000Z", account: { id: "5", username: fay, acct: fay }, content: "<p>ローカルのトゥート</p>", visibility: public }
+    steps:
+      - pty:
+          command: mstdn --host ${api.url}
+          rows: 24
+          cols: 100
+          env:
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["127.0.0.1:${api.port} (visitor)", "ローカルのトゥート"]
+            - send: l
+            - expect_screen:
+                contains: "log in to do that: run `mstdn login --host 127.0.0.1:${api.port}`"
+            - send: "1"
+            - expect_screen:
+                contains: "shows this only to accounts that are logged in"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/v1/timelines/public
+            method: GET
+            count: 1
+            query: { name: local, equals: "true" }
+
+  - name: the client speaks Japanese in a Japanese locale
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/timelines/home, json: [] }
+          - { method: GET, path: /api/v2/instance, json: {} }
+    steps:
+      - fixture: *account
+      - fixture: *in_use
+      - pty:
+          command: mstdn
+          rows: 24
+          cols: 100
+          env:
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+            LC_ALL: ja_JP.UTF-8
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: ["1 ホーム", "4 通知", "フォロー中のアカウントの投稿はまだありません。"]
+            - send: q
+      - assert:
+          exit_code: 0
+
+  - name: without a terminal the client says it needs one
+    steps:
+      - run:
+          command: mstdn
+          env:
+            MSTDN_CONFIG_DIR: ${workdir}/cfg
+      - assert:
+          exit_code: 2
+          stderr:
+            equals: "error: mstdn needs an interactive terminal\nhint: run mstdn directly in a terminal, not through a pipe or redirect\n"

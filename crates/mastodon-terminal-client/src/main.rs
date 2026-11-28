@@ -1,4 +1,5 @@
-//! mstdn: a Mastodon client for the terminal.
+//! mstdn: a Mastodon client for the terminal: commands, and without one a
+//! full-screen client.
 #![cfg_attr(
     test,
     allow(
@@ -20,6 +21,7 @@ mod oauth;
 #[cfg(test)]
 mod properties;
 mod text;
+mod tui;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -49,6 +51,9 @@ struct Cli {
 }
 
 const AFTER_HELP: &str = "\
+Without a command, mstdn opens a full-screen client: the home, local and
+federated timelines and the notifications, with ? listing its keys.
+
 mstdn reads what a Mastodon server shows to visitors, or, after `mstdn
 login` (or with a token in MSTDN_TOKEN), what it shows to your account
 there, and posts as that account. A post is its ID or its address
@@ -56,8 +61,8 @@ there, and posts as that account. A post is its ID or its address
 @name@host, or its address (https://mastodon.social/@name). An address is
 read on its own server, whatever --host says.
 
-Exit status: 0 success, 1 usage error, 3 local file error, 4 network or
-server error.";
+Exit status: 0 success, 1 usage error, 2 terminal error, 3 local file
+error, 4 network or server error.";
 
 fn run(cli: Cli) -> Result<()> {
     let accounts = config::config_dir().map(config::AccountStore::open);
@@ -88,10 +93,9 @@ fn run(cli: Cli) -> Result<()> {
         env_token,
     };
     let Some(cmd) = cli.command else {
-        // mstdn has no full-screen client: a command is needed.
-        return Err(
-            Error::usage("no command given").with_hint("run `mstdn --help` for the commands")
-        );
+        // Without a command, the full-screen client.
+        let session = ctx.session(&ctx.origin)?;
+        return tui::run(ctx.accounts.as_ref().ok(), session, &ctx.origin);
     };
     cli::run(cmd, &ctx)
 }
