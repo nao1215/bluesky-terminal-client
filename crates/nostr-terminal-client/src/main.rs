@@ -1,9 +1,10 @@
-//! nstr: synchronous Nostr API commands without a full-screen interface.
+//! nstr: Nostr commands and a full-screen client.
 
 mod api;
 mod config;
 mod error;
 mod output;
+mod tui;
 
 use crate::{
     api::{Client, event::Event},
@@ -23,7 +24,7 @@ use std::{
     name = "nstr",
     version,
     about,
-    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile or a bunker URI.\nExit status: 0 success, 1 usage, 3 local file, 4 network or relay."
+    after_help = "Relays and publicKey come from config.json in NSTR_CONFIG_DIR when non-empty,\notherwise from nstr/config.json in the platform config directory.\nPosting additionally needs keyFile or a bunker URI.\nWithout a command, open the full-screen client.\nExit status: 0 success, 1 usage, 2 terminal, 3 local file, 4 network or relay."
 )]
 struct Cli {
     /// Print JSON lines in the shared client format, including errors.
@@ -66,9 +67,9 @@ fn diagnostics(message: &str) {
 }
 
 fn run(cli: Cli) -> Result<()> {
-    let command = cli
-        .command
-        .ok_or_else(|| Error::usage("no command given"))?;
+    let Some(command) = cli.command else {
+        return tui::run();
+    };
     if let Command::Post { text } = &command
         && text.trim().is_empty()
     {

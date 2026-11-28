@@ -73,7 +73,7 @@ mod tests {
         for (args, status) in [
             (vec!["--help"], 0),
             (vec!["--version"], 0),
-            (vec!["--json"], 1),
+            (vec!["--json"], 2),
             (vec!["timeline", "-n", "0", "--json"], 1),
             (vec!["post", "", "--json"], 1),
             (vec!["--config", "unused.json", "--json"], 1),
@@ -450,8 +450,13 @@ mod tests {
         let owner = key();
         let relay = Relay::start(vec![], Behavior::default());
         let fixture = Fixture::new(&owner, &[&relay], false);
+        // Without a command nstr opens the full-screen client, which, as in
+        // bsky, msky and mstdn, needs a terminal: status 2, nothing sent.
+        let output = fixture.run(&["--json"]);
+        assert_eq!(output.status.code(), Some(2));
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["status"], 2);
         for args in [
-            vec!["--json"],
             vec!["timeline", "-n", "0", "--json"],
             vec!["post", " ", "--json"],
             vec!["unknown", "--json"],

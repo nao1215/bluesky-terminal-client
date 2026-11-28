@@ -81,6 +81,9 @@ pub fn terminal_kit::input::TextInput::default() -> Self
 impl core::fmt::Debug for terminal_kit::input::TextInput
 pub fn terminal_kit::input::TextInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for terminal_kit::input::TextInput
+pub mod terminal_kit::locale
+pub fn terminal_kit::locale::language_code(&str) -> core::option::Option<&'static str>
+pub fn terminal_kit::locale::language_from_locale(impl core::ops::function::Fn(&str) -> core::option::Option<alloc::string::String>) -> &'static str
 pub mod terminal_kit::media
 pub mod terminal_kit::media::images
 pub struct terminal_kit::media::images::DiskCache
@@ -225,5 +228,7 @@ impl core::marker::StructuralPartialEq for terminal_kit::theme::Theme
 pub const terminal_kit::theme::EDITOR_THEMES: [terminal_kit::theme::Theme; 37]
 pub const terminal_kit::theme::MONOCHROME: terminal_kit::theme::Theme
 pub const terminal_kit::theme::TERMINAL: terminal_kit::theme::Theme
+pub static terminal_kit::theme::THEMES: [terminal_kit::theme::Theme; 42]
+pub fn terminal_kit::theme::chosen(core::option::Option<&str>, terminal_kit::theme::ColorDepth) -> (usize, terminal_kit::theme::Theme)
 pub fn terminal_kit::theme::color_depth(impl core::ops::function::Fn(&str) -> core::option::Option<alloc::string::String>) -> terminal_kit::theme::ColorDepth
 pub const fn terminal_kit::theme::palette(&'static str, [u32; 8]) -> terminal_kit::theme::Theme

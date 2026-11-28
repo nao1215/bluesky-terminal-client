@@ -18,6 +18,10 @@ use tungstenite::{Message, WebSocket, protocol::WebSocketConfig, stream::MaybeTl
 pub(crate) struct Filter {
     pub(crate) kinds: Vec<u16>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) ids: Vec<String>,
+    #[serde(rename = "#e", skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) references: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) authors: Vec<String>,
     #[serde(rename = "#p", skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) mentions: Vec<String>,
@@ -29,6 +33,11 @@ pub(crate) struct Filter {
 impl Filter {
     pub(crate) fn matches(&self, event: &Event) -> bool {
         self.kinds.contains(&event.kind)
+            && (self.ids.is_empty() || self.ids.contains(&event.id))
+            && (self.references.is_empty()
+                || event
+                    .tag_values("e")
+                    .any(|id| self.references.iter().any(|r| r == id)))
             && (self.authors.is_empty() || self.authors.contains(&event.pubkey))
             && (self.mentions.is_empty()
                 || event
@@ -306,6 +315,7 @@ impl<S: Read + Write> Session<S> {
 }
 
 pub(crate) struct Outcome<T> {
+    pub(crate) answered: usize,
     pub(crate) value: T,
     pub(crate) warnings: Vec<String>,
 }
@@ -372,6 +382,7 @@ impl Relays<'_> {
             )));
         }
         Ok(Outcome {
+            answered: values.len(),
             value: values,
             warnings,
         })
@@ -393,6 +404,7 @@ impl Relays<'_> {
         });
         events.truncate(count);
         Ok(Outcome {
+            answered: results.answered,
             value: events,
             warnings: results.warnings,
         })
@@ -402,6 +414,7 @@ impl Relays<'_> {
         event.verify()?;
         let results = self.each(|s| s.publish(event))?;
         Ok(Outcome {
+            answered: results.answered,
             value: results.value.len(),
             warnings: results.warnings,
         })

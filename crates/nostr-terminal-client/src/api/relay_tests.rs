@@ -224,3 +224,39 @@ fn deadline_is_checked_even_for_buffered_frames() {
     assert!(client.receive().is_err());
     assert!(client.send(json!(["REQ", "sub", {}])).is_err());
 }
+
+#[test]
+fn thread_filters_enforce_ids_and_referenced_events_before_accepting_notes() {
+    let target = note(1, "parent");
+    let reply = Event::sign(
+        &SigningKey::generate(),
+        2,
+        1,
+        vec![vec![
+            "e".into(),
+            target.id.clone(),
+            String::new(),
+            "reply".into(),
+        ]],
+        "reply".into(),
+    )
+    .unwrap();
+    let by_id = Filter {
+        kinds: vec![1],
+        ids: vec![target.id.clone()],
+        ..Filter::default()
+    };
+    let by_reference = Filter {
+        kinds: vec![1],
+        references: vec![target.id.clone()],
+        ..Filter::default()
+    };
+    assert!(by_id.matches(&target));
+    assert!(!by_id.matches(&reply));
+    assert!(by_reference.matches(&reply));
+    assert!(!by_reference.matches(&target));
+    assert_eq!(
+        serde_json::to_value(&by_reference).unwrap()["#e"],
+        json!([target.id])
+    );
+}

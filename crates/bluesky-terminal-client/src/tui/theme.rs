@@ -11,51 +11,7 @@
 //! because sending 24-bit escapes there garbles the screen; with `NO_COLOR`
 //! set, bsky uses `monochrome` whatever is chosen.
 
-use terminal_kit::theme::{EDITOR_THEMES, MONOCHROME, TERMINAL, palette};
-
-pub(crate) use terminal_kit::theme::{ColorDepth, Theme, color_depth};
-
-/// Bluesky's own looks: `bluesky` is its "dim" look.
-const BLUESKY: [Theme; 3] = [
-    palette(
-        "bluesky",
-        [
-            0x161e27, 0xf1f3f5, 0x8b98a5, 0x1185fe, 0xff5c5c, 0x20bc07, 0xec4899, 0x20bc07,
-        ],
-    ),
-    palette(
-        "bluesky-dark",
-        [
-            0x000000, 0xffffff, 0x8b98a5, 0x1185fe, 0xff5c5c, 0x20bc07, 0xec4899, 0x20bc07,
-        ],
-    ),
-    palette(
-        "bluesky-light",
-        [
-            0xffffff, 0x0b0f14, 0x6e7d8c, 0x1185fe, 0xe0245e, 0x13a60b, 0xec4899, 0x13a60b,
-        ],
-    ),
-];
-
-/// The built-in themes, in the order the picker lists them: Bluesky's own
-/// looks first (`bluesky`, its "dim" look, is the default), then the
-/// terminal's palette, then well-known editor and terminal themes by name,
-/// and `monochrome` last.
-pub(crate) static THEMES: [Theme; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1] = {
-    let mut all = [MONOCHROME; BLUESKY.len() + 1 + EDITOR_THEMES.len() + 1];
-    let mut i = 0;
-    while i < BLUESKY.len() {
-        all[i] = BLUESKY[i];
-        i += 1;
-    }
-    all[BLUESKY.len()] = TERMINAL;
-    let mut j = 0;
-    while j < EDITOR_THEMES.len() {
-        all[BLUESKY.len() + 1 + j] = EDITOR_THEMES[j];
-        j += 1;
-    }
-    all
-};
+pub(crate) use terminal_kit::theme::{ColorDepth, THEMES, Theme, color_depth};
 
 /// Names themes had before, still read from `settings.json`.
 const OLD_NAMES: [(&str, &str); 3] = [
@@ -80,6 +36,7 @@ pub(crate) fn index_of(name: &str) -> Option<usize> {
 mod tests {
     use super::*;
     use ratatui::style::Color;
+    use terminal_kit::theme::{EDITOR_THEMES, MONOCHROME, TERMINAL};
 
     #[test]
     fn theme_names_are_unique_and_found_ignoring_case() {
@@ -158,7 +115,7 @@ mod tests {
             Some(0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b))
         };
         let contrast = |a: f64, b: f64| (a.max(b) + 0.05) / (a.min(b) + 0.05);
-        for t in &BLUESKY {
+        for t in &THEMES[..3] {
             let bg = lum(t.bg).unwrap();
             assert!(contrast(bg, lum(t.fg).unwrap()) >= 4.5, "{}: text", t.name);
             for (role, c) in [("accent", t.accent), ("like", t.like), ("error", t.error)] {

@@ -31,6 +31,18 @@ Mastodon stage; expanding the shared API for them is deferred. The existing
 bsky/msky viewer fit calculation also has a new fingerprint after moving
 the adjacent byte-count formatter. None of these entries adds copied code.
 
+The Nostr TUI extraction shares the theme inventory across all four clients
+and locale parsing between mstdn and nstr. Removing mstdn's locale helpers
+changed the fingerprint of its existing translation-table/process-state
+match with msky; that unchanged code stays client-local because their
+vocabulary and thread-local language selection belong to each application.
+The existing bsky/msky legacy theme-name lookup and its adjacent tests also
+have a new fingerprint after removing their local inventories; their old
+name aliases stay in those clients to preserve existing settings behavior.
+Their existing palette-readability tests now index the shared inventory
+instead of local BLUESKY arrays; matches with terminal-kit are retained tests.
+No Nostr TUI implementation is copied from another client.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 
