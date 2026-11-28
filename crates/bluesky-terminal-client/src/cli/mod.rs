@@ -100,6 +100,9 @@ pub(crate) enum Command {
     },
     /// A profile; your own without ACTOR.
     Profile { actor: Option<String> },
+    /// Your account, as `profile` without ACTOR prints it: which account
+    /// the commands write as.
+    Whoami,
     /// The accounts that follow ACTOR (you by default).
     Followers {
         actor: Option<String>,
@@ -134,6 +137,10 @@ pub(crate) enum Command {
         /// the post has no picture, video or quote).
         #[arg(long)]
         no_card: bool,
+        /// Show what would be sent, the link card included, and send
+        /// nothing: no picture or video is uploaded either.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// The accounts that liked a post, newest first.
     Likes {
@@ -383,7 +390,22 @@ fn run_to(cmd: Command, ctx: &Ctx) -> Result<()> {
             reply,
             quote,
             no_card,
-        } => post(ctx, o, &text, images, alts, video, reply, quote, no_card),
+            dry_run,
+        } => post(
+            ctx,
+            o,
+            &text,
+            PostFlags {
+                images,
+                alts,
+                video,
+                reply,
+                quote,
+                no_card,
+                dry_run,
+            },
+        ),
+        Command::Whoami => profile(ctx, o, None),
         Command::Likes { post, limit } => likes(ctx, o, &post, limit),
         Command::Reposts { post, limit } => reposts(ctx, o, &post, limit),
         Command::Lists { actor, limit } => lists(ctx, o, actor.as_deref(), limit),
@@ -1146,21 +1168,27 @@ fn wrote(ctx: &Ctx, out: &mut dyn Write, v: Value, said: &str) -> Result<()> {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one per option of `bsky post`, as clap parsed them"
-)]
-fn post(
-    ctx: &Ctx,
-    out: &mut dyn Write,
-    text_arg: &str,
+/// The options of `bsky post`, as clap parsed them.
+struct PostFlags {
     images: Vec<PathBuf>,
     alts: Vec<String>,
     video: Option<PathBuf>,
     reply: Option<String>,
     quote: Option<String>,
     no_card: bool,
-) -> Result<()> {
+    dry_run: bool,
+}
+
+fn post(ctx: &Ctx, out: &mut dyn Write, text_arg: &str, flags: PostFlags) -> Result<()> {
+    let PostFlags {
+        images,
+        alts,
+        video,
+        reply,
+        quote,
+        no_card,
+        dry_run,
+    } = flags;
     let body = if text_arg == "-" {
         let mut s = String::new();
         io::stdin()
@@ -1221,6 +1249,16 @@ fn post(
         writer: crate::config::language(&settings, &env),
         link_card: !no_card && crate::config::link_cards(&env, &settings).0,
     };
+    if dry_run {
+        let draft = Draft {
+            text: &body,
+            reply: reply.as_ref().map(|r| r.parent.uri.as_str()),
+            quote: quote.as_ref().map(|q| q.uri.as_str()),
+            media: &media,
+            card: options.link_card && media.is_empty() && quote.is_none(),
+        };
+        return show_draft(ctx, out, &draft);
+    }
     let created = send_post(
         &client,
         &body,
@@ -1238,6 +1276,122 @@ fn post(
     let mut v = json::wrote("post", None, Some(&created.uri), url.as_deref(), false);
     v["cid"] = json!(created.cid);
     wrote(ctx, out, v, &said)
+}
+
+/// What `post --dry-run` shows: the post as it would be sent.
+struct Draft<'a> {
+    text: &'a str,
+    /// The at:// URIs of the post it answers and the one it quotes.
+    reply: Option<&'a str>,
+    quote: Option<&'a str>,
+    media: &'a [Attachment],
+    /// Whether the first link's page is read for a card.
+    card: bool,
+}
+
+/// `post --dry-run`: what would be sent, as the account in use, and the
+/// card its first link would get. Nothing is uploaded or posted; a file is
+/// only looked at, and the first link's page read.
+fn show_draft(ctx: &Ctx, out: &mut dyn Write, d: &Draft) -> Result<()> {
+    let mut files = Vec::new();
+    for a in d.media {
+        let size = std::fs::metadata(&a.path)
+            .map_err(|e| Error::io(format!("cannot read {}: {e}", a.path.display())))?
+            .len();
+        let kind = crate::media::inspect(&a.path).kind;
+        if kind == crate::media::Kind::Video
+            && let Some(why) = crate::compose::video_alt_problem(&a.alt)
+        {
+            return Err(Error::new(Kind::Usage, why));
+        }
+        files.push((a, size, kind == crate::media::Kind::Video));
+    }
+    let card = if d.card {
+        crate::card::read(d.text)
+    } else {
+        None
+    };
+    let text_sent = d.text.trim_end();
+    let n = api::grapheme_len(text_sent);
+    let (service, handle) = ctx
+        .session
+        .as_ref()
+        .map(|s| (s.service.as_str(), s.handle.as_str()))
+        .unwrap_or_default();
+    let host = service.split_once("://").map_or(service, |(_, h)| h);
+    if ctx.json {
+        let files: Vec<Value> = files
+            .iter()
+            .map(|(a, size, video)| {
+                json!({
+                    "path": a.path.to_string_lossy(),
+                    "type": if *video { "video" } else { "image" },
+                    "size": size,
+                    "alt": (!a.alt.trim().is_empty()).then(|| a.alt.trim()),
+                })
+            })
+            .collect();
+        return json_line(
+            out,
+            &json!({
+                "dryRun": true,
+                "host": host,
+                "username": handle,
+                "post": {
+                    "text": text_sent,
+                    "cw": null,
+                    "visibility": null,
+                    "replyId": d.reply,
+                    "quoteId": d.quote,
+                    "files": files,
+                },
+                "characters": n,
+                "maxCharacters": api::MAX_POST_GRAPHEMES,
+                "card": card.as_ref().map(|c| json!({
+                    "url": c.uri,
+                    "title": c.title,
+                    "description": c.description,
+                    "image": c.image,
+                })),
+            }),
+        );
+    }
+    let mut s = format!(
+        "dry run: nothing was sent to {host}\nas @{}\n",
+        format::one_line(handle)
+    );
+    if let Some(r) = d.reply {
+        s.push_str(&format!("reply to: {}\n", format::one_line(r)));
+    }
+    if let Some(q) = d.quote {
+        s.push_str(&format!("quote: {}\n", format::one_line(q)));
+    }
+    for (a, size, _) in &files {
+        s.push_str(&format!("file: {} ({size} bytes)", a.path.display()));
+        if !a.alt.trim().is_empty() {
+            s.push_str(&format!(", alt: {}", format::one_line(a.alt.trim())));
+        }
+        s.push('\n');
+    }
+    s.push_str(&format!(
+        "text ({n} of {} characters):\n",
+        api::MAX_POST_GRAPHEMES
+    ));
+    s.push_str(&crate::tui::text::drawable(text_sent));
+    s.push('\n');
+    if let Some(c) = &card {
+        s.push_str(&format!("card of {}:\n", format::one_line(&c.uri)));
+        for (label, v) in [
+            ("title", Some(c.title.as_str())),
+            ("description", Some(c.description.as_str())),
+            ("image", c.image.as_deref()),
+        ] {
+            if let Some(v) = v.filter(|v| !v.trim().is_empty()) {
+                s.push_str(&format!("  {label}: {}\n", format::one_line(v)));
+            }
+        }
+    }
+    text(out, &s)
 }
 
 fn like(ctx: &Ctx, out: &mut dyn Write, post: &str, on: bool) -> Result<()> {
