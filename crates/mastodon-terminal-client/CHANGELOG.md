@@ -18,3 +18,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - A status's HTML is read back into its text for the terminal and for `--json`: paragraphs, line breaks, mentions and hashtags as written, links whole (the address after the text when the text is not it), custom emoji shortcodes, quotes, lists and preformatted text, with unit and property tests.
 - A read turned away for being asked too often waits as `Retry-After` or `X-RateLimit-Reset` says, up to three times; a write is never sent again.
 - The login's directions and the page the browser comes back to are in English or Japanese, by the locale.
+- `--json` prints one object a line in the shape bsky and msky print (`doc/json.md`): a post's favourites are `likeCount` and its boosts `repostCount`, a boost holds the post it boosts in `repostOf`, a file's `type` is `image`, `video`, `audio` or `file`, a notification names its post in `postId` and `post`, and a write prints `{"action", "target", "id", "url", "already"}`.
+- `-n 0` is a usage error (exit 1), as in bsky and msky.

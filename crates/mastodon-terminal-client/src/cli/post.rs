@@ -405,7 +405,10 @@ pub(super) fn post(
     })?;
     let url = format::status_url(client.origin(), &made);
     if ctx.json {
-        return json_line(out, &json!({"id": made.id, "url": url, "uri": made.uri}));
+        return json_line(
+            out,
+            &json!({"action": "post", "target": null, "id": made.id, "url": url, "already": false, "uri": made.uri}),
+        );
     }
     text(out, &format!("{url}\n"))
 }
@@ -475,7 +478,7 @@ fn dry_run(
                 "dryRun": true,
                 "host": client.host(),
                 "username": me.map(|u| &u.username),
-                "status": {
+                "post": {
                     "text": d.text,
                     "cw": d.cw,
                     "sensitive": a.sensitive || d.cw.is_some(),
