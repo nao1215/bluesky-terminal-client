@@ -1,5 +1,5 @@
 {
-  "path": ["crates/bluesky-terminal-client/src", "crates/misskey-terminal-client/src", "crates/mastodon-terminal-client/src", "crates/terminal-kit/src"],
+  "path": ["crates/bluesky-terminal-client/src", "crates/misskey-terminal-client/src", "crates/mastodon-terminal-client/src", "crates/nostr-terminal-client/src", "crates/terminal-kit/src"],
   "format": ["rust"],
   "minTokens": 100,
   "minLines": 10,

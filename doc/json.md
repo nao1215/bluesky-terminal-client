@@ -1,8 +1,8 @@
 # The JSON the commands print
 
-With `--json`, bsky, msky and mstdn print one JSON object per line: one per post, account or notification a command lists, or one for what a command did. The three print the same keys for the same things, so a script written for one reads the others. A key is always there; one with nothing to say is `null` (an empty list for `files`). What only one network has comes as more keys beside the shared ones.
+With `--json`, bsky, msky, mstdn and nstr print one JSON object per line: one per post, account or notification a command lists, or one for what a command did. The clients print the same keys for the same things, so a script written for one reads the others. A key is always there; one with nothing to say is `null` (an empty list for `files`). What only one network has comes as more keys beside the shared ones.
 
-Every key is camelCase. Times are the server's own ISO 8601 strings. A list is read page by page until `-n` items have come; no cursor is printed, so every line is one item.
+Every key is camelCase. Times are the server's own ISO 8601 strings; nstr converts signed Unix timestamps to ISO 8601 UTC. A list is read page by page until `-n` items have come; no cursor is printed, so every line is one item.
 
 `doc/json_keys.rs` holds the key lists below, and each client's tests include it and check what they print against them.
 
@@ -29,6 +29,7 @@ More keys:
 
 - bsky: `cid`, `quoteCount`, `langs`.
 - msky: `reactions` (each reaction with how many gave it), `visibility`.
+- nstr: `kind`, `tags`, `sig`, `note`, `nevent`; `id` is the hex event ID, `uri` is `nostr:note...`, `url` and unqueried counts are `null`, and `files` is empty. Embedded users have the hex public key as `id`, npub as `username`, and `null` for `host` and `name`.
 - mstdn: `content` (the HTML), `sensitive`, `visibility`, `language`, `mentions`, `tags`, `poll`.
 
 ## User
@@ -53,7 +54,7 @@ What `whoami`, `profile` and the commands that list accounts (`followers`, `foll
 | `followersCount`, `followingCount`, `postsCount` | Its counts, or `null` when the server does not say |
 | `following` | Whether you follow it, or `null` when the server does not say |
 
-More keys: msky and mstdn `locked`, mstdn `bot`.
+More keys: msky and mstdn `locked`, mstdn `bot`, nstr `npub`, `nprofile`, `picture`. Nostr accounts have `null` for `url`, counts and `following`; `whoami` reads their name and description from kind-0 metadata.
 
 The commands that list who liked or reposted a post, or who is on a list, print accounts too, with bsky's `likedAt` and msky's `reaction` and `reactedAt` beside.
 
@@ -81,7 +82,7 @@ More keys: msky `name`, `size`, `isSensitive`.
 | `postId` | The `id` of the post it is about, or `null` |
 | `post` | That post, whole, when the server sent it; else `null` |
 
-A Misskey reaction is a `like`, with the reaction in `reaction`. Mastodon's `favourite` is a `like`, its `reblog` a `repost`. A Bluesky notification carries the post of a reply, a mention or a quote without its counts, so they are `null` there; a like or a repost names the post in `postId` alone. More keys: bsky `isRead`, msky `reaction`.
+A Misskey reaction is a `like`, with the reaction in `reaction`. Mastodon's `favourite` is a `like`, its `reblog` a `repost`. A Bluesky notification carries the post of a reply, a mention or a quote without its counts, so they are `null` there; a like or a repost names the post in `postId` alone. More keys: bsky `isRead`, msky `reaction`. Nostr notifications are kind-1 notes tagging the configured public key; a note with a NIP-10 reply reference is a `reply`, otherwise a `mention`. Both `postId` and `post` identify the triggering note.
 
 ## Thread
 
@@ -135,7 +136,7 @@ A write prints one object:
 | `url` | The web page of what it made, or `null` |
 | `already` | `true` when there was nothing to do: liked already, following already |
 
-More keys: bsky `cid`, and for `app-passwords add` the `password`; msky `reaction`, `requested` (a follow the account has to accept), and a report's `comment`; mstdn `uri`.
+More keys: bsky `cid`, and for `app-passwords add` the `password`; msky `reaction`, `requested` (a follow the account has to accept), and a report's `comment`; mstdn `uri`; nstr `uri` and `acceptedRelays` (the number of relays acknowledging the publication).
 
 `post --dry-run --json` prints what would be sent and sends nothing: `{"dryRun": true, "host", "username", "post": {"text", "cw", "visibility", "replyId", "files"}, ...}`; msky and bsky add the quote's `quoteId`, msky the link preview the server would make, and bsky the `card` its first link would get.
 
