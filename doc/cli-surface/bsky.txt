@@ -50,6 +50,7 @@ notifications --seen
 notifications [alias notif]
 post
 post --alt
+post --dry-run
 post --image
 post --no-card
 post --quote
@@ -74,3 +75,4 @@ unfollow
 unlike
 unmute
 unrepost
+whoami
