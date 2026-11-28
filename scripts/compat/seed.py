@@ -47,6 +47,8 @@ def sized_videos(work, size, multipart_limit=False):
 
 
 def seed(work, system):
+    heavy = os.environ.get('COMPAT_GROUP', 'heavy') == 'heavy'
+    wide_count, deep_count, mention_count, picture_count = (200, 50, 500, 100) if heavy else (1, 1, 100, 1)
     host = os.environ['MSTDN_HOST']
     users = json.loads((work / 'users.json').read_text())
     apis = [API(host, u['token']) for u in users]
@@ -110,20 +112,20 @@ def seed(work, system):
     for visibility in ('public', 'unlisted', 'private', 'direct'):
         ids[visibility] = post(main, '@bob compatibility ' + visibility, visibility=visibility, spoiler_text='compatibility warning')
     ids['wide'] = post(main, 'compatibility wide thread')
-    for i in range(200):
+    for i in range(wide_count):
         post(second, f'@alice wide reply {i:03}', in_reply_to_id=ids['wide'])
-    counts['wide_replies'] = 200
+    counts['wide_replies'] = wide_count
     ids['deep'] = post(main, 'compatibility deep thread')
     parent = ids['deep']
-    for i in range(50):
+    for i in range(deep_count):
         parent = post(second, f'@alice deep reply {i:03}', in_reply_to_id=parent)
     ids['deep_last'] = parent
-    counts['deep_replies'] = 50
-    for i in range(500):
+    counts['deep_replies'] = deep_count
+    for i in range(mention_count):
         post(second, f'@alice notification {i:03}')
         if i % 100 == 99:
             print(f'Seeded {i+1} mention notifications', flush=True)
-    counts['mention_notifications'] = 500
+    counts['mention_notifications'] = mention_count
     for action in ('favourite', 'reblog'):
         second.json('/api/v1/statuses/' + ids['text'] + '/' + action, {})
     for i in range(100):
@@ -132,12 +134,12 @@ def seed(work, system):
         if i % 20 == 19:
             print(f'Seeded {i+1} video-only posts', flush=True)
     counts['video_only'] = 100
-    for i in range(100):
+    for i in range(picture_count):
         media = [upload(second, work / 'picture.png', f'Picture {i:03}/{n}') for n in range(4)]
         post(second, f'pictures{i:03} #compatpictures', media_ids=media)
         if i % 20 == 19:
             print(f'Seeded {i+1} four-picture posts', flush=True)
-    counts['four_pictures'] = 100
+    counts['four_pictures'] = picture_count
     for n in (1, 2, 3):
         media = [upload(main, work / 'picture.png', f'Alt {n}/{i}') for i in range(n)]
         ids['picture' + str(n)] = post(main, f'compatibility {n} pictures', media_ids=media)

@@ -175,6 +175,8 @@ From their READMEs and source, September 2026.
 
 ## Testing
 
+See the [E2E scenarios](../../doc/e2e/), [compatibility results](../../doc/compat.md) and [nightly compatibility workflow](../../.github/workflows/compat.yml) for test coverage and recorded runs.
+
 | Technique | Bug class caught here |
 |---|---|
 | [Unit tests](doc/testing.md#unit-tests) | Wrong answers for the cases someone wrote down |

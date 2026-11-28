@@ -225,7 +225,7 @@ cargo test -p mastodon-terminal-client
 just e2e-mstdn    # end-to-end tests (atago)
 ```
 
-The unit and existing E2E suites send their writes to local stand-ins or atago mocks. The separate [live compatibility suite](../../doc/compat.md) starts disposable GoToSocial or Mastodon servers on `127.0.0.1`, seeds throwaway accounts and removes their data afterwards.
+See the [E2E scenarios](../../doc/e2e/), [compatibility results](../../doc/compat.md) and [nightly compatibility workflow](../../.github/workflows/compat.yml) for test coverage and recorded runs.
 
 ## License
 

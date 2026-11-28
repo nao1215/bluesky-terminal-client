@@ -229,11 +229,12 @@ def main():
                                     env=env, capture_output=True, text=True)
             print(report.stdout, flush=True)
             print(report.stderr, file=sys.stderr, flush=True)
-            # Only the atago report is retained when requested, never credentials or volumes.
+            # Retain the report and public server version, never credentials or volumes.
             if os.environ.get("MSKY_REPORT_DIR"):
                 destination = Path(os.environ["MSKY_REPORT_DIR"])
                 destination.mkdir(parents=True, exist_ok=True)
                 (destination / (service + ".json")).write_text(report.stdout)
+                (destination / (service + "-server.json")).write_text(json.dumps({"version": meta["version"]}) + "\n")
             report.check_returncode()
         finally:
             # Remove named volumes as well as containers; all bind data belongs to TemporaryDirectory.

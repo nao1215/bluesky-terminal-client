@@ -3,15 +3,53 @@ on:
   schedule:
     - cron: '23 2 * * *'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'crates/mastodon-terminal-client/**'
+      - 'crates/misskey-terminal-client/**'
+      - 'crates/nostr-terminal-client/**'
+      - 'crates/terminal-kit/**'
+      - 'scripts/compat/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/**'
+      - '.github/workflows/compat.yml'
 permissions:
   contents: read
 concurrency:
-  group: live-compat-${{ github.ref }}
-  cancel-in-progress: false
+  group: live-compat-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  gotosocial:
+  select:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has_jobs: ${{ steps.matrix.outputs.has_jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Test path selection and report generation
+        run: python3 scripts/compat/test_ci.py
+      - id: matrix
+        name: Select servers and tiers by changed paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/compat/matrix.py
+
+  # Optional checks only. PRs select usable on the three fast servers.
+  compatibility:
+    needs: select
+    if: needs.select.outputs.has_jobs == 'true'
+    name: compat (${{ matrix.client }}, ${{ matrix.server }}, ${{ matrix.group }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,17 +58,47 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: compat-${{ matrix.client }}-${{ matrix.server }}-${{ matrix.group }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
         with:
           version: v0.28.0
           verify-attestation: 'true'
       - name: Check media generator
         run: ffmpeg -version
-      - name: Run disposable GoToSocial catalog
-        run: scripts/compat/gotosocial.sh
+      - name: Run isolated server and selected catalog
+        env:
+          CLIENT: ${{ matrix.client }}
+          SERVER: ${{ matrix.server }}
+          GROUP: ${{ matrix.group }}
+        run: python3 scripts/compat/ci.py "$CLIENT" "$SERVER" "$GROUP"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.1
         if: always()
         with:
-          name: gotosocial-compatibility
-          path: target/compat/gotosocial/*.json
-          if-no-files-found: ignore
+          name: compat-${{ matrix.client }}-${{ matrix.server }}-${{ matrix.group }}
+          path: target/compat/${{ matrix.client }}-${{ matrix.server }}-${{ matrix.group }}/*.json
+          if-no-files-found: warn
+
+  record:
+    needs: [select, compatibility]
+    if: always() && github.event_name != 'pull_request' && needs.select.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: compat-*
+          path: target/compat
+      - name: Write the compatibility record from JSON reports
+        env:
+          MATRIX: ${{ needs.select.outputs.matrix }}
+        run: python3 scripts/compat/results.py target/compat --matrix "$MATRIX"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.1
+        with:
+          name: compatibility-record
+          path: doc/compat.md
+          if-no-files-found: error
