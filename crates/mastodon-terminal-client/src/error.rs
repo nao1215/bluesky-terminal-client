@@ -8,11 +8,11 @@
 //! |------|-----------|------------------------------------------------------------------|
 //! | 0    | success   |                                                                  |
 //! | 1    | usage     | unknown flag, malformed `--host`, a post or account not written as one |
+//! | 2    | terminal  | the full-screen client was started without a terminal, or the terminal failed |
 //! | 3    | local I/O | the output or a download cannot be written                       |
 //! | 4    | API       | a request failed on the network or the server said no            |
 //!
-//! The codes are bsky's and msky's. Their 2, a terminal that cannot host
-//! their full-screen client, is not used: mstdn has no such client.
+//! The codes are bsky's and msky's.
 
 use std::fmt;
 
@@ -21,6 +21,8 @@ use std::fmt;
 pub(crate) enum Kind {
     /// The command line cannot be acted on.
     Usage,
+    /// The full-screen client cannot run in this terminal.
+    Terminal,
     /// A local file could not be read or written.
     Io,
     /// The Mastodon server could not be reached or refused the request.
@@ -32,6 +34,7 @@ impl Kind {
     pub(crate) fn exit_code(self) -> u8 {
         match self {
             Kind::Usage => 1,
+            Kind::Terminal => 2,
             Kind::Io => 3,
             Kind::Api => 4,
         }
@@ -126,7 +129,7 @@ mod tests {
 
     #[test]
     fn exit_codes_are_distinct_and_nonzero() {
-        let codes = [Kind::Usage, Kind::Io, Kind::Api].map(Kind::exit_code);
-        assert_eq!(codes, [1, 3, 4]);
+        let codes = [Kind::Usage, Kind::Terminal, Kind::Io, Kind::Api].map(Kind::exit_code);
+        assert_eq!(codes, [1, 2, 3, 4]);
     }
 }

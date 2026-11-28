@@ -1,0 +1,323 @@
+//! Network calls run on worker threads so the UI never blocks on the
+//! server, as bsky's and msky's do.
+//!
+//! The UI sends a [`Job`] with its number; a worker performs it with the
+//! [`Client`] in use when it was sent and answers with an [`Event`] under
+//! the same number. The jobs run side by side on a few threads, so a thread
+//! opened meanwhile does not wait behind a slow page.
+
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use serde_json::json;
+use terminal_kit::inflight::InFlight;
+
+use crate::api::types::{Limits, Notification, Status};
+use crate::api::{Client, Next, Page, random_hex};
+use crate::cli::{TimelineKind, Visibility};
+use crate::error::{Error, Result};
+
+/// Statuses, or notifications, asked for a page at a time.
+pub(crate) const PAGE: usize = 30;
+
+/// Work for the worker threads.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Job {
+    /// A page of a timeline: the first, or the one older than `max_id`.
+    Timeline {
+        kind: TimelineKind,
+        max_id: Option<String>,
+    },
+    /// A page of the notifications, as a timeline's.
+    Notifications { max_id: Option<String> },
+    /// The thread of status `id`: what it answers, it, and its replies.
+    Thread { id: String },
+    /// Favourite status `id` (`on`), or take the favourite back.
+    Favourite { id: String, on: bool },
+    /// Boost status `id` (`on`), or take the boost back.
+    Boost { id: String, on: bool },
+    /// Post a status.
+    Post(Box<Draft>),
+    /// Open an address in the web browser.
+    OpenLink { url: String },
+    /// The limits of a post on the server.
+    Limits,
+}
+
+/// A status to post, as the composer made it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Draft {
+    pub text: String,
+    /// The content warning; none when empty.
+    pub cw: String,
+    pub visibility: Visibility,
+    /// The status it replies to.
+    pub reply: Option<String>,
+}
+
+impl Job {
+    /// Whether it changes something on the server, which quitting right
+    /// after sending it must not lose: a status, a favourite, a boost.
+    pub(crate) fn changes_server(&self) -> bool {
+        matches!(
+            self,
+            Job::Favourite { .. } | Job::Boost { .. } | Job::Post(_)
+        )
+    }
+}
+
+/// A status's thread.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Thread {
+    /// What it answers, the first status of the conversation first.
+    pub ancestors: Vec<Status>,
+    pub status: Status,
+    /// The replies under it, each reply after the status it answers.
+    pub descendants: Vec<Status>,
+}
+
+/// A finished job.
+#[derive(Debug)]
+pub(crate) enum Event {
+    Timeline {
+        kind: TimelineKind,
+        max_id: Option<String>,
+        result: Result<Page<Status>>,
+    },
+    Notifications {
+        max_id: Option<String>,
+        result: Result<Page<Notification>>,
+    },
+    Thread {
+        id: String,
+        result: Result<Box<Thread>>,
+    },
+    Favourited {
+        id: String,
+        on: bool,
+        result: Result<()>,
+    },
+    Boosted {
+        id: String,
+        on: bool,
+        result: Result<()>,
+    },
+    /// The status posted.
+    Posted(Result<Box<Status>>),
+    /// Whether a browser was started.
+    Opened(bool),
+    Limits(Limits),
+}
+
+impl Job {
+    /// The answer of this job when it failed with `e` before it could say
+    /// anything else, so the screen stops waiting for it.
+    fn failed(self, e: Error) -> Event {
+        match self {
+            Job::Timeline { kind, max_id } => Event::Timeline {
+                kind,
+                max_id,
+                result: Err(e),
+            },
+            Job::Notifications { max_id } => Event::Notifications {
+                max_id,
+                result: Err(e),
+            },
+            Job::Thread { id } => Event::Thread { id, result: Err(e) },
+            Job::Favourite { id, on } => Event::Favourited {
+                id,
+                on,
+                result: Err(e),
+            },
+            Job::Boost { id, on } => Event::Boosted {
+                id,
+                on,
+                result: Err(e),
+            },
+            Job::Post(_) => Event::Posted(Err(e)),
+            Job::OpenLink { .. } => Event::Opened(false),
+            Job::Limits => Event::Limits(Limits::default()),
+        }
+    }
+}
+
+/// Do `job` as `client`.
+pub(crate) fn run(job: Job, client: &Client) -> Event {
+    match job {
+        Job::Timeline { kind, max_id } => {
+            let (path, extra) = kind.path();
+            Event::Timeline {
+                kind,
+                result: client.timeline(path, extra, PAGE, max_id.as_deref()),
+                max_id,
+            }
+        }
+        Job::Notifications { max_id } => Event::Notifications {
+            result: client.notifications(PAGE, max_id.as_deref()),
+            max_id,
+        },
+        Job::Thread { id } => Event::Thread {
+            result: thread(client, &id).map(Box::new),
+            id,
+        },
+        Job::Favourite { id, on } => Event::Favourited {
+            result: client.act_on(&id, if on { "favourite" } else { "unfavourite" }),
+            id,
+            on,
+        },
+        Job::Boost { id, on } => Event::Boosted {
+            result: client.act_on(&id, if on { "reblog" } else { "unreblog" }),
+            id,
+            on,
+        },
+        Job::Post(d) => Event::Posted(post(client, &d).map(Box::new)),
+        Job::OpenLink { url } => Event::Opened(crate::browser::open(&url)),
+        Job::Limits => Event::Limits(client.limits()),
+    }
+}
+
+/// The thread of status `id`: the status and its context, asked side by
+/// side.
+fn thread(client: &Client, id: &str) -> Result<Thread> {
+    let (status, context) = std::thread::scope(|s| {
+        let context = s.spawn(|| client.context(id));
+        let status = client.status(id);
+        let context = context
+            .join()
+            .unwrap_or_else(|_| Err(Error::api("the thread could not be read")));
+        (status, context)
+    });
+    let context = context?;
+    Ok(Thread {
+        ancestors: context.ancestors,
+        status: status?,
+        descendants: context.descendants,
+    })
+}
+
+/// Post `d`, sent once with an `Idempotency-Key`, as `mstdn post` posts.
+fn post(client: &Client, d: &Draft) -> Result<Status> {
+    let mut body = json!({
+        "status": d.text,
+        "visibility": d.visibility.name(),
+    });
+    if !d.cw.trim().is_empty() {
+        body["spoiler_text"] = json!(d.cw);
+    }
+    if let Some(r) = &d.reply {
+        body["in_reply_to_id"] = json!(r);
+    }
+    client.create_status(&body, &random_hex("mstdn-")?)
+}
+
+/// Where the page after `page` starts: what its `Link` header says, else
+/// older than its last item; none when it was the last.
+pub(crate) fn next_of<T>(page: &Page<T>, last_id: impl Fn(&T) -> &str) -> Option<String> {
+    match &page.next {
+        Next::End => None,
+        Next::MaxId(m) => Some(m.clone()),
+        Next::Unsaid => page.items.last().map(|i| last_id(i).to_string()),
+    }
+}
+
+/// Run `job` with `run`, answering it with its own failure if `run`
+/// panics: a thread that died would leave the job unanswered.
+fn guarded(job: Job, run: impl FnOnce(Job) -> Event) -> Event {
+    let kept = job.clone();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(job))).unwrap_or_else(|panic| {
+        let why = panic
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        kept.failed(Error::api(format!("internal error: {why}")))
+    })
+}
+
+/// Threads that run jobs.
+const WORKERS: usize = 4;
+
+/// A job, its number, the account it acts as, and whether it changes the
+/// server.
+type Queued = (u64, Job, Client, bool);
+
+/// Handle to the running workers.
+pub(crate) struct Worker {
+    client: Client,
+    jobs: Sender<Queued>,
+    answers: Receiver<(u64, Event)>,
+    /// The jobs that change the server, sent and not done yet.
+    writes: InFlight,
+}
+
+impl Worker {
+    /// Start the threads, acting as `client`. Fails when the system cannot
+    /// start a thread.
+    pub(crate) fn spawn(client: Client) -> std::io::Result<Self> {
+        let (jobs, queue) = channel::<Queued>();
+        let queue = Arc::new(Mutex::new(queue));
+        let (tx, answers) = channel();
+        let writes = InFlight::default();
+        for _ in 0..WORKERS {
+            let queue = Arc::clone(&queue);
+            let tx = tx.clone();
+            let writes = writes.clone();
+            std::thread::Builder::new()
+                .name("mstdn-worker".into())
+                .spawn(move || {
+                    loop {
+                        let next = queue.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                        let Ok((seq, job, client, write)) = next else {
+                            return;
+                        };
+                        let event = guarded(job, |job| run(job, &client));
+                        if write {
+                            writes.done();
+                        }
+                        if tx.send((seq, event)).is_err() {
+                            return;
+                        }
+                    }
+                })?;
+        }
+        Ok(Self {
+            client,
+            jobs,
+            answers,
+            writes,
+        })
+    }
+
+    /// Send `job`, numbered `seq`.
+    pub(crate) fn send(&self, seq: u64, job: Job) {
+        let write = job.changes_server();
+        if write {
+            self.writes.start();
+        }
+        if self
+            .jobs
+            .send((seq, job, self.client.clone(), write))
+            .is_err()
+            && write
+        {
+            // No thread is left to take it, so none will say it is done.
+            self.writes.done();
+        }
+    }
+
+    /// Wait, for at most `limit`, until every job sent that changes the
+    /// server is done: a favourite given just before q still reaches the
+    /// server. Returns at once when none is on its way.
+    pub(crate) fn finish_writes(&self, limit: Duration) {
+        self.writes.wait(limit);
+    }
+
+    /// An answer, if one has come.
+    pub(crate) fn try_recv(&self) -> Option<(u64, Event)> {
+        self.answers.try_recv().ok()
+    }
+}
+
+#[cfg(test)]
+mod tests;

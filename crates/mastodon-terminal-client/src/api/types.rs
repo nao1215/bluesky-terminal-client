@@ -132,6 +132,10 @@ pub(crate) struct Status {
     pub replies_count: u64,
     pub reblogs_count: u64,
     pub favourites_count: u64,
+    /// Whether the account asking favourited it; a visitor is told nothing.
+    pub favourited: Option<bool>,
+    /// Whether the account asking boosted it.
+    pub reblogged: Option<bool>,
 }
 
 impl Status {
