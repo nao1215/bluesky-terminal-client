@@ -1,0 +1,44 @@
+{
+  "reused": {
+    "id": "au3qw8l8gbdp0016",
+    "createdAt": "2026-11-28T00:00:00.000Z",
+    "name": "photo.png",
+    "type": "image/png",
+    "md5": "33c7af867338992c9483ef300b296a57",
+    "size": 242,
+    "isSensitive": false,
+    "blurhash": "e44pi1kbfQkbfQo,fRfQfRfQfQfQfQfQfQo,fRfQfRfQfQfQfQfQfQ",
+    "properties": {
+      "width": 120,
+      "height": 90
+    },
+    "url": "http://127.0.0.1:3000/files/4c555120-e118-4840-b41c-131c74ff9d0c.png",
+    "thumbnailUrl": "http://127.0.0.1:3000/files/thumbnail-71ed9cb3-e24c-4281-a794-33c1e92df079.png",
+    "comment": "compat media",
+    "folderId": null,
+    "folder": null,
+    "userId": null,
+    "user": null
+  },
+  "fresh": {
+    "id": "au3qw8trgbdp001a",
+    "createdAt": "2026-11-28T00:00:00.000Z",
+    "name": "photo.png",
+    "type": "image/png",
+    "md5": "33c7af867338992c9483ef300b296a57",
+    "size": 242,
+    "isSensitive": false,
+    "blurhash": "e44pi1kbfQkbfQo,fRfQfRfQfQfQfQfQfQo,fRfQfRfQfQfQfQfQfQ",
+    "properties": {
+      "width": 120,
+      "height": 90
+    },
+    "url": "http://127.0.0.1:3000/files/7cf7f8c6-59ef-48f0-8623-e4533a1560b2.png",
+    "thumbnailUrl": "http://127.0.0.1:3000/files/thumbnail-c493457b-e81f-44c2-9599-0b34ca919c88.png",
+    "comment": "compat replacement alt",
+    "folderId": null,
+    "folder": null,
+    "userId": null,
+    "user": null
+  }
+}

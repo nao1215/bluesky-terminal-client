@@ -1,0 +1,38 @@
+{
+  "status": 200,
+  "body": {
+    "id": "au3qwrb2n9s401k7",
+    "createdAt": "2026-11-28T00:00:00.000Z",
+    "userId": "au3qw6s7n9s40005",
+    "user": {
+      "id": "au3qw6s7n9s40005",
+      "name": null,
+      "username": "compat_pictures",
+      "host": null,
+      "avatarUrl": "http://127.0.0.1:3000/identicon/compat_pictures@127.0.0.1:3000",
+      "avatarBlurhash": null,
+      "avatarDecorations": [],
+      "isBot": false,
+      "isCat": false,
+      "emojis": {},
+      "onlineStatus": "unknown",
+      "badgeRoles": []
+    },
+    "text": null,
+    "cw": null,
+    "visibility": "followers",
+    "localOnly": false,
+    "reactionAcceptance": null,
+    "renoteCount": 0,
+    "repliesCount": 0,
+    "reactionCount": 0,
+    "reactions": {},
+    "reactionEmojis": {},
+    "fileIds": [],
+    "files": [],
+    "replyId": null,
+    "renoteId": null,
+    "clippedCount": 0,
+    "isHidden": true
+  }
+}
