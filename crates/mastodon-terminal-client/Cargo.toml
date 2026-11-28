@@ -30,7 +30,7 @@ image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2 = "0.11"
 terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
 unicode-segmentation.workspace = true
 ureq.workspace = true
