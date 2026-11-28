@@ -36,3 +36,5 @@ pub mod screen;
 pub mod terminal;
 pub mod text;
 pub mod theme;
+
+pub mod media;

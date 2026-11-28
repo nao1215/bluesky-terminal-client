@@ -11,7 +11,6 @@ pub(crate) mod columns;
 pub(crate) mod files;
 pub(crate) mod images;
 pub(crate) mod keys;
-pub(crate) mod mp4;
 pub(crate) mod player;
 pub(crate) mod theme;
 pub(crate) mod view;
@@ -20,7 +19,7 @@ pub(crate) mod worker;
 // The drawing helpers that know nothing of Misskey, shared with bsky in the
 // workspace's terminal-kit crate; at these paths so the rest of msky reads
 // them as before.
-pub(crate) use terminal_kit::{clipboard, events, input, scale, text};
+pub(crate) use terminal_kit::{clipboard, events, input, text};
 
 use terminal_kit::screen::{Term, init_terminal, restore_terminal, write_now};
 

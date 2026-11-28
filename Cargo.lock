@@ -1177,7 +1177,6 @@ dependencies = [
  "dirs",
  "getrandom 0.4.3",
  "image",
- "openh264",
  "proptest",
  "ratatui",
  "ratatui-image",
@@ -2329,12 +2328,15 @@ dependencies = [
  "fast_image_resize",
  "image",
  "jiff",
+ "openh264",
  "proptest",
  "ratatui",
  "ratatui-image",
  "rstest",
+ "tempfile",
  "unicode-segmentation",
  "unicode-width",
+ "ureq",
  "windows-sys 0.61.2",
 ]
 

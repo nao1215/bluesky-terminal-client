@@ -9,134 +9,45 @@
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+#[cfg(test)]
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
+#[cfg(test)]
+use std::sync::mpsc::channel;
+#[cfg(test)]
 use std::thread;
 use std::time::{Duration, Instant};
 
-use image::{DynamicImage, RgbImage};
-use openh264::decoder::{DecodedYUV, Decoder};
-use openh264::formats::YUVSource;
-use ratatui::layout::Size;
-use ratatui_image::picker::{Capability, Picker, ProtocolType};
+#[cfg(test)]
+use image::RgbImage;
+use openh264::decoder::Decoder;
+use ratatui_image::picker::Picker;
 use ratatui_image::protocol::Protocol;
-use ratatui_image::protocol::kitty::Kitty;
-use ratatui_image::{FilterType, Resize};
 
 use crate::hls::{self, Demuxer};
-use crate::tui::scale;
+use terminal_kit::media::player::{Pacer, to_rgb};
+#[cfg(all(test, not(coverage)))]
+use {
+    image::DynamicImage,
+    ratatui::layout::Size,
+    ratatui_image::{FilterType, Resize},
+    terminal_kit::scale,
+};
 
-/// Most pictures a second sent to the terminal; each is a whole image.
-const MAX_FPS: f64 = 15.0;
 /// Largest segment or playlist read.
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
-/// Where the playback is.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum State {
-    Loading,
-    Playing,
-    Ended,
-    /// It cannot be played; the reason, for the user.
-    Warning(String),
-}
-
-enum Msg {
-    Frame(Box<Protocol>),
-    State(State),
-}
-
-/// A video being played.
-pub(crate) struct Player {
-    playlist: String,
-    /// The replay this player is for.
-    pub generation: u32,
-    rx: Receiver<Msg>,
-    stop: Arc<AtomicBool>,
-    /// The box, in cells, pictures are made for.
-    size: Arc<Mutex<(u16, u16)>>,
-    frame: Option<Box<Protocol>>,
-    pub state: State,
-}
-
-impl Player {
-    /// Start playing `playlist` in boxes of `size` cells.
-    pub(crate) fn start(picker: Picker, playlist: &str, size: (u16, u16), generation: u32) -> Self {
-        let (tx, rx) = channel();
-        let stop = Arc::new(AtomicBool::new(false));
-        let shared = Arc::new(Mutex::new(size));
-        let (url, thread_stop, thread_size) =
-            (playlist.to_string(), Arc::clone(&stop), Arc::clone(&shared));
-        let started = crate::tui::spawn("bsky-player", move || {
-            let state = match play(&picker, &url, &thread_stop, &thread_size, &tx) {
-                Ok(()) => State::Ended,
-                Err(why) => State::Warning(why),
-            };
-            #[expect(
-                clippy::let_underscore_must_use,
-                reason = "the player dropped, the viewer closed: nobody is left to tell how it ended"
-            )]
-            let _: Result<(), _> = tx.send(Msg::State(state));
-        });
-        let state = match started {
-            Ok(_) => State::Loading,
-            Err(e) => State::Warning(crate::i18n::tf(
-                "cannot load the video: {}",
-                &[&e.to_string()],
-            )),
-        };
-        Self {
-            playlist: playlist.to_string(),
-            generation,
-            rx,
-            stop,
-            size: shared,
-            frame: None,
-            state,
-        }
-    }
-
-    /// Whether this plays `playlist` for replay `generation`.
-    pub(crate) fn is(&self, playlist: &str, generation: u32) -> bool {
-        self.playlist == playlist && self.generation == generation
-    }
-
-    /// Make the next pictures for a box of `size` cells.
-    pub(crate) fn resize(&self, size: (u16, u16)) {
-        if let Ok(mut s) = self.size.lock() {
-            *s = size;
-        }
-    }
-
-    /// Take what the thread has sent. Returns whether anything changed.
-    pub(crate) fn poll(&mut self) -> bool {
-        let mut changed = false;
-        while let Ok(msg) = self.rx.try_recv() {
-            match msg {
-                Msg::Frame(p) => {
-                    self.frame = Some(p);
-                    if self.state == State::Loading {
-                        self.state = State::Playing;
-                    }
-                }
-                Msg::State(s) => self.state = s,
-            }
-            changed = true;
-        }
-        changed
-    }
-
-    /// The newest picture, if one has arrived.
-    pub(crate) fn frame(&self) -> Option<&Protocol> {
-        self.frame.as_deref()
-    }
-}
-
-impl Drop for Player {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
+pub(crate) use terminal_kit::media::player::State;
+/// Play HLS using the common frame queue and lifetime.
+pub(crate) fn start(
+    picker: Picker,
+    url: &str,
+    size: (u16, u16),
+    generation: u32,
+) -> Box<dyn terminal_kit::media::player::Video> {
+    terminal_kit::media::player::start_with(picker, url, size, generation, play)
 }
 
 fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
@@ -357,7 +268,7 @@ fn play(
     playlist: &str,
     stop: &AtomicBool,
     size: &Mutex<(u16, u16)>,
-    tx: &Sender<Msg>,
+    tx: &Sender<Box<Protocol>>,
 ) -> Result<(), String> {
     let agent = agent();
     let (media_url, media) = playlists(agent, playlist)?;
@@ -445,22 +356,8 @@ fn play(
             }
         }
     }
-    let rest: Vec<Option<RgbImage>> = decoder
-        .flush_remaining()
-        .unwrap_or_default()
-        .iter()
-        .map(to_rgb)
-        .collect();
-    for picture in rest {
-        if stop.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-        let pts = pending.pop().map(|Reverse(p)| p);
-        if !pacer.show(picture, pts)? {
-            return Ok(());
-        }
-    }
-    if pacer.shown == 0 {
+    pacer.finish(&mut decoder, &mut pending, stop)?;
+    if pacer.shown() == 0 {
         return Err(crate::i18n::n!("no picture of the video could be decoded").into());
     }
     Ok(())
@@ -475,140 +372,6 @@ fn decoder() -> Result<Decoder, String> {
     let config = DecoderConfig::new().flush_after_decode(Flush::NoFlush);
     Decoder::with_api_config(OpenH264API::from_source(), config)
         .map_err(|e| crate::i18n::tf("cannot start the video decoder: {}", &[&e.to_string()]))
-}
-
-fn to_rgb(yuv: &DecodedYUV<'_>) -> Option<RgbImage> {
-    let (w, h) = yuv.dimensions();
-    let mut rgb = vec![0u8; w * h * 3];
-    yuv.write_rgb8(&mut rgb);
-    RgbImage::from_raw(w as u32, h as u32, rgb)
-}
-
-/// Shows pictures at their time: waits for early ones, drops late ones.
-struct Pacer<'a> {
-    picker: &'a Picker,
-    size: &'a Mutex<(u16, u16)>,
-    tx: &'a Sender<Msg>,
-    cell: (u16, u16),
-    /// The stream's clock against the wall clock: set by the first picture,
-    /// and set again after a wait for the network, so a slow download
-    /// pauses the video instead of skipping it.
-    clock: Option<(Instant, u64)>,
-    /// When the last picture shown was due.
-    last_due: Option<Instant>,
-    shown: usize,
-}
-
-impl<'a> Pacer<'a> {
-    fn new(picker: &'a Picker, size: &'a Mutex<(u16, u16)>, tx: &'a Sender<Msg>) -> Self {
-        let f = picker.font_size();
-        Self {
-            picker,
-            size,
-            tx,
-            cell: (f.width.max(1), f.height.max(1)),
-            clock: None,
-            last_due: None,
-            shown: 0,
-        }
-    }
-
-    /// Show `picture` (presented at `pts`) when it is due. Returns false once
-    /// nobody is watching.
-    fn show(&mut self, picture: Option<RgbImage>, pts: Option<u64>) -> Result<bool, String> {
-        let Some(picture) = picture else {
-            return Ok(true);
-        };
-        let now = Instant::now();
-        let due = match (pts, self.clock) {
-            (Some(p), Some((at, first))) => {
-                let due = at + Duration::from_secs_f64(p.saturating_sub(first) as f64 / 90_000.0);
-                // Far behind (a stall) or far ahead (the times jumped, as at
-                // a discontinuity): the clock starts again at this picture,
-                // rather than skip all that follows or wait for the jump.
-                if now > due + Duration::from_secs(1) || due > now + Duration::from_secs(1) {
-                    self.clock = Some((now, p));
-                    now
-                } else {
-                    due
-                }
-            }
-            (Some(p), None) => {
-                self.clock = Some((now, p));
-                now
-            }
-            (None, _) => now,
-        };
-        // Late, or too soon after the last one shown (both by when they are
-        // due, so the time a picture takes to prepare is not counted against
-        // the next): decoded, not shown.
-        let too_soon = self.last_due.is_some_and(|l| {
-            due.saturating_duration_since(l) < Duration::from_secs_f64(1.0 / MAX_FPS) * 9 / 10
-        });
-        if (now > due + Duration::from_millis(250) || too_soon) && self.shown > 0 {
-            return Ok(true);
-        }
-        if due > now {
-            thread::sleep(due - now);
-        }
-        #[expect(
-            clippy::map_err_ignore,
-            reason = "a poisoned lock says only that the UI thread panicked, which the message says; it is translated whole where it is shown"
-        )]
-        let (cols, rows) = *self
-            .size
-            .lock()
-            .map_err(|_| crate::i18n::t("the player stopped"))?;
-        if cols == 0 || rows == 0 {
-            return Ok(true);
-        }
-        // Scaled here, off the UI thread, to the pixels of its box, so the
-        // protocol only has to encode it.
-        let area = Size::new(cols, rows);
-        let img = scale::to_box(&DynamicImage::ImageRgb8(picture), area, self.cell);
-        let Some(p) = encode_picture(self.picker, img, area, self.shown) else {
-            return Ok(true);
-        };
-        if self.tx.send(Msg::Frame(Box::new(p))).is_err() {
-            return Ok(false);
-        }
-        self.last_due = Some(due);
-        self.shown += 1;
-        Ok(true)
-    }
-}
-
-/// The two kitty image ids the pictures of a video are sent under, in turn.
-/// ratatui-image gives each picture a new random id, and kitty keeps every
-/// image it is sent until its store is full, then drops the oldest: a video
-/// of a few hundred pictures pushed the timeline's avatars and photos out,
-/// and they came back blank after the viewer closed. A picture sent under an
-/// id replaces the image kitty had under it, so two ids keep at most two
-/// pictures there. Not one: the cells that show a kitty picture name its id,
-/// so under a single id they never change, the screen library leaves them
-/// alone, and kitty redraws only the row that carries the new picture; the
-/// video stayed black but for a strip at its top.
-const VIDEO_IMAGE_IDS: [u32; 2] = [0x00B5_4B59, 0x00B5_4B5A];
-
-/// The protocol for the `nth` picture shown of the video, already scaled
-/// to its box.
-fn encode_picture(picker: &Picker, img: DynamicImage, area: Size, nth: usize) -> Option<Protocol> {
-    if picker.protocol_type() == ProtocolType::Kitty {
-        // What new_protocol would choose for a picture that fits its box.
-        let size = Resize::natural_size(&img, picker.font_size());
-        let compress = picker
-            .capabilities()
-            .contains(&Capability::KittyCompression);
-        let id = VIDEO_IMAGE_IDS[nth % 2];
-        return Kitty::new(img, size, id, picker.tmux_detected(), compress)
-            .ok()
-            .map(Protocol::Kitty);
-    }
-    let f = picker.font_size();
-    let img = scale::pad_to_cells(img, area, (f.width, f.height));
-    picker
-        .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
-        .ok()
 }
 
 #[cfg(test)]
@@ -656,7 +419,7 @@ mod tests {
         let size = Mutex::new((20, 10));
         let result = play(&Picker::halfblocks(), url, &stop, &size, &tx);
         drop(tx);
-        let frames = rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count();
+        let frames = rx.iter().count();
         (result, frames)
     }
 
@@ -712,7 +475,7 @@ mod tests {
         let begin = Instant::now();
         let mut times = Vec::new();
         while begin.elapsed() < Duration::from_secs(4) {
-            if let Ok(Msg::Frame(_)) = rx.recv_timeout(Duration::from_millis(50)) {
+            if rx.recv_timeout(Duration::from_millis(50)).is_ok() {
                 times.push(begin.elapsed().as_millis());
             }
         }
@@ -737,10 +500,10 @@ mod tests {
         assert_eq!(play(&Picker::halfblocks(), url, &stop, &size, &tx), Ok(()));
         let took = begin.elapsed().as_secs_f64();
         drop(tx);
-        let frames = rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count();
+        let frames = rx.iter().count();
         eprintln!("{frames} frames in {took:.2} s");
         assert!((16.8..18.5).contains(&took), "{took} s");
-        assert!(frames as f64 >= 17.0 * MAX_FPS * 0.9, "{frames} frames");
+        assert!(frames as f64 >= 17.0 * 15.0 * 0.9, "{frames} frames");
     }
 
     /// Serve `routes` (path to body) over HTTP; any other path is a 404.
@@ -956,27 +719,27 @@ mod tests {
         );
         drop(tx);
         assert_eq!(result, Ok(()));
-        assert_eq!(rx.iter().filter(|m| matches!(m, Msg::Frame(_))).count(), 0);
+        assert_eq!(rx.iter().count(), 0);
     }
 
     #[test]
     fn a_player_ends_with_its_state_and_forgets_the_video_on_drop() {
         let base = serve();
         let url = format!("{base}/playlist.m3u8");
-        let mut player = Player::start(Picker::halfblocks(), &url, (20, 10), 1);
+        let mut player = start(Picker::halfblocks(), &url, (20, 10), 1);
         assert!(player.is(&url, 1));
         assert!(!player.is(&url, 2));
-        assert_eq!(player.state, State::Loading);
+        assert_eq!(*player.state(), State::Loading);
         player.resize((30, 12));
         let begin = Instant::now();
-        while player.state != State::Ended && begin.elapsed() < Duration::from_secs(10) {
+        while *player.state() != State::Ended && begin.elapsed() < Duration::from_secs(10) {
             player.poll();
             thread::sleep(Duration::from_millis(10));
         }
-        assert_eq!(player.state, State::Ended);
+        assert_eq!(*player.state(), State::Ended);
         assert!(player.frame().is_some());
 
-        let broken = Player::start(
+        let broken = start(
             Picker::halfblocks(),
             &format!("{base}/gone.m3u8"),
             (20, 10),
@@ -984,68 +747,15 @@ mod tests {
         );
         let mut broken = broken;
         let begin = Instant::now();
-        while broken.state == State::Loading && begin.elapsed() < Duration::from_secs(10) {
+        while *broken.state() == State::Loading && begin.elapsed() < Duration::from_secs(10) {
             broken.poll();
             thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(
-            broken.state,
+            *broken.state(),
             State::Warning("cannot load the video: HTTP 404".into())
         );
         assert!(broken.frame().is_none());
-    }
-
-    /// Prints how long a 1280 x 720 video picture takes to be scaled and
-    /// encoded for its box, the work behind every frame shown:
-    /// `cargo test --release video_picture -- --ignored --nocapture`.
-    #[test]
-    fn kitty_pictures_of_a_video_take_two_images_in_turn_and_redraw_every_cell() {
-        #[allow(
-            deprecated,
-            reason = "a picker of a known cell size, which a test has no terminal to ask for"
-        )]
-        let mut picker = Picker::from_fontsize((10, 20).into());
-        picker.set_protocol_type(ProtocolType::Kitty);
-        let area = Size::new(40, 12);
-        let rect = ratatui::layout::Rect::new(0, 0, area.width, area.height);
-        let frames: Vec<(String, ratatui::buffer::Buffer)> = [10u8, 200, 90]
-            .into_iter()
-            .enumerate()
-            .map(|(nth, shade)| {
-                let picture = RgbImage::from_pixel(640, 360, image::Rgb([shade; 3]));
-                let img = scale::to_box(&DynamicImage::ImageRgb8(picture), area, (10, 20));
-                let p = encode_picture(&picker, img.clone(), area, nth).unwrap();
-                // The same box new_protocol gives, so the picture sits where
-                // it did before.
-                let theirs = picker
-                    .new_protocol(img, area, Resize::Scale(Some(FilterType::Triangle)))
-                    .unwrap();
-                assert_eq!(p.size(), theirs.size());
-                let mut buf = ratatui::buffer::Buffer::empty(rect);
-                ratatui::widgets::Widget::render(ratatui_image::Image::new(&p), rect, &mut buf);
-                let seq: String = buf
-                    .content
-                    .iter()
-                    .map(ratatui::buffer::Cell::symbol)
-                    .collect();
-                // The transmission starts "\x1b_Gq=2,i=<id>,a=T".
-                let at = seq.find("_Gq=2,i=").unwrap() + 6;
-                (seq[at..].split(',').next().unwrap().to_string(), buf)
-            })
-            .collect();
-        let [a, b] = VIDEO_IMAGE_IDS;
-        let ids: Vec<&str> = frames.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, [format!("i={a}"), format!("i={b}"), format!("i={a}")]);
-        // Every cell the picture covers differs from the last picture's, so
-        // all of them are written again and kitty redraws every row.
-        let (before, after) = (&frames[0].1, &frames[1].1);
-        let covered = before
-            .content
-            .iter()
-            .zip(&after.content)
-            .filter(|(x, _)| !x.symbol().trim().is_empty());
-        assert!(covered.clone().count() > 0);
-        assert!(covered.clone().all(|(x, y)| x != y));
     }
 
     #[cfg(not(coverage))]

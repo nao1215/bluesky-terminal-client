@@ -10,7 +10,7 @@
 use libfuzzer_sys::fuzz_target;
 
 #[allow(dead_code)]
-#[path = "../../src/tui/mp4.rs"]
+#[path = "../../../terminal-kit/src/media/mp4.rs"]
 mod mp4;
 
 const START: [u8; 4] = [0, 0, 0, 1];

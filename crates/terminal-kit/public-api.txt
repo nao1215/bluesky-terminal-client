@@ -52,6 +52,70 @@ pub fn terminal_kit::input::TextInput::default() -> Self
 impl core::fmt::Debug for terminal_kit::input::TextInput
 pub fn terminal_kit::input::TextInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for terminal_kit::input::TextInput
+pub mod terminal_kit::media
+pub mod terminal_kit::media::images
+pub struct terminal_kit::media::images::DiskCache
+impl terminal_kit::media::images::DiskCache
+pub fn terminal_kit::media::images::DiskCache::new(std::path::PathBuf, u64) -> Self
+impl core::fmt::Debug for terminal_kit::media::images::DiskCache
+pub fn terminal_kit::media::images::DiskCache::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct terminal_kit::media::images::Images
+impl terminal_kit::media::images::Images
+pub fn terminal_kit::media::images::Images::begin_frame(&mut self, ratatui_core::layout::size::Size, ratatui_core::style::Style)
+pub fn terminal_kit::media::images::Images::cell_size(&self) -> (u16, u16)
+pub fn terminal_kit::media::images::Images::connect(&self, &str)
+pub fn terminal_kit::media::images::Images::delete_all(&mut self) -> core::option::Option<&'static str>
+pub fn terminal_kit::media::images::Images::dims(&self, &str) -> core::option::Option<(u32, u32)>
+pub fn terminal_kit::media::images::Images::draw(&mut self, &mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &str)
+pub fn terminal_kit::media::images::Images::draw_file(&mut self, &mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &std::path::Path)
+pub fn terminal_kit::media::images::Images::draw_first(&mut self, &mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &[&str])
+pub fn terminal_kit::media::images::Images::draw_video(&mut self, &mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &str, u32) -> terminal_kit::media::player::State
+pub fn terminal_kit::media::images::Images::loading(&self) -> bool
+pub fn terminal_kit::media::images::Images::new(ratatui_image::picker::Picker, core::option::Option<terminal_kit::media::images::DiskCache>) -> core::io::error::Result<Self>
+pub fn terminal_kit::media::images::Images::none() -> Self
+pub fn terminal_kit::media::images::Images::playing(&self) -> bool
+pub fn terminal_kit::media::images::Images::poll(&mut self) -> bool
+pub fn terminal_kit::media::images::Images::prefetch(&mut self, &str, u16, u16)
+pub fn terminal_kit::media::images::Images::protocol_type(&self) -> ratatui_image::picker::ProtocolType
+pub fn terminal_kit::media::images::Images::set_player(&mut self, terminal_kit::media::images::VideoFactory)
+pub fn terminal_kit::media::images::Images::shows(&self) -> bool
+pub fn terminal_kit::media::images::Images::stop_video(&mut self)
+pub fn terminal_kit::media::images::Images::video_shown(&self) -> bool
+pub fn terminal_kit::media::images::Images::viewer_closed(&mut self, bool) -> core::option::Option<&'static str>
+pub fn terminal_kit::media::images::Images::warm(&mut self, &str)
+pub fn terminal_kit::media::images::Images::with_loader(ratatui_image::picker::Picker, core::option::Option<terminal_kit::media::images::DiskCache>, fn(&std::path::Path) -> core::result::Result<image::images::dynimage::DynamicImage, alloc::string::String>) -> core::io::error::Result<Self>
+impl core::ops::drop::Drop for terminal_kit::media::images::Images
+pub fn terminal_kit::media::images::Images::drop(&mut self)
+pub const terminal_kit::media::images::CACHE_BYTES: u64
+pub type terminal_kit::media::images::VideoFactory = fn(ratatui_image::picker::Picker, &str, (u16, u16), u32) -> alloc::boxed::Box<dyn terminal_kit::media::player::Video>
+pub mod terminal_kit::media::player
+pub enum terminal_kit::media::player::State
+pub terminal_kit::media::player::State::Ended
+pub terminal_kit::media::player::State::Loading
+pub terminal_kit::media::player::State::Playing
+pub terminal_kit::media::player::State::Warning(alloc::string::String)
+impl core::clone::Clone for terminal_kit::media::player::State
+pub fn terminal_kit::media::player::State::clone(&self) -> Self
+impl core::cmp::PartialEq for terminal_kit::media::player::State
+pub fn terminal_kit::media::player::State::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::media::player::State
+pub fn terminal_kit::media::player::State::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::media::player::State
+pub struct terminal_kit::media::player::Pacer<'a>
+impl<'a> terminal_kit::media::player::Pacer<'a>
+pub fn terminal_kit::media::player::Pacer<'a>::finish(&mut self, &mut openh264::decoder::Decoder, &mut alloc::collections::binary_heap::BinaryHeap<core::cmp::Reverse<u64>>, &core::sync::atomic::AtomicBool) -> core::result::Result<(), alloc::string::String>
+pub fn terminal_kit::media::player::Pacer<'a>::new(&'a ratatui_image::picker::Picker, &'a std::sync::poison::mutex::Mutex<(u16, u16)>, &'a std::sync::mpsc::Sender<alloc::boxed::Box<ratatui_image::protocol::Protocol>>) -> Self
+pub fn terminal_kit::media::player::Pacer<'a>::show(&mut self, core::option::Option<image::images::buffer::RgbImage>, core::option::Option<u64>) -> core::result::Result<bool, alloc::string::String>
+pub fn terminal_kit::media::player::Pacer<'a>::shown(&self) -> usize
+pub trait terminal_kit::media::player::Video
+pub fn terminal_kit::media::player::Video::frame(&self) -> core::option::Option<&ratatui_image::protocol::Protocol>
+pub fn terminal_kit::media::player::Video::is(&self, &str, u32) -> bool
+pub fn terminal_kit::media::player::Video::poll(&mut self) -> bool
+pub fn terminal_kit::media::player::Video::resize(&self, (u16, u16))
+pub fn terminal_kit::media::player::Video::state(&self) -> &terminal_kit::media::player::State
+pub fn terminal_kit::media::player::start_with(ratatui_image::picker::Picker, &str, (u16, u16), u32, terminal_kit::media::player::VideoJob) -> alloc::boxed::Box<dyn terminal_kit::media::player::Video>
+pub fn terminal_kit::media::player::to_rgb(&openh264::decoder::DecodedYUV<'_>) -> core::option::Option<image::images::buffer::RgbImage>
+pub type terminal_kit::media::player::VideoJob = fn(&ratatui_image::picker::Picker, &str, &core::sync::atomic::AtomicBool, &std::sync::poison::mutex::Mutex<(u16, u16)>, &std::sync::mpsc::Sender<alloc::boxed::Box<ratatui_image::protocol::Protocol>>) -> core::result::Result<(), alloc::string::String>
 pub mod terminal_kit::scale
 pub fn terminal_kit::scale::pad_to_cells(image::images::dynimage::DynamicImage, ratatui_core::layout::size::Size, (u16, u16)) -> image::images::dynimage::DynamicImage
 pub fn terminal_kit::scale::thumbnail(&image::images::dynimage::DynamicImage, u32, u32) -> image::images::dynimage::DynamicImage
