@@ -254,7 +254,7 @@
 "whoami" = { usecase = "check which account the selected credentials belong to", without = "scripts cannot verify the posting identity before acting" }
 
 [nstr]
-"search" = { usecase = "find hashtagged notes and query relays that advertise NIP-50", without = "relay capability differences cannot be reported to a caller searching for notes" }
+"search" = { usecase = "find hashtagged notes on normal relays and search text on explicitly configured relays advertising NIP-50", without = "relay capability differences cannot be reported to a caller searching for notes" }
 "search --limit (-n)" = { usecase = "bound search results and page through the local relay catalog", without = "search cannot request the seeded catalog count or a bounded result set" }
 "--json" = { usecase = "read profiles, notes, notifications and posting results with the workspace's JSON-lines consumers", without = "scripts would parse text intended for people" }
 "whoami" = { usecase = "check the configured public identity and its latest profile before posting", without = "the user would need another Nostr client to verify the posting identity" }
@@ -263,3 +263,64 @@
 "notifications" = { usecase = "collect mentions and replies tagging the configured public key", without = "the user would need another client to find conversations involving the account" }
 "notifications --limit (-n)" = { usecase = "bound a notification check or inspect more than twenty mentions and replies", without = "every notification check would use the fixed default" }
 "post" = { usecase = "publish an announcement as a signed kind-1 note using the user-provided key file", without = "announcements would have to be posted through another client" }
+
+"--account (-a)" = { usecase = "select a saved identity for a command or full-screen session", without = "changing identities would require replacing the default configuration" }
+"accounts" = { usecase = "inspect saved identities and choose the default configuration", without = "account selection would require manual file editing" }
+"accounts --use" = { usecase = "inspect saved identities and choose the default configuration with an explicitly chosen use value", without = "account selection would require manual file editing" }
+"author" = { usecase = "read an author’s notes and reposts", without = "each note would have to be found in a timeline" }
+"author --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"chat" = { usecase = "read or send private NIP-17 messages through published inbox relays", without = "private conversations would require another client" }
+"chat --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"delete" = { usecase = "request deletion of an accidentally published event owned by the account", without = "the terminal could publish but could not request deletion" }
+"delete --yes (-y)" = { usecase = "confirm the operation from a noninteractive script", without = "scripts would have to supply interactive input" }
+"dm-relays" = { usecase = "publish configured inbox relays for NIP-17 senders", without = "other clients could not discover this account’s inbox" }
+"download" = { usecase = "save attached files locally without overwriting existing files", without = "users would have to parse URLs and run a downloader" }
+"download --output (-o)" = { usecase = "save attached files locally without overwriting existing files with an explicitly chosen output value", without = "users would have to parse URLs and run a downloader" }
+"follow" = { usecase = "add a contact while preserving unrelated contact tags", without = "the whole contact list would need reconstruction elsewhere" }
+"followers" = { usecase = "inspect followers observed on configured relays", without = "reverse kind-3 filters would have to be written manually" }
+"followers --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"follows" = { usecase = "inspect the latest public contact list", without = "users would have to decode kind-3 tags manually" }
+"like" = { usecase = "react with text or a NIP-30 custom emoji", without = "reactions would require another client" }
+"like --reaction" = { usecase = "react with text or a NIP-30 custom emoji with an explicitly chosen reaction value", without = "reactions would require another client" }
+"likes" = { usecase = "inspect reaction events for a note", without = "users would need a separate relay query tool" }
+"likes --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"login" = { usecase = "save a configuration naming a public identity and its signer", without = "every account file would need manual creation" }
+"login --bunker" = { usecase = "save a configuration naming a public identity and its signer with an explicitly chosen bunker value", without = "every account file would need manual creation" }
+"login --key-file" = { usecase = "save a configuration naming a public identity and its signer with an explicitly chosen key-file value", without = "every account file would need manual creation" }
+"login --public-key" = { usecase = "save a configuration naming a public identity and its signer with an explicitly chosen public-key value", without = "every account file would need manual creation" }
+"login --relay" = { usecase = "save a configuration naming a public identity and its signer with an explicitly chosen relay value", without = "every account file would need manual creation" }
+"logout" = { usecase = "remove a saved configuration while retaining its key file", without = "unused identities would remain in the account selector" }
+"logout --yes (-y)" = { usecase = "confirm the operation from a noninteractive script", without = "scripts would have to supply interactive input" }
+"mute" = { usecase = "add an account to the public NIP-51 mute list", without = "the list would need to be edited in another client" }
+"mute [hidden alias block]" = { usecase = "add an account to the public NIP-51 mute list", without = "the list would need to be edited in another client" }
+"mutes" = { usecase = "inspect the public portion of the account’s mute list", without = "users would have to decode raw kind-10000 events" }
+"mutes [hidden alias blocks]" = { usecase = "inspect the public portion of the account’s mute list", without = "users would have to decode raw kind-10000 events" }
+"note" = { usecase = "inspect an event directly by its identifier", without = "the event would have to be located in a timeline" }
+"notifications --seen" = { usecase = "mark returned notification IDs read locally for the current account", without = "CLI reads could not update the local unread state" }
+"notifications [hidden alias notif]" = { usecase = "inspect mentions and other events involving the account", without = "notification checks would require another client" }
+"post --alt" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen alt value", without = "scripts would need to construct the event tags themselves" }
+"post --cw" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen cw value", without = "scripts would need to construct the event tags themselves" }
+"post --dry-run" = { usecase = "inspect a post plan without signing, uploading or contacting relays", without = "the plan could not be reviewed before external effects" }
+"post --image" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen image value", without = "scripts would need to construct the event tags themselves" }
+"post --quote" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen quote value", without = "scripts would need to construct the event tags themselves" }
+"post --reply" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen reply value", without = "scripts would need to construct the event tags themselves" }
+"post --video" = { usecase = "publish stdin text, replies, quotes, warnings or stripped attachments with an explicitly chosen video value", without = "scripts would need to construct the event tags themselves" }
+"profile" = { usecase = "read metadata by a public account identifier", without = "only the configured account’s metadata would be accessible" }
+"profile-update" = { usecase = "merge profile fields while preserving unknown metadata", without = "users could lose fields managed by another client" }
+"report" = { usecase = "publish a reasoned NIP-56 report after confirmation", without = "public reports would require another client" }
+"report --comment" = { usecase = "publish a reasoned NIP-56 report after confirmation with an explicitly chosen comment value", without = "public reports would require another client" }
+"report --reason" = { usecase = "publish a reasoned NIP-56 report after confirmation with an explicitly chosen reason value", without = "public reports would require another client" }
+"report --yes (-y)" = { usecase = "confirm the operation from a noninteractive script", without = "scripts would have to supply interactive input" }
+"repost" = { usecase = "share a verified note with an explicit relay hint", without = "users could not publish an interoperable repost" }
+"reposts" = { usecase = "inspect repost events observed for a note", without = "repost discovery would require manual filters" }
+"reposts --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"thread" = { usecase = "inspect a note’s ancestors and replies", without = "conversation context would require manual event lookups" }
+"thread --limit (-n)" = { usecase = "bound the number of returned events", without = "every read would use the fixed default" }
+"timeline [hidden alias tl]" = { usecase = "use the familiar short spelling for the command", without = "the full command spelling would be required" }
+"unfollow" = { usecase = "remove a contact without losing unrelated contact metadata", without = "users would have to rebuild the contact list manually" }
+"unlike" = { usecase = "request deletion of the account’s reactions", without = "reactions could be sent but not taken back" }
+"unmute" = { usecase = "remove a public key from the mute list", without = "undoing a mute would require another client" }
+"unmute [hidden alias unblock]" = { usecase = "remove a public key from the mute list", without = "undoing a mute would require another client" }
+"unrepost" = { usecase = "request deletion of the account’s repost events", without = "reposts could not be taken back" }
+"upload" = { usecase = "upload metadata-stripped media and obtain its imeta tag", without = "attachments would require an external uploader" }
+"upload --alt" = { usecase = "upload metadata-stripped media and obtain its imeta tag with an explicitly chosen alt value", without = "attachments would require an external uploader" }

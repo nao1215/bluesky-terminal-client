@@ -35,6 +35,12 @@ struct Settings {
     key_file: Option<PathBuf>,
     bunker: Option<String>,
     relays: Vec<String>,
+    #[serde(default)]
+    search_relays: Vec<String>,
+    #[serde(default)]
+    dm_relays: Vec<String>,
+    #[serde(default)]
+    blossom_servers: Vec<String>,
     #[serde(default = "default_timeout")]
     timeout_seconds: u64,
 }
@@ -47,13 +53,21 @@ pub(crate) struct Config {
     pub(crate) public: String,
     pub(crate) relays: Vec<String>,
     pub(crate) timeout: Duration,
+    pub(crate) search_relays: Vec<String>,
+    pub(crate) dm_relays: Vec<String>,
+    pub(crate) blossom_servers: Vec<String>,
     key_file: Option<PathBuf>,
     pub(crate) bunker: Option<Bunker>,
 }
 
 impl Config {
+    #[cfg(test)]
     pub(crate) fn load() -> Result<Self> {
-        let path = config_dir()?.join("config.json");
+        Self::load_account(None)
+    }
+
+    pub(crate) fn load_account(account: Option<&str>) -> Result<Self> {
+        let path = crate::accounts::path(account)?;
         let file = File::open(&path)
             .map_err(|e| Error::file(format!("cannot open config {}: {e}", path.display())))?;
         let settings: Settings = serde_json::from_reader(file.take(65537))
@@ -90,6 +104,13 @@ impl Config {
             public: hex::encode(key),
             relays,
             timeout: Duration::from_secs(settings.timeout_seconds),
+            search_relays: optional_relays(settings.search_relays)?,
+            dm_relays: optional_relays(settings.dm_relays)?,
+            blossom_servers: settings
+                .blossom_servers
+                .into_iter()
+                .map(|s| crate::api::media::server_url(&s))
+                .collect::<Result<_>>()?,
             key_file,
             bunker,
         })
@@ -178,4 +199,35 @@ pub(crate) fn relay_urls(values: Vec<String>) -> Result<Vec<String>> {
         }
     }
     Ok(relays)
+}
+
+fn optional_relays(values: Vec<String>) -> Result<Vec<String>> {
+    if values.is_empty() {
+        Ok(values)
+    } else {
+        relay_urls(values)
+    }
+}
+
+#[cfg(test)]
+impl Config {
+    pub(crate) fn test_key(key: &SigningKey, dir: &Path) -> Self {
+        let path = dir.join("key");
+        std::fs::write(&path, hex::encode(key.to_bytes())).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        Self {
+            public: hex::encode(key.verifying_key().to_bytes()),
+            relays: vec!["ws://127.0.0.1:1/".into()],
+            search_relays: vec![],
+            dm_relays: vec![],
+            blossom_servers: vec![],
+            timeout: Duration::from_secs(1),
+            key_file: Some(path),
+            bunker: None,
+        }
+    }
 }

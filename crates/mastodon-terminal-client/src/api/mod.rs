@@ -631,15 +631,7 @@ impl Client {
         let path = "v2/media";
         let url = format!("{}/api/{path}", self.origin);
         let boundary = random_hex("mstdn-")?;
-        let mut fields: Vec<(&str, &str)> = Vec::new();
-        if let Some(d) = description.filter(|d| !d.is_empty()) {
-            fields.push(("description", d));
-        }
-        let body = multipart(
-            &boundary,
-            &fields,
-            &[("file", name, mime_of(name, &data), &data)],
-        );
+        let body = media_body(&boundary, name, mime_of(name, &data), &data, description);
         let answer = self.exchange(path, false, &|| {
             let req = self
                 .agent
@@ -908,6 +900,33 @@ fn multipart(
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
     body
+}
+
+fn media_body(
+    boundary: &str,
+    name: &str,
+    mime: &str,
+    data: &[u8],
+    description: Option<&str>,
+) -> Vec<u8> {
+    let fields: Vec<_> = description
+        .filter(|d| !d.is_empty())
+        .map(|d| ("description", d))
+        .into_iter()
+        .collect();
+    multipart(boundary, &fields, &[("file", name, mime, data)])
+}
+
+/// Same framing as upload, without allocating another copy of the file.
+pub(crate) fn media_upload_size(name: &str, data: &[u8], description: Option<&str>) -> u64 {
+    let framing = media_body(
+        "mstdn-00000000000000000000000000000000",
+        name,
+        mime_of(name, data),
+        &[],
+        description,
+    );
+    framing.len() as u64 + data.len() as u64
 }
 
 pub(crate) fn retry_message(wait: Duration, host: &str) -> String {

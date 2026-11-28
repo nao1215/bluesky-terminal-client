@@ -1,0 +1,42 @@
+version: "1"
+suite:
+  name: nstr saved accounts
+scenarios:
+  - name: save select and remove a key-file account without signing
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready: { file: ready.txt, store: relay, timeout: 60s }
+    steps:
+      - run:
+          command: nstr login fixture --public-key 76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742 --key-file cfg/key --relay "${relay}" --json
+          env: &env { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert: { exit_code: 0 }
+      - run: { command: nstr accounts --use fixture --json, env: *env }
+      - assert: { exit_code: 0, stdout: { contains: fixture } }
+      - run: { command: nstr --account fixture whoami --json, env: *env }
+      - assert: { exit_code: 0, stdout: { contains: alice } }
+      - run:
+          command: nstr logout fixture --yes --json
+          env: *env
+      - assert: { exit_code: 0, file: { path: cfg/key, exists: true } }
+      - assert: { file: { path: published.json, exists: false } }
+      - run: { command: 'python3 "${specdir}/testdata/check_accounts.py"' }
+      - assert: { exit_code: 0, stdout: { contains: "account read state isolated" } }
+      - pty:
+          command: nstr
+          rows: 26
+          cols: 120
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742", stable_for: 300ms }
+            - send: A
+            - expect_screen: { contains: ["Saved accounts", "bob", "default"] }
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589", "bob の一つ目"]
+                not_contains: ["Saved accounts", "76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742"]
+                stable_for: 500ms
+            - send: q
+      - assert: { exit_code: 0, file: { path: published.json, exists: false } }

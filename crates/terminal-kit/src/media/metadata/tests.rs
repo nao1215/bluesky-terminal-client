@@ -1,4 +1,4 @@
-//! The fixtures in `src/testdata/metadata` are small pictures and videos
+//! The fixtures in `src/media/testdata/metadata` are small pictures and videos
 //! of ffmpeg's test pattern, with metadata written by exiftool: a GPS
 //! position (Tokyo Station's square), the camera `SecretCam`, the creator
 //! `Taro Secret`, a comment. None of it is anyone's: the strings are what
@@ -10,7 +10,7 @@ use rstest::rstest;
 fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/testdata/metadata")
+            .join("src/media/testdata/metadata")
             .join(name),
     )
     .unwrap()
@@ -157,7 +157,7 @@ fn another_kind_goes_as_it_is_and_a_broken_picture_is_refused() {
     let mut jpeg = fixture("gps.jpg");
     jpeg.truncate(30);
     let e = strip("cut.jpg", &jpeg).unwrap_err();
-    assert!(e.message().contains("cannot take the metadata"), "{e:?}");
+    assert!(e.contains("cannot strip metadata"), "{e:?}");
     let mut png = fixture("gps.png");
     png.truncate(40);
     assert!(strip("cut.png", &png).is_err());
@@ -193,7 +193,7 @@ fn mangled_files_are_stripped_or_refused() {
                     d.splice(i..i, std::iter::repeat_n(0xFF, rand(8)));
                 }
             }
-            let _ = strip(name, &d);
+            drop(strip(name, &d));
         }
     }
 }

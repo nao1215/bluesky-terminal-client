@@ -52,6 +52,8 @@ pub(crate) struct List<T> {
     pub error: Option<String>,
     /// The number of the page asked for and not come yet.
     pub(crate) waiting: Option<u64>,
+    /// A down movement that reached beyond a page still being fetched.
+    pub(crate) pending_selection: Option<usize>,
 }
 
 impl<T> Default for List<T> {
@@ -64,6 +66,7 @@ impl<T> Default for List<T> {
             next: None,
             error: None,
             waiting: None,
+            pending_selection: None,
         }
     }
 }
@@ -74,11 +77,16 @@ impl<T: Keyed> List<T> {
     }
 
     pub(crate) fn select(&mut self, i: usize) {
+        self.pending_selection = None;
         self.selected = i.min(self.items.len().saturating_sub(1));
     }
 
     pub(crate) fn step(&mut self, by: isize) {
-        self.select(self.selected.saturating_add_signed(by));
+        let target = self.selected.saturating_add_signed(by);
+        self.select(target);
+        if by > 0 && self.loaded && self.next.is_some() && target >= self.items.len() {
+            self.pending_selection = Some(target);
+        }
     }
 
     /// Whether the page after the last one should be asked for now.
@@ -102,6 +110,7 @@ impl<T: Keyed> List<T> {
             return false;
         }
         self.waiting = None;
+        let pending_selection = self.pending_selection.take();
         match page {
             Ok((items, next)) => {
                 self.error = None;
@@ -124,6 +133,9 @@ impl<T: Keyed> List<T> {
                     } else {
                         next
                     };
+                    if let Some(target) = pending_selection {
+                        self.select(target);
+                    }
                 }
                 self.loaded = true;
             }
@@ -311,6 +323,31 @@ mod tests {
         assert_eq!(l.selected, 9);
         l.step(-100);
         assert_eq!(l.selected, 0);
+    }
+
+    #[test]
+    fn moving_past_the_loaded_page_is_applied_when_the_next_page_arrives() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../testdata/compat/pleroma-live.json")).unwrap();
+        let page: Vec<Status> = serde_json::from_value(fixture["page"]["body"].clone()).unwrap();
+        for cancel in [false, true] {
+            let mut list = List {
+                items: vec![page[0].clone()],
+                loaded: true,
+                next: Some(page[0].id.clone()),
+                waiting: Some(2),
+                ..List::default()
+            };
+            list.step(1);
+            assert_eq!(list.selected, 0);
+            if cancel {
+                list.step(-1);
+            }
+            assert!(!list.take(1, false, Ok((vec![page[1].clone()], None))));
+            assert!(list.take(2, false, Ok((vec![page[1].clone()], None))));
+            assert_eq!(list.selected, usize::from(!cancel));
+            assert!(!list.take(2, false, Ok((vec![page[1].clone()], None))));
+        }
     }
 
     #[test]

@@ -19,3 +19,6 @@ fn agent() -> ureq::Agent {
         .build()
         .into()
 }
+
+pub mod metadata;
+pub mod transfer;

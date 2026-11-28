@@ -13,6 +13,8 @@ def main():
     directory = Path(sys.argv[1])
     seed = json.loads((directory / 'seed.json').read_text())
     report = json.loads((directory / 'atago.json').read_text())
+    if report.get('load_failures') or not report.get('suites'):
+        raise SystemExit('compat: the specs did not load; inspect atago.json before reporting coverage')
     print(f"{seed['system']} {seed['instance']['version']}")
     print()
     print('| Tier | Passed | Failed/error | Skipped |')

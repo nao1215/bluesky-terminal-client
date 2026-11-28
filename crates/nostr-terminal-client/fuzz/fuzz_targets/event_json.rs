@@ -12,7 +12,12 @@ fuzz_target!(|data: &[u8]| {
             serde_json::from_slice::<event::Event>(&encoded).unwrap(),
             event
         );
+        let attachments = note::attachments(&event);
         let pictures = note::pictures(&event);
+        assert!(pictures.iter().all(|p| attachments.contains(p)));
+        if note::has_video(&event) {
+            assert!(attachments.len() > pictures.len());
+        }
         let unique: std::collections::BTreeSet<_> = pictures.iter().collect();
         assert_eq!(pictures.len(), unique.len());
         for picture in &pictures {
@@ -23,7 +28,14 @@ fuzz_target!(|data: &[u8]| {
         for kind in [1, 6, 7] {
             let draft = note::draft(kind, event.content.clone(), Some(&event));
             assert_eq!(draft.kind, kind);
-            assert_eq!(draft.content, event.content);
+            if kind != 7
+                || !draft
+                    .tags
+                    .iter()
+                    .any(|t| t.first().is_some_and(|n| n == "emoji"))
+            {
+                assert_eq!(draft.content, event.content);
+            }
         }
         let _ = event.verify();
         let digest = event.digest().unwrap();

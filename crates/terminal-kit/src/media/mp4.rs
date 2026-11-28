@@ -24,6 +24,19 @@ pub(crate) struct Track {
     pub samples: Vec<Sample>,
 }
 
+impl Track {
+    pub(super) fn units(&self) -> impl Iterator<Item = (&Sample, Vec<u8>)> {
+        self.samples.iter().enumerate().map(|(index, sample)| {
+            let unit = if index == 0 {
+                [self.config.as_slice(), sample.data.as_slice()].concat()
+            } else {
+                sample.data.clone()
+            };
+            (sample, unit)
+        })
+    }
+}
+
 const START: [u8; 4] = [0, 0, 0, 1];
 
 fn be16(b: &[u8], at: usize) -> Option<u16> {

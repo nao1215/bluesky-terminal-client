@@ -1,0 +1,2272 @@
+{
+  "system": "akkoma",
+  "verified_at": "2026-11-28T10:28:19.286325+00:00",
+  "instance_v1": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "version": "2.7.2 (compatible; Akkoma 3.20.0-v3-20-0)",
+      "description": "Akkoma: The cooler fediverse server",
+      "pleroma": {
+        "metadata": {
+          "features": [
+            "pleroma_api",
+            "akkoma_api",
+            "mastodon_api",
+            "mastodon_api_streaming",
+            "polls",
+            "v2_suggestions",
+            "pleroma_explicit_addressing",
+            "shareable_emoji_packs",
+            "multifetch",
+            "pleroma:api/v1/notifications:include_types_filter",
+            "quote_posting",
+            "editing",
+            "pleroma_emoji_reactions",
+            "exposable_reactions",
+            "profile_directory",
+            "custom_emoji_reactions",
+            "pleroma:get:main/ostatus"
+          ],
+          "account_activation_required": false,
+          "privileged_staff": false,
+          "federation": {
+            "enabled": false,
+            "mrf_hashtag": {
+              "sensitive": [
+                "nsfw"
+              ],
+              "reject": [],
+              "federated_timeline_removal": []
+            },
+            "mrf_object_age": {
+              "threshold": 604800,
+              "actions": [
+                "delist",
+                "strip_followers"
+              ]
+            },
+            "quarantined_instances": [],
+            "exclusions": false,
+            "mrf_policies": [
+              "ObjectAgePolicy",
+              "TagPolicy",
+              "HashtagPolicy",
+              "InlineQuotePolicy",
+              "NormalizeMarkup",
+              "DirectMessageDisabledPolicy"
+            ],
+            "quarantined_instances_info": {
+              "quarantined_instances": {}
+            }
+          },
+          "fields_limits": {
+            "max_fields": 10,
+            "max_remote_fields": 20,
+            "name_length": 512,
+            "value_length": 2048
+          },
+          "post_formats": [
+            "text/plain",
+            "text/html",
+            "text/markdown",
+            "text/bbcode",
+            "text/x.misskeymarkdown"
+          ]
+        },
+        "stats": {
+          "mau": 3
+        },
+        "vapid_public_key": null
+      },
+      "title": "mstdn disposable compatibility",
+      "stats": {
+        "domain_count": 0,
+        "remote_user_count": 1,
+        "status_count": 0,
+        "user_count": 0
+      },
+      "uri": "127.0.0.1",
+      "email": "admin@example.invalid",
+      "urls": {
+        "streaming_api": "ws://127.0.0.1:14000"
+      },
+      "registrations": false,
+      "short_description": "Akkoma: The cooler fediverse server",
+      "background_image": "http://127.0.0.1:14000/images/city.jpg",
+      "description_limit": 5000,
+      "upload_limit": 16000000,
+      "avatar_upload_limit": 2000000,
+      "background_upload_limit": 4000000,
+      "banner_upload_limit": 4000000,
+      "languages": [
+        "en"
+      ],
+      "poll_limits": {
+        "max_expiration": 31536000,
+        "max_option_chars": 200,
+        "max_options": 20,
+        "min_expiration": 0
+      },
+      "max_toot_chars": 5000,
+      "thumbnail": "http://127.0.0.1:14000/instance/thumbnail.jpeg",
+      "approval_required": false
+    }
+  },
+  "instance_v2": {
+    "status": 404,
+    "link": null,
+    "body": {
+      "error": "Not implemented"
+    }
+  },
+  "discovery": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "links": [
+        {
+          "rel": "http://nodeinfo.diaspora.software/ns/schema/2.0",
+          "href": "http://127.0.0.1:14000/nodeinfo/2.0.json"
+        },
+        {
+          "rel": "http://nodeinfo.diaspora.software/ns/schema/2.1",
+          "href": "http://127.0.0.1:14000/nodeinfo/2.1.json"
+        }
+      ]
+    }
+  },
+  "nodeinfo": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "metadata": {
+        "accountActivationRequired": false,
+        "features": [
+          "pleroma_api",
+          "akkoma_api",
+          "mastodon_api",
+          "mastodon_api_streaming",
+          "polls",
+          "v2_suggestions",
+          "pleroma_explicit_addressing",
+          "shareable_emoji_packs",
+          "multifetch",
+          "pleroma:api/v1/notifications:include_types_filter",
+          "quote_posting",
+          "editing",
+          "pleroma_emoji_reactions",
+          "exposable_reactions",
+          "profile_directory",
+          "custom_emoji_reactions",
+          "pleroma:get:main/ostatus"
+        ],
+        "federatedTimelineAvailable": true,
+        "federation": {
+          "enabled": false,
+          "mrf_hashtag": {
+            "sensitive": [
+              "nsfw"
+            ],
+            "reject": [],
+            "federated_timeline_removal": []
+          },
+          "mrf_object_age": {
+            "threshold": 604800,
+            "actions": [
+              "delist",
+              "strip_followers"
+            ]
+          },
+          "quarantined_instances": [],
+          "exclusions": false,
+          "mrf_policies": [
+            "ObjectAgePolicy",
+            "TagPolicy",
+            "HashtagPolicy",
+            "InlineQuotePolicy",
+            "NormalizeMarkup",
+            "DirectMessageDisabledPolicy"
+          ],
+          "quarantined_instances_info": {
+            "quarantined_instances": {}
+          }
+        },
+        "fieldsLimits": {
+          "maxFields": 10,
+          "maxRemoteFields": 20,
+          "nameLength": 512,
+          "valueLength": 2048
+        },
+        "invitesEnabled": false,
+        "localBubbleInstances": [],
+        "mailerEnabled": false,
+        "nodeDescription": "Akkoma: The cooler fediverse server",
+        "nodeName": "mstdn disposable compatibility",
+        "pollLimits": {
+          "max_expiration": 31536000,
+          "max_option_chars": 200,
+          "max_options": 20,
+          "min_expiration": 0
+        },
+        "postFormats": [
+          "text/plain",
+          "text/html",
+          "text/markdown",
+          "text/bbcode",
+          "text/x.misskeymarkdown"
+        ],
+        "private": false,
+        "privilegedStaff": false,
+        "publicTimelineVisibility": {
+          "bubble": false,
+          "federated": true,
+          "local": true
+        },
+        "restrictedNicknames": [
+          ".well-known",
+          "~",
+          "about",
+          "activities",
+          "api",
+          "auth",
+          "check_password",
+          "dev",
+          "friend-requests",
+          "inbox",
+          "internal",
+          "main",
+          "media",
+          "nodeinfo",
+          "notice",
+          "oauth",
+          "objects",
+          "ostatus_subscribe",
+          "pleroma",
+          "proxy",
+          "push",
+          "registration",
+          "relay",
+          "settings",
+          "status",
+          "tag",
+          "user-search",
+          "user_exists",
+          "users",
+          "web",
+          "verify_credentials",
+          "update_credentials",
+          "relationships",
+          "search",
+          "confirmation_resend",
+          "mfa"
+        ],
+        "staffAccounts": [
+          "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw"
+        ],
+        "suggestions": {
+          "enabled": false
+        },
+        "uploadLimits": {
+          "avatar": 2000000,
+          "background": 4000000,
+          "banner": 4000000,
+          "general": 16000000
+        }
+      },
+      "openRegistrations": false,
+      "protocols": [
+        "activitypub"
+      ],
+      "services": {
+        "inbound": [],
+        "outbound": []
+      },
+      "software": {
+        "name": "akkoma",
+        "version": "3.20.0-v3-20-0"
+      },
+      "usage": {
+        "localPosts": 0,
+        "users": {
+          "activeHalfyear": 3,
+          "activeMonth": 3,
+          "total": 0
+        }
+      },
+      "version": "2.0"
+    }
+  },
+  "status": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7jPqymHHw79NdUe",
+      "created_at": "2026-11-28T10:28:44.000Z",
+      "content": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword",
+      "text": null,
+      "favourites_count": 0,
+      "quote": null,
+      "application": null,
+      "mentions": [],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/3a30a5f0-7cee-4cb8-8048-a432420762b3",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword",
+          "mediaType": "text/plain"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [
+        {
+          "id": "1474",
+          "type": "image",
+          "description": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword",
+          "pleroma": {
+            "mime_type": "image/png"
+          },
+          "url": "http://127.0.0.1:14000/media/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "text_url": "http://127.0.0.1:14000/media/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "remote_url": "http://127.0.0.1:14000/media/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "preview_url": "http://127.0.0.1:14000/media/a2a4df1b7d0237c9bc9b34d9cc90f1d3e7e005faa71efd7fc8f4ff200a1d3e5a.png",
+          "blurhash": null
+        }
+      ],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/6b35569e-5536-4fa2-acd7-d236c2c628f9",
+        "content": {
+          "text/plain": "👨‍👩‍👧 👍🏽 🇯🇵 ✈️ 漢字 العربية é longwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongwordlongword"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 1597698172,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7jPqymHHw79NdUe",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "video": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7jS4AYD1kydZCKW",
+      "created_at": "2026-11-28T10:28:44.000Z",
+      "content": "compatibility viewer video",
+      "text": null,
+      "favourites_count": 0,
+      "quote": null,
+      "application": null,
+      "mentions": [],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/7de7f86d-d35e-4482-aaab-5ba06d7b78ca",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "compatibility viewer video",
+          "mediaType": "text/plain"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [
+        {
+          "id": "1477",
+          "type": "video",
+          "description": "Compatibility video",
+          "pleroma": {
+            "mime_type": "video/mp4"
+          },
+          "url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "text_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "remote_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "preview_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+          "blurhash": null
+        }
+      ],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/faa4e23e-dfff-4362-953e-7b554b3a6e98",
+        "content": {
+          "text/plain": "compatibility viewer video"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 234039963,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7jS4AYD1kydZCKW",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "page": {
+    "status": 200,
+    "link": "<http://127.0.0.1:14000/api/v1/accounts/BCu7guQ0gIcK2cZPRA/statuses?max_id=BCu7iz7MBHLVC7pplw&limit=2>; rel=\"next\", <http://127.0.0.1:14000/api/v1/accounts/BCu7guQ0gIcK2cZPRA/statuses?min_id=BCu7izGvbh0BfoJTgu&limit=2>; rel=\"prev\"",
+    "body": [
+      {
+        "id": "BCu7izGvbh0BfoJTgu",
+        "created_at": "2026-11-28T10:28:39.000Z",
+        "content": "video099 <a class=\"hashtag\" data-tag=\"compatvideo\" href=\"http://127.0.0.1:14000/tag/compatvideo\" rel=\"tag ugc\">#compatvideo</a>",
+        "text": null,
+        "favourites_count": 0,
+        "quote": null,
+        "application": null,
+        "mentions": [],
+        "quote_id": null,
+        "language": "en",
+        "uri": "http://127.0.0.1:14000/objects/7a9739e4-4e65-4a4d-8424-6a9c88571121",
+        "sensitive": false,
+        "muted": false,
+        "reblog": null,
+        "emojis": [],
+        "reblogged": false,
+        "favourited": false,
+        "in_reply_to_account_id": null,
+        "emoji_reactions": [],
+        "akkoma": {
+          "source": {
+            "content": "video099 #compatvideo",
+            "mediaType": "text/plain"
+          },
+          "in_reply_to_apid": null,
+          "quote_apid": null
+        },
+        "visibility": "public",
+        "reblogs_count": 0,
+        "card": null,
+        "poll": null,
+        "account": {
+          "id": "BCu7guQ0gIcK2cZPRA",
+          "header": "http://127.0.0.1:14000/images/banner.png",
+          "pleroma": {
+            "relationship": {},
+            "tags": [],
+            "hide_followers": false,
+            "is_admin": false,
+            "is_confirmed": true,
+            "hide_followers_count": false,
+            "hide_follows_count": false,
+            "hide_favorites": true,
+            "is_suggested": false,
+            "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7guQ0gIcK2cZPRA",
+            "hide_follows": false,
+            "is_moderator": false,
+            "also_known_as": [],
+            "deactivated": false,
+            "background_image": null,
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "background_image_description": ""
+          },
+          "fields": [],
+          "source": {
+            "sensitive": false,
+            "pleroma": {
+              "actor_type": "Person",
+              "discoverable": false
+            },
+            "fields": [],
+            "note": ""
+          },
+          "url": "http://127.0.0.1:14000/users/videos",
+          "display_name": "videos",
+          "locked": false,
+          "username": "videos",
+          "note": "",
+          "statuses_count": 100,
+          "header_static": "http://127.0.0.1:14000/images/banner.png",
+          "header_description": "",
+          "following_count": 2,
+          "followers_count": 2,
+          "emojis": [],
+          "created_at": "2026-11-28T10:28:17.000Z",
+          "bot": false,
+          "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+          "avatar_description": "",
+          "avatar": "http://127.0.0.1:14000/images/avi.png",
+          "akkoma": {
+            "instance": {
+              "name": "127.0.0.1",
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "nodeinfo": {
+                "software": {
+                  "name": "akkoma",
+                  "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                  "version": "3.20.0-v3-20-0"
+                },
+                "version": "2.1"
+              }
+            },
+            "permit_followback": false,
+            "status_ttl_days": null,
+            "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7guQ0gIcK2cZPRA/feed"
+          },
+          "acct": "videos",
+          "last_status_at": "2026-11-28",
+          "fqn": "videos@127.0.0.1"
+        },
+        "tags": [
+          {
+            "name": "compatvideo",
+            "url": "http://127.0.0.1:14000/tag/compatvideo"
+          }
+        ],
+        "media_attachments": [
+          {
+            "id": "961",
+            "type": "video",
+            "description": "Video 099",
+            "pleroma": {
+              "mime_type": "video/mp4"
+            },
+            "url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "text_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "remote_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "preview_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "blurhash": null
+          }
+        ],
+        "pleroma": {
+          "local": true,
+          "context": "http://127.0.0.1:14000/contexts/bc2265ee-39dc-412c-91ed-b08a3d5b8bbe",
+          "content": {
+            "text/plain": "video099 #compatvideo"
+          },
+          "expires_at": null,
+          "spoiler_text": {
+            "text/plain": ""
+          },
+          "direct_conversation_id": null,
+          "conversation_id": 227024076,
+          "emoji_reactions": [],
+          "in_reply_to_account_acct": null,
+          "parent_visible": false,
+          "pinned_at": null,
+          "thread_muted": false
+        },
+        "bookmarked": false,
+        "in_reply_to_id": null,
+        "edited_at": null,
+        "url": "http://127.0.0.1:14000/notice/BCu7izGvbh0BfoJTgu",
+        "replies_count": 0,
+        "pinned": false,
+        "spoiler_text": ""
+      },
+      {
+        "id": "BCu7iz7MBHLVC7pplw",
+        "created_at": "2026-11-28T10:28:39.000Z",
+        "content": "video098 <a class=\"hashtag\" data-tag=\"compatvideo\" href=\"http://127.0.0.1:14000/tag/compatvideo\" rel=\"tag ugc\">#compatvideo</a>",
+        "text": null,
+        "favourites_count": 0,
+        "quote": null,
+        "application": null,
+        "mentions": [],
+        "quote_id": null,
+        "language": "en",
+        "uri": "http://127.0.0.1:14000/objects/c56785c3-84c9-4ba8-9304-fc985f32ca38",
+        "sensitive": false,
+        "muted": false,
+        "reblog": null,
+        "emojis": [],
+        "reblogged": false,
+        "favourited": false,
+        "in_reply_to_account_id": null,
+        "emoji_reactions": [],
+        "akkoma": {
+          "source": {
+            "content": "video098 #compatvideo",
+            "mediaType": "text/plain"
+          },
+          "in_reply_to_apid": null,
+          "quote_apid": null
+        },
+        "visibility": "public",
+        "reblogs_count": 0,
+        "card": null,
+        "poll": null,
+        "account": {
+          "id": "BCu7guQ0gIcK2cZPRA",
+          "header": "http://127.0.0.1:14000/images/banner.png",
+          "pleroma": {
+            "relationship": {},
+            "tags": [],
+            "hide_followers": false,
+            "is_admin": false,
+            "is_confirmed": true,
+            "hide_followers_count": false,
+            "hide_follows_count": false,
+            "hide_favorites": true,
+            "is_suggested": false,
+            "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7guQ0gIcK2cZPRA",
+            "hide_follows": false,
+            "is_moderator": false,
+            "also_known_as": [],
+            "deactivated": false,
+            "background_image": null,
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "background_image_description": ""
+          },
+          "fields": [],
+          "source": {
+            "sensitive": false,
+            "pleroma": {
+              "actor_type": "Person",
+              "discoverable": false
+            },
+            "fields": [],
+            "note": ""
+          },
+          "url": "http://127.0.0.1:14000/users/videos",
+          "display_name": "videos",
+          "locked": false,
+          "username": "videos",
+          "note": "",
+          "statuses_count": 100,
+          "header_static": "http://127.0.0.1:14000/images/banner.png",
+          "header_description": "",
+          "following_count": 2,
+          "followers_count": 2,
+          "emojis": [],
+          "created_at": "2026-11-28T10:28:17.000Z",
+          "bot": false,
+          "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+          "avatar_description": "",
+          "avatar": "http://127.0.0.1:14000/images/avi.png",
+          "akkoma": {
+            "instance": {
+              "name": "127.0.0.1",
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "nodeinfo": {
+                "software": {
+                  "name": "akkoma",
+                  "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                  "version": "3.20.0-v3-20-0"
+                },
+                "version": "2.1"
+              }
+            },
+            "permit_followback": false,
+            "status_ttl_days": null,
+            "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7guQ0gIcK2cZPRA/feed"
+          },
+          "acct": "videos",
+          "last_status_at": "2026-11-28",
+          "fqn": "videos@127.0.0.1"
+        },
+        "tags": [
+          {
+            "name": "compatvideo",
+            "url": "http://127.0.0.1:14000/tag/compatvideo"
+          }
+        ],
+        "media_attachments": [
+          {
+            "id": "959",
+            "type": "video",
+            "description": "Video 098",
+            "pleroma": {
+              "mime_type": "video/mp4"
+            },
+            "url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "text_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "remote_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "preview_url": "http://127.0.0.1:14000/media/6d7c075d59c8249e546ecc0a3f29775c5f967974c06540cc3184391be1970f53.mp4",
+            "blurhash": null
+          }
+        ],
+        "pleroma": {
+          "local": true,
+          "context": "http://127.0.0.1:14000/contexts/a6a416ca-4a3b-4f75-b61a-47c3e20f16aa",
+          "content": {
+            "text/plain": "video098 #compatvideo"
+          },
+          "expires_at": null,
+          "spoiler_text": {
+            "text/plain": ""
+          },
+          "direct_conversation_id": null,
+          "conversation_id": 1248752717,
+          "emoji_reactions": [],
+          "in_reply_to_account_acct": null,
+          "parent_visible": false,
+          "pinned_at": null,
+          "thread_muted": false
+        },
+        "bookmarked": false,
+        "in_reply_to_id": null,
+        "edited_at": null,
+        "url": "http://127.0.0.1:14000/notice/BCu7iz7MBHLVC7pplw",
+        "replies_count": 0,
+        "pinned": false,
+        "spoiler_text": ""
+      }
+    ]
+  },
+  "conversations": {
+    "status": 200,
+    "link": "<http://127.0.0.1:14000/api/v1/conversations?max_id=BCu7h8DPNwr6pamXjs>; rel=\"next\", <http://127.0.0.1:14000/api/v1/conversations?min_id=BCu7h8DPNwr6pamXjs>; rel=\"prev\"",
+    "body": [
+      {
+        "id": "2",
+        "unread": false,
+        "last_status": {
+          "id": "BCu7h8DPNwr6pamXjs",
+          "created_at": "2026-11-28T10:28:19.000Z",
+          "content": "<span class=\"h-card\"><a class=\"u-url mention\" data-user=\"BCu7gqH05r29BWK9q4\" href=\"http://127.0.0.1:14000/users/bob\" rel=\"ugc\">@<span>bob</span></a></span> compatibility direct",
+          "text": null,
+          "favourites_count": 0,
+          "quote": null,
+          "application": null,
+          "mentions": [
+            {
+              "id": "BCu7gqH05r29BWK9q4",
+              "url": "http://127.0.0.1:14000/users/bob",
+              "username": "bob",
+              "acct": "bob"
+            }
+          ],
+          "quote_id": null,
+          "language": "en",
+          "uri": "http://127.0.0.1:14000/objects/17625d0e-9dbf-4556-ac69-ac5ee82b21a6",
+          "sensitive": false,
+          "muted": false,
+          "reblog": null,
+          "emojis": [],
+          "reblogged": false,
+          "favourited": false,
+          "in_reply_to_account_id": null,
+          "emoji_reactions": [],
+          "akkoma": {
+            "source": {
+              "content": "@bob compatibility direct",
+              "mediaType": "text/plain"
+            },
+            "in_reply_to_apid": null,
+            "quote_apid": null
+          },
+          "visibility": "direct",
+          "reblogs_count": 0,
+          "card": null,
+          "poll": null,
+          "account": {
+            "id": "BCu7glkauOjd9r8Dlw",
+            "header": "http://127.0.0.1:14000/images/banner.png",
+            "pleroma": {
+              "email": "alice@example.invalid",
+              "relationship": {},
+              "tags": [],
+              "hide_followers": false,
+              "is_admin": true,
+              "is_confirmed": true,
+              "hide_followers_count": false,
+              "notification_settings": {
+                "hide_notification_contents": false,
+                "block_from_strangers": false
+              },
+              "hide_follows_count": false,
+              "hide_favorites": true,
+              "is_suggested": false,
+              "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+              "hide_follows": false,
+              "allow_following_move": true,
+              "is_moderator": false,
+              "also_known_as": [],
+              "deactivated": false,
+              "background_image": null,
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "unread_notifications_count": 756,
+              "background_image_description": "",
+              "unread_conversation_count": 0
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "show_role": true,
+                "no_rich_text": false,
+                "actor_type": "Person",
+                "discoverable": false
+              },
+              "fields": [],
+              "note": "",
+              "privacy": "public"
+            },
+            "url": "http://127.0.0.1:14000/users/alice",
+            "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+            "locked": false,
+            "username": "alice",
+            "note": "",
+            "statuses_count": 16,
+            "header_static": "http://127.0.0.1:14000/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "follow_requests_count": 0,
+            "emojis": [],
+            "created_at": "2026-11-28T10:28:15.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14000/images/avi.png",
+            "akkoma": {
+              "instance": {
+                "name": "127.0.0.1",
+                "favicon": "http://127.0.0.1:14000/favicon.png",
+                "nodeinfo": {
+                  "software": {
+                    "name": "akkoma",
+                    "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                    "version": "3.20.0-v3-20-0"
+                  },
+                  "version": "2.1"
+                }
+              },
+              "permit_followback": false,
+              "status_ttl_days": null,
+              "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+            },
+            "acct": "alice",
+            "accepts_direct_messages_from": "everybody",
+            "last_status_at": "2026-11-28",
+            "fqn": "alice@127.0.0.1"
+          },
+          "tags": [],
+          "media_attachments": [],
+          "pleroma": {
+            "local": true,
+            "context": "http://127.0.0.1:14000/contexts/38b7e5a3-dfcb-4b50-a869-cc2ff17b9402",
+            "content": {
+              "text/plain": "@bob compatibility direct"
+            },
+            "expires_at": null,
+            "spoiler_text": {
+              "text/plain": "compatibility warning"
+            },
+            "direct_conversation_id": 2,
+            "conversation_id": 1848456315,
+            "emoji_reactions": [],
+            "in_reply_to_account_acct": null,
+            "parent_visible": false,
+            "pinned_at": null,
+            "thread_muted": false
+          },
+          "bookmarked": false,
+          "in_reply_to_id": null,
+          "edited_at": null,
+          "url": "http://127.0.0.1:14000/notice/BCu7h8DPNwr6pamXjs",
+          "replies_count": 0,
+          "pinned": false,
+          "spoiler_text": "compatibility warning"
+        },
+        "accounts": [
+          {
+            "id": "BCu7gqH05r29BWK9q4",
+            "header": "http://127.0.0.1:14000/images/banner.png",
+            "pleroma": {
+              "relationship": {},
+              "tags": [],
+              "hide_followers": false,
+              "is_admin": false,
+              "is_confirmed": true,
+              "hide_followers_count": false,
+              "hide_follows_count": false,
+              "hide_favorites": true,
+              "is_suggested": false,
+              "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7gqH05r29BWK9q4",
+              "hide_follows": false,
+              "is_moderator": false,
+              "also_known_as": [],
+              "deactivated": false,
+              "background_image": null,
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "background_image_description": ""
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "actor_type": "Person",
+                "discoverable": false
+              },
+              "fields": [],
+              "note": ""
+            },
+            "url": "http://127.0.0.1:14000/users/bob",
+            "display_name": "bob",
+            "locked": false,
+            "username": "bob",
+            "note": "",
+            "statuses_count": 851,
+            "header_static": "http://127.0.0.1:14000/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "emojis": [],
+            "created_at": "2026-11-28T10:28:16.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14000/images/avi.png",
+            "akkoma": {
+              "instance": {
+                "name": "127.0.0.1",
+                "favicon": "http://127.0.0.1:14000/favicon.png",
+                "nodeinfo": {
+                  "software": {
+                    "name": "akkoma",
+                    "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                    "version": "3.20.0-v3-20-0"
+                  },
+                  "version": "2.1"
+                }
+              },
+              "permit_followback": false,
+              "status_ttl_days": null,
+              "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7gqH05r29BWK9q4/feed"
+            },
+            "acct": "bob",
+            "last_status_at": "2026-11-28",
+            "fqn": "bob@127.0.0.1"
+          }
+        ]
+      }
+    ]
+  },
+  "chats": {
+    "status": 404,
+    "link": null,
+    "body": {
+      "error": "Not implemented"
+    }
+  },
+  "deleted": {
+    "status": 404,
+    "link": null,
+    "body": {
+      "error": "Record not found"
+    }
+  },
+  "wrong_token": {
+    "status": 403,
+    "link": null,
+    "body": {
+      "error": "Invalid credentials."
+    }
+  },
+  "blocked": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7h5wJqVztm0lrpA",
+      "created_at": "2026-11-28T10:28:19.000Z",
+      "content": "<span class=\"h-card\"><a class=\"u-url mention\" data-user=\"BCu7glkauOjd9r8Dlw\" href=\"http://127.0.0.1:14000/users/alice\" rel=\"ugc\">@<span>alice</span></a></span> compatibility reply",
+      "text": null,
+      "favourites_count": 0,
+      "quote": null,
+      "application": null,
+      "mentions": [
+        {
+          "id": "BCu7glkauOjd9r8Dlw",
+          "url": "http://127.0.0.1:14000/users/alice",
+          "username": "alice",
+          "acct": "alice"
+        }
+      ],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/a2006c06-0375-49e2-8327-19e0d81a179d",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": "BCu7glkauOjd9r8Dlw",
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "@alice compatibility reply",
+          "mediaType": "text/plain"
+        },
+        "in_reply_to_apid": "http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc",
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7gqH05r29BWK9q4",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": false,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7gqH05r29BWK9q4",
+          "hide_follows": false,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "background_image_description": ""
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": ""
+        },
+        "url": "http://127.0.0.1:14000/users/bob",
+        "display_name": "bob",
+        "locked": false,
+        "username": "bob",
+        "note": "",
+        "statuses_count": 851,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 1,
+        "followers_count": 1,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:16.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7gqH05r29BWK9q4/feed"
+        },
+        "acct": "bob",
+        "last_status_at": "2026-11-28",
+        "fqn": "bob@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/eb9d3aa3-5a78-43a6-9c62-1ccd4b677f74",
+        "content": {
+          "text/plain": "@alice compatibility reply"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 838142990,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": "alice",
+        "parent_visible": true,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": "BCu7h5i8hEef428Xiq",
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7h5wJqVztm0lrpA",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "markdown": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7h6Q63nohGMheEq",
+      "created_at": "2026-11-28T10:28:19.000Z",
+      "content": "<p><strong>compatibility markdown</strong></p>",
+      "text": null,
+      "favourites_count": 0,
+      "quote": null,
+      "application": null,
+      "mentions": [],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/aead6494-7aef-4a45-9ab9-a9be499dfafd",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "**compatibility markdown**",
+          "mediaType": "text/markdown"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/e371136e-8144-4899-b789-10ea32ae64ab",
+        "content": {
+          "text/plain": "compatibility markdown"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 819511973,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7h6Q63nohGMheEq",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "mfm": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7h6ajQGK7nLg8oa",
+      "created_at": "2026-11-28T10:28:19.000Z",
+      "content": "<p><strong>compatibility mfm</strong></p>",
+      "text": null,
+      "favourites_count": 0,
+      "quote": null,
+      "application": null,
+      "mentions": [],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/5a3acd29-fcb1-4fa7-8863-f75c7f4838fd",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "**compatibility mfm**",
+          "mediaType": "text/x.misskeymarkdown"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/4db2a904-1e1c-4b74-98b2-ad5e5695ca95",
+        "content": {
+          "text/plain": "compatibility mfm"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 727094263,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7h6ajQGK7nLg8oa",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "extension_quote": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7h6jatJPeEppDd2",
+      "created_at": "2026-11-28T10:28:19.000Z",
+      "content": "compatibility extension quote<span class=\"quote-inline\"><br/><br/>RE: <a href=\"http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc\">http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc</a></span>",
+      "text": null,
+      "favourites_count": 0,
+      "quote": {
+        "id": "BCu7h5i8hEef428Xiq",
+        "created_at": "2026-11-28T10:28:19.000Z",
+        "content": "compatibility root <a class=\"hashtag\" data-tag=\"compatroot\" href=\"http://127.0.0.1:14000/tag/compatroot\" rel=\"tag ugc\">#compatroot</a>",
+        "text": null,
+        "favourites_count": 1,
+        "quote": null,
+        "application": null,
+        "mentions": [],
+        "quote_id": null,
+        "language": "en",
+        "uri": "http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc",
+        "sensitive": false,
+        "quoted_status": {
+          "id": "BCu7h5i8hEef428Xiq",
+          "created_at": "2026-11-28T10:28:19.000Z",
+          "content": "compatibility root <a class=\"hashtag\" data-tag=\"compatroot\" href=\"http://127.0.0.1:14000/tag/compatroot\" rel=\"tag ugc\">#compatroot</a>",
+          "text": null,
+          "favourites_count": 1,
+          "quote": null,
+          "application": null,
+          "mentions": [],
+          "quote_id": null,
+          "language": "en",
+          "uri": "http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc",
+          "sensitive": false,
+          "muted": false,
+          "reblog": null,
+          "emojis": [],
+          "reblogged": false,
+          "favourited": false,
+          "in_reply_to_account_id": null,
+          "emoji_reactions": [
+            {
+              "count": 1,
+              "name": "👍",
+              "me": false,
+              "url": null,
+              "account_ids": [
+                "BCu7gqH05r29BWK9q4"
+              ]
+            }
+          ],
+          "akkoma": {
+            "source": {
+              "content": "compatibility root #compatroot",
+              "mediaType": "text/plain"
+            },
+            "in_reply_to_apid": null,
+            "quote_apid": null
+          },
+          "visibility": "public",
+          "reblogs_count": 1,
+          "card": null,
+          "poll": null,
+          "account": {
+            "id": "BCu7glkauOjd9r8Dlw",
+            "header": "http://127.0.0.1:14000/images/banner.png",
+            "pleroma": {
+              "email": "alice@example.invalid",
+              "relationship": {},
+              "tags": [],
+              "hide_followers": false,
+              "is_admin": true,
+              "is_confirmed": true,
+              "hide_followers_count": false,
+              "notification_settings": {
+                "hide_notification_contents": false,
+                "block_from_strangers": false
+              },
+              "hide_follows_count": false,
+              "hide_favorites": true,
+              "is_suggested": false,
+              "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+              "hide_follows": false,
+              "allow_following_move": true,
+              "is_moderator": false,
+              "also_known_as": [],
+              "deactivated": false,
+              "background_image": null,
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "unread_notifications_count": 756,
+              "background_image_description": "",
+              "unread_conversation_count": 0
+            },
+            "fields": [],
+            "source": {
+              "sensitive": false,
+              "pleroma": {
+                "show_role": true,
+                "no_rich_text": false,
+                "actor_type": "Person",
+                "discoverable": false
+              },
+              "fields": [],
+              "note": "",
+              "privacy": "public"
+            },
+            "url": "http://127.0.0.1:14000/users/alice",
+            "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+            "locked": false,
+            "username": "alice",
+            "note": "",
+            "statuses_count": 16,
+            "header_static": "http://127.0.0.1:14000/images/banner.png",
+            "header_description": "",
+            "following_count": 2,
+            "followers_count": 2,
+            "follow_requests_count": 0,
+            "emojis": [],
+            "created_at": "2026-11-28T10:28:15.000Z",
+            "bot": false,
+            "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+            "avatar_description": "",
+            "avatar": "http://127.0.0.1:14000/images/avi.png",
+            "akkoma": {
+              "instance": {
+                "name": "127.0.0.1",
+                "favicon": "http://127.0.0.1:14000/favicon.png",
+                "nodeinfo": {
+                  "software": {
+                    "name": "akkoma",
+                    "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                    "version": "3.20.0-v3-20-0"
+                  },
+                  "version": "2.1"
+                }
+              },
+              "permit_followback": false,
+              "status_ttl_days": null,
+              "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+            },
+            "acct": "alice",
+            "accepts_direct_messages_from": "everybody",
+            "last_status_at": "2026-11-28",
+            "fqn": "alice@127.0.0.1"
+          },
+          "tags": [
+            {
+              "name": "compatroot",
+              "url": "http://127.0.0.1:14000/tag/compatroot"
+            }
+          ],
+          "media_attachments": [],
+          "pleroma": {
+            "local": true,
+            "context": "http://127.0.0.1:14000/contexts/eb9d3aa3-5a78-43a6-9c62-1ccd4b677f74",
+            "content": {
+              "text/plain": "compatibility root #compatroot"
+            },
+            "expires_at": null,
+            "spoiler_text": {
+              "text/plain": ""
+            },
+            "direct_conversation_id": null,
+            "conversation_id": 838142990,
+            "emoji_reactions": [
+              {
+                "count": 1,
+                "name": "👍",
+                "me": false,
+                "url": null,
+                "account_ids": [
+                  "BCu7gqH05r29BWK9q4"
+                ]
+              }
+            ],
+            "in_reply_to_account_acct": null,
+            "parent_visible": false,
+            "pinned_at": null,
+            "thread_muted": false
+          },
+          "bookmarked": false,
+          "in_reply_to_id": null,
+          "edited_at": null,
+          "url": "http://127.0.0.1:14000/notice/BCu7h5i8hEef428Xiq",
+          "replies_count": 1,
+          "pinned": false,
+          "spoiler_text": ""
+        },
+        "muted": false,
+        "reblog": null,
+        "emojis": [],
+        "reblogged": false,
+        "favourited": false,
+        "in_reply_to_account_id": null,
+        "emoji_reactions": [
+          {
+            "count": 1,
+            "name": "👍",
+            "me": false,
+            "url": null,
+            "account_ids": [
+              "BCu7gqH05r29BWK9q4"
+            ]
+          }
+        ],
+        "akkoma": {
+          "source": {
+            "content": "compatibility root #compatroot",
+            "mediaType": "text/plain"
+          },
+          "in_reply_to_apid": null,
+          "quote_apid": null
+        },
+        "visibility": "public",
+        "reblogs_count": 1,
+        "card": null,
+        "poll": null,
+        "account": {
+          "id": "BCu7glkauOjd9r8Dlw",
+          "header": "http://127.0.0.1:14000/images/banner.png",
+          "pleroma": {
+            "email": "alice@example.invalid",
+            "relationship": {},
+            "tags": [],
+            "hide_followers": false,
+            "is_admin": true,
+            "is_confirmed": true,
+            "hide_followers_count": false,
+            "notification_settings": {
+              "hide_notification_contents": false,
+              "block_from_strangers": false
+            },
+            "hide_follows_count": false,
+            "hide_favorites": true,
+            "is_suggested": false,
+            "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+            "hide_follows": false,
+            "allow_following_move": true,
+            "is_moderator": false,
+            "also_known_as": [],
+            "deactivated": false,
+            "background_image": null,
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "unread_notifications_count": 756,
+            "background_image_description": "",
+            "unread_conversation_count": 0
+          },
+          "fields": [],
+          "source": {
+            "sensitive": false,
+            "pleroma": {
+              "show_role": true,
+              "no_rich_text": false,
+              "actor_type": "Person",
+              "discoverable": false
+            },
+            "fields": [],
+            "note": "",
+            "privacy": "public"
+          },
+          "url": "http://127.0.0.1:14000/users/alice",
+          "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+          "locked": false,
+          "username": "alice",
+          "note": "",
+          "statuses_count": 16,
+          "header_static": "http://127.0.0.1:14000/images/banner.png",
+          "header_description": "",
+          "following_count": 2,
+          "followers_count": 2,
+          "follow_requests_count": 0,
+          "emojis": [],
+          "created_at": "2026-11-28T10:28:15.000Z",
+          "bot": false,
+          "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+          "avatar_description": "",
+          "avatar": "http://127.0.0.1:14000/images/avi.png",
+          "akkoma": {
+            "instance": {
+              "name": "127.0.0.1",
+              "favicon": "http://127.0.0.1:14000/favicon.png",
+              "nodeinfo": {
+                "software": {
+                  "name": "akkoma",
+                  "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                  "version": "3.20.0-v3-20-0"
+                },
+                "version": "2.1"
+              }
+            },
+            "permit_followback": false,
+            "status_ttl_days": null,
+            "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+          },
+          "acct": "alice",
+          "accepts_direct_messages_from": "everybody",
+          "last_status_at": "2026-11-28",
+          "fqn": "alice@127.0.0.1"
+        },
+        "tags": [
+          {
+            "name": "compatroot",
+            "url": "http://127.0.0.1:14000/tag/compatroot"
+          }
+        ],
+        "media_attachments": [],
+        "pleroma": {
+          "local": true,
+          "context": "http://127.0.0.1:14000/contexts/eb9d3aa3-5a78-43a6-9c62-1ccd4b677f74",
+          "content": {
+            "text/plain": "compatibility root #compatroot"
+          },
+          "expires_at": null,
+          "spoiler_text": {
+            "text/plain": ""
+          },
+          "direct_conversation_id": null,
+          "conversation_id": 838142990,
+          "emoji_reactions": [
+            {
+              "count": 1,
+              "name": "👍",
+              "me": false,
+              "url": null,
+              "account_ids": [
+                "BCu7gqH05r29BWK9q4"
+              ]
+            }
+          ],
+          "in_reply_to_account_acct": null,
+          "parent_visible": false,
+          "pinned_at": null,
+          "thread_muted": false
+        },
+        "bookmarked": false,
+        "in_reply_to_id": null,
+        "state": "accepted",
+        "edited_at": null,
+        "url": "http://127.0.0.1:14000/notice/BCu7h5i8hEef428Xiq",
+        "replies_count": 1,
+        "pinned": false,
+        "spoiler_text": ""
+      },
+      "application": null,
+      "mentions": [],
+      "quote_id": "BCu7h5i8hEef428Xiq",
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/304ec04f-8d50-4470-8a25-e52f6fd37994",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [],
+      "akkoma": {
+        "source": {
+          "content": "compatibility extension quote",
+          "mediaType": "text/plain"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": "http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc"
+      },
+      "visibility": "public",
+      "reblogs_count": 0,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [],
+      "media_attachments": [],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/eb9d3aa3-5a78-43a6-9c62-1ccd4b677f74",
+        "content": {
+          "text/plain": "compatibility extension quoteRE: http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 838142990,
+        "emoji_reactions": [],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7h6jatJPeEppDd2",
+      "replies_count": 0,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "emoji_reaction": {
+    "status": 200,
+    "link": null,
+    "body": {
+      "id": "BCu7h5i8hEef428Xiq",
+      "created_at": "2026-11-28T10:28:19.000Z",
+      "content": "compatibility root <a class=\"hashtag\" data-tag=\"compatroot\" href=\"http://127.0.0.1:14000/tag/compatroot\" rel=\"tag ugc\">#compatroot</a>",
+      "text": null,
+      "favourites_count": 1,
+      "quote": null,
+      "application": null,
+      "mentions": [],
+      "quote_id": null,
+      "language": "en",
+      "uri": "http://127.0.0.1:14000/objects/abade95f-856e-4ef1-bf0c-5568dec270cc",
+      "sensitive": false,
+      "muted": false,
+      "reblog": null,
+      "emojis": [],
+      "reblogged": false,
+      "favourited": false,
+      "in_reply_to_account_id": null,
+      "emoji_reactions": [
+        {
+          "count": 1,
+          "name": "👍",
+          "me": false,
+          "url": null,
+          "account_ids": [
+            "BCu7gqH05r29BWK9q4"
+          ]
+        }
+      ],
+      "akkoma": {
+        "source": {
+          "content": "compatibility root #compatroot",
+          "mediaType": "text/plain"
+        },
+        "in_reply_to_apid": null,
+        "quote_apid": null
+      },
+      "visibility": "public",
+      "reblogs_count": 1,
+      "card": null,
+      "poll": null,
+      "account": {
+        "id": "BCu7glkauOjd9r8Dlw",
+        "header": "http://127.0.0.1:14000/images/banner.png",
+        "pleroma": {
+          "email": "alice@example.invalid",
+          "relationship": {},
+          "tags": [],
+          "hide_followers": false,
+          "is_admin": true,
+          "is_confirmed": true,
+          "hide_followers_count": false,
+          "notification_settings": {
+            "hide_notification_contents": false,
+            "block_from_strangers": false
+          },
+          "hide_follows_count": false,
+          "hide_favorites": true,
+          "is_suggested": false,
+          "ap_id": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw",
+          "hide_follows": false,
+          "allow_following_move": true,
+          "is_moderator": false,
+          "also_known_as": [],
+          "deactivated": false,
+          "background_image": null,
+          "favicon": "http://127.0.0.1:14000/favicon.png",
+          "unread_notifications_count": 756,
+          "background_image_description": "",
+          "unread_conversation_count": 0
+        },
+        "fields": [],
+        "source": {
+          "sensitive": false,
+          "pleroma": {
+            "show_role": true,
+            "no_rich_text": false,
+            "actor_type": "Person",
+            "discoverable": false
+          },
+          "fields": [],
+          "note": "",
+          "privacy": "public"
+        },
+        "url": "http://127.0.0.1:14000/users/alice",
+        "display_name": "Alice 👩🏽‍💻 🇯🇵 漢字 é",
+        "locked": false,
+        "username": "alice",
+        "note": "",
+        "statuses_count": 16,
+        "header_static": "http://127.0.0.1:14000/images/banner.png",
+        "header_description": "",
+        "following_count": 2,
+        "followers_count": 2,
+        "follow_requests_count": 0,
+        "emojis": [],
+        "created_at": "2026-11-28T10:28:15.000Z",
+        "bot": false,
+        "avatar_static": "http://127.0.0.1:14000/images/avi.png",
+        "avatar_description": "",
+        "avatar": "http://127.0.0.1:14000/images/avi.png",
+        "akkoma": {
+          "instance": {
+            "name": "127.0.0.1",
+            "favicon": "http://127.0.0.1:14000/favicon.png",
+            "nodeinfo": {
+              "software": {
+                "name": "akkoma",
+                "repository": "https://akkoma.dev/AkkomaGang/akkoma",
+                "version": "3.20.0-v3-20-0"
+              },
+              "version": "2.1"
+            }
+          },
+          "permit_followback": false,
+          "status_ttl_days": null,
+          "web_feed": "http://127.0.0.1:14000/users/by-id/BCu7glkauOjd9r8Dlw/feed"
+        },
+        "acct": "alice",
+        "accepts_direct_messages_from": "everybody",
+        "last_status_at": "2026-11-28",
+        "fqn": "alice@127.0.0.1"
+      },
+      "tags": [
+        {
+          "name": "compatroot",
+          "url": "http://127.0.0.1:14000/tag/compatroot"
+        }
+      ],
+      "media_attachments": [],
+      "pleroma": {
+        "local": true,
+        "context": "http://127.0.0.1:14000/contexts/eb9d3aa3-5a78-43a6-9c62-1ccd4b677f74",
+        "content": {
+          "text/plain": "compatibility root #compatroot"
+        },
+        "expires_at": null,
+        "spoiler_text": {
+          "text/plain": ""
+        },
+        "direct_conversation_id": null,
+        "conversation_id": 838142990,
+        "emoji_reactions": [
+          {
+            "count": 1,
+            "name": "👍",
+            "me": false,
+            "url": null,
+            "account_ids": [
+              "BCu7gqH05r29BWK9q4"
+            ]
+          }
+        ],
+        "in_reply_to_account_acct": null,
+        "parent_visible": false,
+        "pinned_at": null,
+        "thread_muted": false
+      },
+      "bookmarked": false,
+      "in_reply_to_id": null,
+      "edited_at": null,
+      "url": "http://127.0.0.1:14000/notice/BCu7h5i8hEef428Xiq",
+      "replies_count": 1,
+      "pinned": false,
+      "spoiler_text": ""
+    }
+  },
+  "text_over_limit": {
+    "status": 422,
+    "link": null,
+    "body": {
+      "error": "The status is over the character limit"
+    }
+  },
+  "upload_over_limit": {
+    "status": 413,
+    "link": null,
+    "body": {
+      "errors": {
+        "detail": "Internal server error"
+      }
+    }
+  }
+}

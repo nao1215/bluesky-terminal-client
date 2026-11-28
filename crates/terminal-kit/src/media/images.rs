@@ -760,8 +760,15 @@ fn load_with(
 /// anyone posts, and its CVE-2023-4863 was exploited through such pictures.
 fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
     image::load_from_memory(bytes)
-        .map(shrink)
         .map_err(|e| e.to_string())
+        .or_else(|error| {
+            if bytes.get(4..8) == Some(b"ftyp") {
+                super::player::poster(bytes)
+            } else {
+                Err(error)
+            }
+        })
+        .map(shrink)
 }
 
 /// The picture as it is kept decoded: unchanged up to [`SHRINK_ABOVE`],
@@ -969,6 +976,15 @@ impl DiskCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_video_used_as_its_own_preview_decodes_a_still_frame() {
+        let bytes = include_bytes!("testdata/clip.mp4");
+        let picture = decode(bytes).unwrap();
+        assert_eq!((picture.width(), picture.height()), (64, 36));
+        // A truncated video remains an ordinary failed thumbnail, not a panic.
+        assert!(decode(&bytes[..32]).is_err());
+    }
     fn load(
         agent: &ureq::Agent,
         cache: Option<&DiskCache>,
