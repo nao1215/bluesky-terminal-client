@@ -78,9 +78,9 @@ bsky speaks English, 日本語, 简体中文, 한국어, Русский, Españo
 | `s`: settings | text only |
 | ![the settings screen](doc/img/settings.png) | ![the timeline without pictures](doc/img/text.png) |
 
-The selected post's video plays in the timeline, and its thumbnail comes back when the selection moves on
+Only the selected post's video plays in the timeline, and its thumbnail comes back when the selection moves on
 
-![a video post plays in the timeline, the selection moves down and back](doc/img/timeline-video.gif)
+![two video posts in the timeline, each playing while selected](doc/img/timeline-video.gif)
 
 `+` on the timeline: your pinned feeds, notifications or a search in columns beside it
 
