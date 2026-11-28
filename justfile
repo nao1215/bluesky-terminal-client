@@ -56,6 +56,10 @@ e2e-nstr *ARGS:
 # Run every end-to-end suite
 e2e: e2e-bsky e2e-msky e2e-mstdn e2e-nstr
 
+# Regenerate mock and live compatibility scenario pages (atago v0.28.0)
+e2e-docs:
+    python3 scripts/rules/e2e_docs.py --update
+
 # Measure bsky with himorime
 bench-bsky *ARGS:
     just --justfile crates/bluesky-terminal-client/justfile bench {{ARGS}}
@@ -72,9 +76,10 @@ bench-mstdn *ARGS:
 bench-nstr *ARGS:
     just --justfile crates/nostr-terminal-client/justfile bench {{ARGS}}
 
-# The rules CI checks in .github/workflows/rules.yml (needs npx, cargo-machete, cargo-public-api and the nightly public_api.sh names)
+# The rules CI checks in .github/workflows/rules.yml (needs atago v0.28.0, npx, cargo-machete, cargo-public-api and the nightly public_api.sh names)
 rules:
     ./scripts/rules/fast.sh
+    python3 scripts/rules/e2e_docs.py
     cargo build --locked --workspace --bins
     python3 scripts/rules/cli.py
     cargo machete

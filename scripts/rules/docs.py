@@ -9,7 +9,7 @@
   "same as ..." and the like (a CHANGELOG's Unreleased section is the place
   for what is on its way).
 - The root README is the whole story on one page: it links to no other
-  Markdown file of this repository.
+  Markdown file of this repository except the testing evidence index and record.
 
 Usage: docs.py [FILE.md ...]   (default: every file the rules cover)
 Exit status 1 when a rule is broken, each on its own line on stderr.
@@ -104,6 +104,8 @@ def splits_readme(target):
     elif re.match(r"[a-z]+:", path) or not path:
         return False
     path = path.lstrip("./")
+    if path in {"doc/e2e/", "doc/compat.md"}:
+        return False
     return path.endswith(".md") and (Path(path).name.startswith("README") or path.startswith(("crates/", "doc/")))
 
 

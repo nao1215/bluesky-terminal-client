@@ -198,19 +198,19 @@ scenarios:
           exit_code: 0
           stdout: { contains: ['"type":"like"', '"type":"repost"', '"text":"catalog live reply"'] }
 
-  - name: "speed: timeline 100"
+  - name: "speed: read 100 timeline notes under 10s"
     steps:
       - run: { command: nstr timeline -n 100 --json, env: *env }
       - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
-  - name: "speed: notifications 100"
+  - name: "speed: read 100 notifications under 10s"
     steps:
       - run: { command: nstr notifications -n 100 --json, env: *env }
       - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
-  - name: "speed: hashtag search 100"
+  - name: "speed: search 100 hashtag notes under 10s"
     steps:
       - run: { command: 'nstr search "#video" -n 100 --json', env: *env }
       - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { matches: '(?m)^\{', count: 100 } }
-  - name: "speed: post picture URL"
+  - name: "speed: publish a picture URL under 10s"
     steps:
       - run: { command: 'nstr post "catalog picture ${env:NSTR_COMPAT_MEDIA}/picture-0.png" --json', env: *env }
       - assert: { exit_code: 0, duration: { lt: 10s }, stdout: { json: { path: "$.action", equals: post } } }

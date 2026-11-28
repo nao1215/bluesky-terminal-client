@@ -102,7 +102,7 @@ Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts 
 
 On kitty, bsky plays the selected post's video in the timeline without sound; Play videos in the timeline in the settings or `BSKY_INLINE_VIDEO=0` turns it off.
 
-Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). msky and mstdn draw custom emoji on terminals with graphics and keep their shortcodes on other terminals; msky also keeps MFM's bold. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
+Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). msky and mstdn draw custom emoji on terminals with graphics and keep their shortcodes on other terminals; msky also keeps MFM's bold. msky and mstdn fold content warnings until `w`. msky has local compatibility results for Misskey and Sharkey.
 
 ## Screens
 
@@ -277,7 +277,7 @@ From their READMEs, November 2026.
 | Mutation tests | Lines the tests run but whose answer no test checks | All four |
 | Benchmarks ([himorime](https://github.com/nao1215/himorime)) | Slower start-up and commands slipping in unnoticed | All four |
 
-The end-to-end tests need no network or account: msky's and mstdn's talk to atago mocks of their APIs, and nstr's to a relay stand-in on 127.0.0.1 with throwaway keys.
+The [E2E scenario index](doc/e2e/) separates mock suites from disposable-server suites; the [compatibility record](doc/compat.md) lists tested versions, dates and timings from local runs, and the [nightly compatibility workflow](.github/workflows/compat.yml) uploads its reports.
 
 ## Contributing
 

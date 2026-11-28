@@ -1,5 +1,7 @@
 # Live-server test catalog (shared by bsky, msky, mstdn and nstr)
 
+The [generated scenario index](e2e/) lists the implemented mock and live assertions; the [compatibility record](compat.md) contains observed versions, dates, tier outcomes and timings.
+
 Every compatible system a client claims is checked with the same catalog, written as atago specs against a server or relay started locally by `scripts/compat/<system>.sh`. A system counts as usable with a client when the Usable tier passes; the other tiers are reported in `doc/compat.md` per system. Each spec names its tier in the scenario name (`usable: ...`, `heavy: ...`, `speed: ...`, `behavior: ...`) so the matrix can be generated from atago's JSON report. A missing check remains not verified, even when every implemented scenario passes.
 
 ## Seeding

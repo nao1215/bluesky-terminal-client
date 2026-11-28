@@ -1,6 +1,7 @@
 """Seed the shared live catalog using only public APIs; no client assertions here."""
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import struct
@@ -26,6 +27,8 @@ def upload(host, token, path, comment="compat media", force=True):
 
 
 def seed(host, accounts, work, meta):
+    heavy = os.environ.get("COMPAT_GROUP", "heavy") == "heavy"
+    media_count, deep_count = (100, 50) if heavy else (1, 1)
     manifest = work / "seed.json"
     # The manifest belongs to this fresh volume set, and is written only after
     # every batch finishes. Reusing a completed seed within this run is a no-op.
@@ -82,14 +85,14 @@ def seed(host, accounts, work, meta):
         if i % 100 == 99:
             print(f"seed: {i + 1} text notes and reaction notifications", flush=True)
     api(host, "notes/create", {"i": video_user["token"], "renoteId": texts[1]})
-    for i in range(100):
+    for i in range(media_count):
         note(video_user, f"compat-video-{i:03}", fileIds=[film])
         note(picture_user, f"compat-picture-{i:03}", fileIds=pics)
     data["video_first"] = api(host, "users/notes", {"i": token, "userId": video_user["id"], "limit": 1})[0]["id"]
     data["picture_first"] = api(host, "users/notes", {"i": token, "userId": picture_user["id"], "limit": 1})[0]["id"]
     data["deep_root"] = note(admin, "compat-deep-root")
     leaf = data["deep_root"]
-    for i in range(50):
+    for i in range(deep_count):
         leaf = note(admin, f"compat-deep-{i:03}", replyId=leaf)
     data["deep_leaf"] = leaf
     data["wide_root"] = note(admin, "compat-wide-root")
@@ -129,7 +132,7 @@ def seed(host, accounts, work, meta):
     # heavy scrolling; a fourth account is not needed for the blocked-note case.
     data["deleted"] = note(admin, "compat-deleted")
     api(host, "notes/delete", {"i": token, "noteId": data["deleted"]})
-    data["counts"] = {"video_only": 102, "four_picture": 101, "deep_replies": 50,
+    data["counts"] = {"video_only": media_count + 2, "four_picture": media_count + 1, "deep_replies": deep_count,
                       "wide_replies": 200, "text": 500, "reaction_notifications": 500}
     # Notification workers are asynchronous. Read the public paginated API
     # before starting specs so the seeded count is an oracle, not a timing race.

@@ -64,6 +64,12 @@ class Docs(unittest.TestCase):
         self.assertEqual(docs_errors("See [CONTRIBUTING.md](CONTRIBUTING.md).\n"), [])
 
 
+class TestingLinks(unittest.TestCase):
+    def test_root_readme_allows_only_testing_evidence(self):
+        self.assertEqual(docs_errors("See [scenarios](doc/e2e/) and [results](doc/compat.md).\n"), [])
+        self.assertEqual(len(docs_errors("See [other](doc/other.md).\n")), 1)
+
+
 class Trailers(unittest.TestCase):
     def scan(self, text):
         errors = []

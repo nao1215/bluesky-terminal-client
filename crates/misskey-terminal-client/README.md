@@ -16,7 +16,7 @@ A [Misskey](https://misskey-hub.net) client for the terminal. Pictures and video
 
 ![the timeline, a note's video and pictures, a thread, a profile and the notifications](doc/img/demo.gif)
 
-It is written for Misskey itself; forks such as Sharkey may work, but they are not tested.
+Local compatibility runs cover Misskey and Sharkey; versions and limits are recorded in the [compatibility record](../../doc/compat.md#msky-results).
 
 ## Install
 
@@ -163,6 +163,8 @@ From their READMEs, November 2026.
 - [bsky](../bluesky-terminal-client/README.md): a Bluesky client for the terminal, in the same repository.
 
 ## Contributing
+
+See the [E2E scenarios](../../doc/e2e/), [compatibility results](../../doc/compat.md) and [nightly compatibility workflow](../../.github/workflows/compat.yml) for test coverage and recorded runs.
 
 ```sh
 just test    # unit tests
