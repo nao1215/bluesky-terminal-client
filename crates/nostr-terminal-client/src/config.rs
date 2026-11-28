@@ -1,7 +1,7 @@
 //! User-owned configuration and signing keys; reading needs only a public key.
 
 use crate::{
-    api::{event::bytes, nip19::Identifier},
+    api::{event::bytes, nip19::Identifier, nip46::Bunker},
     error::{Error, Result},
 };
 use k256::schnorr::{SigningKey, VerifyingKey};
@@ -33,6 +33,7 @@ pub(crate) fn config_dir() -> Result<PathBuf> {
 struct Settings {
     public_key: String,
     key_file: Option<PathBuf>,
+    bunker: Option<String>,
     relays: Vec<String>,
     #[serde(default = "default_timeout")]
     timeout_seconds: u64,
@@ -47,6 +48,7 @@ pub(crate) struct Config {
     pub(crate) relays: Vec<String>,
     pub(crate) timeout: Duration,
     key_file: Option<PathBuf>,
+    pub(crate) bunker: Option<Bunker>,
 }
 
 impl Config {
@@ -67,31 +69,16 @@ impl Config {
         .map_err(|_invalid| Error::file("publicKey must be hex, npub or nprofile"))?;
         VerifyingKey::from_slice(&key)
             .map_err(|_invalid| Error::file("publicKey is not a secp256k1 public key"))?;
-        if settings.relays.is_empty() || settings.relays.len() > 16 {
-            return Err(Error::file("configure between 1 and 16 relays"));
+        if settings.key_file.is_some() && settings.bunker.is_some() {
+            return Err(Error::file(
+                "keyFile and bunker cannot be configured together",
+            ));
         }
         if !(1..=300).contains(&settings.timeout_seconds) {
             return Err(Error::file("timeoutSeconds must be between 1 and 300"));
         }
-        let mut relays = Vec::new();
-        for value in settings.relays {
-            let url = url::Url::parse(&value)
-                .map_err(|_invalid| Error::file("each relay must be a ws:// or wss:// URL"))?;
-            if !matches!(url.scheme(), "ws" | "wss")
-                || url.host_str().is_none()
-                || !url.username().is_empty()
-                || url.password().is_some()
-                || url.fragment().is_some()
-            {
-                return Err(Error::file(
-                    "relay URLs require ws:// or wss://, a host, no credentials and no fragment",
-                ));
-            }
-            let normalized = url.to_string();
-            if !relays.contains(&normalized) {
-                relays.push(normalized);
-            }
-        }
+        let relays = relay_urls(settings.relays)?;
+        let bunker = settings.bunker.map(|uri| Bunker::parse(&uri)).transpose()?;
         let key_file = settings.key_file.map(|p| {
             if p.is_absolute() {
                 p
@@ -104,6 +91,7 @@ impl Config {
             relays,
             timeout: Duration::from_secs(settings.timeout_seconds),
             key_file,
+            bunker,
         })
     }
 
@@ -111,7 +99,7 @@ impl Config {
         let path = self
             .key_file
             .as_ref()
-            .ok_or_else(|| Error::usage("posting requires keyFile in the config"))?;
+            .ok_or_else(|| Error::usage("posting requires keyFile or bunker in the config"))?;
         let meta = std::fs::symlink_metadata(path)
             .map_err(|e| Error::file(format!("cannot inspect key file: {e}")))?;
         if !meta.file_type().is_file() {
@@ -162,4 +150,32 @@ impl Config {
         }
         Ok(key)
     }
+}
+
+/// Normalize user-configured relay addresses without reflecting credentials in errors.
+pub(crate) fn relay_urls(values: Vec<String>) -> Result<Vec<String>> {
+    if values.is_empty() || values.len() > 16 {
+        return Err(Error::file("configure between 1 and 16 relays"));
+    }
+    let mut relays = Vec::new();
+    for value in values {
+        let url = url::Url::parse(&value)
+            .map_err(|_invalid| Error::file("each relay must be a ws:// or wss:// URL"))?;
+        if !matches!(url.scheme(), "ws" | "wss")
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+            || value.chars().any(char::is_whitespace)
+        {
+            return Err(Error::file(
+                "relay URLs require ws:// or wss://, a host, no credentials and no fragment",
+            ));
+        }
+        let normalized = url.to_string();
+        if !relays.contains(&normalized) {
+            relays.push(normalized);
+        }
+    }
+    Ok(relays)
 }

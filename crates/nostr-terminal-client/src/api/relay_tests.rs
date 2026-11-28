@@ -5,7 +5,7 @@ use k256::{elliptic_curve::Generate, schnorr::SigningKey};
 use std::collections::VecDeque;
 use tungstenite::protocol::Role;
 
-struct MemoryStream {
+pub(crate) struct MemoryStream {
     input: mpsc::Receiver<Vec<u8>>,
     output: mpsc::Sender<Vec<u8>>,
     buffered: VecDeque<u8>,
@@ -42,7 +42,7 @@ impl Write for MemoryStream {
     }
 }
 
-fn pair() -> (Session<MemoryStream>, WebSocket<MemoryStream>) {
+pub(crate) fn pair() -> (Session<MemoryStream>, WebSocket<MemoryStream>) {
     let (send_a, recv_a) = mpsc::channel();
     let (send_b, recv_b) = mpsc::channel();
     let client = MemoryStream {
