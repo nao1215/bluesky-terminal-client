@@ -3,6 +3,7 @@
 # What each is for is in usecases.toml.
 --account (-a)
 --json
+--raw
 --service
 accounts
 app-passwords
