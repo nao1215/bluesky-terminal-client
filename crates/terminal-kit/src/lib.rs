@@ -5,7 +5,8 @@
 //! are drawn in, reads key events (emoji included on Windows), puts text in
 //! the terminal's clipboard, names the colors a screen is drawn in, checks
 //! the terminal before the UI starts, takes the screen over and gives it
-//! back, and waits for the writes still on their way when the user quits.
+//! back, waits for the writes still on their way when the user quits, and
+//! names the keys of the JSON the commands print.
 //!
 //! - [`text`]: display width, wrapping and truncation by grapheme cluster.
 //! - [`input`]: a text field whose cursor steps over whole graphemes.
@@ -19,12 +20,14 @@
 //!   and the terminal put back.
 //! - [`clock`]: timestamps as local time.
 //! - [`inflight`]: the jobs on their way, waited for before quitting.
+//! - [`json`]: the keys every client prints with `--json`.
 
 pub mod clipboard;
 pub mod clock;
 pub mod events;
 pub mod inflight;
 pub mod input;
+pub mod json;
 pub mod scale;
 pub mod screen;
 pub mod terminal;
