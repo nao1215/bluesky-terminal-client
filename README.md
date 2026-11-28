@@ -37,38 +37,52 @@ Unofficial [Bluesky](https://bsky.app), [Misskey](https://misskey-hub.net), [Mas
 
 ## Install
 
+bsky and msky with Homebrew:
+
 ```sh
 brew install nao1215/tap/bsky nao1215/tap/msky
+```
+
+With Cargo:
+
+```sh
 cargo install --locked bluesky-terminal-client misskey-terminal-client
+```
+
+With cargo-binstall, which fetches a release binary:
+
+```sh
 cargo binstall bluesky-terminal-client misskey-terminal-client
 ```
 
-mstdn and nstr have no release and are not on crates.io. mstdn installs from this repository, and nstr is built in a clone of it:
+mstdn and nstr have no release yet and install from this repository:
 
 ```sh
-cargo install --locked --git https://github.com/nao1215/social-terminal-clients mastodon-terminal-client
-cargo build -p nostr-terminal-client
+cargo install --locked --git https://github.com/nao1215/social-terminal-clients mastodon-terminal-client nostr-terminal-client
 ```
 
-Binaries for Linux, macOS and Windows are on releases pages: bsky's on [this repository's](https://github.com/nao1215/social-terminal-clients/releases), tagged `v<version>`, and msky's (0.1.1 and earlier) on [nao1215/misskey-terminal-client's](https://github.com/nao1215/misskey-terminal-client/releases), tagged `v<version>`. Each release carries the license texts of the crates its binaries contain in `<client>-<version>-THIRD_PARTY_LICENSES.html`. Building needs Rust 1.90 or later.
+bsky's binaries for Linux, macOS and Windows are on the [releases page](https://github.com/nao1215/social-terminal-clients/releases), tagged `v<version>`. Each release carries the license texts of the crates its binaries contain in `<client>-<version>-THIRD_PARTY_LICENSES.html`. Building needs Rust 1.90 or later.
 
 <details>
 <summary>Verifying a release</summary>
 
-A release carries `checksums.txt`, a cosign signature of it and SLSA provenance, and each archive has a GitHub build attestation (bsky from 0.13.0 on). In a directory with the downloaded files:
+A release carries `checksums.txt`, a cosign signature of it and SLSA provenance, and each archive has a GitHub build attestation (bsky from 0.13.0 on). Run each line in the directory with the downloaded files. `<tag>` is the release, for example `v0.15.0`, and `<archive>` is the file you downloaded.
 
 ```sh
 sha256sum --ignore-missing --check checksums.txt
-cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/<repo>/.github/workflows/release.yml@refs/tags/<tag>" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  checksums.txt
-slsa-verifier verify-artifact <archive> --provenance-path <client>-<tag>.intoto.jsonl \
-  --source-uri github.com/<repo> --source-tag <tag>
-gh attestation verify <archive> --repo <repo>
 ```
 
-`<repo>` is `nao1215/social-terminal-clients` for bsky and `nao1215/misskey-terminal-client` for msky, `<client>` is `bsky` or `msky`, and `<tag>` is the release, for example `v0.15.0`.
+```sh
+cosign verify-blob --bundle checksums.txt.sigstore.json --certificate-identity "https://github.com/nao1215/social-terminal-clients/.github/workflows/release.yml@refs/tags/<tag>" --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+```
+
+```sh
+slsa-verifier verify-artifact <archive> --provenance-path bsky-<tag>.intoto.jsonl --source-uri github.com/nao1215/social-terminal-clients --source-tag <tag>
+```
+
+```sh
+gh attestation verify <archive> --repo nao1215/social-terminal-clients
+```
 
 </details>
 
@@ -139,27 +153,54 @@ nstr opens Home, Notifications and Profile with `1`, `2` and `3`. `j` and `k` mo
 
 ## Commands
 
-```sh
-bsky tl -n 5
-bsky post "hello" --image cat.jpg
-bsky search rust --json | jq -r .uri
-bsky author alice.bsky.social -n 100 --filter no-replies
-bsky download https://bsky.app/profile/alice.bsky.social/post/3l... -o pics
+The four clients share command names and options. `-n` sets how many to print (20 by default), `--json` prints one JSON object per line with the same keys on every client, and `--help` lists the rest. msky and mstdn take `--host` for the server. Below, msky reads made-up notes from its `doc/demo-server.py`.
 
-msky timeline -n 5
-msky post "hello" --image cat.jpg
-msky search Misskey --json | jq -r .url
+```console
+$ msky timeline -n 2
+Alice Chen @alice · 2026-11-27 18:20
+Aquarium day 🐟 The tarpon are huge up close.
+And a sea lion pup was born this summer!
+[4 pictures]
+🐟 14  :todo: 9  ✨ 5
+♡ 28  ⟳ 4  ↩ 1
+http://127.0.0.1:40929/notes/n2
 
-mstdn timeline local --host fosstodon.org
-mstdn post "hello" --image cat.jpg --alt "a cat"
-mstdn search '#rust' --json | jq -r .url
-
-nstr timeline -n 5
-nstr post "hello"
-nstr notifications --json | jq -r .uri
+Ken @ken · 2026-11-27 18:12
+My dungeon crawler is playable 🎮 The Brass Warden goes down in four turns
+Shield Rush! 🛡️
+[1 video]
+🔥 31  ❤️ 18  👏🏽 6
+♡ 55  ⟳ 9  ↩ 2
+http://127.0.0.1:40929/notes/n1
 ```
 
-`bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `bsky download` saves a post's pictures and video where `d` in the viewer does, and `bsky author ... --download` saves those of every post it read; `mstdn download` and `mstdn author ... --download` do the same for Mastodon. msky and mstdn take an access token in `MSKY_TOKEN` and `MSTDN_TOKEN` for posting from CI. Without a login, `mstdn search` reads only a hashtag's posts, since Mastodon's full-text search finds nothing for a visitor. `nstr post` signs a public text note and sends it once to each configured relay, and succeeds when one of them accepts it. `--help` lists every command.
+`--json` with the keys every client prints, so the same `jq` works with `bsky`, `mstdn` and `nstr`:
+
+```console
+$ msky timeline -n 2 --json | jq -r '[.user.username, .likeCount, .url] | @tsv'
+alice	28	http://127.0.0.1:40929/notes/n2
+ken	55	http://127.0.0.1:40929/notes/n1
+```
+
+`--dry-run` checks a post and the login and sends nothing:
+
+```console
+$ msky post --dry-run 'Hello from the terminal'
+dry run: nothing was sent to 127.0.0.1:40929
+as @river@127.0.0.1:40929, public
+text:
+Hello from the terminal
+no preview: the text has no link Misskey previews
+```
+
+| Command | bsky | msky | mstdn | nstr |
+|---|---|---|---|---|
+| `timeline`, `notifications`, `search`, `post`, `whoami` | Yes | Yes | Yes | Yes |
+| `author`, `thread`, `profile`, `download` | Yes | Yes | Yes | |
+| `like`, `repost`, `follow`, `mute`, `block`, `delete`, `report`, `chat` and their undo | Yes | Yes | | |
+| `login`, `logout`, `accounts` | Yes | Yes | Yes | |
+
+`bsky author` reads an account's own feed page by page, so it leaves out nothing a search for `from:` can miss. `download` saves a post's pictures and video where `d` in the viewer does, and `author ... --download` saves those of every post it read. msky and mstdn take an access token in `MSKY_TOKEN` and `MSTDN_TOKEN` for posting from CI. Without a login, `mstdn search` reads only a hashtag's posts, since Mastodon's full-text search finds nothing for a visitor. `nstr post` signs a public text note and sends it once to each configured relay, and succeeds when one of them accepts it.
 
 ## Environment
 
