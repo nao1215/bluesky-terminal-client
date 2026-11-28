@@ -845,7 +845,13 @@ impl App {
                 }
                 match result {
                     Ok(notes) => list.set(notes),
-                    Err(e) => list.failed(said(&e)),
+                    Err(e) => {
+                        let message = said(&e);
+                        list.failed(message.clone());
+                        if !list.items.is_empty() {
+                            self.error(message);
+                        }
+                    }
                 }
             }
             Event::Timeline {

@@ -3,7 +3,7 @@ name: licenses
 # Dependency license gate. Every crate compiled into a client, on every
 # target in release-targets.json, must carry a license in deny.toml's allow
 # list (cargo deny), and cargo-about must be able to write its license text
-# into the THIRD_PARTY_LICENSES file that release.yml and release-msky.yml
+# into the THIRD_PARTY_LICENSES file that the release workflows
 # attach to each release. Without
 # the second step a crate whose text cargo-about cannot find would pass review
 # and stop the release at the tag.
@@ -24,6 +24,7 @@ on:
       - "about.toml"
       - "crates/*/Cargo.toml"
       - "crates/*/about.hbs"
+      - "scripts/release/**"
       - ".github/workflows/licenses.yml"
   pull_request:
     branches:
@@ -35,6 +36,7 @@ on:
       - "about.toml"
       - "crates/*/Cargo.toml"
       - "crates/*/about.hbs"
+      - "scripts/release/**"
       - ".github/workflows/licenses.yml"
 
 concurrency:
@@ -70,10 +72,14 @@ jobs:
 
       - name: Write the third-party licenses the releases ship
         run: |
-          cargo about generate --locked --fail -m crates/bluesky-terminal-client/Cargo.toml -c about.toml crates/bluesky-terminal-client/about.hbs -o bsky-THIRD_PARTY_LICENSES.html
-          test -s bsky-THIRD_PARTY_LICENSES.html
-          cargo about generate --locked --fail -m crates/misskey-terminal-client/Cargo.toml -c about.toml crates/misskey-terminal-client/about.hbs -o msky-THIRD_PARTY_LICENSES.html
-          test -s msky-THIRD_PARTY_LICENSES.html
+          for BIN in bsky msky mstdn nstr; do
+            export BIN
+            . ./scripts/release/client.sh
+            template=scripts/release/about.hbs
+            [ "${BIN}" = bsky ] && template="${package_dir}/about.hbs"
+            cargo about generate --locked --fail -m "${package_dir}/Cargo.toml" -c about.toml "${template}" -o "${BIN}-THIRD_PARTY_LICENSES.html"
+            test -s "${BIN}-THIRD_PARTY_LICENSES.html"
+          done
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -81,5 +87,7 @@ jobs:
           path: |
             bsky-THIRD_PARTY_LICENSES.html
             msky-THIRD_PARTY_LICENSES.html
+            mstdn-THIRD_PARTY_LICENSES.html
+            nstr-THIRD_PARTY_LICENSES.html
           if-no-files-found: error
           retention-days: 7

@@ -1,0 +1,206 @@
+version: '1'
+suite:
+  name: msky live behavior
+runners:
+  api:
+    type: http
+    base_url: ${env:MSKY_HOST}
+    timeout: 15s
+scenarios:
+- name: 'behavior: server restart during a full-screen session'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      cols: 120
+      rows: 40
+      timeout: 180s
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        NO_COLOR: ''
+      session:
+      - expect_screen:
+          contains: compat-
+          timeout: 10s
+          stable_for: 200ms
+      - exec:
+          command: docker compose -p ${env:MSKY_COMPOSE_PROJECT} -f ${env:MSKY_COMPOSE_FILE} stop ingress web
+          timeout: 30s
+      - send: R
+      - expect_screen:
+          contains: cannot reach the server
+          timeout: 20s
+      - exec:
+          command: docker compose -p ${env:MSKY_COMPOSE_PROJECT} -f ${env:MSKY_COMPOSE_FILE} start --wait --wait-timeout
+            120 web ingress
+          timeout: 125s
+      - send: R
+      - expect_screen:
+          contains: compat-
+          not_contains:
+          - cannot reach the server
+          - loading…
+          timeout: 15s
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'behavior: stopped server gives CLI network status four'
+  steps:
+  - run:
+      command: docker compose -p ${env:MSKY_COMPOSE_PROJECT} -f ${env:MSKY_COMPOSE_FILE} stop ingress
+      timeout: 30s
+  - assert:
+      exit_code: 0
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+        - path: $.status
+          equals: 4
+        - path: $.error
+          matches: cannot reach the server
+  - run:
+      command: docker compose -p ${env:MSKY_COMPOSE_PROJECT} -f ${env:MSKY_COMPOSE_FILE} start --wait --wait-timeout
+        30 ingress
+      timeout: 35s
+  - assert:
+      exit_code: 0
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+          path: $.username
+          equals: compat_admin
+- name: 'behavior: rate-limited reads wait and report the retry'
+  steps:
+  - http:
+      runner: api
+      method: POST
+      path: /api/admin/roles/update-default-policies
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        policies:
+          rateLimitFactor: 30
+          canSearchNotes: true
+          maxFileSizeMb: 1
+  - assert:
+      status: 204
+  - http:
+      runner: api
+      method: POST
+      path: /api/i/notifications
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_SECOND_TOKEN}
+        limit: 1
+  - assert:
+      status: 200
+  - http:
+      runner: api
+      method: POST
+      path: /api/i/notifications
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_SECOND_TOKEN}
+        limit: 1
+  - assert:
+      status: 429
+      body:
+        contains: RATE_LIMIT_EXCEEDED
+      header:
+        name: Retry-After
+        matches: ^[0-9]+$
+  - store:
+      name: retry_after
+      from:
+        header: Retry-After
+  - run:
+      command: msky notifications -n 1 --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+      timeout: 45s
+  - assert:
+      exit_code: 0
+      duration:
+        gte: 1s
+        lt: 45s
+      stderr:
+        contains: asks to wait; trying again in ${retry_after} s
+  - http:
+      runner: api
+      method: POST
+      path: /api/admin/roles/update-default-policies
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        policies:
+          rateLimitFactor: 0
+          canSearchNotes: true
+          maxFileSizeMb: 1
+  - assert:
+      status: 204
+- name: 'behavior: rate-limited write is refused and creates no note'
+  steps:
+  - http:
+      runner: api
+      method: POST
+      path: /api/admin/roles/update-default-policies
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        policies:
+          rateLimitFactor: 300
+          canSearchNotes: true
+          maxFileSizeMb: 1
+  - assert:
+      status: 204
+  - run:
+      command: msky post compat-rate-prime --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+  - assert:
+      exit_code: 0
+  - run:
+      command: msky post compat-rate-refused --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+      timeout: 10s
+  - assert:
+      exit_code: 4
+      duration:
+        lt: 10s
+      stdout:
+        contains: RATE_LIMIT_EXCEEDED
+  - http:
+      runner: api
+      method: POST
+      path: /api/admin/roles/update-default-policies
+      follow_redirects: false
+      json:
+        i: ${env:MSKY_ADMIN_TOKEN}
+        policies:
+          rateLimitFactor: 0
+          canSearchNotes: true
+          maxFileSizeMb: 1
+  - assert:
+      status: 204
+  - run:
+      command: msky search compat-rate-refused --json
+  - assert:
+      exit_code: 0
+      stdout:
+        empty: true
+secrets:
+- ${env:MSKY_TOKEN}
+- ${env:MSKY_SECOND_TOKEN}
+- ${env:MSKY_THIRD_TOKEN}
+- ${env:MSKY_ADMIN_TOKEN}
+- ${env:MSKY_RESTRICTED_TOKEN}

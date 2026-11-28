@@ -10,8 +10,7 @@
 #   formula_class the Homebrew formula's class name
 #   formula_desc  the Homebrew formula's description
 #
-# bsky is tagged vX.Y.Z and msky msky-vX.Y.Z, so the two releases never take
-# each other's tags.
+# bsky is tagged vX.Y.Z; another clients use <bin>-vX.Y.Z.
 bin="${BIN:-bsky}"
 case "$bin" in
 bsky)
@@ -26,8 +25,20 @@ msky)
 	formula_class="Msky"
 	formula_desc="Misskey client for the terminal that draws pictures and videos inline"
 	;;
+mstdn)
+	tag_prefix="mstdn-v"
+	package_dir="crates/mastodon-terminal-client"
+	formula_class="Mstdn"
+	formula_desc="Mastodon client for the terminal with timelines, notifications and posts"
+	;;
+nstr)
+	tag_prefix="nstr-v"
+	package_dir="crates/nostr-terminal-client"
+	formula_class="Nstr"
+	formula_desc="Nostr client for the terminal with timelines, notifications and signed notes"
+	;;
 *)
-	echo "error: BIN is '$bin', expected bsky or msky" >&2
+	echo "error: BIN is '$bin', expected bsky, msky, mstdn or nstr" >&2
 	exit 2
 	;;
 esac
@@ -35,7 +46,7 @@ esac
 export bin tag_prefix package_dir formula_class formula_desc
 
 # tag_version <tag> prints the version a tag of this client names, and fails
-# for a tag of the other client or one without the prefix.
+# for a tag of another client or one without the prefix.
 tag_version() {
 	case "$1" in
 	"$tag_prefix"[0-9]*) printf '%s\n' "${1#"$tag_prefix"}" ;;
