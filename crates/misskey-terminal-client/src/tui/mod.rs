@@ -22,13 +22,13 @@ pub(crate) mod worker;
 // them as before.
 pub(crate) use terminal_kit::{clipboard, events, input, scale, text};
 
+use terminal_kit::screen::{Term, init_terminal, restore_terminal, write_now};
+
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
-};
+use crossterm::event::{EnableBracketedPaste, Event as TermEvent, KeyEventKind};
 use crossterm::execute;
 
 use crate::api::Client;
@@ -153,91 +153,6 @@ fn with_restore(result: Result<()>, restore: std::result::Result<(), String>) ->
         Err(e) => Error::new(e.kind(), format!("{}; {not_restored}", e.message()))
             .with_hint(e.hint().unwrap_or(RESET_HINT)),
     })
-}
-
-/// Put the terminal back as msky found it: bracketed paste off, raw mode
-/// off, the main screen back, every step taken even after one fails, as
-/// bsky does.
-fn restore_terminal() -> std::result::Result<(), String> {
-    restore_steps(&mut [
-        ("turning bracketed paste off", &mut || {
-            execute!(io::stdout(), DisableBracketedPaste)
-        }),
-        (
-            "leaving raw mode",
-            &mut crossterm::terminal::disable_raw_mode,
-        ),
-        ("leaving the alternate screen", &mut || {
-            execute!(io::stdout(), crossterm::terminal::LeaveAlternateScreen)
-        }),
-    ])
-}
-
-fn restore_steps(
-    steps: &mut [(&str, &mut dyn FnMut() -> io::Result<()>)],
-) -> std::result::Result<(), String> {
-    let failed: Vec<String> = steps
-        .iter_mut()
-        .filter_map(|(what, step)| step().err().map(|e| format!("{what}: {e}")))
-        .collect();
-    if failed.is_empty() {
-        Ok(())
-    } else {
-        Err(failed.join("; "))
-    }
-}
-
-/// Write `sequence` to the terminal now, outside the frame being drawn.
-fn write_now(sequence: &str) -> io::Result<()> {
-    let mut out = io::stdout();
-    out.write_all(sequence.as_bytes())?;
-    out.flush()
-}
-
-type Term = ratatui::Terminal<ratatui::backend::CrosstermBackend<FrameWriter>>;
-
-fn init_terminal() -> io::Result<Term> {
-    crossterm::terminal::enable_raw_mode()?;
-    execute!(io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
-    ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(FrameWriter::new(
-        io::stdout(),
-    )))
-}
-
-/// Holds what a frame writes until the frame is flushed, then hands it to
-/// the terminal in one write, marked as one synchronized update (mode
-/// 2026), as bsky's: the terminal never shows a frame half drawn.
-struct FrameWriter<W: io::Write = io::Stdout> {
-    out: W,
-    frame: Vec<u8>,
-}
-
-const BEGIN_UPDATE: &[u8] = b"\x1b[?2026h";
-const END_UPDATE: &[u8] = b"\x1b[?2026l";
-
-impl<W: io::Write> FrameWriter<W> {
-    pub(crate) fn new(out: W) -> Self {
-        let mut frame = Vec::with_capacity(64 * 1024);
-        frame.extend_from_slice(BEGIN_UPDATE);
-        Self { out, frame }
-    }
-}
-
-impl<W: io::Write> io::Write for FrameWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.frame.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        if self.frame.len() > BEGIN_UPDATE.len() {
-            self.frame.extend_from_slice(END_UPDATE);
-            let written = self.out.write_all(&self.frame);
-            self.frame.truncate(BEGIN_UPDATE.len());
-            written?;
-        }
-        self.out.flush()
-    }
 }
 
 fn event_loop(
@@ -466,29 +381,6 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
-    fn every_restore_step_runs_after_one_fails_and_each_failure_is_named() {
-        let mut ran = Vec::new();
-        let result = {
-            let ran = std::cell::RefCell::new(&mut ran);
-            restore_steps(&mut [
-                ("leaving raw mode", &mut || {
-                    ran.borrow_mut().push("raw");
-                    Err(io::Error::other("stdout is closed"))
-                }),
-                ("leaving the alternate screen", &mut || {
-                    ran.borrow_mut().push("screen");
-                    Err(io::Error::other("stdout is closed"))
-                }),
-            ])
-        };
-        assert_eq!(ran, ["raw", "screen"]);
-        assert_eq!(
-            result.unwrap_err(),
-            "leaving raw mode: stdout is closed; leaving the alternate screen: stdout is closed"
-        );
-    }
-
-    #[test]
     fn a_terminal_not_put_back_is_an_error_even_after_a_clean_quit() {
         assert_eq!(with_restore(Ok(()), Ok(())), Ok(()));
         let err = with_restore(Ok(()), Err("leaving raw mode: gone".into())).unwrap_err();
@@ -501,36 +393,6 @@ mod tests {
             err.to_string(),
             "error: cannot read x; cannot restore the terminal: leaving raw mode: gone\nhint: fix x"
         );
-    }
-
-    #[derive(Default, Clone)]
-    struct Writes(std::rc::Rc<std::cell::RefCell<Vec<Vec<u8>>>>);
-
-    impl Write for Writes {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.borrow_mut().push(buf.to_vec());
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn a_frame_reaches_the_terminal_in_one_write_as_one_update() {
-        let writes = Writes::default();
-        let mut w = FrameWriter::new(writes.clone());
-        for part in ["\x1b[1;1H", "家族👨‍👩‍👧", "x"] {
-            w.write_all(part.as_bytes()).unwrap();
-        }
-        assert!(writes.0.borrow().is_empty());
-        w.flush().unwrap();
-        assert_eq!(
-            *writes.0.borrow(),
-            [b"\x1b[?2026h\x1b[1;1H\xe5\xae\xb6\xe6\x97\x8f\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7x\x1b[?2026l".to_vec()]
-        );
-        w.flush().unwrap();
-        assert_eq!(writes.0.borrow().len(), 1, "an empty frame sends nothing");
     }
 
     fn session(service: &str, name: &str) -> Session {

@@ -5,6 +5,7 @@ use super::*;
 use crate::tui::app::Compose;
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::input::TextInput;
+use crate::tui::text::truncate_start;
 use crate::tui::theme::MisskeyStyles;
 use ratatui::layout::Position;
 
@@ -39,30 +40,6 @@ pub(super) fn draw_multi_input(frame: &mut Frame, area: Rect, input: &TextInput,
         let y = area.y + (layout.cursor.0 - first) as u16;
         frame.set_cursor_position(Position::new(area.x + layout.cursor.1 as u16, y));
     }
-}
-
-/// Keep the end of `s` within `width` columns, starting with `…` when
-/// shortened: the end of a path is the part that tells where it is.
-fn truncate_start(s: &str, width: usize) -> String {
-    let s = drawable(s);
-    if cells(&s) <= width {
-        return s.into_owned();
-    }
-    if width == 0 {
-        return String::new();
-    }
-    let kept: Vec<&str> = graphemes(&s).map(|(_, g)| g).collect();
-    let mut used = 1;
-    let mut from = kept.len();
-    for g in kept.iter().rev() {
-        let w = cluster_width(g);
-        if used + w > width {
-            break;
-        }
-        used += w;
-        from -= 1;
-    }
-    format!("…{}", kept[from..].concat())
 }
 
 pub(super) fn draw_compose(
