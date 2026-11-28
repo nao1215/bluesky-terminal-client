@@ -69,7 +69,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         url = f"http://127.0.0.1:{server.server_port}"
-        # The account names the chosen port; atago 0.27.0 does not expand a ready.store value inside fixture content.
+        # The account names the port the server chose, so the server writes it before it reports ready.
         account = Path("cfg/accounts/did_plc_me.json")
         account.parent.mkdir(parents=True, exist_ok=True)
         account.write_text(json.dumps({
