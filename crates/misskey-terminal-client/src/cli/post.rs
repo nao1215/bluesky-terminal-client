@@ -305,7 +305,10 @@ pub(super) fn post(
     })?;
     let url = format::note_url(client.origin(), &made.id);
     if ctx.json {
-        return json_line(out, &json!({"uri": url, "id": made.id}));
+        return json_line(
+            out,
+            &json!({"action": "post", "target": null, "id": made.id, "url": url, "already": false}),
+        );
     }
     text(out, &format!("{url}\n"))
 }
@@ -400,12 +403,12 @@ fn dry_run(
             "dryRun": true,
             "host": client.host(),
             "username": me.map(|u| &u.username),
-            "note": {
+            "post": {
                 "text": (!d.text.is_empty()).then_some(&d.text),
                 "cw": d.cw,
                 "visibility": a.visibility.name(),
                 "replyId": d.reply,
-                "renoteId": d.quote,
+                "quoteId": d.quote,
                 "files": files,
             },
             "previewed": previewed,
@@ -538,23 +541,28 @@ pub(super) fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> R
             text(out, &format!("{s}\n"))
         }
     };
+    let w = |action: &str, already: bool, requested: bool| {
+        let mut v = format::wrote(action, Some(&u.id), None, None, already);
+        v["requested"] = json!(requested);
+        v
+    };
     if on {
         if u.is_following {
             return said(
-                json!({"id": u.id, "already": true}),
+                w("follow", true, false),
                 format!("already following {shown}"),
             );
         }
         if u.has_pending_follow_request_from_you {
             return said(
-                json!({"id": u.id, "already": true, "requested": true}),
+                w("follow", true, true),
                 format!("already asked to follow {shown}"),
             );
         }
         client.follow(&u.id).map_err(|e| ctx.explained(e))?;
         if u.is_locked {
             return said(
-                json!({"id": u.id, "requested": true}),
+                w("follow", false, true),
                 format!("asked to follow {shown}; they approve their followers"),
             );
         }
@@ -567,25 +575,25 @@ pub(super) fn follow(ctx: &Ctx, out: &mut dyn Write, actor: &str, on: bool) -> R
                 .map_err(|e| ctx.explained(e))?;
             if !now.is_following {
                 return said(
-                    json!({"id": u.id, "requested": true}),
+                    w("follow", false, true),
                     format!(
                         "asked to follow {shown}; pending until their server accepts (msky follows --pending lists it)"
                     ),
                 );
             }
         }
-        return said(json!({"id": u.id}), format!("following {shown}"));
+        return said(w("follow", false, false), format!("following {shown}"));
     }
     if u.is_following {
         client.unfollow(&u.id).map_err(|e| ctx.explained(e))?;
-        return said(json!({"deleted": u.id}), format!("unfollowed {shown}"));
+        return said(w("unfollow", false, false), format!("unfollowed {shown}"));
     }
     if u.has_pending_follow_request_from_you {
         client
             .cancel_follow_request(&u.id)
             .map_err(|e| ctx.explained(e))?;
         return said(
-            json!({"deleted": u.id, "requested": true}),
+            w("unfollow", false, true),
             format!("took back the request to follow {shown}"),
         );
     }
@@ -834,7 +842,10 @@ mod tests {
         let (r, out) = run(&ctx(&url, dir.path(), true), &a);
         r.unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v, json!({"uri": format!("{url}/notes/9new"), "id": "9new"}));
+        assert_eq!(
+            v,
+            json!({"action": "post", "target": null, "id": "9new", "url": format!("{url}/notes/9new"), "already": false})
+        );
         assert_eq!(
             paths(&calls),
             [
@@ -948,9 +959,9 @@ mod tests {
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["dryRun"], true);
         assert_eq!(v["username"], "me");
-        assert_eq!(v["note"]["visibility"], "public");
-        assert_eq!(v["note"]["files"][0]["size"], 3);
-        assert_eq!(v["note"]["files"][0]["alt"], "絵");
+        assert_eq!(v["post"]["visibility"], "public");
+        assert_eq!(v["post"]["files"][0]["size"], 3);
+        assert_eq!(v["post"]["files"][0]["alt"], "絵");
         assert_eq!(
             v["previewed"],
             json!(["https://debimate.jp/post/a/#top", "https://b.test"])
@@ -1122,42 +1133,42 @@ mod tests {
         r#"{"id":"u-bob","username":"bob","host":null}"#,
         true,
         "following @bob@H\n",
-        r#"{"id":"u-bob"}"#,
+        r#"{"action":"follow","already":false,"id":null,"requested":false,"target":"u-bob","url":null}"#,
         Some("/api/following/create")
     )]
     #[case::already(
         r#"{"id":"u-bob","username":"bob","isFollowing":true}"#,
         true,
         "already following @bob@H\n",
-        r#"{"already":true,"id":"u-bob"}"#,
+        r#"{"action":"follow","already":true,"id":null,"requested":false,"target":"u-bob","url":null}"#,
         None
     )]
     #[case::locked(
         r#"{"id":"u-bob","username":"bob","isLocked":true}"#,
         true,
         "asked to follow @bob@H; they approve their followers\n",
-        r#"{"id":"u-bob","requested":true}"#,
+        r#"{"action":"follow","already":false,"id":null,"requested":true,"target":"u-bob","url":null}"#,
         Some("/api/following/create")
     )]
     #[case::pending(
         r#"{"id":"u-bob","username":"bob","hasPendingFollowRequestFromYou":true}"#,
         true,
         "already asked to follow @bob@H\n",
-        r#"{"already":true,"id":"u-bob","requested":true}"#,
+        r#"{"action":"follow","already":true,"id":null,"requested":true,"target":"u-bob","url":null}"#,
         None
     )]
     #[case::unfollows(
         r#"{"id":"u-bob","username":"bob","host":"mstdn.test","isFollowing":true}"#,
         false,
         "unfollowed @bob@mstdn.test\n",
-        r#"{"deleted":"u-bob"}"#,
+        r#"{"action":"unfollow","already":false,"id":null,"requested":false,"target":"u-bob","url":null}"#,
         Some("/api/following/delete")
     )]
     #[case::takes_back(
         r#"{"id":"u-bob","username":"bob","hasPendingFollowRequestFromYou":true}"#,
         false,
         "took back the request to follow @bob@H\n",
-        r#"{"deleted":"u-bob","requested":true}"#,
+        r#"{"action":"unfollow","already":false,"id":null,"requested":true,"target":"u-bob","url":null}"#,
         Some("/api/following/requests/cancel")
     )]
     fn follow_and_unfollow_say_what_they_did(
@@ -1243,9 +1254,9 @@ mod tests {
     #[case::pending(
         false,
         "asked to follow @bob@mstdn.test; pending until their server accepts (msky follows --pending lists it)\n",
-        r#"{"id":"u-bob","requested":true}"#
+        r#"{"action":"follow","already":false,"id":null,"requested":true,"target":"u-bob","url":null}"#
     )]
-    #[case::accepted_at_once(true, "following @bob@mstdn.test\n", r#"{"id":"u-bob"}"#)]
+    #[case::accepted_at_once(true, "following @bob@mstdn.test\n", r#"{"action":"follow","already":false,"id":null,"requested":false,"target":"u-bob","url":null}"#)]
     fn following_an_account_of_another_server_says_it_is_pending_until_accepted(
         #[case] accepted: bool,
         #[case] said: &str,

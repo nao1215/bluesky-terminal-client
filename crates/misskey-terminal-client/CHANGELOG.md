@@ -8,10 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- `--json` prints the shape bsky and mstdn print too (`doc/json.md` in the repository lists every key). This changes keys scripts may read:
+
+  | 0.1.1 | Now |
+  |---|---|
+  | `reactionCount` | `likeCount` |
+  | `renoteCount` | `repostCount` |
+  | `renoteId`, `renote` of a renote with nothing of its own | `repostOf`, the note it renotes, whole |
+  | `renoteId`, `renote` of a quote | `quoteId`; the quoted note is not printed with it |
+  | a file's `type` (`image/png`) | `mime`; `type` is `image`, `video`, `audio` or `file` |
+  | a notification's `type` `reaction`, `renote` | `like` (the reaction stays in `reaction`), `repost` |
+  | a notification's `note` | `post`, and `postId` |
+  | an account's `notesCount` | `postsCount`, beside `following` and `locked` |
+  | a chat message's `from` | `user` |
+  | `download`'s `{"note", "kind", "url", "path"}` | `{"postId", "type", "url", "path"}` |
+  | `post`'s `{"uri", "id"}`, `{"id"}`, `{"deleted"}`... of a write | `{"action", "target", "id", "url", "already"}`, with `reaction` and `requested` where they were |
+  | `post --dry-run`'s `note`, its `renoteId` | `post`, its `quoteId` |
+
+  `login` prints the server in `service` too, and `reactions` prints each account as `followers` does, with `reaction` and `reactedAt`.
+- `-n 0` is a usage error (exit 1), as in bsky and mstdn: it asked for nothing and printed nothing.
+
 - msky is developed in [nao1215/social-terminal-clients](https://github.com/nao1215/social-terminal-clients), as the crate `crates/misskey-terminal-client` of its Cargo workspace, beside bsky. Its releases from there are tagged `msky-vX.Y.Z`; the files they carry keep their names (`msky-vX.Y.Z-<target>.tar.gz`, `checksums.txt`, `msky-vX.Y.Z-THIRD_PARTY_LICENSES.html`), and the cosign certificate names `.github/workflows/release-msky.yml` of that repository.
 - The full-screen client lays text out, edits text, scales pictures, reads keys, fills the clipboard, picks its colors and checks the terminal with the workspace's `terminal-kit` crate, the code bsky uses, in place of msky's own copies of it.
 
 ### Fixed
+
+- An error answered in a shape other than Misskey's, as a proxy or a gateway in front of the server writes it (`{"error": "..."}`, `{"message": "..."}`, a line of text), is said in the message: msky said only `HTTP 500`.
 
 - A setting too long for the settings screen, such as a download folder, is cut between whole emoji: its start could be left as half a flag, a skin tone or the end of a family.
 - `q` right after a write, such as `4` marking the notifications read, waits up to 3 seconds for it to reach the server: msky ended before the request left, and the notifications stayed unread.

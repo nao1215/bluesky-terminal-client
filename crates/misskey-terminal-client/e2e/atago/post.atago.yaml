@@ -75,7 +75,8 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.uri", equals: "${api.url}/notes/9new" }
+              - { path: "$.url", equals: "${api.url}/notes/9new" }
+              - { path: "$.action", equals: post }
               - { path: "$.id", equals: 9new }
       - assert:
           mock:
@@ -147,9 +148,9 @@ scenarios:
               - { path: "$.dryRun", equals: true }
               - { path: "$.host", equals: "127.0.0.1:${api.port}" }
               - { path: "$.username", equals: nchika }
-              - { path: "$.note.text", equals: "新しい記事 https://debimate.jp/post/a/#top ?[静か](https://quiet.test/)" }
-              - { path: "$.note.visibility", equals: public }
-              - { path: "$.note.files[0].name", equals: photo.png }
+              - { path: "$.post.text", equals: "新しい記事 https://debimate.jp/post/a/#top ?[静か](https://quiet.test/)" }
+              - { path: "$.post.visibility", equals: public }
+              - { path: "$.post.files[0].name", equals: photo.png }
               - { path: "$.previewed[0]", equals: "https://debimate.jp/post/a/#top" }
               - { path: "$.preview.title", equals: "記事の題 👨‍👩‍👧" }
               - { path: "$.preview.description", equals: 記事の説明 }

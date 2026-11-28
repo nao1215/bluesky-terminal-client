@@ -72,8 +72,8 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.note", equals: "${api.url}/notes/9abc" }
-              - { path: "$.kind", equals: image }
+              - { path: "$.postId", equals: 9abc }
+              - { path: "$.type", equals: image }
               - { path: "$.url", equals: "${api.url}/files/f1" }
               - { path: "$.path", matches: "9abc-1 \\(1\\)\\.png$" }
       - assert:
@@ -111,7 +111,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: '"kind":"image","note":"[^"]*/notes/qt1","path":"[^"]*qt1-1\.png"[^\n]*\n[^\n]*"kind":"image","note":"[^"]*/notes/qt1","path":"[^"]*orig-1\.png"[^\n]*\n[^\n]*"kind":"video"[^\n]*orig-2\.mp4'
+            matches: '"path":"[^"]*qt1-1\.png","postId":"qt1","type":"image"[^\n]*\n[^\n]*"path":"[^"]*orig-1\.png","postId":"orig","type":"image"[^\n]*\n[^\n]*orig-2\.mp4","postId":"orig","type":"video"'
       - assert:
           dir: { path: out, count: 3, contains: [qt1-1.png, orig-1.png, orig-2.mp4] }
 

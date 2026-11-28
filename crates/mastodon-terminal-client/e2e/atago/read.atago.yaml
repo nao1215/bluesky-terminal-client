@@ -108,7 +108,7 @@ scenarios:
               - { path: "$.user.host", equals: "127.0.0.1:${api.port}" }
               - { path: "$.text", equals: "山の写真 🇯🇵👍🏽\n二行目 مرحبا\n\n#rust :blobcat: https://example.com/a/very/long/path & the article (https://other.test/post)" }
               - { path: "$.files[0].description", equals: "山 🏔️" }
-              - { path: "$.favouritesCount", equals: 6 }
+              - { path: "$.likeCount", equals: 6 }
 
   - name: status, thread and profile read one post, its thread and an account, an address on its own server
     mock_servers:
@@ -266,3 +266,32 @@ scenarios:
           exit_code: 1
           stderr:
             contains: "is not a post"
+
+  # A reader that stops early (head) closes the pipe; mstdn stops writing
+  # and exits 0, rather than 3 or a panic, so `set -o pipefail` scripts
+  # work. The page is larger than a pipe holds, so mstdn is still writing.
+  - name: a pipe closed early ends the output quietly with exit 0
+    skip:
+      os: windows  # the pipeline needs head and a POSIX shell
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            body_file: testdata/public-100.json
+            header: { Content-Type: application/json }
+    steps:
+      - run:
+          command: '{ mstdn timeline local -n 100 --json --host ${api.url}; echo "mstdn=$?" >&2; } | head -c 1'
+          shell: true
+      - assert:
+          stderr:
+            contains: "mstdn=0"
+            not_contains: ["panicked", "Broken pipe"]
+      - run:
+          command: '{ mstdn timeline local -n 100 --host ${api.url}; echo "mstdn=$?" >&2; } | head -c 1'
+          shell: true
+      - assert:
+          stderr:
+            contains: "mstdn=0"
+            not_contains: "Broken pipe"

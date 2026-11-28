@@ -337,9 +337,9 @@ scenarios:
       - assert:
           mock: { name: entry, path: /xrpc/chat.bsky.convo.listConvos, count: 0 }
 
-  # -n counts as it does for the other commands: 0 asks for nothing, and
-  # more than one page follows the cursor.
-  - name: bsky chat -n 0 asks for nothing, and more than a page follows the cursor
+  # -n counts as it does for the other commands: 0 is a usage error before
+  # anything is asked, and more than one page follows the cursor.
+  - name: bsky chat -n 0 is a usage error, and more than a page follows the cursor
     mock_servers:
       - name: api
         routes:
@@ -361,9 +361,13 @@ scenarios:
           command: bsky chat -n 0
           env: *env
       - assert:
-          exit_code: 0
+          exit_code: 1
           stdout:
             equals: ""
+          stderr:
+            equals: |
+              error: invalid value '0' for '--limit <LIMIT>': it is how many to list, so 1 or more
+              hint: run `bsky --help` for usage
       - assert:
           mock: { name: api, path: /xrpc/chat.bsky.convo.listConvos, count: 0 }
       - run:

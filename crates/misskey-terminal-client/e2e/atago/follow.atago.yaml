@@ -62,7 +62,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"already\":true,\"id\":\"u-bob\"}\n"
+            equals: "{\"action\":\"follow\",\"already\":true,\"id\":null,\"requested\":false,\"target\":\"u-bob\",\"url\":null}\n"
       - assert:
           mock: { name: api, path: /api/following/create, count: 0 }
 
@@ -84,7 +84,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"deleted\":\"u-bob\"}\n"
+            equals: "{\"action\":\"unfollow\",\"already\":false,\"id\":null,\"requested\":false,\"target\":\"u-bob\",\"url\":null}\n"
       - assert:
           mock:
             name: api

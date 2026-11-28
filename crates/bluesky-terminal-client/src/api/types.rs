@@ -463,6 +463,8 @@ pub(crate) struct Post {
     pub repost_count: u64,
     #[serde(deserialize_with = "any_count")]
     pub like_count: u64,
+    #[serde(deserialize_with = "any_count")]
+    pub quote_count: u64,
     #[serde(deserialize_with = "any_string")]
     pub indexed_at: String,
     #[serde(deserialize_with = "any_opt")]
