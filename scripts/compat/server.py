@@ -55,15 +55,16 @@ class LocalRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class API:
-    def __init__(self, host, token=None):
+    def __init__(self, host, token=None, timeout=60):
         parsed = urllib.parse.urlsplit(host)
         if parsed.scheme != 'http' or parsed.hostname != '127.0.0.1' or parsed.username or parsed.path:
             raise ValueError('only http://127.0.0.1:PORT origins are permitted')
         self.host = host
         self.token = token
+        self.timeout = timeout
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), LocalRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def request(self, path, data=None, method=None, form=False, files=None):
+    def request(self, path, data=None, method=None, form=False, files=None, allow_error=False):
         url = urllib.parse.urljoin(self.host, path)
         if urllib.parse.urlsplit(url).netloc != urllib.parse.urlsplit(self.host).netloc:
             raise ValueError('refusing a request outside the local server')
@@ -75,9 +76,9 @@ class API:
             body = bytearray()
             for name, value in (data or {}).items():
                 body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-            for name, path, mime in files:
-                body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{path.name}"\r\nContent-Type: {mime}\r\n\r\n'.encode())
-                body.extend(path.read_bytes())
+            for name, file_path, mime in files:
+                body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{file_path.name}"\r\nContent-Type: {mime}\r\n\r\n'.encode())
+                body.extend(file_path.read_bytes())
                 body.extend(b'\r\n')
             body.extend(f'--{boundary}--\r\n'.encode())
             headers['Content-Type'] = 'multipart/form-data; boundary=' + boundary
@@ -87,9 +88,13 @@ class API:
             data = (urllib.parse.urlencode(data) if form else json.dumps(data)).encode()
         req = urllib.request.Request(url, data, headers, method=method)
         try:
-            with self.opener.open(req, timeout=60) as response:
+            with self.opener.open(req, timeout=self.timeout) as response:
+                self.response = {'status': response.status, 'link': response.headers.get('Link')}
                 return response.read(), response.geturl()
         except urllib.error.HTTPError as error:
+            if allow_error:
+                self.response = {'status': error.code, 'link': error.headers.get('Link')}
+                return error.read(), error.geturl()
             # Never log an OAuth body, a password, a token or form input.
             raise RuntimeError(f'{method or ("POST" if data is not None else "GET")} {path.split("?")[0]}: HTTP {error.code}') from None
 
@@ -97,10 +102,14 @@ class API:
         return json.loads(self.request(path, data, **kwargs)[0])
 
 
-def authorize(host, email, password, scopes):
+def authorize(host, email, password, scopes, password_grant=False):
     api = API(host)
     redirect = 'urn:ietf:wg:oauth:2.0:oob'
     app = api.json('/api/v1/apps', {'client_name': 'mstdn local compatibility', 'redirect_uris': redirect, 'scopes': scopes})
+    if password_grant:
+        # Pleroma.Web.OAuth.OAuthController implements this grant in both
+        # projects. It authenticates only these newly created local users.
+        return api.json('/oauth/token', {'grant_type': 'password', 'client_id': app['client_id'], 'client_secret': app['client_secret'], 'username': email, 'password': password, 'scope': scopes})['access_token']
     query = urllib.parse.urlencode({'client_id': app['client_id'], 'redirect_uri': redirect, 'response_type': 'code', 'scope': scopes})
     html, url = api.request('/oauth/authorize?' + query)
     for _ in range(6):
@@ -126,9 +135,14 @@ def authorize(host, email, password, scopes):
     raise RuntimeError('OAuth form flow did not finish')
 
 
-def wait(host, authenticated=False):
-    api = API(host, os.environ['MSTDN_TOKEN'] if authenticated else None)
-    for _ in range(120):
+def wait(host, authenticated=False, container=None):
+    api = API(host, os.environ['MSTDN_TOKEN'] if authenticated else None, timeout=2)
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        if container:
+            state = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', container], check=True, capture_output=True, text=True)
+            if state.stdout.strip() != 'true':
+                raise RuntimeError('server container stopped before becoming ready')
         try:
             api.json('/api/v1/instance')
             if authenticated:
@@ -136,7 +150,7 @@ def wait(host, authenticated=False):
             return
         except (RuntimeError, urllib.error.URLError, TimeoutError, ConnectionError):
             time.sleep(1)
-    raise RuntimeError('server did not become ready within 120 attempts')
+    raise RuntimeError('server did not become ready within 120 seconds')
 
 
 def users_gts(container, work):
@@ -150,21 +164,82 @@ def users_gts(container, work):
     (work / 'users.json').write_text(json.dumps(users))
 
 
+def config_pleroma(work, port):
+    secret = secrets.token_hex(64)
+    config = f'''import Config
+config :pleroma, Pleroma.Web.Endpoint,
+  url: [host: "127.0.0.1", scheme: "http", port: {port}],
+  http: [ip: {{0, 0, 0, 0}}, port: 4000],
+  secret_key_base: "{secret}", signing_salt: "compatibility"
+config :pleroma, Pleroma.Repo,
+  username: "pleroma", password: "compat", database: "pleroma", hostname: "db", pool_size: 10
+config :pleroma, :instance,
+  name: "mstdn disposable compatibility", email: "admin@example.invalid",
+  notify_email: "admin@example.invalid", registrations_open: false,
+  federating: false, healthcheck: true, static_dir: "/var/lib/pleroma/static"
+config :pleroma, :database, rum_enabled: false
+config :pleroma, :rate_limit,
+  authentication: nil, timeline: nil, search: nil, app_account_creation: nil,
+  relations_actions: nil, relation_id_action: nil, statuses_actions: nil,
+  status_id_action: nil, password_reset: nil, account_confirmation_resend: nil, ap_routes: nil
+config :pleroma, Pleroma.Uploaders.Local, uploads: "/var/lib/pleroma/uploads"
+config :pleroma, Pleroma.Upload, base_url: "http://127.0.0.1:{port}/media/"
+config :pleroma, Pleroma.Emails.Mailer, enabled: false
+config :pleroma, :rich_media, enabled: false
+config :pleroma, :media_proxy, enabled: false
+config :pleroma, :shout, enabled: false
+config :logger, level: :warning
+config :tzdata, :autoupdate, :disabled
+'''
+    (work / 'config.exs').write_text(config)
+    (work / 'config.exs').chmod(0o600)
+
+
+def users_pleroma(container, work):
+    command = ['/opt/pleroma/bin/pleroma_ctl', 'user']
+    users = []
+    for name in ('alice', 'bob', 'videos'):
+        password = 'compat-' + secrets.token_urlsafe(24)
+        email = name + '@example.invalid'
+        args = ['docker', 'exec', container, *command, 'new', name, email, '--password', password, '--assume-yes']
+        if name == 'alice':
+            args.append('--admin')
+        # The admin tool echoes its arguments, including the password.
+        result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode:
+            raise RuntimeError('admin account creation failed for ' + name)
+        users.append({'username': name, 'email': email, 'password': password})
+    (work / 'users.json').write_text(json.dumps(users))
+
+
 def main():
     mode = sys.argv[1]
     if mode in ('wait', 'ready'):
-        wait(sys.argv[2], authenticated=mode == 'ready')
+        wait(sys.argv[2], authenticated=mode == 'ready', container=sys.argv[3] if len(sys.argv) > 3 else None)
+    elif mode in ('stop', 'start'):
+        containers = [os.environ['MSTDN_COMPAT_CONTAINER']]
+        proxy = os.environ.get('MSTDN_COMPAT_PROXY')
+        if proxy:
+            containers.append(proxy)
+        if mode == 'stop':
+            containers.reverse()
+        for container in containers:
+            subprocess.run(['docker', mode, container], check=True, stdout=subprocess.DEVNULL)
     elif mode == 'users-gts':
         users_gts(sys.argv[2], Path(sys.argv[3]))
+    elif mode == 'config-pleroma':
+        config_pleroma(Path(sys.argv[2]), int(sys.argv[3]))
+    elif mode == 'users-pleroma':
+        users_pleroma(sys.argv[2], Path(sys.argv[3]))
     elif mode == 'authorize':
         host, system, directory = sys.argv[2:]
         work = Path(directory)
         users = json.loads((work / 'users.json').read_text())
         for user in users:
             scopes = 'read write'
-            if user['username'] == 'alice':
+            if user['username'] == 'alice' and system in ('gotosocial', 'mastodon'):
                 scopes += ' admin' if system == 'gotosocial' else ' admin:read admin:write'
-            user['token'] = authorize(host, user['email'], user['password'], scopes)
+            user['token'] = authorize(host, user['email'], user['password'], scopes, password_grant=system in ('akkoma', 'pleroma'))
             print('Authorized throwaway account ' + user['username'], flush=True)
         (work / 'users.json').write_text(json.dumps(users))
     else:

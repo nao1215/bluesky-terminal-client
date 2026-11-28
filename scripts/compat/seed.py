@@ -11,8 +11,10 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import urllib.parse
 
 from server import API
+from capture import capture
 
 
 def upload(api, path, alt):
@@ -26,10 +28,15 @@ def upload(api, path, alt):
     raise RuntimeError('seed media processing exceeded 60 seconds')
 
 
-def sized_videos(work, size):
+def sized_videos(work, size, multipart_limit=False):
     # A standard MP4 free box pads an otherwise playable H.264 file exactly.
     clip = (work / 'clip.mp4').read_bytes()
     for name, total in [('max-video.mp4', size - 1), ('over-video.mp4', size)]:
+        if multipart_limit:
+            # mstdn uses "mstdn-" plus 32 hex digits, no description here.
+            boundary = 'mstdn-' + '0' * 32
+            overhead = len(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: video/mp4\r\n\r\n\r\n--{boundary}--\r\n'.encode())
+            total = size - overhead + (name == 'over-video.mp4')
         padding = total - len(clip)
         if not 8 <= padding < 2**32:
             raise RuntimeError('the published video size cannot hold the test clip')
@@ -59,7 +66,18 @@ def seed(work, system):
         manifest['instance'] = main.json('/api/v2/instance')
     except RuntimeError:
         manifest['instance'] = main.json('/api/v1/instance')
-    manifest['limits'] = manifest['instance'].get('configuration', {})
+    instance = manifest['instance']
+    metadata = instance.get('pleroma', {}).get('metadata', {})
+    limits = instance.get('configuration', {})
+    media = limits.get('media_attachments', {})
+    manifest['limits'] = {
+        'statuses': {'max_characters': limits.get('statuses', {}).get('max_characters', instance.get('max_toot_chars', 500))},
+        'media_attachments': {
+            'description_limit': media.get('description_limit', instance.get('description_limit', metadata.get('description_limit', 1500))),
+            'video_size_limit': media.get('video_size_limit', instance.get('upload_limit')),
+        },
+    }
+    manifest['multipart_limit'] = 'pleroma_api' in metadata.get('features', [])
     manifest['verified_at'] = datetime.now(timezone.utc).isoformat()
     discovery = main.json('/.well-known/nodeinfo')
     for link in discovery.get('links', []):
@@ -67,6 +85,8 @@ def seed(work, system):
             manifest['nodeinfo'] = API(host).json(link['href'])
             break
     ids, counts = manifest['ids'], manifest['counts']
+    # Fail on a broken media deployment before creating hundreds of posts.
+    first_video = upload(video, work / 'clip.mp4', 'Video 000')
 
     def post(api, text, **fields):
         made = api.json('/api/v1/statuses', {'status': text, 'visibility': 'public', **fields})['id']
@@ -75,6 +95,16 @@ def seed(work, system):
 
     ids['text'] = post(main, 'compatibility root #compatroot')
     ids['reply'] = post(second, '@alice compatibility reply', in_reply_to_id=ids['text'])
+    manifest['quote_posts'] = main.json('/api/v1/statuses/' + ids['text']).get('quote_approval') is not None or 'quote_posting' in metadata.get('features', [])
+    if manifest['multipart_limit']:
+        for key, content_type in [('markdown', 'text/markdown'), ('mfm', 'text/x.misskeymarkdown')]:
+            if content_type in metadata.get('post_formats', []):
+                ids[key] = post(main, '**compatibility ' + key + '**', content_type=content_type)
+        if 'quote_posting' in metadata.get('features', []):
+            ids['extension_quote'] = post(main, 'compatibility extension quote', quote_id=ids['text'])
+        # This records an extension response; mstdn gains no reaction command.
+        second.json('/api/v1/pleroma/statuses/' + ids['text'] + '/reactions/' + urllib.parse.quote('👍'), {}, method='PUT')
+        ids['emoji_reaction'] = ids['text']
     ids['deleted'] = post(main, 'compatibility deleted')
     main.json('/api/v1/statuses/' + ids['deleted'], method='DELETE')
     for visibility in ('public', 'unlisted', 'private', 'direct'):
@@ -97,7 +127,7 @@ def seed(work, system):
     for action in ('favourite', 'reblog'):
         second.json('/api/v1/statuses/' + ids['text'] + '/' + action, {})
     for i in range(100):
-        media = upload(video, work / 'clip.mp4', f'Video {i:03}')
+        media = first_video if i == 0 else upload(video, work / 'clip.mp4', f'Video {i:03}')
         post(video, f'video{i:03} #compatvideo', media_ids=[media])
         if i % 20 == 19:
             print(f'Seeded {i+1} video-only posts', flush=True)
@@ -122,7 +152,7 @@ def seed(work, system):
         main.json('/api/v1/admin/custom_emojis', {'shortcode': 'compatblue'}, files=[('image', work / 'picture.png', 'image/png')])
         ids['emoji'] = post(main, 'compatibility :compatblue:')
     else:
-        manifest['custom_emoji'] = 'not verified: Mastodon has no public custom-emoji creation API'
+        manifest['custom_emoji'] = 'not verified: this bootstrap does not provision custom emoji for this server'
     limits = manifest['limits']
     max_text = limits.get('statuses', {}).get('max_characters', 500)
     (work / 'max-text.txt').write_text('x' * max_text)
@@ -130,7 +160,7 @@ def seed(work, system):
     max_alt = limits.get('media_attachments', {}).get('description_limit', 1500)
     (work / 'max-alt.txt').write_text('a' * max_alt)
     (work / 'over-alt.txt').write_text('a' * (max_alt + 1))
-    sized_videos(work, limits['media_attachments']['video_size_limit'])
+    sized_videos(work, limits['media_attachments']['video_size_limit'], manifest['multipart_limit'])
     ids['max_text'] = post(main, 'x' * max_text)
     # Put the TUI smoke post first on home after the heavy data is ready.
     media = upload(main, work / 'clip.mp4', 'Compatibility video')
@@ -147,6 +177,7 @@ def main():
     work = Path(sys.argv[1])
     system = sys.argv[2]
     manifest = json.loads((work / 'seed.json').read_text()) if (work / 'seed.json').exists() else seed(work, system)
+    capture(work, manifest)
     users = json.loads((work / 'users.json').read_text())
     env = dict(os.environ, MSTDN_TOKEN=users[0]['token'], MSTDN_TOKEN_SECOND=users[1]['token'], MSTDN_COMPAT_SEED=str(work), MSTDN_COMPAT_SYSTEM=system, MSTDN_COMPAT_ROOT=str(Path(__file__).resolve().parents[2]))
     for key, value in manifest['ids'].items():
@@ -154,11 +185,17 @@ def main():
     if manifest['codec_attachment'].get('url', '').endswith('.webm'):
         env['MSTDN_PRESERVES_WEBM'] = '1'
     env['MSTDN_COMPAT_' + system.upper()] = '1'
+    env['MSTDN_HAS_QUOTES' if manifest['quote_posts'] else 'MSTDN_NO_QUOTES'] = '1'
+    if not isinstance(manifest['accounts'][0].get('source', {}).get('quote_policy'), str):
+        env['MSTDN_NO_QUOTE_POLICY'] = '1'
+    env['MSTDN_QUOTE_PATH'] = {'akkoma': '$[0].quote_id', 'pleroma': '$[0].pleroma.quote_id'}.get(system, '$[0].quote.quoted_status.id')
+    env['MSTDN_BLOCKED_PUBLIC' if system in ('akkoma', 'pleroma') else 'MSTDN_BLOCKED_HIDDEN'] = '1'
     env['MSTDN_SEED_ALICE'] = manifest['accounts'][0]['id']
     env['MSTDN_SEED_BOB'] = manifest['accounts'][1]['id']
     env['MSTDN_LIMIT_TEXT'] = str(manifest['limits']['statuses']['max_characters'])
     env['MSTDN_LIMIT_ALT'] = str(manifest['limits']['media_attachments'].get('description_limit', 1500))
     env['MSTDN_LIMIT_VIDEO'] = str(manifest['limits']['media_attachments']['video_size_limit'])
+    env['MSTDN_LIMIT_VIDEO_MESSAGE'] = 'takes multipart uploads up to' if manifest['multipart_limit'] else 'takes files smaller than'
     sys.exit(subprocess.call([str(Path(__file__).with_name('run.sh'))], env=env))
 
 
