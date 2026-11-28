@@ -19,8 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 # Dependabot signs the commits it makes with a co-author line of its own
-# account; a bot's line is its own doing and is let through.
-BANNED = re.compile(r"^[ \t]*co-authored-by:(?![^\n]*\[bot\])|^[ \t]*claude-session:|claude\.ai/code", re.I | re.M)
+# account; a bot's line is its own doing and is let through. A session link
+# is matched with its scheme, so a message may name the rule itself.
+BANNED = re.compile(r"^[ \t]*co-authored-by:(?![^\n]*\[bot\])|^[ \t]*claude-session:|https?://claude\.ai/code", re.I | re.M)
 
 
 def scan(name, text, errors):
