@@ -39,7 +39,6 @@ path = "src/main.rs"
 clap.workspace = true
 crossterm.workspace = true
 dirs.workspace = true
-fast_image_resize.workspace = true
 getrandom = "0.4"
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
 jiff.workspace = true
@@ -48,13 +47,10 @@ ratatui.workspace = true
 ratatui-image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
 ureq.workspace = true
-
-# Reads the console input before crossterm does; see src/tui/events.rs.
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
 
 [dev-dependencies]
 proptest.workspace = true

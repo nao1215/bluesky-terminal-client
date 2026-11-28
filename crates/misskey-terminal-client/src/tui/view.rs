@@ -20,7 +20,7 @@ use crate::tui::app::{Account, App, List, LoginForm, Overlay, Tab, ThreadRow, Th
 use crate::tui::images::Images;
 use crate::tui::keys;
 use crate::tui::text::{cells, cluster_width, drawable, format_time, graphemes, truncate, wrap};
-use crate::tui::theme::Theme;
+use crate::tui::theme::{MisskeyStyles, Theme};
 
 mod browse;
 mod chat;

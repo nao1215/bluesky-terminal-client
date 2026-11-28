@@ -570,4 +570,50 @@ mod tests {
         assert!(t.text().starts_with("日本語👍🏽\n日本語"));
         assert!(t.text().ends_with("aaa"));
     }
+
+    #[test]
+    fn a_field_is_empty_only_without_text() {
+        assert!(TextInput::single("").is_empty());
+        assert!(!TextInput::single("a").is_empty());
+        assert!(!TextInput::multi("\n").is_empty());
+    }
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn ctrl_a_and_ctrl_e_go_to_the_start_and_end_of_the_line() {
+        let mut t = TextInput::multi("ab\ncd\nef");
+        t.handle_key(key(KeyCode::Up));
+        assert!(t.handle_key(ctrl('a')));
+        typed(&mut t, "<");
+        assert!(t.handle_key(ctrl('e')));
+        typed(&mut t, ">");
+        assert_eq!(t.text(), "ab\n<cd>\nef");
+    }
+
+    // Up and Down mean nothing in one line: they are left to the caller,
+    // and the cursor stays where it was.
+    #[test]
+    fn up_and_down_are_not_edits_in_a_single_line_field() {
+        let mut t = TextInput::single("abc");
+        assert!(!t.handle_key(key(KeyCode::Up)));
+        typed(&mut t, "!");
+        t.handle_key(key(KeyCode::Home));
+        assert!(!t.handle_key(key(KeyCode::Down)));
+        typed(&mut t, "?");
+        assert_eq!(t.text(), "?abc!");
+    }
+
+    #[test]
+    fn down_keeps_the_column_on_the_next_line() {
+        let mut t = TextInput::multi("abc\nxyz");
+        t.handle_key(key(KeyCode::Up));
+        t.handle_key(key(KeyCode::Left));
+        t.handle_key(key(KeyCode::Left));
+        assert!(t.handle_key(key(KeyCode::Down)));
+        typed(&mut t, "!");
+        assert_eq!(t.text(), "abc\nx!yz");
+    }
 }

@@ -5,6 +5,7 @@ use super::*;
 use crate::tui::app::Compose;
 use crate::tui::files::{Browser, EntryKind};
 use crate::tui::input::TextInput;
+use crate::tui::theme::MisskeyStyles;
 use ratatui::layout::Position;
 
 /// Size of a picture's thumbnail in the composer, in cells, as bsky's.

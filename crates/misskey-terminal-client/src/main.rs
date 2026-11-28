@@ -10,7 +10,6 @@
 mod api;
 mod browser;
 mod cli;
-mod clock;
 mod config;
 mod download;
 mod error;
@@ -29,6 +28,8 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use clap::Parser;
+// Times as msky shows them, terminal-kit's as bsky's are.
+use terminal_kit::clock;
 
 use crate::error::{Error, Kind, Result};
 

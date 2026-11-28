@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Changed
 
 - msky is developed in [nao1215/social-terminal-clients](https://github.com/nao1215/social-terminal-clients), as the crate `crates/misskey-terminal-client` of its Cargo workspace, beside bsky. Its releases from there are tagged `msky-vX.Y.Z`; the files they carry keep their names (`msky-vX.Y.Z-<target>.tar.gz`, `checksums.txt`, `msky-vX.Y.Z-THIRD_PARTY_LICENSES.html`), and the cosign certificate names `.github/workflows/release-msky.yml` of that repository.
+- The full-screen client lays text out, edits text, scales pictures, reads keys, fills the clipboard, picks its colors and checks the terminal with the workspace's `terminal-kit` crate, the code bsky uses, in place of msky's own copies of it.
+
+### Fixed
+
+- A note whose line ends with a space just where it wraps no longer shows a blank line under that line, and a line of spaces wider than the column is one blank line rather than two, as bsky shows them: msky's copy of the text layout lacked bsky's fix.
 
 ## [0.1.1] - 2026-11-28
 

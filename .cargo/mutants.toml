@@ -10,11 +10,12 @@
 #
 # In msky (crates/misskey-terminal-client) it is pointed at reading a note's
 # MFM (its links and its plain text), taking the metadata off a file before it
-# is uploaded, reading an MP4's video track and cleaning text others wrote.
+# is uploaded, reading an MP4's video track and putting text others wrote on
+# one line.
 #
 # The text layout, the picture scaling and the text field live in the
-# terminal-kit crate of the workspace, so mutation.yml runs cargo mutants with
-# --workspace.
+# terminal-kit crate of the workspace, which both clients use, so
+# mutation.yml runs cargo mutants with --workspace.
 examine_globs = [
   "crates/terminal-kit/src/text.rs",
   "src/api/facets.rs",
@@ -28,9 +29,6 @@ examine_globs = [
   "crates/misskey-terminal-client/src/metadata.rs",
   "crates/misskey-terminal-client/src/tui/mp4.rs",
   "crates/misskey-terminal-client/src/text.rs",
-  "crates/misskey-terminal-client/src/tui/text.rs",
-  "crates/misskey-terminal-client/src/tui/scale.rs",
-  "crates/misskey-terminal-client/src/tui/input.rs",
 ]
 
 # A mutant in terminal-kit is judged by bsky's and msky's tests too, which

@@ -7,20 +7,20 @@
 //! another account logged in, and so to its server.
 
 pub mod app;
-pub mod clipboard;
 pub mod columns;
-pub mod events;
 pub mod files;
 pub mod images;
-pub mod input;
 pub mod keys;
 pub mod mp4;
 pub mod player;
-pub mod scale;
-pub mod text;
 pub mod theme;
 pub mod view;
 pub mod worker;
+
+// The drawing helpers that know nothing of Misskey, shared with bsky in the
+// workspace's terminal-kit crate; at these paths so the rest of msky reads
+// them as before.
+pub use terminal_kit::{clipboard, events, input, scale, text};
 
 use std::io::{self, Write};
 use std::path::PathBuf;

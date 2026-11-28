@@ -1152,7 +1152,6 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
- "fast_image_resize",
  "getrandom 0.4.3",
  "image",
  "jiff",
@@ -1164,10 +1163,10 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "terminal-kit",
  "unicode-segmentation",
  "unicode-width",
  "ureq",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
