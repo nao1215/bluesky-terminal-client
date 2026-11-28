@@ -43,31 +43,32 @@ name = "bsky"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive", "env"] }
+clap.workspace = true
 crossterm.workspace = true
-dirs = "7"
+dirs.workspace = true
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
 jiff.workspace = true
-openh264 = "0.9"
+openh264.workspace = true
 ratatui.workspace = true
 ratatui-image.workspace = true
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true
 terminal-kit = { path = "crates/terminal-kit", version = "0.1.0" }
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
-ureq = "3"
+ureq.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 rstest.workspace = true
-tempfile = "3"
+tempfile.workspace = true
 
 [lints]
 workspace = true
 
-# The shared terminal drawing helpers live in crates/; the root package is a
-# member too, and bare cargo commands at the root act on it alone.
+# msky (crates/misskey-terminal-client) and the shared terminal drawing
+# helpers (crates/terminal-kit) live in crates/; the root package is a member
+# too, and bare cargo commands at the root act on it alone.
 [workspace]
 members = ["crates/*"]
 resolver = "3"
@@ -80,17 +81,24 @@ repository = "https://github.com/nao1215/social-terminal-clients"
 
 # Versions more than one member builds with, kept in step here.
 [workspace.dependencies]
+clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.29"
+dirs = "7"
 fast_image_resize = { version = "6.1.0", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false }
 jiff = "1"
+openh264 = "0.9"
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 ratatui = "0.30"
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
-rstest = "0.28"
+rstest = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
 unicode-segmentation = "1"
 # ratatui-core 0.1.2 adds 1 to the width of U+FF9E/U+FF9F, and 0.2.3 counts them too, so a half-width kana takes 3 cells; drop the cap once ratatui stops adding its own width.
 unicode-width = ">=0.2, <0.2.3"
+ureq = "3"
 
 # cargo-llvm-cov sets cfg(coverage); tests that never run under it opt out.
 [workspace.lints.rust]

@@ -1,0 +1,131 @@
+# msky search: notes/search, a page at a time like author. A server that
+# turns the command away for being asked too often (429,
+# RATE_LIMIT_EXCEEDED) is waited for as its Retry-After says and asked
+# again, three times at most.
+version: "1"
+
+suite:
+  name: msky search
+
+scenarios:
+  - name: search sends the query as typed and prints what matched
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/search
+            json:
+              - id: s2
+                createdAt: "2026-09-20T10:00:00.000Z"
+                user: { username: carol, host: misskey.design, name: "キャロル🇰🇷" }
+                text: "猫 🐈‍⬛ を見た"
+                reactions: { "❤️": 1 }
+    steps:
+      - run:
+          command: msky search "猫 🐈‍⬛" -n 5 --host ${api.url}
+          env: &env
+            TZ: UTC
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              キャロル🇰🇷 @carol@misskey.design · 2026-09-20 10:00
+              猫 🐈‍⬛ を見た
+              ❤️ 1
+              ♡ 1  ⟳ 0  ↩ 0
+              ${api.url}/notes/s2
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/search
+            count: 2
+            body:
+              json:
+                - { path: "$.query", equals: "猫 🐈‍⬛" }
+                - { path: "$.limit", equals: 4 }
+                - { path: "$.untilId", equals: s2 }
+      - run:
+          command: msky search "猫 🐈‍⬛" -n 1 --json --host ${api.url}
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: s2 }
+              - { path: "$.user.host", equals: misskey.design }
+              - { path: "$.user.name", equals: "キャロル🇰🇷" }
+              - { path: "$.reactionCount", equals: 1 }
+              - { path: "$.files", length: 0 }
+
+  - name: a search still turned away after three waits fails with the server's words
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/search
+            status: 429
+            header: { Retry-After: "0" }
+            json: { error: { message: "Rate limit exceeded. Please try again later.", code: RATE_LIMIT_EXCEEDED, id: d5826d14-3982-4d2e-8011-b9e9f02499ef } }
+    steps:
+      - run:
+          command: msky search rust --host ${api.url}
+      - assert:
+          exit_code: 4
+          stdout:
+            empty: true
+          stderr:
+            equals: |
+              127.0.0.1:${api.port} asks to wait; trying again in 0 s
+              127.0.0.1:${api.port} asks to wait; trying again in 0 s
+              127.0.0.1:${api.port} asks to wait; trying again in 0 s
+              error: notes/search failed: RATE_LIMIT_EXCEEDED: Rate limit exceeded. Please try again later.
+              hint: 127.0.0.1:${api.port} limits how often it is asked; wait a while and try again
+      - assert:
+          mock: { name: api, path: /api/notes/search, count: 4 }
+
+  # The wait is what Retry-After says: one second here, three times.
+  - name: the wait before trying again is the one the server asks for
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/search
+            status: 429
+            header: { Retry-After: "1" }
+            json: { error: { code: RATE_LIMIT_EXCEEDED } }
+    steps:
+      - run:
+          command: msky search rust --host ${api.url}
+      - assert:
+          exit_code: 4
+          duration:
+            gte: 3s
+          stderr:
+            contains: "trying again in 1 s"
+            count: 3
+
+  - name: a server that does not let visitors search says so, and an empty query asks nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/search
+            status: 400
+            json: { error: { message: "Search of notes unavailable.", code: UNAVAILABLE, id: 0b44998d-77aa-4427-80d0-d2c9b8523011 } }
+    steps:
+      - run:
+          command: msky search rust --host ${api.url}
+      - assert:
+          exit_code: 4
+          stderr:
+            equals: |
+              error: notes/search failed: UNAVAILABLE: Search of notes unavailable.
+              hint: 127.0.0.1:${api.port} does not let visitors search notes; try another --host
+      - run:
+          command: msky search "  " --host ${api.url}
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: the search query is empty\n"
+      - assert:
+          mock: { name: api, path: /api/notes/search, count: 1 }

@@ -3,7 +3,9 @@ name: Nightly properties
 # The property and metamorphic tests run on every pull request with proptest's
 # default of 256 cases each, and the state-transition test with 12 seeds, as
 # part of `cargo test`. This workflow runs the same tests each night with many
-# more cases, in release mode so a case costs little.
+# more cases, in release mode so a case costs little. msky's properties
+# (crates/misskey-terminal-client/src/properties.rs) get a step of their own
+# with the case count they have always run with.
 #
 # proptest draws a fresh seed every run and prints the minimal failing input
 # when a property breaks; the state-transition test prints the seed and step.
@@ -19,6 +21,9 @@ on:
       seeds:
         description: Seeds of the state-transition test
         default: "2000"
+      msky-cases:
+        description: Cases per property of msky
+        default: "500000"
   schedule:
     - cron: "30 3 * * *"
 
@@ -32,7 +37,7 @@ concurrency:
 jobs:
   properties:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,9 +54,23 @@ jobs:
       - name: Properties and metamorphic relations
         env:
           PROPTEST_CASES: ${{ inputs.cases || '20000' }}
-        run: cargo test --locked --release --workspace --lib --bins properties
+        run: cargo test --locked --release --workspace --exclude misskey-terminal-client --lib --bins properties
+
+      - name: msky's properties
+        env:
+          PROPTEST_CASES: ${{ inputs.msky-cases || '500000' }}
+        run: cargo test --locked --release -p misskey-terminal-client --bin msky properties
 
       - name: Random keys and late answers
         env:
           BSKY_FUZZ_SEEDS: ${{ inputs.seeds || '2000' }}
-        run: cargo test --locked --release --bins random_keys_and_late_answers_keep_the_client_sound
+        run: cargo test --locked --release -p bluesky-terminal-client --bins random_keys_and_late_answers_keep_the_client_sound
+
+      # A failing case of msky's is written under its crate; the smallest
+      # input goes into a unit test beside the code it breaks.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: proptest-regressions
+          path: crates/misskey-terminal-client/proptest-regressions
+          if-no-files-found: ignore

@@ -4,9 +4,9 @@
 The score is caught / (caught + missed), with a timed-out mutant counted as caught (a test
 noticed it, by never finishing) and an unviable one left out (it did not compile, so no test
 could judge it). Several output directories, such as the shards of one weekly run, are added
-up before the score is taken. The run fails when the score is below --min, which is the score
-recorded in doc/testing.md: the gate keeps the suite from getting weaker, it does not demand a
-number the equivalent mutants make unreachable.
+up before the score is taken. The run fails when the score is below --min; without it (as
+mutation.yml runs it while the gate is off) the score is only reported. A minimum keeps the
+suite from getting weaker, it does not demand a number the equivalent mutants make unreachable.
 
 Usage: mutation_score.py <mutants.out dir>... [--min PERCENT] [--summary FILE]
 """

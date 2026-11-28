@@ -1,5 +1,7 @@
 # Contributing to bsky
 
+msky, the Misskey client in [crates/misskey-terminal-client](crates/misskey-terminal-client), has its own [CONTRIBUTING.md](crates/misskey-terminal-client/CONTRIBUTING.md); the checks below run it too where they say so.
+
 ## Prerequisites
 
 - Rust stable (`rustup default stable`); the minimum supported version is the `rust-version` in `Cargo.toml`
@@ -15,8 +17,9 @@ just lint        # clippy with warnings as errors
 just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
 just e2e         # end-to-end suite
+just e2e-msky    # msky's end-to-end suite
 just bench       # performance with himorime (see bench/README.md)
-just coverage    # line coverage of the unit tests and the E2E suite together (needs cargo-llvm-cov)
+just coverage    # line coverage of the unit tests and both E2E suites together (needs cargo-llvm-cov)
 ```
 
 `just ci` runs all of them except the benchmarks and coverage.
@@ -69,3 +72,5 @@ Before a tag, two workflows run the same steps on pull requests and on main. `.g
 2. Merge it, then tag the merge commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
 
 The workflow stops before building if the tag is not `v` plus the `Cargo.toml` version, the pinned compiler is older than `rust-version`, or the CHANGELOG has no section for the version. A tag with a hyphen (`v0.2.0-rc.1`) makes a pre-release and skips crates.io and Homebrew. Publishing to crates.io uses `CARGO_REGISTRY_TOKEN` when it is set, else trusted publishing (the first publish needs the token). The formula is updated only when `HOMEBREW_TAP_GITHUB_TOKEN` is set.
+
+msky is released the same way from a tag `msky-vX.Y.Z`, which runs `.github/workflows/release-msky.yml` and not `release.yml` (and a `vX.Y.Z` tag does not run `release-msky.yml`); its steps are in [msky's CONTRIBUTING.md](crates/misskey-terminal-client/CONTRIBUTING.md#releasing). terminal-kit is published to crates.io by whichever release first needs a version of it that is not there yet.

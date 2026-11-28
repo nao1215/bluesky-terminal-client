@@ -158,7 +158,7 @@ From their READMEs and source, September 2026.
 
 ## Related projects
 
-- [msky](https://github.com/nao1215/misskey-terminal-client): the same client for Misskey, with the same keys.
+- [msky](crates/misskey-terminal-client): a Misskey client for the terminal, in this repository.
 
 ## Testing
 

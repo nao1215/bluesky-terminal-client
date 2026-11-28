@@ -28,23 +28,23 @@ The same modules check how two runs relate, which can be said exactly where the 
 Property and metamorphic tests run in every `cargo test` with proptest's default of 256 cases each and a fresh seed each run; a failure prints the minimal input it shrank to. The `Nightly properties` workflow runs them in release mode with 20,000 cases each. To run them that way locally:
 
 ```sh
-PROPTEST_CASES=20000 cargo test --release --workspace --lib --bins properties
-BSKY_FUZZ_SEEDS=2000 cargo test --release --bins random_keys_and_late_answers_keep_the_client_sound
+PROPTEST_CASES=20000 cargo test --release --workspace --exclude misskey-terminal-client --lib --bins properties
+BSKY_FUZZ_SEEDS=2000 cargo test --release -p bluesky-terminal-client --bins random_keys_and_late_answers_keep_the_client_sound
 ```
 
 A failure becomes a plain unit test with the input proptest printed, fixed on its own branch.
 
 ## Mutation tests
 
-[cargo-mutants](https://mutants.rs) rewrites one operator, constant or return value at a time in the code that computes and decides on its own, which [.cargo/mutants.toml](../.cargo/mutants.toml) lists: text layout, facets, HLS and MPEG-TS, link cards, languages, picture scaling, columns and the text field. It runs the unit tests against each rewrite. A rewrite no test notices, such as `<` turned into `<=` in a width check, is a missed mutant: the line runs under the tests but nothing checks its answer. The rest of the crate mostly connects that code to the terminal, the network and the worker, which the state-transition and end-to-end suites cover.
+[cargo-mutants](https://mutants.rs) rewrites one operator, constant or return value at a time in the code that computes and decides on its own, which [.cargo/mutants.toml](../.cargo/mutants.toml) lists: text layout, facets, HLS and MPEG-TS, link cards, languages, picture scaling, columns and the text field, and in msky a note's MFM, taking the metadata off an upload and an MP4's video track. It runs the unit tests against each rewrite. A rewrite no test notices, such as `<` turned into `<=` in a width check, is a missed mutant: the line runs under the tests but nothing checks its answer. The rest of the crate mostly connects that code to the terminal, the network and the worker, which the state-transition and end-to-end suites cover.
 
-The `Mutation` workflow runs the whole set every Saturday in eight shards and, on a pull request that touches `src/` or `crates/`, only the mutants on the lines it changes (`cargo mutants --in-diff`). Both fail when the score, caught / (caught + missed) with timeouts counted as caught and mutants that do not compile left out, falls below the recorded score in `MUTATION_MIN_SCORE`. The missed mutants are listed in the job summary. Some are equivalent to the original and no test can catch them, so the recorded score is what the suite reaches today rather than 100%, and it is raised when a test closes a gap.
+The `Mutation` workflow runs the whole set (bsky's, msky's and terminal-kit's files) every Saturday in sixteen shards and, on a pull request that touches `src/` or `crates/`, only the mutants on the lines it changes (`cargo mutants --in-diff`). Both write the score, caught / (caught + missed) with timeouts counted as caught and mutants that do not compile left out, and the missed mutants to the job summary. Until the clients are released the score is a report: neither run fails, so it holds up no pull request and no release. Some mutants are equivalent to the original and no test can catch them, so the score is not expected to reach 100%.
 
 | Date | Mutants | Score |
 |---|---|---|
 | 2026-11-19 | 936 generated: 774 caught, 20 timed out, 110 missed, 32 unviable | 87.83% |
 
-A run only writes its score to the job summary. Recording it here and raising `MUTATION_MIN_SCORE` in `.github/workflows/mutation.yml` to match is a change of its own, made after the first full run and again whenever a test raises the score.
+The table records bsky's runs from before msky joined the workspace; msky's last full run in its own repository scored 94%.
 
 To run it locally (a full run takes hours; keep its temporary copies off a small tmpfs):
 

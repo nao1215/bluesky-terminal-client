@@ -44,6 +44,10 @@ bench *ARGS:
 e2e *ARGS:
     ./e2e/run.sh {{ARGS}}
 
+# Run msky's end-to-end suite with atago (builds msky, needs atago on PATH)
+e2e-msky *ARGS:
+    ./crates/misskey-terminal-client/e2e/run.sh {{ARGS}}
+
 # Fuzz one target, e.g. `just fuzz hls_demux -max_total_time=60` (needs nightly and cargo-fuzz).
 # New inputs go to fuzz/work/, so the committed seeds in fuzz/corpus/ stay as they are.
 fuzz TARGET *ARGS:
@@ -51,7 +55,7 @@ fuzz TARGET *ARGS:
     cargo +nightly fuzz run {{TARGET}} fuzz/work/{{TARGET}} fuzz/corpus/{{TARGET}} -- {{ARGS}}
 
 # Run every CI check locally
-ci: test lint fmt-check doc e2e
+ci: test lint fmt-check doc e2e e2e-msky
 
 # Build a debug binary
 build:

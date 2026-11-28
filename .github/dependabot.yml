@@ -19,13 +19,22 @@ updates:
         # the layout, so it stays out of the group and is reviewed on its own.
         exclude-patterns:
           - "unicode-width"
-  # The fuzz crate is its own workspace with its own Cargo.lock.
+  # Each fuzz crate is its own workspace with its own Cargo.lock.
   - package-ecosystem: cargo
     directory: "/fuzz"
     schedule:
       interval: monthly
     groups:
       cargo-fuzz:
+        applies-to: version-updates
+        patterns:
+          - "*"
+  - package-ecosystem: cargo
+    directory: "/crates/misskey-terminal-client/fuzz"
+    schedule:
+      interval: monthly
+    groups:
+      cargo-fuzz-msky:
         applies-to: version-updates
         patterns:
           - "*"

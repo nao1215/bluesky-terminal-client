@@ -1,0 +1,500 @@
+# What the client writes, driven in a pty with bsky's keys, against an
+# atago mock only: a note with a content warning and a visibility, a reply,
+# a reaction (l, and one chosen with e), a renote taken back, your own note
+# deleted after y, and the notifications marked read when their tab shows
+# them. The token is a throwaway value; nothing reaches a real server.
+version: "1"
+
+suite:
+  name: msky client writes
+
+secrets:
+  - e2e-fake-token-0301
+
+scenarios:
+  - name: n posts a note with a content warning, seen by home only
+    mock_servers: &mocks
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: mine1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-me, user: { id: u-me, username: me }, text: "消すノート" }
+              - { id: b1, createdAt: "2026-11-26T09:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, name: "ボブ" }, text: "質問です 🇯🇵", visibility: public }
+          - method: POST
+            path: /api/i/notifications
+            json:
+              - { id: n1, createdAt: "2026-11-26T08:00:00.000Z", type: follow, user: { username: carol } }
+          - { method: POST, path: /api/meta, json: { maxNoteTextLength: 3000 } }
+          - { method: POST, path: /api/notes/create, json: { createdNote: { id: new1, createdAt: "2026-11-26T11:00:00.000Z", userId: u-me, user: { id: u-me, username: me }, text: "こんにちは 👨‍👩‍👧" } } }
+          - { method: POST, path: /api/notes/reactions/create, status: 204, body: "" }
+          - { method: POST, path: /api/notes/reactions/delete, status: 204, body: "" }
+          - { method: POST, path: /api/notes/unrenote, status: 204, body: "" }
+          - { method: POST, path: /api/notes/delete, status: 204, body: "" }
+          - { method: POST, path: /api/notifications/mark-all-as-read, status: 204, body: "" }
+    steps:
+      - fixture: &account
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0301",
+             "permissions": ["read:account", "read:notifications", "read:following", "read:reactions", "write:notes", "write:drive", "write:following", "write:reactions", "write:notifications"]}
+      - fixture: &in_use
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 36
+          cols: 100
+          env: &env
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: ["消すノート", "質問です 🇯🇵", "n note"]
+            - send: n
+            - expect_screen:
+                contains: ["New note", "ctrl+s send"]
+            - send: "こんにちは 👨‍👩‍👧"
+            - send: { key: ctrl-w }
+            - send: "注意"
+            - send: { key: ctrl-p }
+            - expect_screen:
+                contains: ["CW: 注意", "home"]
+            - send: { key: ctrl-s }
+            # The note made goes on top of home, and the composer closes.
+            - expect_screen:
+                contains: ["posted ${api.url}/notes/new1", "me @me · 2026-11-26 11:00"]
+                not_contains: "New note"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            count: 1
+            body:
+              json:
+                - { path: "$.text", equals: "こんにちは 👨‍👩‍👧" }
+                - { path: "$.cw", equals: "注意" }
+                - { path: "$.visibility", equals: home }
+                - { path: "$.i", equals: e2e-fake-token-0301 }
+      - assert:
+          mock: { name: api, path: /api/meta, count: 1 }
+
+  - name: r replies to the note shown, as public as it is
+    mock_servers: *mocks
+    steps:
+      - fixture: *account
+      - fixture: *in_use
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 36
+          cols: 100
+          env: *env
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: ["消すノート", "質問です 🇯🇵"]
+            - send: j
+            - send: r
+            - expect_screen:
+                contains: ["Reply to @bob", "↩ @bob: 質問です 🇯🇵"]
+            - send: "答えます"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                not_contains: "Reply to @bob"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            count: 1
+            body:
+              json:
+                - { path: "$.text", equals: "答えます" }
+                - { path: "$.replyId", equals: b1 }
+                - { path: "$.visibility", equals: public }
+  - name: l reacts, e chooses a reaction, b renotes and takes it back, D deletes after y, and 4 marks read
+    mock_servers: *mocks
+    steps:
+      - fixture: *account
+      - fixture: *in_use
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 36
+          cols: 100
+          env: *env
+          timeout: 25s
+          session:
+            - expect_screen:
+                contains: ["消すノート", "質問です 🇯🇵"]
+            - send: j
+            - send: l
+            - expect_screen:
+                contains: "reacted ❤"
+            - send: e
+            - expect_screen:
+                contains: "↑ ↓ choose"
+            - send: "1"
+            - expect_screen:
+                contains: "reacted 👍"
+            - send: b
+            - expect_screen:
+                contains: "renoted"
+            - send: b
+            - expect_screen:
+                contains: "took back the renote"
+            - send: k
+            - send: D
+            - expect_screen:
+                contains: "press y to delete the note"
+            - send: y
+            - expect_screen:
+                contains: "deleted"
+                not_contains: "消すノート"
+            - send: "4"
+            - expect_screen:
+                contains: "carol @carol followed you"
+            - send: q
+      - assert:
+          exit_code: 0
+      # ❤ first, then 👍 in its place: the ❤ is taken back before.
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/reactions/create
+            count: 2
+            body:
+              json:
+                - { path: "$.noteId", equals: b1 }
+                - { path: "$.reaction", equals: "👍" }
+      - assert:
+          mock: { name: api, path: /api/notes/reactions/delete, count: 1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/create
+            count: 1
+            body:
+              json:
+                - { path: "$.renoteId", equals: b1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/unrenote
+            count: 1
+            body:
+              json:
+                - { path: "$.noteId", equals: b1 }
+      - assert:
+          mock:
+            name: api
+            path: /api/notes/delete
+            count: 1
+            body:
+              json:
+                - { path: "$.noteId", equals: mine1 }
+      - assert:
+          mock: { name: api, path: /api/notifications/mark-all-as-read, count: 1 }
+
+  - name: the Chat tab lists the conversations, opens one and sends a message
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json: []
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/chat/history
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob }, toUserId: u-me, text: "やあ 👋", isRead: false }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-bob, fromUser: { id: u-bob, username: bob }, toUserId: u-me, text: "やあ 👋" }
+          - method: POST
+            path: /api/chat/messages/create-to-user
+            json: { id: m3, createdAt: "2026-11-26T10:01:00.000Z", fromUserId: u-me, fromUser: { id: u-me, username: me }, toUserId: u-bob, text: "こんにちは 🇯🇵" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0301",
+             "permissions": ["read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "7 Chat (1)"
+            - send: "7"
+            - expect_screen:
+                contains: ["bob @bob ●", "やあ 👋", "enter open"]
+                not_contains: "bob: やあ"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["@bob", "やあ 👋", "i write a message"]
+                not_contains: "Chat (1)"
+            - send: i
+            - send: "こんにちは 🇯🇵"
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["you · 2026-11-26 10:01", "こんにちは 🇯🇵"]
+            - send: { key: esc }
+            - expect_screen:
+                contains: "i write a message"
+            - send: { key: esc }
+            - expect_screen:
+                contains: "enter open"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/chat/messages/create-to-user
+            count: 1
+            body:
+              json:
+                - { path: "$.toUserId", equals: u-bob }
+                - { path: "$.text", equals: "こんにちは 🇯🇵" }
+
+  # The conversations and their messages draw custom emoji as a note does:
+  # the sender's own (user.emojis), else the server's (/api/emojis) for one
+  # of its accounts; the list names whom a conversation is with by display
+  # name and address, as bsky's does. Reading the chat writes nothing.
+  - name: the Chat tab draws the custom emoji of names and messages as pictures
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/emojis
+            json: { emojis: [ { name: budou, url: "${api.url}/emoji/budou.png", category: null, aliases: [] } ] }
+          - method: POST
+            path: /api/chat/history
+            json:
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-mika, fromUser: { id: u-mika, username: mika, host: mi.example, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, toUserId: u-me, text: "やあ :iruka: 👨‍👩‍👧" }
+          - method: POST
+            path: /api/chat/messages/user-timeline
+            json:
+              - { id: m3, createdAt: "2026-11-26T10:01:00.000Z", fromUserId: u-me, fromUser: { id: u-me, username: me }, toUserId: u-mika, text: "ぶどう :budou: 🇯🇵" }
+              - { id: m2, createdAt: "2026-11-26T10:00:00.000Z", fromUserId: u-mika, fromUser: { id: u-mika, username: mika, host: mi.example, name: "みか :iruka:", emojis: { iruka: "${api.url}/emoji/iruka.png" } }, toUserId: u-me, text: "やあ :iruka: 👨‍👩‍👧" }
+          - { method: GET, path: /emoji/iruka.png, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /emoji/budou.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0301",
+             "permissions": ["read:chat", "write:chat"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+            TZ: UTC
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "7 Chat"
+            - send: "7"
+            - expect_screen:
+                contains: ["みか", "@mika@mi.example", "やあ", "👨‍👩‍👧", "enter open"]
+                not_contains: ":iruka:"
+            - expect_screen:
+                images: { count: 1 }
+                stable_for: 500ms
+            - send: { key: enter }
+            - expect_screen:
+                contains: ["@mika@mi.example", "ぶどう", "🇯🇵", "i write a message"]
+                not_contains: [":iruka:", ":budou:"]
+            - expect_screen:
+                images: { count: 2 }
+                stable_for: 500ms
+            - send: { key: esc }
+            - expect_screen:
+                contains: "enter open"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock: { name: api, path: /emoji/iruka.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /emoji/budou.png, count: 1 }
+      - assert:
+          mock: { name: api, path: /api/chat/messages/create-to-user, count: 0 }
+
+  - name: e on your own profile edits the name and uploads a new avatar, sending only what changed
+    mock_servers:
+      - name: api
+        routes:
+          - { method: POST, path: /api/notes/timeline, json: [] }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - method: POST
+            path: /api/i
+            json: { id: u-me, username: me, name: "猫", description: "説明 🇯🇵" }
+          - method: POST
+            path: /api/users/show
+            json: { id: u-me, username: me, name: "猫", description: "説明 🇯🇵" }
+          - { method: POST, path: /api/users/notes, json: [] }
+          - method: POST
+            path: /api/drive/files/create
+            json: { id: f-avatar, name: avatar.png, type: image/png }
+          - method: POST
+            path: /api/i/update
+            json: { id: u-me, username: me, name: "猫 🐈‍⬛", description: "説明 🇯🇵" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0501",
+             "permissions": ["read:account", "write:account", "write:drive"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - fixture:
+          file: avatar.png
+          content: "\x89PNG fake"
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "6 Profile"
+            - send: "6"
+            - expect_screen:
+                contains: ["e edit profile", "猫"]
+            - send: e
+            - expect_screen:
+                contains: ["Edit profile", "Name", "説明 🇯🇵", "ctrl+s save"]
+            - send: " 🐈‍⬛"
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: "${workdir}/avatar.png"
+            - send: { key: ctrl-s }
+            - expect_screen:
+                contains: "profile saved"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/drive/files/create
+            count: 1
+      - assert:
+          mock:
+            name: api
+            path: /api/i/update
+            count: 1
+            body:
+              json:
+                - { path: "$.name", equals: "猫 🐈‍⬛" }
+                - { path: "$.avatarId", equals: f-avatar }
+      - assert:
+          mock:
+            name: api
+            path: /api/i/update
+            body:
+              not_contains: description
+
+  - name: "! reports the note's author with a reason, sent only when y confirms"
+    mock_servers:
+      - name: api
+        routes:
+          - method: POST
+            path: /api/notes/timeline
+            json:
+              - { id: n1, createdAt: "2026-11-26T10:00:00.000Z", userId: u-bob, user: { id: u-bob, username: bob, name: "ボブ" }, text: "怪しいノート", reactions: {} }
+          - { method: POST, path: /api/i/notifications, json: [] }
+          - { method: POST, path: /api/users/report-abuse, status: 204, body: "" }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: |
+            {"service": "${api.url}", "userId": "u-me", "username": "me", "token": "e2e-fake-token-0701", "permissions": ["write:report-abuse"]}
+      - fixture:
+          file: cfg/accounts.json
+          content: |
+            {"current": "127.0.0.1:${api.port}"}
+      - pty:
+          command: msky
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env:
+            MSKY_CONFIG_DIR: ${workdir}/cfg
+            MSKY_CACHE_DIR: "off"
+            MSKY_SERVERS_URL: "off"
+          timeout: 20s
+          session:
+            - expect_screen:
+                contains: "怪しいノート"
+            - send: "!"
+            - expect_screen:
+                contains: ["Report", "@bob@127.0.0.1", "Spam", "Rude or harassing", "enter send: y confirms"]
+            - send: { key: enter }
+            - expect_screen:
+                contains: "press y to report"
+            - send: n
+            - expect_screen:
+                contains: "not reported"
+            - send: { key: enter }
+            - expect_screen:
+                contains: "press y to report"
+            - send: y
+            - expect_screen:
+                contains: "reported @bob@"
+            - send: q
+      - assert:
+          exit_code: 0
+      - assert:
+          mock:
+            name: api
+            path: /api/users/report-abuse
+            count: 1
+            body:
+              json:
+                - { path: "$.userId", equals: u-bob }
+                - { path: "$.comment", matches: "^Spam\nNote: http://127.0.0.1:[0-9]+/notes/n1$" }

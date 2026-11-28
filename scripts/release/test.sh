@@ -12,34 +12,73 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-# A stand-in executable that answers --version like bsky 1.2.3.
-mkdir -p "$work/bin"
-printf '#!/bin/sh\necho "bsky 1.2.3"\n' >"$work/bin/bsky"
-chmod +x "$work/bin/bsky"
+# Each client of the repository: its executable, its tag prefix, its package.
+clients=("bsky v bluesky-terminal-client" "msky msky-v misskey-terminal-client")
 
-for ext in tar.gz zip; do
-	a="$work/a-bsky-v1.2.3-t.$ext"
-	b="$work/b-bsky-v1.2.3-t.$ext"
-	"$here/pack-archive.sh" "$work/bin/bsky" "$a" >/dev/null
-	sleep 1
-	"$here/pack-archive.sh" "$work/bin/bsky" "$b" >/dev/null
-	cmp -s "$a" "$b" || fail "$ext archives packed a second apart differ"
-	exec_flag=--exec
-	# A shell script is not executable on Windows.
-	case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) exec_flag= ;; esac
-	"$here/check-archive.sh" "$a" v1.2.3 $exec_flag >/dev/null || fail "$ext archive does not pass its check"
-	if "$here/check-archive.sh" "$a" v9.9.9 $exec_flag >/dev/null 2>"$work/err"; then
-		[ -z "$exec_flag" ] || fail "$ext archive passed for the wrong version"
+for client in "${clients[@]}"; do
+	read -r bin prefix package <<<"$client"
+	export BIN="$bin"
+	mkdir -p "$work/$bin"
+	dir="$work/$bin"
+
+	# A stand-in executable that answers --version like $bin 1.2.3.
+	mkdir -p "$dir/bin"
+	printf '#!/bin/sh\necho "%s 1.2.3"\n' "$bin" >"$dir/bin/$bin"
+	chmod +x "$dir/bin/$bin"
+
+	for ext in tar.gz zip; do
+		a="$dir/a-$bin-v1.2.3-t.$ext"
+		b="$dir/b-$bin-v1.2.3-t.$ext"
+		"$here/pack-archive.sh" "$dir/bin/$bin" "$a" >/dev/null
+		sleep 1
+		"$here/pack-archive.sh" "$dir/bin/$bin" "$b" >/dev/null
+		cmp -s "$a" "$b" || fail "$bin: $ext archives packed a second apart differ"
+		exec_flag=--exec
+		# A shell script is not executable on Windows.
+		case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) exec_flag= ;; esac
+		"$here/check-archive.sh" "$a" "${prefix}1.2.3" $exec_flag >/dev/null || fail "$bin: $ext archive does not pass its check"
+		if "$here/check-archive.sh" "$a" "${prefix}9.9.9" $exec_flag >/dev/null 2>"$work/err"; then
+			[ -z "$exec_flag" ] || fail "$bin: $ext archive passed for the wrong version"
+		fi
+	done
+
+	# An archive with a leading directory is refused.
+	mkdir -p "$dir/nested/dir"
+	cp "$dir/bin/$bin" "$dir/nested/dir/$bin"
+	tar -czf "$dir/nested.tar.gz" -C "$dir/nested" dir
+	if "$here/check-archive.sh" "$dir/nested.tar.gz" "${prefix}1.2.3" >/dev/null 2>"$work/err"; then
+		fail "$bin: an archive with a directory entry passed"
+	fi
+
+	# The tag must be the client's prefix plus the version in Cargo.toml, and
+	# the toolchain must be explicit and new enough.
+	printf '[package]\nname = "%s"\nversion = "1.2.3"\nrust-version = "1.90"\n\n[dependencies]\nversion = "9.9.9"\n' "$package" >"$dir/Cargo.toml"
+	printf '# Changelog\n\n## [1.2.3] - 2026-09-22\n\n- One thing.\n' >"$dir/CHANGELOG.md"
+	"$here/check-version.sh" "${prefix}1.2.3" 1.98.0 "$dir" >/dev/null || fail "$bin: a matching tag was refused"
+	other=v
+	[ "$prefix" = v ] && other=msky-v
+	for bad in "${prefix}1.2.4 1.98.0" "${prefix}1.2.3 stable" "${prefix}1.2.3 1.89.0" "${other}1.2.3 1.98.0" "1.2.3 1.98.0"; do
+		# shellcheck disable=SC2086
+		if "$here/check-version.sh" $bad "$dir" >/dev/null 2>"$work/err"; then
+			fail "$bin: check-version accepted: $bad"
+		fi
+	done
+
+	# The formula takes each archive's hash from checksums.txt, and refuses a gap.
+	for t in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+		printf '%064d  %s-v1.2.3-%s.tar.gz\n' 1 "$bin" "$t"
+	done >"$dir/checksums.txt"
+	"$here/render-formula.sh" "${prefix}1.2.3" "$dir/checksums.txt" nao1215/social-terminal-clients >"$dir/$bin.rb"
+	grep -q 'version "1.2.3"' "$dir/$bin.rb" || fail "$bin: the formula has no version"
+	grep -q "bin.install \"$bin\"" "$dir/$bin.rb" || fail "$bin: the formula does not install $bin"
+	[ "$(grep -c 'sha256 "0\{63\}1"' "$dir/$bin.rb")" -eq 4 ] || fail "$bin: the formula does not carry four hashes"
+	if command -v ruby >/dev/null; then ruby -c "$dir/$bin.rb" >/dev/null || fail "$bin: the formula is not valid Ruby"; fi
+	sed -i.bak '/aarch64-apple-darwin/d' "$dir/checksums.txt"
+	if "$here/render-formula.sh" "${prefix}1.2.3" "$dir/checksums.txt" nao1215/social-terminal-clients >/dev/null 2>"$work/err"; then
+		fail "$bin: a formula was rendered without every hash"
 	fi
 done
-
-# An archive with a leading directory is refused.
-mkdir -p "$work/nested/dir"
-cp "$work/bin/bsky" "$work/nested/dir/bsky"
-tar -czf "$work/nested.tar.gz" -C "$work/nested" dir
-if "$here/check-archive.sh" "$work/nested.tar.gz" v1.2.3 >/dev/null 2>"$work/err"; then
-	fail "an archive with a directory entry passed"
-fi
+unset BIN
 
 # Release notes come from the version's CHANGELOG section only.
 cat >"$work/CHANGELOG.md" <<'MD'
@@ -64,37 +103,6 @@ if "$here/release-notes.sh" 1.2.4 "$work/CHANGELOG.md" >/dev/null 2>"$work/err";
 fi
 if "$here/release-notes.sh" Unreleased "$work/CHANGELOG.md" >/dev/null 2>"$work/err"; then
 	fail "an empty section gave notes"
-fi
-
-# The tag must match Cargo.toml and the toolchain must be explicit and new enough.
-cat >"$work/Cargo.toml" <<'TOML'
-[package]
-name = "bluesky-terminal-client"
-version = "1.2.3"
-rust-version = "1.90"
-
-[dependencies]
-version = "9.9.9"
-TOML
-"$here/check-version.sh" v1.2.3 1.98.0 "$work" >/dev/null || fail "a matching tag was refused"
-for bad in "v1.2.4 1.98.0" "v1.2.3 stable" "v1.2.3 1.89.0"; do
-	# shellcheck disable=SC2086
-	if "$here/check-version.sh" $bad "$work" >/dev/null 2>"$work/err"; then
-		fail "check-version accepted: $bad"
-	fi
-done
-
-# The formula takes each archive's hash from checksums.txt, and refuses a gap.
-for t in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-	printf '%064d  bsky-v1.2.3-%s.tar.gz\n' 1 "$t"
-done >"$work/checksums.txt"
-"$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/social-terminal-clients >"$work/bsky.rb"
-grep -q 'version "1.2.3"' "$work/bsky.rb" || fail "the formula has no version"
-[ "$(grep -c 'sha256 "0\{63\}1"' "$work/bsky.rb")" -eq 4 ] || fail "the formula does not carry four hashes"
-if command -v ruby >/dev/null; then ruby -c "$work/bsky.rb" >/dev/null || fail "the formula is not valid Ruby"; fi
-sed -i.bak '/aarch64-apple-darwin/d' "$work/checksums.txt"
-if "$here/render-formula.sh" v1.2.3 "$work/checksums.txt" nao1215/social-terminal-clients >/dev/null 2>"$work/err"; then
-	fail "a formula was rendered without every hash"
 fi
 
 echo "release scripts: ok"

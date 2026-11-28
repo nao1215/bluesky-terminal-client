@@ -7,6 +7,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/e2e.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/e2e.yml"
@@ -29,15 +31,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The suite drives bsky in a pseudo-terminal that answers like a
-  # kitty-graphics terminal: a pty on Linux and macOS, a ConPTY on Windows.
-  # On Windows atago runs `graphics: kitty` steps under the OpenConsole it
-  # ships, which passes kitty graphics through (nao1215/atago#676).
+  # Each client has its own suite. bsky's drives it in a pseudo-terminal that
+  # answers like a kitty-graphics terminal: a pty on Linux and macOS, a
+  # ConPTY on Windows. On Windows atago runs `graphics: kitty` steps under
+  # the OpenConsole it ships, which passes kitty graphics through
+  # (nao1215/atago#676). msky's runs it against atago mock servers of the
+  # Misskey API. Neither needs a network or an account.
   atago:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        client: [bsky, msky]
+        include:
+          - client: bsky
+            run: ./e2e/run.sh
+          - client: msky
+            run: ./crates/misskey-terminal-client/e2e/run.sh
+    name: atago (${{ matrix.client }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -53,6 +64,7 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
+          key: ${{ matrix.client }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # A released atago, checked against its checksums and its build
@@ -65,4 +77,6 @@ jobs:
 
       - name: Run atago E2E tests
         shell: bash
-        run: ./e2e/run.sh
+        env:
+          RUN: ${{ matrix.run }}
+        run: '"${RUN}"'

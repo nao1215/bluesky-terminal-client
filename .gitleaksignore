@@ -1,3 +1,8 @@
 # A made-up access token that expired in 2023, which the E2E mock hands out to
 # test the refresh before a request. It signs nothing and opens no account.
 17ab99c3439be17874ab81cd34be7d707659626b:e2e/atago/timeline.atago.yaml:generic-api-key:1887
+
+# A test case of msky's download file names, "../../etc/passwd" read as
+# "etcpasswd-2.png", which the generic API key rule takes for a key. The
+# commit is from msky's history, where the file was at src/download.rs.
+38d992ffad74a96f7fd1a4c0c3c35052887426d8:src/download.rs:generic-api-key:306

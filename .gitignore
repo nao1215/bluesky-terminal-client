@@ -5,3 +5,8 @@ lcov.info
 # A failing case is kept as a unit test beside its property instead.
 proptest-regressions/
 mutants.out*/
+__pycache__/
+mutants.diff
+
+# A recording of your own msky account: never committed.
+/crates/misskey-terminal-client/doc/img/demo-account.gif

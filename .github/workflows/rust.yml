@@ -7,23 +7,27 @@ on:
       - main
     paths:
       - "src/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
       - "scripts/release/**"
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-msky.yml"
       - ".github/workflows/rust.yml"
       - "fuzz/**"
   pull_request:
     paths:
       - "src/**"
+      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
       - "scripts/release/**"
       - ".github/release-targets.json"
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-msky.yml"
       - ".github/workflows/rust.yml"
       - "fuzz/**"
 
@@ -174,24 +178,50 @@ jobs:
         shell: bash
         run: ./scripts/release/test.sh
 
-      - name: Check the release toolchain pin against rust-version
+      - name: Check the release toolchain pins against rust-version
         if: runner.os == 'Linux'
         run: |
-          pin="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' .github/workflows/release.yml)"
-          msrv="$(grep -oP '^rust-version\s*=\s*"\K[^"]+' Cargo.toml)"
-          lowest="$(printf '%s\n%s\n' "${msrv}" "${pin}" | sort -V | head -1)"
-          if ! [[ "${pin}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || [ "${lowest}" != "${msrv}" ]; then
-            echo "::error title=Release toolchain::release.yml pins '${pin}', which must be an explicit version at or above rust-version ${msrv}"
-            exit 1
-          fi
-          echo "release toolchain ${pin}, rust-version ${msrv}"
+          check() {
+            local workflow="$1" manifest="$2" pin msrv lowest
+            pin="$(grep -oP '^\s*RUST_TOOLCHAIN:\s*"\K[^"]+' "${workflow}")"
+            msrv="$(grep -oP '^rust-version\s*=\s*"\K[^"]+' "${manifest}")"
+            lowest="$(printf '%s\n%s\n' "${msrv}" "${pin}" | sort -V | head -1)"
+            if ! [[ "${pin}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || [ "${lowest}" != "${msrv}" ]; then
+              echo "::error title=Release toolchain::${workflow} pins '${pin}', which must be an explicit version at or above rust-version ${msrv} of ${manifest}"
+              exit 1
+            fi
+            echo "${workflow}: release toolchain ${pin}, rust-version ${msrv}"
+          }
+          check .github/workflows/release.yml Cargo.toml
+          check .github/workflows/release-msky.yml crates/misskey-terminal-client/Cargo.toml
 
-  # The fuzz targets include src/hls.rs, src/api/facets.rs and src/og.rs by path, so a
-  # change there can break a build that only fuzz.yml runs, at night. When they
-  # or fuzz/ change, build the targets and run each over its committed seeds
-  # (no exploration; that stays in fuzz.yml). Other changes skip the nightly
-  # toolchain and cargo-fuzz.
+  # The fuzz targets include source files by path: bsky's (fuzz/) take
+  # src/hls.rs, src/api/facets.rs and src/og.rs, and msky's
+  # (crates/misskey-terminal-client/fuzz/) its src/mfm.rs, src/metadata.rs,
+  # src/error.rs, src/tui/mp4.rs and src/api/types.rs. A change there can
+  # break a build that only fuzz.yml runs, at night. When they or the fuzz
+  # directory change, build the targets and run each over its committed
+  # seeds (no exploration; that stays in fuzz.yml). Other changes skip the
+  # nightly toolchain and cargo-fuzz.
   fuzz-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - client: bsky
+            dir: fuzz
+            watched: src/hls.rs src/api/facets.rs src/api/tlds.txt src/og.rs fuzz/
+          - client: msky
+            dir: crates/misskey-terminal-client/fuzz
+            watched: >-
+              crates/misskey-terminal-client/src/mfm.rs
+              crates/misskey-terminal-client/src/metadata.rs
+              crates/misskey-terminal-client/src/metadata/
+              crates/misskey-terminal-client/src/error.rs
+              crates/misskey-terminal-client/src/tui/mp4.rs
+              crates/misskey-terminal-client/src/api/types.rs
+              crates/misskey-terminal-client/fuzz/
+    name: fuzz-build (${{ matrix.client }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -205,10 +235,12 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          WATCHED: ${{ matrix.watched }}
         run: |
+          # shellcheck disable=SC2086
           if [ "${EVENT}" = workflow_dispatch ] || [ -z "${BASE}" ] || ! git cat-file -e "${BASE}^{commit}"; then
             run=true
-          elif git diff --quiet "${BASE}" HEAD -- src/hls.rs src/api/facets.rs src/api/tlds.txt src/og.rs fuzz/; then
+          elif git diff --quiet "${BASE}" HEAD -- ${WATCHED}; then
             run=false
           else
             run=true
@@ -231,8 +263,10 @@ jobs:
       # and would build for musl, which AddressSanitizer does not support.
       - name: Build the fuzz targets and run their seeds
         if: steps.changed.outputs.run == 'true'
+        env:
+          FUZZ_DIR: ${{ matrix.dir }}
         run: |
-          cargo fuzz build --target x86_64-unknown-linux-gnu
-          for target in $(cargo fuzz list); do
-            cargo fuzz run --target x86_64-unknown-linux-gnu "${target}" -- -runs=0
+          cargo fuzz build --fuzz-dir "${FUZZ_DIR}" --target x86_64-unknown-linux-gnu
+          for target in $(cargo fuzz list --fuzz-dir "${FUZZ_DIR}"); do
+            cargo fuzz run --fuzz-dir "${FUZZ_DIR}" --target x86_64-unknown-linux-gnu "${target}" -- -runs=0
           done
