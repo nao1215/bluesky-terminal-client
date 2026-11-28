@@ -43,7 +43,8 @@ cargo binstall bluesky-terminal-client misskey-terminal-client
 
 Binaries for Linux, macOS and Windows are on releases pages: bsky's on [this repository's](https://github.com/nao1215/social-terminal-clients/releases), tagged `v<version>`, and msky's (0.1.1 and earlier) on [nao1215/misskey-terminal-client's](https://github.com/nao1215/misskey-terminal-client/releases), tagged `v<version>`. Each release carries the license texts of the crates its binaries contain in `<client>-<version>-THIRD_PARTY_LICENSES.html`. Building needs Rust 1.90 or later.
 
-### Verifying a release
+<details>
+<summary>Verifying a release</summary>
 
 A release carries `checksums.txt`, a cosign signature of it and SLSA provenance, and each archive has a GitHub build attestation (bsky from 0.13.0 on). In a directory with the downloaded files:
 
@@ -60,12 +61,11 @@ gh attestation verify <archive> --repo <repo>
 
 `<repo>` is `nao1215/social-terminal-clients` for bsky and `nao1215/misskey-terminal-client` for msky, `<client>` is `bsky` or `msky`, and `<tag>` is the release, for example `v0.15.0`.
 
+</details>
+
 ## Use
 
-Run `bsky` or `msky` and log in.
-
-- bsky: your handle and an [app password](https://bsky.app/settings/app-passwords), which is safer than your password.
-- msky: pick a server and allow msky in the browser that opens. MiAuth logs you in, so msky never sees your password; `esc` reads the server as a visitor.
+Run `bsky` or `msky` and log in: bsky with your handle and an [app password](https://bsky.app/settings/app-passwords), msky in the browser with MiAuth, so it never sees your password (`esc` reads a server as a visitor). `?` lists every key, `.` what they do to the selected post.
 
 | Pictures with | Terminals |
 |---|---|
@@ -73,14 +73,9 @@ Run `bsky` or `msky` and log in.
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text, and `space` opens a post in the browser. `?` lists every key, `.` what the keys do to the selected post. Both clients have 42 themes (`T`), columns beside the timeline (`+`), several accounts (`A`), notifications and direct messages, and every command prints JSON with `--json`. Photos and videos are posted without their location data.
+Other terminals get text. Both clients have 42 themes, columns, several accounts, notifications and direct messages, print JSON from every command with `--json`, and post photos and videos without their location data.
 
-What only one of them does:
-
-- bsky gives a post without pictures, video or a quote a card for its first link, built from the page's title, description and picture as Bluesky's app does. It fetches the page from your computer and skips a picture hosted on your own network; the Link cards setting, `bsky post --no-card` and `BSKY_LINK_CARDS=off` turn cards off.
-- bsky speaks English, 日本語, 简体中文, 한국어, Русский, Español, Français, Deutsch and Português; msky English and 日本語. Each follows your system, or the language chosen in the settings (`s`).
-- msky draws custom emoji as pictures, shows MFM as plain text with bold kept, and opens a content warning with `w`. It plays MP4 videos with H.264 without sound; `d` saves other formats and `o` opens them.
-- msky is written for Misskey itself; forks such as Sharkey may work, but they are not tested. It hides the Chat tab on servers without chat, such as misskey.io.
+Only bsky makes link cards and speaks nine languages (msky speaks English and 日本語). Only msky draws custom emoji, keeps MFM's bold, and folds content warnings until `w`. msky is tested against Misskey itself, not its forks.
 
 ## Screens
 
