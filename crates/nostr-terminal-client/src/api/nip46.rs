@@ -1,4 +1,4 @@
-//! Signer-initiated NIP-46 connections with one disposable client key per post.
+//! Signer-initiated NIP-46 connections with an in-memory disposable client identity per loaded account.
 
 use super::{
     event::{Event, bytes},
@@ -20,16 +20,23 @@ use serde::Deserialize;
 use serde_json::json;
 use std::{
     io::{Read, Write},
-    sync::mpsc,
+    sync::{Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
 use zeroize::Zeroizing;
 
+const PERMISSIONS: &str = concat!(
+    "sign_event:0,sign_event:1,sign_event:3,sign_event:5,sign_event:6,sign_event:7,",
+    "sign_event:13,sign_event:16,sign_event:1984,sign_event:10000,",
+    "sign_event:10050,sign_event:22242,sign_event:24242,nip44_encrypt,nip44_decrypt"
+);
+
 pub(crate) struct Bunker {
     public: String,
     relays: Vec<String>,
     secret: Option<Zeroizing<String>>,
+    identity: Mutex<Option<(SigningKey, bool)>>,
 }
 
 impl Bunker {
@@ -68,31 +75,8 @@ impl Bunker {
             public,
             relays: relay_urls(relays).map_err(|_invalid| invalid())?,
             secret,
+            identity: Mutex::new(None),
         })
-    }
-
-    pub(crate) fn sign_note(
-        &self,
-        public: &str,
-        time: u64,
-        text: &str,
-        timeout: Duration,
-    ) -> Result<Event> {
-        self.sign_event(
-            public,
-            &super::event::Unsigned {
-                created_at: time,
-                kind: 1,
-                tags: vec![],
-                content: text.into(),
-            },
-            timeout,
-            &|url| {
-                crate::diagnostics(&format!(
-                    "Remote signer authorization required. Open this URL yourself: {url}"
-                ))
-            },
-        )
     }
 
     pub(crate) fn sign_event(
@@ -102,9 +86,54 @@ impl Bunker {
         timeout: Duration,
         authorize: &(impl Fn(&str) + Sync),
     ) -> Result<Event> {
-        let key = SigningKey::generate();
+        let signed = self.call(
+            public,
+            "sign_event",
+            vec![serde_json::to_string(unsigned).map_err(Error::usage)?],
+            timeout,
+            authorize,
+        )?;
+        validate_event(&signed, public, unsigned)
+    }
+
+    pub(crate) fn crypt(
+        &self,
+        public: &str,
+        peer: &str,
+        payload: &str,
+        encrypt: bool,
+        timeout: Duration,
+        authorize: &(impl Fn(&str) + Sync),
+    ) -> Result<String> {
+        let method = if encrypt {
+            "nip44_encrypt"
+        } else {
+            "nip44_decrypt"
+        };
+        self.call(
+            public,
+            method,
+            vec![peer.into(), payload.into()],
+            timeout,
+            authorize,
+        )
+    }
+
+    fn call(
+        &self,
+        public: &str,
+        method: &str,
+        params: Vec<String>,
+        timeout: Duration,
+        authorize: &(impl Fn(&str) + Sync),
+    ) -> Result<String> {
+        let mut identity = self
+            .identity
+            .lock()
+            .map_err(|_poison| Error::network("signer session lock poisoned"))?;
+        let (key, connected) = identity.get_or_insert_with(|| (SigningKey::generate(), false));
         let client_public = hex::encode(key.verifying_key().to_bytes());
-        let conversation = nip44::conversation_key(&key, &bytes(&self.public)?)?;
+        let conversation = nip44::conversation_key(key, &bytes(&self.public)?)?;
         let deadline = Instant::now() + timeout;
         thread::scope(|scope| {
             let (responses, incoming) = mpsc::sync_channel(32);
@@ -118,7 +147,7 @@ impl Bunker {
                 scope.spawn(move || {
                     // Relay diagnostics can echo the connect secret; expose only our own errors.
                     let result = (|| {
-                        let mut session = Session::open(relay, remaining(deadline)?)?;
+                        let mut session = Session::open_configured(relay, remaining(deadline)?)?;
                         Connection {
                             signer: &self.public,
                             client: client_public,
@@ -139,7 +168,7 @@ impl Bunker {
                 let now =
                     u64::try_from(jiff::Timestamp::now().as_second()).map_err(Error::network)?;
                 let event = Event::sign(
-                    &key,
+                    key,
                     now,
                     24133,
                     vec![vec!["p".into(), self.public.clone()]],
@@ -175,26 +204,27 @@ impl Bunker {
                 }
             };
             let result = (|| {
-                let ack = rpc(
-                    "connect",
-                    vec![
-                        self.public.clone(),
-                        self.secret.as_deref().map_or("", String::as_str).into(),
-                        format!("sign_event:{}", unsigned.kind),
-                        json!({"name":"nstr"}).to_string(),
-                    ],
-                )?;
-                if ack != "ack" {
-                    return Err(Error::network("remote signer did not acknowledge connect"));
+                if !*connected {
+                    let ack = rpc(
+                        "connect",
+                        vec![
+                            self.public.clone(),
+                            self.secret.as_deref().map_or("", String::as_str).into(),
+                            PERMISSIONS.into(),
+                            json!({"name":"nstr"}).to_string(),
+                        ],
+                    )?;
+                    if ack != "ack" {
+                        return Err(Error::network("remote signer did not acknowledge connect"));
+                    }
                 }
                 if rpc("get_public_key", vec![])? != public {
                     return Err(Error::network(
                         "remote signer public key does not match publicKey",
                     ));
                 }
-                let request = serde_json::to_string(unsigned).map_err(Error::usage)?;
-                let signed = rpc("sign_event", vec![request])?;
-                validate_event(&signed, public, unsigned)
+                *connected = true;
+                rpc(method, params)
             })();
             drop(outgoing);
             drop(incoming);
@@ -247,9 +277,16 @@ impl Connection<'_> {
         requests: mpsc::Receiver<(String, Event)>,
         responses: &mpsc::SyncSender<(String, Reply)>,
     ) -> Result<()> {
-        session.send(json!(["REQ", "nstr-bunker", {
-            "kinds": [24133], "authors": [self.signer], "#p": [self.client]
-        }]))?;
+        session.subscribe(
+            "nstr-bunker",
+            &super::relay::Filter {
+                kinds: vec![24133],
+                authors: vec![self.signer.into()],
+                mentions: vec![self.client.into()],
+                limit: 1,
+                ..super::relay::Filter::default()
+            },
+        )?;
         while let Ok((id, request)) = requests.recv_timeout(remaining(self.deadline)?) {
             session.send(json!(["EVENT", request]))?;
             loop {

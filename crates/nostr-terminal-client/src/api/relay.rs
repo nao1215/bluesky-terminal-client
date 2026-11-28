@@ -1,7 +1,7 @@
 //! Bounded synchronous WebSocket sessions, one per configured relay and operation.
 
 use super::{
-    event::Event,
+    event::{Event, Unsigned},
     nip11::{self, Limits},
 };
 use crate::error::{Error, Result};
@@ -17,6 +17,22 @@ use std::{
     time::{Duration, Instant},
 };
 use tungstenite::{Message, WebSocket, protocol::WebSocketConfig, stream::MaybeTlsStream};
+
+/// Signs relay authentication with the same account signer as application writes.
+pub(crate) trait AuthSigner: Sync {
+    fn sign_auth(&self, event: Unsigned) -> Result<Event>;
+}
+impl AuthSigner for SigningKey {
+    fn sign_auth(&self, event: Unsigned) -> Result<Event> {
+        Event::sign(
+            self,
+            event.created_at,
+            event.kind,
+            event.tags,
+            event.content,
+        )
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Filter {
@@ -156,6 +172,14 @@ pub(crate) struct Session<S = MaybeTlsStream<DeadlineStream>> {
 }
 
 impl Session {
+    pub(crate) fn open_configured(address: &str, timeout: Duration) -> Result<Self> {
+        let deadline = Instant::now() + timeout;
+        let limits = nip11::limits(address, timeout / 4);
+        let mut session = Self::open(address, remaining(deadline).map_err(Error::network)?)?;
+        session.limits = limits;
+        Ok(session)
+    }
+
     pub(crate) fn open(address: &str, timeout: Duration) -> Result<Self> {
         let deadline = Instant::now() + timeout;
         let url = url::Url::parse(address).map_err(Error::network)?;
@@ -264,7 +288,7 @@ impl<S: Read + Write> Session<S> {
     }
 
     fn page(&mut self, filter: &Filter, subscription: &str) -> Result<Vec<Event>> {
-        self.send(json!(["REQ", subscription, filter]))?;
+        self.subscribe(subscription, filter)?;
         let mut events = HashMap::new();
         loop {
             let message = match self.receive() {
@@ -318,13 +342,18 @@ impl<S: Read + Write> Session<S> {
         }
     }
 
-    fn publish(&mut self, event: &Event, address: &str, key: Option<&SigningKey>) -> Result<()> {
+    fn publish(
+        &mut self,
+        event: &Event,
+        address: &str,
+        signer: Option<&dyn AuthSigner>,
+    ) -> Result<()> {
         if self.limits.payment_required {
             return Err(Error::unsupported("unsupported: payment-required relay"));
         }
-        if self.limits.auth_required && key.is_none() {
+        if self.limits.auth_required && signer.is_none() {
             return Err(Error::unsupported(
-                "auth-required: relay requires auth; local signing key unavailable",
+                "auth-required: relay requires auth; account signer unavailable",
             ));
         }
         self.send(json!(["EVENT", event]))?;
@@ -347,23 +376,23 @@ impl<S: Read + Write> Session<S> {
                     if auth_id.is_some() {
                         return Err(Error::network("auth-required: repeated AUTH challenge"));
                     }
-                    let key = key.ok_or_else(|| {
+                    let signer = signer.ok_or_else(|| {
                         Error::unsupported(
-                            "auth-required: relay requires auth; local signing key unavailable",
+                            "auth-required: relay requires auth; account signer unavailable",
                         )
                     })?;
                     let now = u64::try_from(jiff::Timestamp::now().as_second())
                         .map_err(Error::network)?;
-                    let auth = Event::sign(
-                        key,
-                        now,
-                        22242,
-                        vec![
+                    let auth = signer.sign_auth(Unsigned {
+                        created_at: now,
+                        kind: 22242,
+                        tags: vec![
                             vec!["relay".into(), address.into()],
                             vec!["challenge".into(), challenge],
                         ],
-                        String::new(),
-                    )?;
+                        content: String::new(),
+                    })?;
+                    auth.verify()?;
                     self.send(json!(["AUTH", auth]))?;
                     auth_id = Some(auth.id);
                 }
@@ -388,7 +417,7 @@ impl<S: Read + Write> Session<S> {
                     if !reason.starts_with("auth-required:") || retried {
                         return Err(Error::network(format!("publish rejected: {reason}")));
                     }
-                    if key.is_none() {
+                    if signer.is_none() {
                         return Err(Error::unsupported(format!("publish rejected: {reason}")));
                     }
                     rejection = Some(reason);
@@ -402,7 +431,7 @@ impl<S: Read + Write> Session<S> {
         }
     }
 
-    fn read(&mut self, filter: &Filter, count: usize) -> Result<Vec<Event>> {
+    fn check_read(&self, filter: &Filter) -> Result<()> {
         if self.limits.payment_required {
             return Err(Error::unsupported("unsupported: payment-required relay"));
         }
@@ -424,6 +453,20 @@ impl<S: Read + Write> Session<S> {
                 "unsupported: NIP-50 search is not advertised by this relay",
             ));
         }
+        Ok(())
+    }
+
+    pub(crate) fn subscribe(&mut self, subscription: &str, filter: &Filter) -> Result<()> {
+        self.check_read(filter)?;
+        let mut filter = filter.clone();
+        if let Some(max) = self.limits.max_limit {
+            filter.limit = filter.limit.min(max);
+        }
+        self.send(json!(["REQ", subscription, filter]))
+    }
+
+    fn read(&mut self, filter: &Filter, count: usize) -> Result<Vec<Event>> {
+        self.check_read(filter)?;
         let mut query = filter.clone();
         query.limit = count.min(100);
         let mut events = HashMap::new();
@@ -540,11 +583,7 @@ impl Relays<'_> {
                 .map(|url| {
                     let operation = &operation;
                     scope.spawn(move || {
-                        let deadline = Instant::now() + self.timeout;
-                        let limits = nip11::limits(url, self.timeout / 4);
-                        let mut session =
-                            Session::open(url, remaining(deadline).map_err(Error::network)?)?;
-                        session.limits = limits;
+                        let mut session = Session::open_configured(url, self.timeout)?;
                         let result = operation(&mut session, url);
                         let notices = session.notices.join("; ");
                         result
@@ -629,10 +668,10 @@ impl Relays<'_> {
     pub(crate) fn publish(
         &self,
         event: &Event,
-        key: Option<&SigningKey>,
+        signer: Option<&dyn AuthSigner>,
     ) -> Result<Outcome<usize>> {
         event.verify()?;
-        let results = self.each(|s, url| s.publish(event, url, key))?;
+        let results = self.each(|s, url| s.publish(event, url, signer))?;
         Ok(Outcome {
             answered: results.answered,
             value: results.value.len(),

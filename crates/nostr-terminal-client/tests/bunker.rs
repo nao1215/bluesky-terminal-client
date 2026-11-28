@@ -110,7 +110,14 @@ mod tests {
                         hex::encode(self.transport.verifying_key().to_bytes())
                     );
                     assert_eq!(request["params"][1], "test-secret+&");
-                    assert_eq!(request["params"][2], "sign_event:1");
+                    assert!(
+                        request["params"][2]
+                            .as_str()
+                            .unwrap()
+                            .starts_with("sign_event:")
+                            || ["nip44_encrypt", "nip44_decrypt"]
+                                .contains(&request["params"][2].as_str().unwrap())
+                    );
                     self.clients.lock().unwrap().push(client.to_owned());
                     "ack".into()
                 }
@@ -122,8 +129,6 @@ mod tests {
                 "sign_event" => {
                     let note: Value =
                         serde_json::from_str(request["params"][0].as_str().unwrap()).unwrap();
-                    assert_eq!(note["kind"], 1);
-                    assert_eq!(note["tags"], json!([]));
                     let text = if self.mode == Mode::ChangedNote {
                         "changed by signer"
                     } else {
@@ -131,15 +136,28 @@ mod tests {
                     };
                     let mut signed = event(
                         &self.owner,
-                        1,
+                        note["kind"].as_u64().unwrap() as u16,
                         note["created_at"].as_u64().unwrap(),
                         text,
-                        json!([]),
+                        note["tags"].clone(),
                     );
                     if self.mode == Mode::BadSignature {
                         signed["sig"] = json!("00".repeat(64));
                     }
                     signed.to_string()
+                }
+                "nip44_encrypt" | "nip44_decrypt" => {
+                    let peer: [u8; 32] = hex::decode(request["params"][0].as_str().unwrap())
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+                    let conversation = nip44::conversation_key(&self.owner, &peer).unwrap();
+                    let text = request["params"][1].as_str().unwrap();
+                    if method == "nip44_encrypt" {
+                        nip44::encrypt(&conversation, &key().to_bytes().into(), text).unwrap()
+                    } else {
+                        nip44::decrypt(&conversation, text).unwrap().to_string()
+                    }
                 }
                 other => panic!("unexpected method: {other}"),
             };
@@ -366,5 +384,120 @@ mod tests {
             );
             assert!(!String::from_utf8_lossy(&out.stderr).contains("hidden"));
         }
+    }
+    #[test]
+    fn remote_signer_signs_new_kinds_and_dry_run_never_connects() {
+        let f = Fixture::new(Mode::Success);
+        assert_eq!(error::Error::unavailable("unconfigured").status, 5);
+        let out = f.run(&["post", "dry", "--dry-run"]);
+        assert!(out.status.success());
+        assert!(f.remote.log.lock().unwrap().is_empty());
+        let owner = hex::encode(f.signer.owner.verifying_key().to_bytes());
+        for args in [
+            vec!["follow", owner.as_str()],
+            vec!["mute", owner.as_str()],
+            vec!["profile-update", r#"{"name":"updated"}"#],
+        ] {
+            let out = f.run(&args);
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let requests = f.signer.requests.lock().unwrap();
+        let kinds: Vec<u64> = requests
+            .iter()
+            .filter(|r| r["method"] == "sign_event")
+            .map(|r| {
+                serde_json::from_str::<Value>(r["params"][0].as_str().unwrap()).unwrap()["kind"]
+                    .as_u64()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(kinds, [3, 10000, 0]);
+    }
+    #[test]
+    fn bunker_nip17_encrypts_seals_and_decrypts_gift_wraps() {
+        let f = Fixture::new(Mode::Success);
+        let inbox = Relay::start(
+            vec![],
+            Behavior {
+                auth: true,
+                ..Behavior::default()
+            },
+        );
+        let owner = hex::encode(f.signer.owner.verifying_key().to_bytes());
+        let directory = Relay::start(
+            vec![event(
+                &f.signer.owner,
+                10050,
+                1,
+                "",
+                json!([["relay", inbox.url]]),
+            )],
+            Behavior::default(),
+        );
+        let path = f.dir.path().join("config.json");
+        let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        config["relays"] = json!([directory.url]);
+        std::fs::write(&path, config.to_string()).unwrap();
+        let out = f.run(&["chat", &owner, "private bunker message"]);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            f.signer.clients.lock().unwrap().len(),
+            1,
+            "encryption and signing must reuse one authorized client"
+        );
+        let messages = inbox.log.lock().unwrap();
+        let wrap = messages.iter().find(|m| m[0] == "EVENT").unwrap()[1].clone();
+        verify(&wrap);
+        let auth = messages.iter().find(|m| m[0] == "AUTH").unwrap();
+        verify(&auth[1]);
+        assert_eq!(auth[1]["kind"], 22242);
+        assert_eq!(auth[1]["pubkey"], owner);
+        assert_ne!(wrap["pubkey"], owner);
+        assert_eq!(wrap["kind"], 1059);
+        assert!(!wrap.to_string().contains("private bunker message"));
+        drop(messages);
+        let incoming = Relay::start(vec![wrap], Behavior::default());
+        let directory = Relay::start(
+            vec![event(
+                &f.signer.owner,
+                10050,
+                2,
+                "",
+                json!([["relay", incoming.url]]),
+            )],
+            Behavior::default(),
+        );
+        config["relays"] = json!([directory.url]);
+        std::fs::write(&path, config.to_string()).unwrap();
+        let out = f.run(&["chat", &owner]);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let value: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(value["text"], "private bunker message");
+        assert_eq!(
+            f.signer.clients.lock().unwrap().len(),
+            2,
+            "each CLI process connects once, including multi-layer decryption"
+        );
+        let requests = f.signer.requests.lock().unwrap();
+        assert!(requests.iter().any(|r| r["method"] == "nip44_encrypt"));
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r["method"] == "nip44_decrypt")
+                .count(),
+            2
+        );
     }
 }

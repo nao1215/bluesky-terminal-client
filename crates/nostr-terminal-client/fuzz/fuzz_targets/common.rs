@@ -4,11 +4,21 @@
 #[path = "../../src/error.rs"]
 mod error;
 #[allow(dead_code)]
-#[path = "../../src/config.rs"]
-mod config;
+mod config {
+    include!(concat!(env!("OUT_DIR"), "/config.rs"));
+}
+#[allow(dead_code)]
+#[path = "../../src/api/nip11.rs"]
+mod nip11;
 #[allow(dead_code)]
 mod api {
-    pub(crate) use super::{event, nip19, nip44};
+    pub(crate) use super::{event, nip44};
+    pub(crate) mod actions {
+        include!(concat!(env!("OUT_DIR"), "/actions.rs"));
+    }
+    pub(crate) mod media {
+        include!(concat!(env!("OUT_DIR"), "/media.rs"));
+    }
     include!(concat!(env!("OUT_DIR"), "/module.rs"));
 }
 #[allow(dead_code)]

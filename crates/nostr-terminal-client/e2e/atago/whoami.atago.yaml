@@ -49,7 +49,7 @@ scenarios:
               - { path: "$.nprofile", equals: nprofile1qqs8d3gpyqv2m4plf4dnsshy0828s5pn8e9cv5jeg6rzga65dmkhwssm2jru0 }
               - { path: "$.name", equals: "Alice 🐈‍⬛" }
               - { path: "$.description", equals: テスト用のアカウントです }
-              - { path: "$.picture", equals: "https://example.invalid/alice.png" }
+              - { path: "$.picture", equals: "http://127.0.0.1:9/alice.png" }
               - { path: "$.host", equals: null }
               - { path: "$.url", equals: null }
               - { path: "$.followersCount", equals: null }

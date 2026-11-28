@@ -52,9 +52,9 @@ scenarios:
             - send: c
             - expect_screen: { contains: "Copied note identifier" }
             - send: "?"
-            - expect_screen: { contains: ["Help", "copy nostr:nevent identifier", "send from composer"] }
+            - expect_screen: { contains: ["Help", "copy nostr:nevent identifier", "send note / message; save profile"] }
             - send: { key: esc }
-            - expect_screen: { not_contains: "send from composer" }
+            - expect_screen: { not_contains: "send note / message; save profile" }
             - send: T
             - expect_screen: { contains: "Themes" }
             # terminal is index 3; j selects the first editor theme.

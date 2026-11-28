@@ -1,0 +1,90 @@
+version: "1"
+suite:
+  name: nstr Blossom media
+scenarios:
+  - name: stripped uploads imeta downloads stdin dry run and declined confirmation
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --parity
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - run: { command: 'python3 "${specdir}/testdata/check_media.py" setup' }
+      - assert: { exit_code: 0 }
+      - run:
+          command: nstr upload private.png --alt "fixture alt" --json
+          env: &env { NSTR_CONFIG_DIR: "${workdir}/cfg" }
+      - assert: { exit_code: 0, stdout: { contains: imeta } }
+      - run:
+          command: nstr post attached --image private.png --alt "fixture alt" --json
+          env: *env
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_media.py" verify' }
+      - assert: { exit_code: 0, stdout: { contains: "uploads downloads and no-send boundaries verified" } }
+      - run:
+          command: nstr download 0000000000000000000000000000000000000000000000000000000000000000 --json
+          env: *env
+      - assert: { exit_code: 5 }
+      - run: { command: 'python3 -c "import time; time.sleep(1.1)"' }
+      - run:
+          command: nstr post video --video "${specdir}/../../../terminal-kit/src/media/testdata/clip.mp4" --alt "fixture clip" --json
+          env: *env
+      - assert: { exit_code: 0 }
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 28
+          cols: 100
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "video", stable_for: 300ms }
+            - send: " "
+            - expect_screen: { contains: ".mp4", stable_for: 500ms }
+            - send: r
+            - expect_screen: { contains: ".mp4", stable_for: 300ms }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Pictures" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - pty:
+          command: nstr
+          graphics: kitty
+          rows: 36
+          cols: 120
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "video", stable_for: 300ms }
+            - send: n
+            - expect_screen: { contains: "New note" }
+            - send: "browser attachment"
+            - send: { key: ctrl-o }
+            - expect_screen: { contains: "Attach pictures" }
+            - send: G
+            - send: { key: enter }
+            - expect_screen: { contains: "New note", not_contains: "Attach pictures" }
+            - send: { key: tab }
+            - expect_screen: { contains: "Attachment alt text" }
+            - send: "browser alt"
+            - send: { key: enter }
+            - expect_screen: { contains: "New note", not_contains: "Attachment alt text" }
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Completed", not_contains: "New note", stable_for: 300ms }
+            - send: "3"
+            - expect_screen: { contains: "テスト用のアカウントです", stable_for: 300ms }
+            - send: e
+            - expect_screen: { contains: "Edit profile" }
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: { key: tab }
+            - send: { key: ctrl-o }
+            - expect_screen: { contains: "Attach pictures" }
+            - send: G
+            - send: { key: enter }
+            - expect_screen: { contains: ["Edit profile", "private.png"], not_contains: "Attach pictures" }
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: "Completed", not_contains: "Edit profile", stable_for: 500ms }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_media.py" tui' }
+      - assert: { exit_code: 0, stdout: { contains: "browser post and profile uploads verified" } }

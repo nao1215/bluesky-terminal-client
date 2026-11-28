@@ -144,7 +144,7 @@ def store(args):
         make(ALICE, T, 0, [], json.dumps({"name": "old name"})),
         make(ALICE, T + 10, 0, [], json.dumps({
             "name": "alice", "display_name": "Alice 🐈‍⬛", "about": "テスト用のアカウントです",
-            "picture": "https://example.invalid/alice.png",
+            "picture": "http://127.0.0.1:9/alice.png",
         }, ensure_ascii=False)),
     ]
     if not args.no_contacts:
@@ -173,6 +173,7 @@ def matches(f, event):
         and (not f.get("#p") or any(t[:1] == ["p"] and t[1] in f["#p"] for t in event["tags"] if len(t) > 1))
         and (not f.get("#t") or any(t[:1] == ["t"] and t[1] in f["#t"] for t in event["tags"] if len(t) > 1))
         and ("until" not in f or event["created_at"] <= f["until"])
+        and (not f.get("search") or f["search"].casefold() in event["content"].casefold())
     )
 
 
@@ -209,7 +210,7 @@ class Relay(socketserver.BaseRequestHandler):
                 raise ConnectionError("closed")
             data += chunk
         if b"accept: application/nostr+json" in data.lower():
-            body = b'{"supported_nips":[1,11]}'
+            body = json.dumps(getattr(self.server, "information", {"supported_nips": [1,11]})).encode()
             self.request.sendall(
                 b"HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\n"
                 + f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body
@@ -314,6 +315,7 @@ def main():
     ap.add_argument("--many", action="store_true", help="store 120 more long notes by bob")
     ap.add_argument("--notice", action="store_true")
     ap.add_argument("--pictures", action="store_true")
+    ap.add_argument("--parity", action="store_true")
     ap.add_argument("--pages", action="store_true", help="short notes with a timestamp boundary larger than one page")
     args = ap.parse_args()
 
@@ -343,6 +345,16 @@ def main():
     cfg = Path("cfg")
     cfg.mkdir(exist_ok=True)
     config = {"publicKey": public_of(ALICE), "relays": relays, "timeoutSeconds": 5}
+    if args.parity:
+        server.information = {"supported_nips": [1,11,50]}
+        import blossom
+        media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), blossom.Blossom)
+        threading.Thread(target=media.serve_forever, daemon=True).start()
+        config.update(searchRelays=[relays[0]], dmRelays=[relays[0]], blossomServers=[f"http://127.0.0.1:{media.server_port}"])
+        server.events += [make(k, T + 1, 10050, [["relay", relays[0]]], "") for k in (ALICE, BOB)]
+        Path("seed.json").write_text(json.dumps(server.events, ensure_ascii=False), encoding="utf-8")
+        Path("bob.txt").write_text(public_of(BOB))
+        Path("alice.txt").write_text(public_of(ALICE))
     if not args.no_key:
         config["keyFile"] = "key"
         key = cfg / "key"

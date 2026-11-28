@@ -1,0 +1,107 @@
+version: "1"
+suite:
+  name: nstr parity screens
+scenarios:
+  - name: warnings profiles search columns actions and declined confirmations
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --parity
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 36
+          cols: 140
+          env: &env { NSTR_CONFIG_DIR: "${workdir}/cfg", LC_ALL: en_US.UTF-8 }
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "返信です", stable_for: 300ms }
+            - send: j
+            - expect_screen: { contains: "Content warning", not_contains: "bob の二つ目" }
+            - send: " "
+            - expect_screen: { contains: "Content warning", not_contains: "Pictures" }
+            - send: w
+            - expect_screen: { contains: "bob の二つ目" }
+            - send: "/"
+            - expect_screen: { contains: "Search · enter" }
+            - send: bob
+            - send: { key: enter }
+            - expect_screen: { contains: "bob の一つ目", stable_for: 300ms }
+            - send: "+"
+            - expect_screen: { contains: "search:bob" }
+            - send: "."
+            - expect_screen: { contains: "Public report" }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Public report" }
+            - send: M
+            - expect_screen: { contains: "Publish this request?" }
+            - send: n
+            - expect_screen: { not_contains: "Publish this request?" }
+            - send: "1"
+            - send: g
+            - expect_screen: { contains: "返信です" }
+            - send: { key: enter }
+            - expect_screen: { contains: "bob の一つ目", stable_for: 300ms }
+            - send: { key: esc }
+            - expect_screen: { contains: "返信です" }
+            - send: A
+            - expect_screen: { contains: "Saved accounts", not_contains: "Publish this request?" }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "Saved accounts" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run:
+          command: python3 "${specdir}/testdata/check_tui.py" none
+      - assert: { exit_code: 0, stdout: { contains: "checked none" } }
+  - name: first run configuration can be cancelled without creating an account
+    steps:
+      - pty:
+          command: nstr
+          rows: 20
+          cols: 100
+          env: { NSTR_CONFIG_DIR: "${workdir}/empty", LC_ALL: ja_JP.UTF-8 }
+          timeout: 10s
+          session:
+            - expect_screen: { contains: "アカウント設定 JSON" }
+            - send: { key: esc }
+      - assert: { exit_code: 0, file: { path: empty/config.json, exists: false } }
+  - name: profile form and private message writes reach only local services
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --parity
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 36
+          cols: 140
+          env: { NSTR_CONFIG_DIR: "${workdir}/cfg", LC_ALL: en_US.UTF-8 }
+          timeout: 45s
+          session:
+            - expect_screen: { contains: "返信です", stable_for: 300ms }
+            - send: "3"
+            - expect_screen: { contains: "テスト用のアカウントです", stable_for: 300ms }
+            - send: e
+            - expect_screen: { contains: "Edit profile" }
+            - send: { key: ctrl-u }
+            - send: "TUI profile"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: ["Completed", "TUI profile"], not_contains: "Edit profile", stable_for: 300ms }
+            - send: m
+            - expect_screen: { contains: "Recipient public key" }
+            - send: "27f97c0733efea6a7afd71aafa9ca10982982274ced13edcdac65e5b632bb589"
+            - send: { key: enter }
+            - expect_screen: { contains: ["Chat · m recipient", "Completed"], not_contains: "Recipient public key", stable_for: 500ms }
+            - send: i
+            - expect_screen: { contains: "Private message" }
+            - send: "secret fixture message"
+            - send: { key: ctrl-s }
+            - expect_screen: { contains: ["secret fixture message", "Completed"], not_contains: "Private message", stable_for: 500ms }
+            - send: { key: esc }
+            - expect_screen: { contains: "secret fixture message", stable_for: 500ms }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_dm.py"' }
+      - assert: { exit_code: 0, stdout: { contains: "gift wraps verified independently" } }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" profile-chat' }
+      - assert: { exit_code: 0 }

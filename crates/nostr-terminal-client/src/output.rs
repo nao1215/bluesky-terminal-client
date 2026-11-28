@@ -58,9 +58,9 @@ pub(crate) fn post(event: &Event) -> Result<Value> {
     let note = Identifier::Note(id).encode()?;
     Ok(json!({
         "id": event.id, "url": null, "uri": format!("nostr:{note}"), "createdAt": timestamp(event)?,
-        "user": user(&event.pubkey)?, "text": event.content, "cw": event.tag_values("content-warning").next(),
-        "likeCount": null, "repostCount": null, "repliesCount": null, "files": [],
-        "replyId": event.reply_id(), "quoteId": event.tag_values("q").next(), "repostOf": null,
+        "user": user(&event.pubkey)?, "text": if matches!(event.kind,6|16) { "" } else { &event.content }, "cw": event.tags.iter().find(|t|t.first().is_some_and(|s|s=="content-warning")).map(|t|t.get(1).map_or("",String::as_str)),
+        "likeCount": null, "repostCount": null, "repliesCount": null, "files": if matches!(event.kind,6|16) { vec![] } else { crate::api::media::files(event) },
+        "replyId": event.reply_id(), "quoteId": event.tag_values("q").next(), "repostOf": repost_of(event)?,
         "kind": event.kind, "tags": event.tags, "sig": event.sig, "note": note,
         "nevent": Identifier::Event { id, relays: Vec::new(), author: Some(bytes(&event.pubkey)?), kind: Some(u32::from(event.kind)) }.encode()?
     }))
@@ -75,12 +75,30 @@ pub(crate) fn publication(event: &Event, accepted: usize) -> Result<Value> {
 }
 
 pub(crate) fn notification(event: &Event) -> Result<Value> {
+    let action = matches!(event.kind, 6 | 7 | 16);
+    let target = if event.kind == 3 {
+        None
+    } else if action {
+        event.tag_values("e").last()
+    } else {
+        Some(event.id.as_str())
+    };
+    let post = if event.kind == 3 {
+        Value::Null
+    } else if action {
+        repost_of(event)?
+    } else {
+        post(event)?
+    };
     Ok(json!({"id": event.id, "createdAt": timestamp(event)?,
-        "type": match event.kind { 3 => "follow", 6 => "repost", 7 => "reaction", _ if event.reply_id().is_some() => "reply", _ => "mention" },
-        "user": user(&event.pubkey)?, "postId": event.id, "post": post(event)? }))
+        "type": match event.kind { 3 => "follow", 7 => "like", 6 | 16 => "repost", _ if event.tag_values("q").next().is_some() => "quote", _ if event.reply_id().is_some() => "reply", _ => "mention" },
+        "reaction": (event.kind == 7).then_some(&event.content), "user": user(&event.pubkey)?, "postId": target, "post": post }))
 }
 
 pub(crate) fn text(value: &Value) -> String {
+    if value.get("action").is_some() && value["action"] != "post" {
+        return format!("{value}\n");
+    }
     if value["action"] == "post" {
         return format!("{}\n", value["uri"].as_str().unwrap_or(""));
     }
@@ -118,4 +136,12 @@ pub(crate) fn emit(out: &mut dyn Write, value: &Value, json: bool) -> Result<boo
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(false),
         Err(e) => Err(Error::file(format!("cannot write output: {e}"))),
     }
+}
+
+fn repost_of(event: &Event) -> Result<Value> {
+    crate::api::actions::reposted(event)
+        .as_ref()
+        .map(post)
+        .transpose()
+        .map(|v| v.unwrap_or(Value::Null))
 }
