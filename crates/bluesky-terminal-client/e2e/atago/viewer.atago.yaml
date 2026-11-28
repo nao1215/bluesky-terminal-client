@@ -276,10 +276,13 @@ scenarios:
                 contains: ["Watch this 🎬", "▶ video"]
                 stable_for: 6s
             - send: " "
-            # The one second of video plays through without the playlists'
-            # four seconds before it.
+            # A decoded frame arrives before the playlists' four seconds.
+            # Waiting for "ended" also budgets the whole video's playback and
+            # rendering, which says nothing about whether its playlists were
+            # read ahead. A slow runner may already show the final frame.
             - expect_screen:
-                contains: ["1/1", "■ ended"]
+                contains: "1/1"
+                matches: '▶ playing \(no sound\)|■ ended'
                 timeout: 3s
             - send: { key: esc }
             - expect_screen:
