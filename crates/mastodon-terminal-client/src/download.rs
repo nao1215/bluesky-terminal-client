@@ -11,18 +11,18 @@ use crate::api::types::Media;
 use crate::error::{Error, Result};
 
 /// Largest file a download saves, as bsky's and msky's.
-pub const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
+pub(crate) const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
 
 /// How long one download may take: a video of 200 MB on a slow link takes
 /// minutes, where an API call gets 30 s.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Environment variable naming the folder downloads are saved in.
-pub const DOWNLOAD_DIR_ENV: &str = "MSTDN_DOWNLOAD_DIR";
+pub(crate) const DOWNLOAD_DIR_ENV: &str = "MSTDN_DOWNLOAD_DIR";
 
 /// Where files are saved: `-o`, else `MSTDN_DOWNLOAD_DIR`, else `mstdn` in
 /// the platform download folder (`~/Downloads/mstdn`), as msky keeps its own.
-pub fn download_dir(output: Option<PathBuf>) -> Result<PathBuf> {
+pub(crate) fn download_dir(output: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = output.filter(|d| !d.as_os_str().is_empty()) {
         return Ok(dir);
     }
@@ -112,7 +112,7 @@ const MAX_STEM_BYTES: usize = 100;
 /// the status's files from 1. Only ASCII letters, digits, `-` and `_` of
 /// the ID are kept, so the name works on every system and never leaves the
 /// folder. The extension is added once the file's type is known.
-pub fn file_stem(status_id: &str, n: usize) -> String {
+pub(crate) fn file_stem(status_id: &str, n: usize) -> String {
     let mut stem: String = status_id
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
@@ -139,7 +139,7 @@ fn megabytes(n: u64) -> u64 {
 
 /// Save `media` in `dir` as `stem.<ext>` (or `stem (1).<ext>`...), and say
 /// where.
-pub fn save(agent: &ureq::Agent, media: &Media, dir: &Path, stem: &str) -> Result<PathBuf> {
+pub(crate) fn save(agent: &ureq::Agent, media: &Media, dir: &Path, stem: &str) -> Result<PathBuf> {
     let url = media
         .source()
         .ok_or_else(|| Error::api(format!("{stem}: the server gave no address for the file")))?;

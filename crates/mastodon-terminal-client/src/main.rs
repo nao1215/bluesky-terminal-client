@@ -10,7 +10,6 @@
 mod api;
 mod browser;
 mod cli;
-mod clock;
 mod config;
 mod download;
 mod error;
@@ -89,7 +88,7 @@ fn run(cli: Cli) -> Result<()> {
         env_token,
     };
     let Some(cmd) = cli.command else {
-        // The full-screen client comes in a later version.
+        // mstdn has no full-screen client: a command is needed.
         return Err(
             Error::usage("no command given").with_hint("run `mstdn --help` for the commands")
         );

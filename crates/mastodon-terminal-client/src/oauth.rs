@@ -20,25 +20,25 @@ use crate::error::{Error, Kind, Result};
 use crate::i18n::t;
 
 /// The name the server shows on its page that asks for the access.
-pub const APP_NAME: &str = "mstdn";
+pub(crate) const APP_NAME: &str = "mstdn";
 
 /// The address the server shows beside the name.
-pub const WEBSITE: &str = "https://github.com/nao1215/social-terminal-clients";
+pub(crate) const WEBSITE: &str = "https://github.com/nao1215/social-terminal-clients";
 
 /// What mstdn asks to do: read what the account sees, and write (post,
 /// upload the files of a post, and what later commands do). Mastodon's
 /// `follow` and `push` are not asked for.
-pub const SCOPES: &str = "read write";
+pub(crate) const SCOPES: &str = "read write";
 
 /// The redirect that has the server show the code instead of sending the
 /// browser anywhere.
-pub const OOB: &str = "urn:ietf:wg:oauth:2.0:oob";
+pub(crate) const OOB: &str = "urn:ietf:wg:oauth:2.0:oob";
 
 /// How long `mstdn login` waits for the access by default.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// The address the listener on `port` takes the code at.
-pub fn loopback_uri(port: u16) -> String {
+pub(crate) fn loopback_uri(port: u16) -> String {
     format!("http://127.0.0.1:{port}/callback")
 }
 
@@ -51,14 +51,14 @@ fn loopback_port(uri: &str) -> Option<u16> {
 }
 
 /// A PKCE verifier and its S256 challenge.
-pub struct Pkce {
+pub(crate) struct Pkce {
     pub verifier: String,
     pub challenge: String,
 }
 
 /// A new PKCE pair: 32 random bytes as the verifier, its SHA-256 as the
 /// challenge, both base64url without padding.
-pub fn pkce() -> Result<Pkce> {
+pub(crate) fn pkce() -> Result<Pkce> {
     let mut b = [0u8; 32];
     getrandom::fill(&mut b).map_err(|e| Error::io(format!("cannot log in: no randomness: {e}")))?;
     let verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
@@ -73,7 +73,7 @@ fn challenge_of(verifier: &str) -> String {
 }
 
 /// The page on the server at `origin` that asks for the access.
-pub fn authorize_url(
+pub(crate) fn authorize_url(
     origin: &str,
     client_id: &str,
     redirect: &str,
@@ -92,13 +92,13 @@ pub fn authorize_url(
 
 /// Where the code comes back: a listener on this machine, or the page
 /// that shows it.
-pub enum Redirect {
+pub(crate) enum Redirect {
     Loopback(TcpListener),
     Oob,
 }
 
 impl Redirect {
-    pub fn uri(&self) -> Result<String> {
+    pub(crate) fn uri(&self) -> Result<String> {
         match self {
             Redirect::Loopback(l) => l
                 .local_addr()
@@ -112,7 +112,7 @@ impl Redirect {
 /// The app to log in with on `client`'s server and where its code comes
 /// back: the app saved for the server when it can take the code there (its
 /// port free, for a loopback), else one registered now, and saved.
-pub fn app_for(store: &AccountStore, client: &Client, oob: bool) -> Result<(App, Redirect)> {
+pub(crate) fn app_for(store: &AccountStore, client: &Client, oob: bool) -> Result<(App, Redirect)> {
     let host = client.host();
     let saved = store.app(host).filter(|a| a.service == client.origin());
     if let Some(app) = saved {
@@ -153,7 +153,7 @@ pub fn app_for(store: &AccountStore, client: &Client, oob: bool) -> Result<(App,
 /// Wait on `listener` for the browser to bring the code back with `state`,
 /// for up to `timeout`. Anything else that knocks is turned away; the
 /// browser is told whether to go back to the terminal.
-pub fn wait_for_code(
+pub(crate) fn wait_for_code(
     listener: &TcpListener,
     state: &str,
     host: &str,
@@ -304,7 +304,7 @@ fn decode_query(v: &str) -> String {
 }
 
 /// The code pasted on `input`, as the page with `--oob` shows it.
-pub fn read_code(input: &mut dyn BufRead) -> Result<String> {
+pub(crate) fn read_code(input: &mut dyn BufRead) -> Result<String> {
     let mut line = String::new();
     input
         .read_line(&mut line)
@@ -321,7 +321,7 @@ pub fn read_code(input: &mut dyn BufRead) -> Result<String> {
 /// Trade `code` for the token at the server of `client`. A server that
 /// does not know the app any more has it forgotten here, so the next login
 /// registers again.
-pub fn exchange(
+pub(crate) fn exchange(
     store: &AccountStore,
     client: &Client,
     app: &App,

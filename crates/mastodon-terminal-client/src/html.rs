@@ -26,7 +26,7 @@
 //! terminal: [`crate::text::drawable`] does that where it is printed.
 
 /// The text `html` reads as.
-pub fn to_text(html: &str) -> String {
+pub(crate) fn to_text(html: &str) -> String {
     let mut w = Writer::default();
     let mut rest = html;
     while !rest.is_empty() {

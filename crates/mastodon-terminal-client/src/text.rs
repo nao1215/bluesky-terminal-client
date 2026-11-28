@@ -1,37 +1,21 @@
 //! Text others wrote, made safe to print.
 
-use std::borrow::Cow;
-
 /// `text` as text only: a control character in it would reach the terminal
 /// as a command (an escape sequence can set the clipboard or the window
 /// title, or clear the screen), so it is dropped. A line break stays, a
-/// carriage return becomes one, and a tab becomes four spaces.
-pub fn drawable(text: &str) -> Cow<'_, str> {
-    if !text.chars().any(|c| c.is_control() && c != '\n') {
-        return Cow::Borrowed(text);
-    }
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\r' if chars.peek() == Some(&'\n') => {}
-            '\r' | '\n' => out.push('\n'),
-            '\t' => out.push_str("    "),
-            c if c.is_control() => {}
-            c => out.push(c),
-        }
-    }
-    Cow::Owned(out)
-}
+/// carriage return becomes one, and a tab becomes four spaces. The rule is
+/// terminal-kit's.
+pub(crate) use terminal_kit::text::drawable;
 
 /// As [`drawable`], on one line: for what is printed as one line.
-pub fn one_line(s: &str) -> String {
+pub(crate) fn one_line(s: &str) -> String {
     drawable(s).replace('\n', " ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
     #[test]
     fn escape_sequences_lose_their_control_characters_and_text_stays() {

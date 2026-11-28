@@ -2,7 +2,8 @@
 name = "mastodon-terminal-client"
 version = "0.1.0"
 edition.workspace = true
-# The root package's rust-version, written out here too, as terminal-kit does.
+# Written out in each package: CI and the release scripts read it from the
+# package's own [package] table.
 rust-version = "1.90"
 authors.workspace = true
 description = "Unofficial Mastodon client for the terminal: commands that read timelines, posts and accounts, save their files, and post with pictures."
@@ -11,32 +12,33 @@ readme = "README.md"
 repository = "https://github.com/nao1215/social-terminal-clients"
 keywords = ["mastodon", "fediverse", "cli", "terminal"]
 categories = ["command-line-utilities"]
-# Not on crates.io yet: the release publishes bsky, and mstdn comes later.
+# Not published to crates.io.
 publish = false
-# The unit tests read src/testdata, so it ships; the E2E suite does not.
-exclude = ["e2e/"]
+# The unit tests read src/testdata, so it ships; the E2E suite and the fuzz targets do not.
+exclude = ["e2e/", "fuzz/"]
 
 [[bin]]
 name = "mstdn"
 path = "src/main.rs"
 
 [dependencies]
-base64 = "0.22"
-clap = { version = "4", features = ["derive", "env"] }
-dirs = "7"
+base64 = "0.23"
+clap.workspace = true
+dirs.workspace = true
 getrandom = "0.4"
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
 jiff.workspace = true
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true
 sha2 = "0.10"
+terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
 unicode-segmentation.workspace = true
-ureq = "3"
+ureq.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 rstest.workspace = true
-tempfile = "3"
+tempfile.workspace = true
 
 [lints]
 workspace = true

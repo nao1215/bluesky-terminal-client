@@ -10,7 +10,7 @@ mod post;
 
 #[cfg(test)]
 pub(crate) use post::counted;
-pub use post::{PostArgs, Visibility};
+pub(crate) use post::{PostArgs, Visibility};
 
 use std::collections::HashSet;
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -29,7 +29,7 @@ use crate::{browser, download, oauth};
 
 /// The commands.
 #[derive(Debug, Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// An account's posts, newest first.
     ///
     /// ACTOR is name, @name, @name@host, or the account's address
@@ -182,7 +182,7 @@ pub enum Command {
 
 /// Which timeline `timeline` reads, by the names Mastodon gives them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum TimelineKind {
+pub(crate) enum TimelineKind {
     /// The posts of the accounts you follow, and your own.
     Home,
     /// The posts of the server's accounts.
@@ -213,7 +213,7 @@ impl TimelineKind {
 /// takes files only; a reply to oneself and a video are told here, from
 /// the posts it sends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum AuthorFilter {
+pub(crate) enum AuthorFilter {
     /// Posts and replies.
     #[value(alias = "posts_with_replies")]
     WithReplies,
@@ -263,7 +263,7 @@ impl AuthorFilter {
 }
 
 /// What a command runs with.
-pub struct Ctx {
+pub(crate) struct Ctx {
     /// The server `--host` names, else that of the account in use.
     pub origin: String,
     pub json: bool,
@@ -381,7 +381,7 @@ fn not_logged_in(host: &str) -> Error {
 }
 
 /// Run `cmd`, writing to stdout.
-pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
+pub(crate) fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
     let mut out = io::stdout().lock();
     ended_by_reader(run_to(cmd, ctx, &mut out))
 }
@@ -389,7 +389,7 @@ pub fn run(cmd: Command, ctx: &Ctx) -> Result<()> {
 /// A command's result, where a reader that stopped reading (`| head`) is
 /// not an error: what it wanted it has, so the command ends there, as the
 /// tools it is piped into expect.
-pub fn ended_by_reader(result: Result<()>) -> Result<()> {
+pub(crate) fn ended_by_reader(result: Result<()>) -> Result<()> {
     match result {
         Err(e) if e.message() == PIPE_CLOSED => Ok(()),
         r => r,

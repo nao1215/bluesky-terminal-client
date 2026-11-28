@@ -11,7 +11,7 @@
 //! (`Retry-After`, else `X-RateLimit-Reset`), a few times; a write is sent
 //! once, and anything else is returned at once.
 
-pub mod types;
+pub(crate) mod types;
 
 #[cfg(test)]
 pub(crate) mod stub_tests;
@@ -26,7 +26,7 @@ use crate::error::{Error, Kind, Result};
 use types::{Account, Context, Found, Limits, Media, Notification, Registered, Status, Token};
 
 /// Server used when neither `--host` nor `MSTDN_HOST` is given.
-pub const DEFAULT_HOST: &str = "mastodon.social";
+pub(crate) const DEFAULT_HOST: &str = "mastodon.social";
 
 const USER_AGENT: &str = concat!("mstdn/", env!("CARGO_PKG_VERSION"));
 
@@ -51,11 +51,11 @@ const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// The most statuses one call asks for: the API's limit for statuses and
 /// timelines.
-pub const MAX_PAGE: usize = 40;
+pub(crate) const MAX_PAGE: usize = 40;
 
 /// Build the HTTP agent every request uses. Non-2xx statuses are returned as
 /// responses so the error body can be read.
-pub fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(Duration::from_secs(30)))
@@ -76,7 +76,7 @@ pub fn agent() -> ureq::Agent {
 /// nothing after the host but a slash. The host is put in lower case. A
 /// path is refused rather than left to make every request go to an address
 /// that does not exist.
-pub fn normalize_host(typed: &str) -> Result<String> {
+pub(crate) fn normalize_host(typed: &str) -> Result<String> {
     let typed = typed.trim();
     let invalid = || {
         Error::usage(format!("invalid host {typed:?}")).with_hint(
@@ -101,7 +101,7 @@ pub fn normalize_host(typed: &str) -> Result<String> {
 }
 
 /// The host (and port) of an origin `normalize_host` made.
-pub fn authority(origin: &str) -> &str {
+pub(crate) fn authority(origin: &str) -> &str {
     origin.split_once("://").map_or(origin, |(_, rest)| rest)
 }
 
@@ -116,7 +116,7 @@ struct ErrorBody {
 
 /// A call the server answered with an error status.
 #[derive(Debug, Clone)]
-pub struct Refusal {
+pub(crate) struct Refusal {
     pub status: u16,
     body: ErrorBody,
     /// When the server takes calls again, as `X-RateLimit-Reset` says.
@@ -126,7 +126,7 @@ pub struct Refusal {
 impl Refusal {
     /// The server's error and its description, or the status when it wrote
     /// neither.
-    pub fn said(&self) -> String {
+    pub(crate) fn said(&self) -> String {
         let (e, d) = (self.body.error.trim(), self.body.error_description.trim());
         match (e.is_empty(), d.is_empty()) {
             (false, false) if e != d => format!("{e}: {d}"),
@@ -137,14 +137,14 @@ impl Refusal {
     }
 
     /// The OAuth error code (`invalid_grant`, `access_denied`...).
-    pub fn code(&self) -> &str {
+    pub(crate) fn code(&self) -> &str {
         &self.body.error
     }
 }
 
 /// Where the next page of a list starts, as the server said it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Next {
+pub(crate) enum Next {
     /// The answer had no `Link` header: the next page is older than its
     /// last item.
     Unsaid,
@@ -156,7 +156,7 @@ pub enum Next {
 
 /// A page of a list and where the next starts.
 #[derive(Debug, Clone)]
-pub struct Page<T> {
+pub(crate) struct Page<T> {
     pub items: Vec<T>,
     pub next: Next,
 }
@@ -176,7 +176,7 @@ type Wait = Arc<dyn Fn(Duration, &str) + Send + Sync>;
 
 /// A client of one Mastodon server. It has no `Debug`: it holds the token.
 #[derive(Clone)]
-pub struct Client {
+pub(crate) struct Client {
     agent: ureq::Agent,
     origin: String,
     wait: Wait,
@@ -188,7 +188,7 @@ type Made = std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>;
 
 impl Client {
     /// A client of the server at `origin` (see [`normalize_host`]).
-    pub fn new(origin: &str) -> Self {
+    pub(crate) fn new(origin: &str) -> Self {
         Self::with_wait(origin, Arc::new(wait_and_say))
     }
 
@@ -204,23 +204,23 @@ impl Client {
 
     /// This client, sending `token` with every call.
     #[must_use]
-    pub fn with_token(mut self, token: Option<String>) -> Self {
+    pub(crate) fn with_token(mut self, token: Option<String>) -> Self {
         self.token = token.filter(|t| !t.is_empty());
         self
     }
 
     /// Whether calls are made as an account.
-    pub fn logged_in(&self) -> bool {
+    pub(crate) fn logged_in(&self) -> bool {
         self.token.is_some()
     }
 
     /// The server's origin.
-    pub fn origin(&self) -> &str {
+    pub(crate) fn origin(&self) -> &str {
         &self.origin
     }
 
     /// The server's host, as an account's `@name@host` is written.
-    pub fn host(&self) -> &str {
+    pub(crate) fn host(&self) -> &str {
         authority(&self.origin)
     }
 
@@ -375,7 +375,7 @@ impl Client {
                 let when = r
                     .reset
                     .as_deref()
-                    .map(crate::clock::local_time)
+                    .map(terminal_kit::clock::local_time)
                     .map(|t| format!(" (it takes calls again at {t})"))
                     .unwrap_or_default();
                 err.with_hint(format!(
@@ -409,7 +409,7 @@ impl Client {
 
     /// `GET /api/v1/accounts/lookup`: the account `acct` (`name`, or
     /// `name@host` for one of another server) as this server knows it.
-    pub fn lookup(&self, acct: &str) -> Result<Account> {
+    pub(crate) fn lookup(&self, acct: &str) -> Result<Account> {
         let v = self.get_one("v1/accounts/lookup", &[("acct", acct.to_string())])?;
         serde_json::from_value(v)
             .map_err(|e| Error::api(format!("v1/accounts/lookup: unexpected answer: {e}")))
@@ -418,7 +418,7 @@ impl Client {
     /// `GET /api/v2/search` for the account `acct`, asking the server to
     /// fetch it from its own when it does not know it yet (`resolve`, which
     /// takes a login): what `lookup` cannot find of another server.
-    pub fn resolve_account(&self, acct: &str) -> Result<Option<Account>> {
+    pub(crate) fn resolve_account(&self, acct: &str) -> Result<Option<Account>> {
         let found = self.search(&format!("@{acct}"), "accounts", true, 1, 0)?;
         Ok(found.accounts.into_iter().find(|a| {
             a.acct.eq_ignore_ascii_case(acct) || acct.split('@').next() == Some(a.acct.as_str())
@@ -427,7 +427,7 @@ impl Client {
 
     /// `GET /api/v1/accounts/:id/statuses`: a page of an account's
     /// statuses, newest first, older than `max_id` when given.
-    pub fn account_statuses(
+    pub(crate) fn account_statuses(
         &self,
         id: &str,
         filter: &StatusFilter,
@@ -449,7 +449,7 @@ impl Client {
     }
 
     /// `GET /api/v1/statuses/:id`: one status.
-    pub fn status(&self, id: &str) -> Result<Status> {
+    pub(crate) fn status(&self, id: &str) -> Result<Status> {
         let path = format!("v1/statuses/{}", path_part(id));
         let v = self.get_one(&path, &[])?;
         serde_json::from_value(v).map_err(|e| Error::api(format!("{path}: unexpected answer: {e}")))
@@ -457,7 +457,7 @@ impl Client {
 
     /// `GET /api/v1/statuses/:id/context`: what status `id` answers, and
     /// the replies under it.
-    pub fn context(&self, id: &str) -> Result<Context> {
+    pub(crate) fn context(&self, id: &str) -> Result<Context> {
         let path = format!("v1/statuses/{}/context", path_part(id));
         let v = self.get_one(&path, &[])?;
         serde_json::from_value(v).map_err(|e| Error::api(format!("{path}: unexpected answer: {e}")))
@@ -466,7 +466,7 @@ impl Client {
     /// A timeline (`v1/timelines/home`, `v1/timelines/public` with
     /// `extra` saying which part of it, `v1/timelines/tag/<tag>`): a page,
     /// newest first, older than `max_id` when given.
-    pub fn timeline(
+    pub(crate) fn timeline(
         &self,
         path: &str,
         extra: &[(&str, &str)],
@@ -484,7 +484,7 @@ impl Client {
     /// `GET /api/v2/search`: the accounts or statuses (`kind`) that match
     /// `q`, from the `offset`th on; `resolve` asks the server to fetch what
     /// an address names from its own server.
-    pub fn search(
+    pub(crate) fn search(
         &self,
         q: &str,
         kind: &str,
@@ -511,7 +511,11 @@ impl Client {
     /// `GET /api/v1/notifications`: a page of the account's notifications,
     /// newest first, older than `max_id` when given. Reading them marks
     /// nothing.
-    pub fn notifications(&self, limit: usize, max_id: Option<&str>) -> Result<Page<Notification>> {
+    pub(crate) fn notifications(
+        &self,
+        limit: usize,
+        max_id: Option<&str>,
+    ) -> Result<Page<Notification>> {
         let mut q = vec![("limit", limit.clamp(1, MAX_PAGE).to_string())];
         if let Some(m) = max_id {
             q.push(("max_id", m.to_string()));
@@ -520,7 +524,7 @@ impl Client {
     }
 
     /// `GET /api/v1/accounts/verify_credentials`: the account the token is of.
-    pub fn me(&self) -> Result<Account> {
+    pub(crate) fn me(&self) -> Result<Account> {
         let v = self.get_one("v1/accounts/verify_credentials", &[])?;
         serde_json::from_value(v).map_err(|e| {
             Error::api(format!(
@@ -532,7 +536,7 @@ impl Client {
     /// The limits of a post on this server: `GET /api/v2/instance`, else
     /// `/api/v1/instance` on a version before 4.0, else Mastodon's defaults,
     /// which `POST /api/v1/statuses` then decides.
-    pub fn limits(&self) -> Limits {
+    pub(crate) fn limits(&self) -> Limits {
         self.get_one("v2/instance", &[])
             .or_else(|_| self.get_one("v1/instance", &[]))
             .map(|v| Limits::from_instance(&v))
@@ -541,7 +545,11 @@ impl Client {
 
     /// `POST /api/v1/apps`: register mstdn as an app that sends the code
     /// back to `redirect_uris`, with `scopes`.
-    pub fn register_app(&self, redirect_uris: &[String], scopes: &str) -> Result<Registered> {
+    pub(crate) fn register_app(
+        &self,
+        redirect_uris: &[String],
+        scopes: &str,
+    ) -> Result<Registered> {
         let (_, v) = self.post(
             "v1/apps",
             &json!({
@@ -565,7 +573,10 @@ impl Client {
 
     /// `POST /oauth/token` with `form`: the token, or the server's refusal
     /// (a code already used, an app it no longer knows). Sent once.
-    pub fn token(&self, form: &[(&str, &str)]) -> Result<std::result::Result<Token, Refusal>> {
+    pub(crate) fn token(
+        &self,
+        form: &[(&str, &str)],
+    ) -> Result<std::result::Result<Token, Refusal>> {
         let url = format!("{}/oauth/token", self.origin);
         let answer = self.exchange("oauth/token", false, &|| {
             self.agent.post(&url).send_form(form.iter().copied())
@@ -589,7 +600,7 @@ impl Client {
     /// The server may answer before it has processed the file (202); the
     /// attachment is returned either way, and [`Client::media`] says when
     /// it is ready. Sent once, as every write is.
-    pub fn upload(
+    pub(crate) fn upload(
         &self,
         name: &str,
         data: &[u8],
@@ -633,7 +644,7 @@ impl Client {
 
     /// `GET /api/v1/media/:id`: whether the attachment is processed (200;
     /// 206 while it is not yet).
-    pub fn media(&self, id: &str) -> Result<bool> {
+    pub(crate) fn media(&self, id: &str) -> Result<bool> {
         let path = format!("v1/media/{}", path_part(id));
         let url = format!("{}/api/{path}", self.origin);
         match self.exchange(&path, true, &|| self.signed(self.agent.get(&url)).call())? {
@@ -646,7 +657,7 @@ impl Client {
 
     /// `POST /api/v1/statuses`: post a status; the status the server made.
     /// `key` goes as the `Idempotency-Key`.
-    pub fn create_status(&self, body: &Value, key: &str) -> Result<Status> {
+    pub(crate) fn create_status(&self, body: &Value, key: &str) -> Result<Status> {
         let (_, v) = self.post("v1/statuses", body, Some(key))?;
         serde_json::from_value::<Status>(v)
             .ok()
@@ -657,7 +668,7 @@ impl Client {
 
 /// Which statuses of an account `account_statuses` asks for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct StatusFilter {
+pub(crate) struct StatusFilter {
     /// Leave out replies to others (Mastodon keeps replies to oneself).
     pub exclude_replies: bool,
     pub exclude_reblogs: bool,
@@ -666,7 +677,7 @@ pub struct StatusFilter {
 }
 
 /// Where the `Link` header `link` says the next page starts.
-pub fn next_of(link: Option<&str>) -> Next {
+pub(crate) fn next_of(link: Option<&str>) -> Next {
     let Some(link) = link.filter(|l| !l.trim().is_empty()) else {
         return Next::Unsaid;
     };
@@ -722,7 +733,7 @@ fn percent_decode(s: &str) -> String {
 
 /// `s` as it may stand in a query or a form, every byte but the
 /// unreserved ones escaped.
-pub fn percent_encode(s: &str) -> String {
+pub(crate) fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
@@ -755,7 +766,7 @@ fn transport(what: &str, e: &ureq::Error) -> Error {
 }
 
 /// `prefix` and 32 random hex digits: a boundary no file holds, a key, a state.
-pub fn random_hex(prefix: &str) -> Result<String> {
+pub(crate) fn random_hex(prefix: &str) -> Result<String> {
     let mut b = [0u8; 16];
     getrandom::fill(&mut b).map_err(|e| Error::io(format!("no randomness: {e}")))?;
     let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();

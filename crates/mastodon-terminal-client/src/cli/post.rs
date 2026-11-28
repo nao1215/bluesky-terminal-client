@@ -19,7 +19,7 @@ use crate::error::{Error, Result};
 use crate::text::{drawable, one_line};
 
 /// The most pictures a post has, as bsky's and msky's `post` take them.
-pub const MAX_IMAGES: usize = 4;
+pub(super) const MAX_IMAGES: usize = 4;
 
 /// How long the post waits for the server to process its files.
 const PROCESSING_TIMEOUT: Duration = Duration::from_secs(300);
@@ -27,7 +27,7 @@ const PROCESSING_TIMEOUT: Duration = Duration::from_secs(300);
 /// Who may see a post, by the names Mastodon's API gives them; msky's
 /// names are taken too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum Visibility {
+pub(crate) enum Visibility {
     /// Everyone, on every timeline.
     Public,
     /// Everyone, but not on the public timelines (quiet public).
@@ -42,7 +42,7 @@ pub enum Visibility {
 
 impl Visibility {
     /// Its name, as Mastodon's API takes it.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Visibility::Public => "public",
             Visibility::Unlisted => "unlisted",
@@ -54,7 +54,7 @@ impl Visibility {
 
 /// What `mstdn post` was given.
 #[derive(Debug, Clone)]
-pub struct PostArgs {
+pub(crate) struct PostArgs {
     pub text: String,
     pub images: Vec<PathBuf>,
     pub alts: Vec<String>,
@@ -68,12 +68,12 @@ pub struct PostArgs {
 
 /// Time as the wait for processed files sees it, so the tests wait
 /// without sleeping.
-pub trait Clock {
+pub(super) trait Clock {
     fn sleep(&mut self, d: Duration);
 }
 
 /// The clock on the wall.
-pub struct WallClock;
+pub(super) struct WallClock;
 
 impl Clock for WallClock {
     fn sleep(&mut self, d: Duration) {
@@ -99,7 +99,7 @@ fn graphemes(s: &str) -> usize {
 /// another server (`@name@host`) as `@name`. As Mastodon does, the text is
 /// counted with each address put as that many `x` and each mention as
 /// `@name`.
-pub fn counted(text: &str, per_url: usize) -> usize {
+pub(crate) fn counted(text: &str, per_url: usize) -> usize {
     let mut countable = String::with_capacity(text.len());
     let mut prev: Option<char> = None;
     let mut i = 0;
@@ -333,7 +333,7 @@ fn replied(ctx: &Ctx, client: &Client, typed: &str, at: Option<&str>, id: &str) 
 }
 
 /// `mstdn post`.
-pub fn post(
+pub(super) fn post(
     ctx: &Ctx,
     out: &mut dyn Write,
     a: &PostArgs,

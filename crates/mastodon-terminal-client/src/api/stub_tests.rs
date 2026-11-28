@@ -33,12 +33,12 @@ pub(crate) struct Call {
 }
 
 impl Call {
-    pub fn path(&self) -> &str {
+    pub(crate) fn path(&self) -> &str {
         self.target.split('?').next().unwrap_or("")
     }
 
     /// The value of `name` in the query, decoded.
-    pub fn query(&self, name: &str) -> Option<String> {
+    pub(crate) fn query(&self, name: &str) -> Option<String> {
         let q = self.target.split_once('?')?.1;
         q.split('&')
             .filter_map(|kv| kv.split_once('='))

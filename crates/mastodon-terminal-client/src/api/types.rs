@@ -8,7 +8,7 @@ use serde::Deserialize;
 /// An account (`Account`).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Account {
+pub(crate) struct Account {
     pub id: String,
     /// The name without the server.
     pub username: String,
@@ -30,7 +30,7 @@ pub struct Account {
 impl Account {
     /// The server the account is on: the one after `@` in `acct`, else
     /// `local`, the host of the server asked.
-    pub fn host<'a>(&'a self, local: &'a str) -> &'a str {
+    pub(crate) fn host<'a>(&'a self, local: &'a str) -> &'a str {
         match self.acct.split_once('@') {
             Some((_, h)) if !h.is_empty() => h,
             _ => local,
@@ -41,7 +41,7 @@ impl Account {
 /// A file attached to a status (`MediaAttachment`).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Media {
+pub(crate) struct Media {
     pub id: String,
     /// `image`, `gifv`, `video`, `audio` or `unknown`.
     #[serde(rename = "type")]
@@ -58,7 +58,7 @@ pub struct Media {
 impl Media {
     /// The address to fetch the file from: the server's copy, else the
     /// one on the server it came from.
-    pub fn source(&self) -> Option<&str> {
+    pub(crate) fn source(&self) -> Option<&str> {
         [self.url.as_deref(), self.remote_url.as_deref()]
             .into_iter()
             .flatten()
@@ -70,7 +70,7 @@ impl Media {
 /// An account a status mentions.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Mention {
+pub(crate) struct Mention {
     pub id: String,
     pub username: String,
     pub acct: String,
@@ -80,7 +80,7 @@ pub struct Mention {
 /// A hashtag a status has.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Tag {
+pub(crate) struct Tag {
     pub name: String,
     pub url: String,
 }
@@ -88,7 +88,7 @@ pub struct Tag {
 /// One choice of a poll.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct PollOption {
+pub(crate) struct PollOption {
     pub title: String,
     pub votes_count: Option<u64>,
 }
@@ -96,7 +96,7 @@ pub struct PollOption {
 /// A poll.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Poll {
+pub(crate) struct Poll {
     pub expired: bool,
     pub votes_count: u64,
     pub options: Vec<PollOption>,
@@ -105,7 +105,7 @@ pub struct Poll {
 /// A post (`Status`).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Status {
+pub(crate) struct Status {
     pub id: String,
     pub created_at: String,
     /// The ActivityPub address of the status, on its own server.
@@ -136,13 +136,13 @@ pub struct Status {
 
 impl Status {
     /// What a reader sees: the status a boost boosts, else the status.
-    pub fn shown(&self) -> &Status {
+    pub(crate) fn shown(&self) -> &Status {
         self.reblog.as_deref().unwrap_or(self)
     }
 
     /// The files of the status shown, each with the status it is attached
     /// to and its place there from 1.
-    pub fn attached(&self) -> Vec<(&Status, usize, &Media)> {
+    pub(crate) fn attached(&self) -> Vec<(&Status, usize, &Media)> {
         let s = self.shown();
         s.media_attachments
             .iter()
@@ -155,7 +155,7 @@ impl Status {
 /// A notification.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Notification {
+pub(crate) struct Notification {
     pub id: String,
     #[serde(rename = "type")]
     pub kind: String,
@@ -167,7 +167,7 @@ pub struct Notification {
 /// The context of a status: what it answers, and the replies under it.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Context {
+pub(crate) struct Context {
     pub ancestors: Vec<Status>,
     pub descendants: Vec<Status>,
 }
@@ -175,7 +175,7 @@ pub struct Context {
 /// What `/api/v2/search` answers.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct Found {
+pub(crate) struct Found {
     pub accounts: Vec<Account>,
     pub statuses: Vec<Status>,
 }
@@ -183,7 +183,7 @@ pub struct Found {
 /// What `POST /api/v1/apps` answers.
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Registered {
+pub(crate) struct Registered {
     pub client_id: String,
     pub client_secret: String,
 }
@@ -191,7 +191,7 @@ pub struct Registered {
 /// What `POST /oauth/token` answers. No `Debug`: it holds the token.
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Token {
+pub(crate) struct Token {
     pub access_token: String,
     pub scope: String,
 }
@@ -199,7 +199,7 @@ pub struct Token {
 /// The limits `/api/v2/instance` names for a post, each with Mastodon's
 /// default for a server that does not say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Limits {
+pub(crate) struct Limits {
     pub max_characters: usize,
     pub characters_reserved_per_url: usize,
     pub max_media_attachments: usize,
@@ -224,7 +224,7 @@ impl Default for Limits {
 impl Limits {
     /// The limits in an instance's `configuration`, the defaults for what
     /// it leaves out.
-    pub fn from_instance(v: &serde_json::Value) -> Limits {
+    pub(crate) fn from_instance(v: &serde_json::Value) -> Limits {
         let d = Limits::default();
         let c = &v["configuration"];
         let n = |v: &serde_json::Value| {

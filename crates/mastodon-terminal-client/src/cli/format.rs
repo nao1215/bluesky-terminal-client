@@ -6,14 +6,14 @@
 use serde_json::{Value, json};
 
 use crate::api::types::{Account, Media, Notification, Status};
-pub use crate::clock::local_time as time;
 use crate::html;
 use crate::text::{drawable, one_line};
+pub(crate) use terminal_kit::clock::local_time as time;
 
 /// The address of a status on the server at `origin`: `/@acct/ID`, which
 /// that server shows a status of another server at too, so the next
 /// command reads it there.
-pub fn status_url(origin: &str, s: &Status) -> String {
+pub(crate) fn status_url(origin: &str, s: &Status) -> String {
     format!("{origin}/@{}/{}", s.account.acct, s.id)
 }
 
@@ -102,7 +102,7 @@ fn body(s: &Status, out: &mut String) {
 /// A status: who and when, its warning and text, what it carries, its
 /// counts, its address. A boost shows the status it boosts, under a line
 /// that says who boosted it, as msky says who renoted a note.
-pub fn status(s: &Status, origin: &str) -> String {
+pub(crate) fn status(s: &Status, origin: &str) -> String {
     let mut out = String::new();
     let shown = s.shown();
     if s.reblog.is_some() {
@@ -138,7 +138,7 @@ fn user_json(a: &Account, origin: &str) -> Value {
 
 /// A status as `--json` prints it, its `user` as [`user_json`] puts it and
 /// its text as [`html::to_text`] reads it (`content` keeps the HTML).
-pub fn status_json(s: &Status, origin: &str) -> Value {
+pub(crate) fn status_json(s: &Status, origin: &str) -> Value {
     let files: Vec<Value> = s
         .media_attachments
         .iter()
@@ -185,7 +185,7 @@ pub fn status_json(s: &Status, origin: &str) -> Value {
 
 /// An account, as `whoami` and `profile` print it: who, with the server's
 /// host, its address, its counts and what it says about itself.
-pub fn account(a: &Account, origin: &str) -> String {
+pub(crate) fn account(a: &Account, origin: &str) -> String {
     let host = a.host(crate::api::authority(origin));
     let name = one_line(&a.display_name);
     let handle = format!("@{}@{host}", one_line(&a.username));
@@ -214,7 +214,7 @@ pub fn account(a: &Account, origin: &str) -> String {
 
 /// An account as `whoami --json` and `profile --json` print it: a status's
 /// `user` with its address, what it says about itself and its counts.
-pub fn account_json(a: &Account, origin: &str) -> Value {
+pub(crate) fn account_json(a: &Account, origin: &str) -> Value {
     let mut v = user_json(a, origin);
     v["url"] = json!(account_url(a, origin));
     v["description"] = json!(html::to_text(&a.note));
@@ -249,7 +249,7 @@ fn happened(n: &Notification) -> String {
 /// A notification: who did what and when, the status it is about (its
 /// warning and text), and the address to go on from: the status's, else
 /// the account's.
-pub fn notification(n: &Notification, origin: &str) -> String {
+pub(crate) fn notification(n: &Notification, origin: &str) -> String {
     let did = happened(n);
     let mut out = match &n.account {
         Some(a) => format!("{} {did} · {}\n", who(a), time(&n.created_at)),
@@ -268,7 +268,7 @@ pub fn notification(n: &Notification, origin: &str) -> String {
 /// A notification as `notifications --json` prints it: what happened, who
 /// did it (a status's `user`, or null), and the status it is about in the
 /// shape every command prints (or null).
-pub fn notification_json(n: &Notification, origin: &str) -> Value {
+pub(crate) fn notification_json(n: &Notification, origin: &str) -> Value {
     json!({
         "id": n.id,
         "createdAt": n.created_at,

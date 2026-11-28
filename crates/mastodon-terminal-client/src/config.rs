@@ -23,15 +23,15 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 
 /// Environment variable that overrides the config directory.
-pub const CONFIG_DIR_ENV: &str = "MSTDN_CONFIG_DIR";
+pub(crate) const CONFIG_DIR_ENV: &str = "MSTDN_CONFIG_DIR";
 
 /// Environment variable holding an access token to use instead of the
 /// saved logins: one made in the server's settings (Preferences,
 /// Development), for a run with no one at the keyboard, such as a CI job.
-pub const TOKEN_ENV: &str = "MSTDN_TOKEN";
+pub(crate) const TOKEN_ENV: &str = "MSTDN_TOKEN";
 
 /// The token `MSTDN_TOKEN` holds, if it holds one.
-pub fn env_token() -> Option<String> {
+pub(crate) fn env_token() -> Option<String> {
     std::env::var(TOKEN_ENV)
         .ok()
         .map(|t| t.trim().to_string())
@@ -45,7 +45,7 @@ const APPS_DIR: &str = "apps";
 /// An account logged in on one server. Its `Debug` leaves the token out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Session {
+pub(crate) struct Session {
     /// The server's origin, `https://mastodon.social`, as `normalize_host`
     /// puts it.
     pub service: String,
@@ -73,13 +73,13 @@ impl std::fmt::Debug for Session {
 
 impl Session {
     /// The server's host (and port), as an account's `@name@host` is written.
-    pub fn host(&self) -> &str {
+    pub(crate) fn host(&self) -> &str {
         crate::api::authority(&self.service)
     }
 
     /// Whether the token may do `scope` (`write:statuses`): it was given
     /// the scope itself, or the whole of `write` or `read` it is part of.
-    pub fn allows(&self, scope: &str) -> bool {
+    pub(crate) fn allows(&self, scope: &str) -> bool {
         let top = scope.split(':').next().unwrap_or(scope);
         self.scopes.iter().any(|s| s == scope || s == top)
     }
@@ -88,7 +88,7 @@ impl Session {
 /// The app mstdn registered on one server. Its `Debug` leaves the secret out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct App {
+pub(crate) struct App {
     /// The server's origin.
     pub service: String,
     pub client_id: String,
@@ -113,7 +113,7 @@ impl std::fmt::Debug for App {
 }
 
 /// The config directory from the environment.
-pub fn config_dir() -> Result<PathBuf> {
+pub(crate) fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
@@ -137,14 +137,14 @@ struct Current {
 /// under `accounts/`, `accounts.json` naming the one in use, and the apps
 /// registered under `apps/`.
 #[derive(Debug, Clone)]
-pub struct AccountStore {
+pub(crate) struct AccountStore {
     dir: PathBuf,
 }
 
 impl AccountStore {
     /// The accounts of the config directory `dir`; nothing is touched
     /// until a read or write.
-    pub fn open(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn open(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
@@ -153,7 +153,7 @@ impl AccountStore {
     }
 
     /// The file of the account on `host`.
-    pub fn path_for(&self, host: &str) -> PathBuf {
+    pub(crate) fn path_for(&self, host: &str) -> PathBuf {
         self.accounts_dir()
             .join(format!("{}.json", file_stem(&host.to_ascii_lowercase())))
     }
@@ -166,12 +166,12 @@ impl AccountStore {
     }
 
     /// The account logged in on `host`, or `None`.
-    pub fn find(&self, host: &str) -> Result<Option<Session>> {
+    pub(crate) fn find(&self, host: &str) -> Result<Option<Session>> {
         load(&self.path_for(host), "login")
     }
 
     /// Every account, by host.
-    pub fn list(&self) -> Result<Vec<Session>> {
+    pub(crate) fn list(&self) -> Result<Vec<Session>> {
         let mut all = Vec::new();
         for path in self.account_files()? {
             if let Some(s) = load::<Session>(&path, "login")? {
@@ -183,7 +183,7 @@ impl AccountStore {
     }
 
     /// The account in use: the one `accounts.json` names, else the first.
-    pub fn current(&self) -> Result<Option<Session>> {
+    pub(crate) fn current(&self) -> Result<Option<Session>> {
         if let Some(host) = self.read_current().current
             && let Some(s) = self.find(&host)?
         {
@@ -193,43 +193,43 @@ impl AccountStore {
     }
 
     /// Save an account, making it the one in use.
-    pub fn save(&self, session: &Session) -> Result<()> {
+    pub(crate) fn save(&self, session: &Session) -> Result<()> {
         save_json(&self.path_for(session.host()), session)?;
         self.write_current(Some(session.host()))
     }
 
     /// The app registered on `host`, if one is saved and can be read. One
     /// that cannot is registered again, so it is not an error.
-    pub fn app(&self, host: &str) -> Option<App> {
+    pub(crate) fn app(&self, host: &str) -> Option<App> {
         load(&self.app_path(host), "app").ok().flatten()
     }
 
     /// Save the app registered on its server.
-    pub fn save_app(&self, app: &App) -> Result<()> {
+    pub(crate) fn save_app(&self, app: &App) -> Result<()> {
         save_json(&self.app_path(crate::api::authority(&app.service)), app)
     }
 
     /// Forget the app registered on `host`: the server no longer knows it.
-    pub fn remove_app(&self, host: &str) -> Result<()> {
+    pub(crate) fn remove_app(&self, host: &str) -> Result<()> {
         remove_file(&self.app_path(host)).map(drop)
     }
 
     /// Make the account on `host` the one in use, as `mstdn accounts --use`
     /// does.
-    pub fn set_current(&self, host: &str) -> Result<()> {
+    pub(crate) fn set_current(&self, host: &str) -> Result<()> {
         self.write_current(Some(&host.to_ascii_lowercase()))
     }
 
     /// The host `accounts.json` names as the one in use, without reading
     /// its account's file.
-    pub fn current_host(&self) -> Option<String> {
+    pub(crate) fn current_host(&self) -> Option<String> {
         self.read_current().current
     }
 
     /// Log the account on `host` out: its file goes, one that cannot be
     /// read too. When it was the one in use, the next one by host is.
     /// Returns whether there was a file.
-    pub fn remove(&self, host: &str) -> Result<bool> {
+    pub(crate) fn remove(&self, host: &str) -> Result<bool> {
         let existed = remove_file(&self.path_for(host))?;
         let current = self.read_current().current;
         if current
@@ -245,7 +245,7 @@ impl AccountStore {
     /// Log every account out, one whose file cannot be read too (that is
     /// the way out of it). Each is returned with its host, by host; one that
     /// could not be read is named by its file.
-    pub fn remove_all(&self) -> Result<Vec<(Option<Session>, String)>> {
+    pub(crate) fn remove_all(&self) -> Result<Vec<(Option<Session>, String)>> {
         let mut gone = Vec::new();
         for path in self.account_files()? {
             let was = load::<Session>(&path, "login").ok().flatten();

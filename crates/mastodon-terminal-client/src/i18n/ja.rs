@@ -1,6 +1,6 @@
 //! Translations into Japanese, by the English they translate.
 
-pub const TABLE: &[(&str, &str)] = &[
+pub(super) const TABLE: &[(&str, &str)] = &[
     ("(opened in the web browser)", "(ブラウザで開きました)"),
     (
         "mstdn is logged in. You can close this tab and go back to the terminal.",
