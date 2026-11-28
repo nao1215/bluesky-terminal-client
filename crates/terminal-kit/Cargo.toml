@@ -17,7 +17,9 @@ test-support = []
 
 [dependencies]
 dirs.workspace = true
-crossterm.workspace = true
+# Use level-triggered polling: crossterm 0.29's mio reader discards the
+# remaining readiness notifications when it returns the first event.
+crossterm = { workspace = true, features = ["use-dev-tty"] }
 fast_image_resize.workspace = true
 image = { workspace = true, features = ["gif", "jpeg", "png", "webp"] }
 openh264.workspace = true
@@ -36,6 +38,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 tempfile.workspace = true
 proptest.workspace = true
 rstest.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2"
 
 [lints]
 workspace = true

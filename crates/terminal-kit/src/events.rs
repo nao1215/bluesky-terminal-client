@@ -1,5 +1,9 @@
 //! Reading input events.
 //!
+//! Unix uses crossterm's `use-dev-tty` reader (level-triggered poll). Its
+//! default mio reader can return a resize and discard a simultaneously
+//! ready key's edge, leaving that key unread until another key arrives.
+//!
 //! Everywhere but Windows this is crossterm's `poll` and `read`. On Windows,
 //! crossterm 0.29 drops every character outside the Basic Multilingual Plane
 //! (emoji, most of all): a terminal sends such a character as two UTF-16
@@ -16,6 +20,9 @@ use std::time::Duration;
 #[cfg(not(windows))]
 use crossterm::event;
 use crossterm::event::Event;
+
+#[cfg(all(test, target_os = "linux"))]
+mod unix_tests;
 
 /// The input events of the terminal the program runs in.
 pub struct Input {
@@ -46,12 +53,16 @@ impl Input {
         drain(limit, wait, |wait| self.next(wait), handle)
     }
 
-    /// The next event, waiting at most `wait` for one.
+    /// The next event, waiting at most `wait` for one. Unix rounds the timeout
+    /// up to 1 ms; already available events return immediately.
     pub fn next(&mut self, wait: Duration) -> io::Result<Option<Event>> {
         #[cfg(windows)]
         return self.console.next(wait);
         #[cfg(not(windows))]
-        return if event::poll(wait)? {
+        // The use-dev-tty reader skips polling altogether for a zero timeout,
+        // including its buffered events. Give it a positive millisecond (the
+        // underlying poll's resolution); ready input still returns immediately.
+        return if event::poll(wait.max(Duration::from_millis(1)))? {
             event::read().map(Some)
         } else {
             Ok(None)
