@@ -1,0 +1,38 @@
+[package]
+name = "nostr-terminal-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version = "1.90"
+authors.workspace = true
+description = "Nostr commands for reading profiles, timelines and notifications, and publishing signed text notes."
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+keywords = ["nostr", "cli", "terminal"]
+categories = ["command-line-utilities"]
+publish = false
+
+[[bin]]
+name = "nstr"
+path = "src/main.rs"
+
+[dependencies]
+bech32 = "0.11"
+clap.workspace = true
+dirs.workspace = true
+hex = "0.4"
+jiff.workspace = true
+k256 = { version = "0.14", default-features = false, features = ["schnorr", "std"] }
+serde.workspace = true
+serde_json.workspace = true
+terminal-kit = { path = "../terminal-kit", version = "0.1.0" }
+tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+url = "2"
+zeroize = "1"
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

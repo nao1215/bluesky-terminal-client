@@ -1,0 +1,10 @@
+# The commands, aliases and flags of nstr, from its --help.
+# Written by `python3 scripts/rules/cli.py --update`; do not edit by hand.
+# What each is for is in usecases.toml.
+--json
+notifications
+notifications --limit (-n)
+post
+timeline
+timeline --limit (-n)
+whoami

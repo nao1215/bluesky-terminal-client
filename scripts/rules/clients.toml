@@ -12,3 +12,7 @@ tui = true
 [mstdn]
 crate = "crates/mastodon-terminal-client"
 tui = false
+
+[nstr]
+crate = "crates/nostr-terminal-client"
+tui = false

@@ -49,8 +49,12 @@ e2e-msky *ARGS:
 e2e-mstdn *ARGS:
     ./crates/mastodon-terminal-client/e2e/run.sh {{ARGS}}
 
+# Run nstr's end-to-end suite with atago (builds nstr, needs atago and python3 on PATH)
+e2e-nstr *ARGS:
+    ./crates/nostr-terminal-client/e2e/run.sh {{ARGS}}
+
 # Run every end-to-end suite
-e2e: e2e-bsky e2e-msky e2e-mstdn
+e2e: e2e-bsky e2e-msky e2e-mstdn e2e-nstr
 
 # The rules CI checks in .github/workflows/rules.yml (needs npx, cargo-machete, cargo-public-api and the nightly public_api.sh names)
 rules:
