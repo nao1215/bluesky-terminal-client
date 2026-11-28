@@ -11,10 +11,7 @@ use crate::{
     output,
 };
 use k256::{
-    elliptic_curve::{
-        Generate,
-        common::{getrandom::SysRng, rand_core::TryRng},
-    },
+    elliptic_curve::{Generate, common::getrandom::SysRng},
     schnorr::SigningKey,
 };
 use serde::{Deserialize, Serialize};
@@ -22,9 +19,7 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 
 fn random() -> Result<[u8; 32]> {
-    let mut bytes = [0; 32];
-    SysRng.try_fill_bytes(&mut bytes).map_err(Error::file)?;
-    Ok(bytes)
+    <[u8; 32]>::try_generate_from_rng(&mut SysRng).map_err(Error::file)
 }
 fn obscured_time() -> Result<u64> {
     let r = random()?;
