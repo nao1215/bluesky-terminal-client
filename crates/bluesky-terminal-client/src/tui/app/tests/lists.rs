@@ -195,11 +195,15 @@ fn a_page_for_an_old_query_is_dropped() {
         result: Ok(page(vec![post("at://s/1", "did:plc:x", false)], Some("c1"))),
     });
     assert_eq!(app.handle_key(key('j')).len(), 1);
-    // A new search starts before the page arrives.
+    // A new search replaces the old list before the page arrives.
     app.handle_key(key('/'));
     app.handle_key(ctrl('u'));
     type_str(&mut app, "new");
     app.handle_key(code(KeyCode::Enter));
+    app.handle_event(Event::SearchPosts {
+        query: "new".into(),
+        result: Ok(Vec::new().into()),
+    });
     app.handle_event(Event::More {
         feed: Feed::SearchPosts("old".into()),
         cursor: "c1".into(),
@@ -259,7 +263,7 @@ fn each_search_list_pages_with_its_own_query() {
         query: "a".into(),
         result: Ok(page(vec![post("at://s/1", "did:plc:x", false)], Some("pa"))),
     });
-    // Accounts for "b", then back to the posts for "a" without searching.
+    // A failed account search keeps the posts for "a" and their cursor.
     app.handle_key(key('/'));
     app.handle_key(ctrl('t'));
     app.handle_key(ctrl('u'));
@@ -267,7 +271,7 @@ fn each_search_list_pages_with_its_own_query() {
     app.handle_key(code(KeyCode::Enter));
     app.handle_event(Event::SearchActors {
         query: "b".into(),
-        result: Ok(Vec::new().into()),
+        result: Err(Error::api("search unavailable")),
     });
     app.handle_key(key('/'));
     app.handle_key(ctrl('t'));
@@ -318,12 +322,12 @@ fn logging_in_as_someone_else_forgets_the_last_account() {
 fn a_tab_still_loading_is_not_asked_for_again() {
     let mut app = logged_in();
     // The notifications are on their way since the start.
-    assert!(app.handle_key(key('4')).is_empty());
+    assert!(app.handle_key(key('3')).is_empty());
+    app.handle_key(key('1'));
+    assert!(app.handle_key(key('3')).is_empty());
+    assert_eq!(app.handle_key(key('4')).len(), 1);
     app.handle_key(key('1'));
     assert!(app.handle_key(key('4')).is_empty());
-    assert_eq!(app.handle_key(key('5')).len(), 1);
-    app.handle_key(key('1'));
-    assert!(app.handle_key(key('5')).is_empty());
 }
 
 #[test]
@@ -338,7 +342,7 @@ fn search_keys_do_not_reach_behind_a_thread() {
     });
     app.handle_key(key('v'));
     app.handle_key(key('i'));
-    assert!(!app.search.editing);
+    assert!(!matches!(app.overlay, Some(Overlay::Search)));
     assert!(app.handle_key(key('t')).is_empty());
     assert_eq!(app.search.mode, SearchMode::Posts);
 }
@@ -385,7 +389,7 @@ fn reloading_the_timeline_keeps_the_pages_loaded_and_the_selection() {
 #[test]
 fn a_next_page_of_an_earlier_search_does_not_leave_the_list_waiting() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('/'));
     type_str(&mut app, "a");
     app.handle_key(code(KeyCode::Enter));
     let posts: Vec<Post> = (0..15)

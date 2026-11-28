@@ -178,12 +178,17 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if let Some(th) = app.threads.last_mut() {
         let me = app.session.as_ref().map(|s| s.did.as_str());
         draw_thread(frame, body, th, images, PostContext { me, inline }, &t);
+    } else if matches!(app.overlay, Some(Overlay::Search)) {
+        // The box's hints can change the height available to the list. Do
+        // not let drawing underneath it move the saved scroll position.
+        draw_tab(frame, body, &mut app.clone(), images, &t);
     } else {
         draw_tab(frame, body, app, images, &t);
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
     draw_status(frame, status_row, app, images);
     match &mut app.overlay {
+        Some(Overlay::Search) => draw_search_box(frame, body, &app.search, &t),
         Some(Overlay::Compose(c)) => {
             draw_compose(frame, area, c, images, &t);
             if let Some(b) = &mut c.browser {
@@ -251,7 +256,7 @@ fn draw_screen(frame: &mut Frame, app: &mut App, images: &mut Images) {
     if !viewer_video && !inline_playing {
         images.stop_video();
     }
-    if let Some(s) = app.status.as_ref().filter(|s| s.error) {
+    if let Some(s) = app.status.as_ref().filter(|s| s.error && s.popup) {
         draw_error(frame, area, &s.text, &t);
     }
 }
@@ -341,8 +346,10 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, t: &Theme) {
 fn draw_tab(frame: &mut Frame, body: Rect, app: &mut App, images: &mut Images, t: &Theme) {
     let t = *t;
     match app.tab {
+        Tab::Timeline if app.search.active.is_some() => {
+            draw_search_results(frame, body, app, images)
+        }
         Tab::Timeline => draw_timeline(frame, body, app, images, &t),
-        Tab::Search => draw_search(frame, body, app, images),
         Tab::Profile => draw_profile(frame, body, app, images),
         Tab::Notifications => draw_notifications(frame, body, app, images),
         Tab::Columns => draw_columns(frame, body, app, images, &t),
@@ -355,7 +362,11 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     // No name of the app: the tabs start at the edge, and the room is theirs.
     let mut spans = Vec::new();
     for (i, tab) in Tab::ALL.iter().enumerate() {
-        let title = i18n::t(tab.title());
+        let title = if *tab == Tab::Timeline && app.search.active.is_some() {
+            i18n::tf("Search: {}", &[&drawable(app.search_query())])
+        } else {
+            i18n::t(tab.title()).to_string()
+        };
         let label = match (tab, app.unread) {
             (Tab::Notifications, n) if n > 0 => format!(" {} {title} ({n}) ", i + 1),
             (Tab::Chat, _) if app.chat.unread() > 0 => {
@@ -431,14 +442,13 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
         }
     };
     let w = crate::tui::text::cells(&right) as u16;
-    // Errors are drawn in the middle of the screen (draw_error); the row
-    // keeps the passing news, cut short of what is on the right.
-    if let Some(s) = app.status.as_ref().filter(|s| !s.error) {
+    // Search failures stay in this row so the previous results remain visible.
+    if let Some(s) = app.status.as_ref().filter(|s| !s.error || !s.popup) {
         let room = usize::from(area.width.saturating_sub(w + 2));
         frame.render_widget(
             Line::from(Span::styled(
                 format!(" {}", truncate(i18n::t(&s.text), room)),
-                t.ok(),
+                if s.error { t.error() } else { t.ok() },
             )),
             area,
         );

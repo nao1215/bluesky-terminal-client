@@ -82,6 +82,8 @@ Only the selected post's video plays in the timeline, and its thumbnail comes ba
 
 ![two video posts in the timeline, each playing while selected](doc/img/timeline-video.gif)
 
+`/` opens a search box over the list. Enter searches for posts or accounts and shows the results in the timeline area. Results use the same post keys and inline video playback as the timeline. Esc returns to the timeline with its selection and scroll position intact. In account results, Enter or `v` opens a profile, and Esc returns to the results.
+
 `+` on the timeline: your pinned feeds, notifications or a search in columns beside it
 
 ![a feed and notifications added beside the timeline, then scrolled](doc/img/columns.gif)
@@ -99,7 +101,7 @@ Chat, accounts and columns show made-up data served by [doc/demo-server.py](doc/
 
 | Key | Action |
 |---|---|
-| `1` to `5` | Timeline, Chat, Search, Notifications, Profile |
+| `1` to `4` | Timeline, Chat, Notifications, Profile |
 | `+` `x` | Add a column (a pinned feed, notifications, a search), remove one |
 | `j` `k` | Move |
 | `n` `r` `Q` | Post, reply, quote |
@@ -107,7 +109,9 @@ Chat, accounts and columns show made-up data served by [doc/demo-server.py](doc/
 | `M` `B` | Mute, block |
 | `D` | Delete your post |
 | `v` `Space` `o` | Thread, pictures or video, link |
-| `/` | Search |
+| `/` | Open the search box |
+| `Ctrl+T` in the search box | Switch between posts and accounts |
+| `Esc` | Cancel the search box, or return from results to the timeline |
 | `m` | Message the profile shown |
 | `A` `T` `s` | Accounts, themes, settings |
 | `?` `q` | Help, quit |

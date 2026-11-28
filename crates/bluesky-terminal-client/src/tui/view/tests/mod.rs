@@ -13,6 +13,7 @@ mod languages;
 mod panels;
 mod posts_and_help;
 mod screens;
+mod search;
 mod themes_and_lists;
 
 fn render(app: &mut App, w: u16, h: u16) -> String {

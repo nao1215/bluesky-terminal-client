@@ -1,6 +1,13 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter で検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
+    ),
+    ("Esc back to timeline", "Esc タイムラインに戻る"),
+    ("No results for \"{}\"", "「{}」の検索結果はありません"),
+    ("open the search box", "検索ボックスを開く"),
     ("Play videos in the timeline", "タイムラインで動画を再生"),
     (
         "enter turns timeline playback on or off",
@@ -63,7 +70,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "まだ会話はありません。相手のプロフィールで m を押すと始められます。",
     ),
     ("No notifications yet.", "まだ通知はありません。"),
-    ("No posts found.", "投稿が見つかりません。"),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "フォロー中のアカウントの投稿はまだありません。R で更新します。",
@@ -125,7 +131,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "BSKY_ 変数で指定した設定は変更不可",
     ),
-    ("accounts", "アカウント"),
     (
         "accounts: switch, add, log out",
         "アカウント: 切替・追加・ログアウト",
@@ -268,11 +273,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "投稿を削除"),
     ("deleting…", "削除中…"),
     ("do it", "実行"),
-    ("done", "完了"),
     ("download", "保存"),
     ("downloading…", "ダウンロード中…"),
     ("edit profile", "プロフィール編集"),
-    ("edit query", "再入力"),
     ("edit your profile", "プロフィールを編集"),
     ("ended  r plays it again", "終了  r でもう一度再生"),
     ("enter apply  esc cancel", "enter 適用  esc 取消"),
@@ -370,7 +373,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "確定"),
     ("language: {}", "言語: {}"),
-    ("leave the search box", "検索欄を離れる"),
     ("like / remove like", "いいね / 取り消し"),
     ("like it", "いいね"),
     ("like removed", "いいねを取り消しました"),
@@ -459,7 +461,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "次の項目、または画像の代替テキスト",
     ),
-    ("next tab", "次のタブ"),
     ("no account yet", "アカウントがまだありません"),
     (
         "no folders here; space chooses this one",
@@ -550,8 +551,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "投稿しました"),
     ("posts", "投稿"),
-    ("posts / accounts", "投稿 / アカウント"),
-    ("press / or i to type", "/ か i で入力"),
     (
         "press y to block @{}, any other key to leave them be",
         "y で @{} をブロック、ほかのキーで中止",
@@ -650,7 +649,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "検索して結果を移動",
     ),
-    ("search:", "検索:"),
     ("searching…", "検索中…"),
     ("send", "送信"),
     (
@@ -739,10 +737,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "編集中にプロフィールがほかで変更されました。Esc を押してから e で最新の内容から編集し直してください",
     ),
     (
-        "the search box has focus when you arrive",
-        "開くと検索欄に入力できる",
-    ),
-    (
         "the session expired; log in again",
         "セッションの有効期限が切れました。もう一度ログインしてください",
     ),
@@ -828,8 +822,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "この動画は H.264 ではないため (ストリーム種別 0x{})、bsky ではデコードできません",
     ),
-    ("type in the search box again", "検索欄に再入力"),
-    ("type, then enter", "入力して enter"),
     ("unblock them", "ブロック解除"),
     ("unblocked", "ブロックを解除しました"),
     ("unfollow", "フォロー解除"),

@@ -30,6 +30,7 @@ mod deck;
 mod key_map;
 mod messages;
 mod read_ahead;
+mod search;
 mod selection;
 mod settings;
 #[cfg(test)]
@@ -40,7 +41,6 @@ mod tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tab {
     Timeline,
-    Search,
     Profile,
     Notifications,
     Columns,
@@ -48,19 +48,12 @@ pub(crate) enum Tab {
 }
 
 impl Tab {
-    /// The tabs, in the order of their keys 1 to 5.
-    pub(crate) const ALL: [Tab; 5] = [
-        Tab::Timeline,
-        Tab::Chat,
-        Tab::Search,
-        Tab::Notifications,
-        Tab::Profile,
-    ];
+    /// The tabs, in the order of their keys 1 to 4.
+    pub(crate) const ALL: [Tab; 4] = [Tab::Timeline, Tab::Chat, Tab::Notifications, Tab::Profile];
 
     pub(crate) fn title(self) -> &'static str {
         use crate::i18n::n;
         match self.shown_as() {
-            Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
             Tab::Notifications => n!("Notifications"),
             Tab::Chat => n!("Chat"),
@@ -81,9 +74,8 @@ impl Tab {
         match self {
             Tab::Timeline | Tab::Columns => 0,
             Tab::Chat => 1,
-            Tab::Search => 2,
-            Tab::Notifications => 3,
-            Tab::Profile => 4,
+            Tab::Notifications => 2,
+            Tab::Profile => 3,
         }
     }
 
@@ -370,11 +362,15 @@ impl<T> List<T> {
     }
 }
 
-/// State of the search tab.
+/// The search draft and the results temporarily shown in the timeline.
 #[derive(Debug, Clone)]
 pub(crate) struct Search {
     pub input: TextInput,
-    pub editing: bool,
+    /// The results on screen, separate from the mode being edited in the box.
+    pub active: Option<SearchMode>,
+    /// Only this request may replace the displayed results.
+    pub requested: Option<(SearchMode, String)>,
+    pub requested_seq: Option<u64>,
     pub mode: SearchMode,
     pub posts: List<Post>,
     pub actors: List<Profile>,
@@ -580,6 +576,7 @@ impl From<&Session> for Account {
 /// A window drawn over the current tab.
 #[derive(Debug, Clone)]
 pub(crate) enum Overlay {
+    Search,
     Compose(Compose),
     EditProfile(EditProfile),
     /// The key reference, scrolled `scroll` lines down (the view clamps it).
@@ -659,6 +656,7 @@ pub(crate) enum SettingEdit {
 pub(crate) struct Status {
     pub text: String,
     pub error: bool,
+    pub popup: bool,
     pub at: Instant,
 }
 
@@ -918,7 +916,9 @@ impl App {
             feeds_asked: false,
             search: Search {
                 input: TextInput::single(""),
-                editing: false,
+                active: None,
+                requested: None,
+                requested_seq: None,
                 mode: SearchMode::Posts,
                 posts: List::default(),
                 actors: List::default(),
@@ -989,6 +989,7 @@ impl App {
         self.status = Some(Status {
             text: text.into(),
             error: false,
+            popup: false,
             at: Instant::now(),
         });
     }
@@ -997,6 +998,7 @@ impl App {
         self.status = Some(Status {
             text: text.into(),
             error: true,
+            popup: true,
             at: Instant::now(),
         });
     }
@@ -1102,9 +1104,7 @@ impl App {
                 | Overlay::AddColumn { query: None, .. }
                 | Overlay::Settings { .. },
             ) => {}
-            None if self.tab == Tab::Search && self.search.editing => {
-                self.search.input.insert_str(text)
-            }
+            Some(Overlay::Search) => self.search.input.insert_str(text),
             None if self.tab == Tab::Chat && self.chat.open.as_ref().is_some_and(|o| o.typing) => {
                 if let Some(o) = &mut self.chat.open {
                     o.input.insert_str(text);

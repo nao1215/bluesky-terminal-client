@@ -12,6 +12,7 @@ mod messages;
 mod moderation;
 mod navigation;
 mod notifications;
+mod search;
 mod settings;
 mod sync;
 mod threads_and_viewer;
@@ -192,7 +193,7 @@ fn expire(app: &mut App) {
 
 /// The settings screen, on the row named `name`.
 fn settings_on(app: &mut App, name: &str) {
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.handle_key(key('s'));
     let at = app
         .settings_rows()
@@ -278,7 +279,7 @@ fn notif(
 fn notifications_tab() -> App {
     let mut app = logged_in();
     // Loading since the start: arriving asks for nothing more.
-    assert!(app.handle_key(key('4')).is_empty());
+    assert!(app.handle_key(key('3')).is_empty());
     let reply = post("at://reply/1", "did:plc:reply", false);
     let mine = post("at://me/post", "did:plc:me", false);
     let jobs = app.handle_event(Event::Notifications {

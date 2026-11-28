@@ -775,10 +775,6 @@ scenarios:
             - expect_screen:
                 contains: "No conversations yet"
             - send: { key: tab }
-            # The box takes the cursor, and tab leaves it rather than typing.
-            - expect_screen:
-                contains: ["search:", "type, then enter"]
-            - send: { key: tab }
             - expect_screen:
                 contains: "No notifications yet."
             - send: { key: tab }
@@ -795,9 +791,6 @@ scenarios:
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "No notifications yet."
-            - send: { key: shift-tab }
-            - expect_screen:
-                contains: "search:"
             - send: { key: shift-tab }
             - expect_screen:
                 contains: "No conversations yet"
@@ -2057,7 +2050,7 @@ scenarios:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
                 not_contains: "loading…"
-            - send: "4"
+            - send: "3"
             - expect_screen:
                 contains: "No notifications yet."
                 not_contains: "loading…"
@@ -2870,7 +2863,7 @@ scenarios:
                 contains: ["Mine, to be deleted", "Carol's post"]
             - send: j
             - send: j
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: ["Mine, to be deleted", "this is you"]
             - send: D

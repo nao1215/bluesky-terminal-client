@@ -1,6 +1,13 @@
 //! Translations into Simplified Chinese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter 搜索 · Ctrl+T 帖子/账号 · Esc 取消",
+    ),
+    ("Esc back to timeline", "Esc 返回时间线"),
+    ("No results for \"{}\"", "没有“{}”的搜索结果"),
+    ("open the search box", "打开搜索框"),
     ("Play videos in the timeline", "在时间线中播放视频"),
     (
         "enter turns timeline playback on or off",
@@ -63,7 +70,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "还没有对话。在他人的个人资料中按 m 开始对话。",
     ),
     ("No notifications yet.", "还没有通知。"),
-    ("No posts found.", "未找到帖子。"),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "你关注的账户还没有帖子。按 R 刷新。",
@@ -122,7 +128,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "由 BSKY_ 变量指定的设置不可更改",
     ),
-    ("accounts", "账户"),
     (
         "accounts: switch, add, log out",
         "账户：切换、添加、退出登录",
@@ -247,11 +252,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "删除帖子"),
     ("deleting…", "正在删除…"),
     ("do it", "执行"),
-    ("done", "完成"),
     ("download", "下载"),
     ("downloading…", "正在下载…"),
     ("edit profile", "编辑资料"),
-    ("edit query", "编辑查询"),
     ("edit your profile", "编辑个人资料"),
     ("ended  r plays it again", "已结束  r 重新播放"),
     ("enter apply  esc cancel", "enter 应用  esc 取消"),
@@ -343,7 +346,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("joined through your starter pack", "通过你的新手包加入了"),
     ("keep", "确定"),
     ("language: {}", "语言：{}"),
-    ("leave the search box", "离开搜索框"),
     ("like / remove like", "喜欢 / 取消喜欢"),
     ("like it", "喜欢"),
     ("like removed", "已取消喜欢"),
@@ -423,7 +425,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "下一字段或图片的替代文本",
     ),
-    ("next tab", "下一标签页"),
     ("no account yet", "还没有账户"),
     (
         "no folders here; space chooses this one",
@@ -505,8 +506,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "已发布"),
     ("posts", "帖子"),
-    ("posts / accounts", "帖子 / 账户"),
-    ("press / or i to type", "按 / 或 i 输入"),
     (
         "press y to block @{}, any other key to leave them be",
         "按 y 屏蔽 @{}，按其他键取消",
@@ -593,7 +592,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "搜索后在结果中移动",
     ),
-    ("search:", "搜索："),
     ("searching…", "正在搜索…"),
     ("send", "发送"),
     (
@@ -673,10 +671,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "打开编辑器后个人资料已在别处被修改；请按 Esc 再按 e 从当前版本重新开始",
     ),
     (
-        "the search box has focus when you arrive",
-        "进入时焦点在搜索框",
-    ),
-    (
         "the session expired; log in again",
         "会话已过期；请重新登录",
     ),
@@ -744,8 +738,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "此视频不是 H.264（流类型 0x{}），bsky 无法解码",
     ),
-    ("type in the search box again", "再次在搜索框中输入"),
-    ("type, then enter", "输入后按 enter"),
     ("unblock them", "取消屏蔽"),
     ("unblocked", "已取消屏蔽"),
     ("unfollow", "取消关注"),

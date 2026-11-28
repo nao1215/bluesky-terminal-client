@@ -424,83 +424,36 @@ pub(super) fn draw_notification_list(
     );
 }
 
-pub(super) fn draw_search(frame: &mut Frame, area: Rect, app: &mut App, images: &mut Images) {
+pub(super) fn draw_search_results(
+    frame: &mut Frame,
+    area: Rect,
+    app: &mut App,
+    images: &mut Images,
+) {
     let inline = app.inline_video() && app.overlay.is_none();
     let t = &app.theme.clone();
-    let [bar, input, _, results] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-    ])
-    .areas(area);
-    let mode = app.search.mode;
-    let tab = |m: SearchMode, label: &'static str| {
-        let label = i18n::t(label);
-        if m == mode {
-            Span::styled(format!(" {label} "), t.selected())
-        } else {
-            Span::styled(format!(" {label} "), t.dim())
-        }
-    };
-    frame.render_widget(
-        Line::from(vec![
-            Span::raw(" "),
-            tab(SearchMode::Posts, n!("Posts")),
-            Span::raw(" "),
-            tab(SearchMode::Accounts, n!("Accounts")),
-        ]),
-        bar,
-    );
-    let prompt = format!(" {} ", i18n::t("search:"));
-    let prompt_w = crate::tui::text::cells(&prompt) as u16;
-    let field = Rect {
-        x: input.x + prompt_w,
-        width: input.width.saturating_sub(prompt_w + 1),
-        ..input
-    };
-    // A focused box looks different from one that is only showing the last
-    // query: reversed prompt and a cursor, against a dim prompt and a hint.
-    let prompt_style = if app.search.editing {
-        t.selected()
-    } else {
-        t.dim()
-    };
-    frame.render_widget(Paragraph::new(prompt).style(prompt_style), input);
-    match (app.search.input.is_empty(), app.search.editing) {
-        (true, false) => frame.render_widget(
-            Paragraph::new(i18n::t("press / or i to type")).style(t.dim()),
-            field,
-        ),
-        (true, true) => {
-            frame.render_widget(
-                Paragraph::new(i18n::t("type, then enter")).style(t.dim()),
-                field,
+    let empty = i18n::tf("No results for \"{}\"", &[&drawable(app.search_query())]);
+    match app.search.active {
+        Some(SearchMode::Posts) => {
+            let me = app.session.as_ref().map(|s| s.did.as_str());
+            draw_posts(
+                frame,
+                area,
+                &mut app.search.posts,
+                images,
+                &empty,
+                PostContext { me, inline },
+                t,
             );
-            frame.set_cursor_position(Position::new(field.x, field.y));
         }
-        _ => draw_single_input(frame, field, &app.search.input, app.search.editing),
-    }
-    match mode {
-        SearchMode::Posts => {
-            if app.search.posts.loaded || !app.search.posts.items.is_empty() || app.pending > 0 {
-                let me = app.session.as_ref().map(|s| s.did.as_str());
-                draw_posts(
-                    frame,
-                    results,
-                    &mut app.search.posts,
-                    images,
-                    n!("No posts found."),
-                    PostContext { me, inline },
-                    t,
-                );
+        Some(SearchMode::Accounts) => {
+            if app.search.actors.items.is_empty() {
+                empty_message(frame, area, &app.search.actors, &empty, t);
+            } else {
+                draw_accounts(frame, area, &mut app.search.actors, images, t);
             }
         }
-        SearchMode::Accounts => {
-            if app.search.actors.loaded || app.pending > 0 {
-                draw_accounts(frame, results, &mut app.search.actors, images, t);
-            }
-        }
+        None => {}
     }
 }
 

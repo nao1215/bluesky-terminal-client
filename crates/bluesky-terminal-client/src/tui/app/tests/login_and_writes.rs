@@ -392,7 +392,7 @@ fn quote_sends_the_quoted_post_s_reference() {
 #[test]
 fn deleting_a_post_on_your_profile_counts_it_gone_once() {
     let mut app = logged_in();
-    let open = press(&mut app, key('5'))[0];
+    let open = press(&mut app, key('4'))[0];
     let me = |count: u64| -> Profile {
         serde_json::from_value(
             json!({"did": "did:plc:me", "handle": "me.test", "postsCount": count}),

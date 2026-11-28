@@ -2,6 +2,13 @@
 
 pub(super) const TABLE: &[(&str, &str)] = &[
     (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter suchen · Strg+T Beiträge/Konten · Esc abbrechen",
+    ),
+    ("Esc back to timeline", "Esc zurück zur Timeline"),
+    ("No results for \"{}\"", "Keine Ergebnisse für „{}“"),
+    ("open the search box", "Suchfeld öffnen"),
+    (
         "Play videos in the timeline",
         "Videos in der Timeline abspielen",
     ),
@@ -72,7 +79,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "Noch keine Unterhaltungen. m auf einem Profil startet eine.",
     ),
     ("No notifications yet.", "Noch keine Mitteilungen."),
-    ("No posts found.", "Keine Beiträge gefunden."),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "Noch keine Beiträge von Konten, denen du folgst. R lädt neu.",
@@ -134,7 +140,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "per BSKY_-Variable Gesetztes bleibt",
     ),
-    ("accounts", "Konten"),
     (
         "accounts: switch, add, log out",
         "Konten: wechseln, hinzufügen, abmelden",
@@ -295,11 +300,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "Beitrag löschen"),
     ("deleting…", "wird gelöscht…"),
     ("do it", "ausführen"),
-    ("done", "fertig"),
     ("download", "herunterladen"),
     ("downloading…", "wird heruntergeladen…"),
     ("edit profile", "Profil bearbeiten"),
-    ("edit query", "Suche ändern"),
     ("edit your profile", "dein Profil bearbeiten"),
     ("ended  r plays it again", "beendet  r spielt erneut"),
     ("enter apply  esc cancel", "enter anwenden  esc abbrechen"),
@@ -406,7 +409,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "übernehmen"),
     ("language: {}", "Sprache: {}"),
-    ("leave the search box", "Suchfeld verlassen"),
     ("like / remove like", "Like / Like entfernen"),
     ("like it", "liken"),
     ("like removed", "Like entfernt"),
@@ -504,7 +506,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "nächstes Feld oder Alt-Text eines Bilds",
     ),
-    ("next tab", "nächster Tab"),
     ("no account yet", "noch kein Konto"),
     (
         "no folders here; space chooses this one",
@@ -601,8 +602,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "gepostet"),
     ("posts", "Beiträge"),
-    ("posts / accounts", "Beiträge / Konten"),
-    ("press / or i to type", "drücke / oder i zum Tippen"),
     (
         "press y to block @{}, any other key to leave them be",
         "drücke y, um @{} zu blockieren, eine andere Taste bricht ab",
@@ -710,7 +709,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "suchen, dann durch Ergebnisse gehen",
     ),
-    ("search:", "Suche:"),
     ("searching…", "Suche läuft…"),
     ("send", "senden"),
     (
@@ -800,10 +798,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     (
         "the profile was changed elsewhere since the editor opened; press Esc and e to start from the current version",
         "das Profil wurde anderswo geändert, seit der Editor offen ist; drücke Esc und e, um mit der aktuellen Version neu zu beginnen",
-    ),
-    (
-        "the search box has focus when you arrive",
-        "das Suchfeld ist beim Öffnen aktiv",
     ),
     (
         "the session expired; log in again",
@@ -897,8 +891,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "dieses Video ist kein H.264 (Stream-Typ 0x{}), das kann bsky nicht dekodieren",
     ),
-    ("type in the search box again", "wieder ins Suchfeld tippen"),
-    ("type, then enter", "tippen, dann enter"),
     ("unblock them", "entsperren"),
     ("unblocked", "entsperrt"),
     ("unfollow", "entfolgen"),

@@ -250,7 +250,7 @@ fn a_write_the_first_account_made_changes_nothing_of_the_second_ones() {
 #[test]
 fn the_settings_screen_switches_accounts_as_a_does() {
     let mut app = two_accounts();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.handle_key(key('s'));
     let account = app
         .settings_rows()
