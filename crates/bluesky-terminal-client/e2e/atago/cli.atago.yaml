@@ -1253,7 +1253,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.handle", equals: "bob.test" }
+            json:
+              - { path: "$.username", equals: "bob.test" }
+              - { path: "$.id", equals: "did:plc:bob" }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.graph.getFollows, query: { name: actor, equals: "alice.test" } }
 
@@ -1327,7 +1329,10 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.uri", equals: "at://did:plc:me/app.bsky.feed.repost/r1" }
+            json:
+              - { path: "$.action", equals: repost }
+              - { path: "$.target", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.id", equals: "at://did:plc:me/app.bsky.feed.repost/r1" }
       - assert:
           mock:
             name: api

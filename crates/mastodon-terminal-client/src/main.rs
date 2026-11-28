@@ -16,6 +16,15 @@ mod download;
 mod error;
 mod html;
 mod i18n;
+// The keys every client prints with --json (doc/json.md), which the tests
+// check this client's output against. Each test uses some of the lists.
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "each client's tests read only the lists of what it prints"
+)]
+#[path = "../../../doc/json_keys.rs"]
+mod json_keys;
 mod metadata;
 mod oauth;
 #[cfg(test)]

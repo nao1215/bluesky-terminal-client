@@ -12,13 +12,6 @@ on:
       - ".octocov.yml"
       - ".github/workflows/coverage.yml"
   pull_request:
-    paths:
-      - "crates/**"
-      - "scripts/coverage.sh"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".octocov.yml"
-      - ".github/workflows/coverage.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}

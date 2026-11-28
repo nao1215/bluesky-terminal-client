@@ -447,13 +447,10 @@ mod tests {
                 "visibility"
             ]
         );
-        assert!(terminal_kit::json::missing(terminal_kit::json::POST, &keys).is_empty());
+        assert!(crate::json_keys::missing(crate::json_keys::POST, &keys).is_empty());
+        assert!(crate::json_keys::missing(crate::json_keys::USER, &keys_of(&v["user"])).is_empty());
         assert!(
-            terminal_kit::json::missing(terminal_kit::json::USER, &keys_of(&v["user"])).is_empty()
-        );
-        assert!(
-            terminal_kit::json::missing(terminal_kit::json::FILE, &keys_of(&v["files"][0]))
-                .is_empty()
+            crate::json_keys::missing(crate::json_keys::FILE, &keys_of(&v["files"][0])).is_empty()
         );
     }
 
@@ -473,7 +470,7 @@ mod tests {
             ("unknown", "file"),
         ] {
             assert_eq!(file_type(kind), want);
-            assert!(terminal_kit::json::FILE_TYPES.contains(&want));
+            assert!(crate::json_keys::FILE_TYPES.contains(&want));
         }
     }
 
@@ -511,7 +508,7 @@ mod tests {
         let v = notification_json(&fav, ORIGIN);
         let keys = keys_of(&v);
         assert_eq!(keys, ["createdAt", "id", "post", "postId", "type", "user"]);
-        assert!(terminal_kit::json::missing(terminal_kit::json::NOTIFICATION, &keys).is_empty());
+        assert!(crate::json_keys::missing(crate::json_keys::NOTIFICATION, &keys).is_empty());
         assert_eq!(v["type"], "like");
         assert_eq!(v["postId"], "109");
         assert_eq!(v["post"], status_json(fav.status.as_ref().unwrap(), ORIGIN));
@@ -537,7 +534,7 @@ mod tests {
         let v = account_json(&a, ORIGIN);
         assert_eq!(v["host"], "mastodon.test");
         assert_eq!(v["postsCount"], 56);
-        assert!(terminal_kit::json::missing(terminal_kit::json::ACCOUNT, &keys_of(&v)).is_empty());
+        assert!(crate::json_keys::missing(crate::json_keys::ACCOUNT, &keys_of(&v)).is_empty());
         assert_eq!(v["description"], "こんにちは\u{1b}]52;c;eA==\u{7}\n二行目");
     }
 }

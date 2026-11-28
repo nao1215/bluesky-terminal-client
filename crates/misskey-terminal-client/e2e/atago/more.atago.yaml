@@ -169,7 +169,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.deleted", equals: n }
+            json:
+              - { path: "$.action", equals: unrepost }
+              - { path: "$.target", equals: n }
       - assert:
           mock:
             name: api
@@ -197,7 +199,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "{\"deleted\":\"u-bob\"}\n"
+            equals: "{\"action\":\"unblock\",\"already\":false,\"id\":null,\"target\":\"u-bob\",\"url\":null}\n"
       - assert:
           mock:
             name: api
