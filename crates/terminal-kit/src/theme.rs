@@ -18,15 +18,19 @@ use ratatui::style::{Color, Modifier, Style};
 /// Colors for every role the UI draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
+    /// The name a user picks the theme by.
     pub name: &'static str,
-    /// Screen background and ordinary text.
+    /// Screen background.
     pub bg: Color,
+    /// Ordinary text.
     pub fg: Color,
     /// Secondary text: handles, times, hints.
     pub dim: Color,
     /// Selection, focus, links, borders.
     pub accent: Color,
+    /// Errors and failed actions.
     pub error: Color,
+    /// Actions that succeeded.
     pub ok: Color,
     /// A post the viewer liked.
     pub like: Color,
@@ -398,10 +402,12 @@ impl Theme {
             .add_modifier(Modifier::BOLD | Modifier::REVERSED)
     }
 
+    /// An error message.
     pub fn error(&self) -> Style {
         Style::new().fg(self.error).add_modifier(Modifier::BOLD)
     }
 
+    /// A message that an action succeeded.
     pub fn ok(&self) -> Style {
         Style::new().fg(self.ok)
     }
@@ -416,6 +422,7 @@ impl Theme {
         }
     }
 
+    /// A repost mark; bold without color, as [`Theme::like`] is.
     pub fn repost(&self) -> Style {
         let s = Style::new().fg(self.repost);
         if self.mono {
