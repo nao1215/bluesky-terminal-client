@@ -16,6 +16,7 @@ scenarios:
         ready:
           file: ready.txt
           store: relay
+          timeout: 30s
     steps:
       - run:
           command: nstr post "新しい記事 🐈‍⬛ https://debimate.jp/post/a/"
@@ -66,6 +67,7 @@ scenarios:
         ready:
           file: ready.txt
           store: relay
+          timeout: 30s
     steps:
       - run:
           command: nstr post "届かない"
@@ -97,6 +99,7 @@ scenarios:
         command: python3 "${specdir}/testdata/relay.py" --no-key
         ready:
           file: ready.txt
+          timeout: 30s
     steps:
       - run:
           command: nstr post x
@@ -120,6 +123,7 @@ scenarios:
         command: python3 "${specdir}/testdata/relay.py"
         ready:
           file: ready.txt
+          timeout: 30s
     steps:
       - run:
           command: chmod 644 cfg/key
