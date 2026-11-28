@@ -10,7 +10,7 @@
 use libfuzzer_sys::fuzz_target;
 
 #[allow(dead_code)]
-#[path = "../../src/error.rs"]
+#[path = "../../../terminal-kit/src/error.rs"]
 mod error;
 
 #[allow(dead_code)]
