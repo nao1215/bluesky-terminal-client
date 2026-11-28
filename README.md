@@ -84,9 +84,9 @@ nstr reads `config.json` in its config folder: your public key, one to sixteen r
 | sixel | foot, mlterm, Windows Terminal 1.22+ |
 | iTerm2 images | iTerm2, WezTerm |
 
-Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts and notifications, and post photos and videos without their location data; bsky and msky also have columns and direct messages. All four clients print JSON in one shape from every command with `--json`.
+Other terminals get text. bsky, msky and mstdn have 42 themes, several accounts and notifications, and post photos and videos without their location data; all three also have columns and direct messages. All four clients print JSON in one shape from every command with `--json`.
 
-Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). Only msky draws custom emoji and keeps MFM's bold; mstdn shows custom emoji as `:shortcode:`. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
+Only bsky makes link cards and speaks nine languages (msky and mstdn speak English and 日本語). msky and mstdn draw custom emoji on terminals with graphics and keep their shortcodes on other terminals; msky also keeps MFM's bold. msky and mstdn fold content warnings until `w`. msky is tested against Misskey itself, not its forks.
 
 ## Screens
 
@@ -119,19 +119,19 @@ msky's screens and bsky's chat and accounts show made-up data served by each cli
 
 | Key | bsky | msky | mstdn |
 |---|---|---|---|
-| `1` … | `1`–`5`: Timeline, Chat, Search, Notifications, Profile | `1`–`7`: Home, Local, Global, Notifications, Search, Profile, Chat | `1`–`6`: Home, Local, Federated, Notifications, Search, Profile |
-| `+` `x` | Add a column, remove one | Add a column, remove one | |
+| `1` … | `1`–`5`: Timeline, Chat, Search, Notifications, Profile | `1`–`7`: Home, Local, Global, Notifications, Search, Profile, Chat | `1`–`7`: Home, Local, Federated, Notifications, Search, Profile, Chat |
+| `+` `x` | Add a column, remove one | Add a column, remove one | Add a column, remove one |
 | `j` `k` | Move | Move | Move |
-| `n` `r` `Q` | Post, reply, quote | Note, reply, quote | `n` `r`: post, reply |
+| `n` `r` `Q` | Post, reply, quote | Note, reply, quote | Post, reply, quote (Mastodon 4.5+) |
 | `l` | Like | React ❤ | Favourite |
-| `e` | Edit your profile (on it) | Choose a reaction; edit your profile (on it) | |
-| `b` `f` | Repost, follow | Renote, follow | `b`: boost |
-| `M` `B` `D` | Mute, block, delete your post | Mute, block, delete your note | |
-| `!` | | Report | |
+| `e` | Edit your profile (on it) | Choose a reaction; edit your profile (on it) | Edit your profile (on it) |
+| `b` `f` | Repost, follow | Renote, follow | Boost, follow |
+| `M` `B` `D` | Mute, block, delete your post | Mute, block, delete your note | Mute, block, delete your post |
+| `!` | | Report | Report |
 | `v` `space` | Thread, pictures or video | Thread, pictures or video | Thread, pictures or video |
 | `w` | | Content warning | Content warning |
 | `d` `o` `c` | `d` in the viewer: save; `o`: link | Save files, open in the browser, copy the address | Save files, open in the browser, copy the address |
-| `/` `m` | Search, message the profile shown | Search, message the profile shown | `/`: search |
+| `/` `m` | Search, message the profile shown | Search, message the profile shown | Search, message the profile shown |
 | `A` `T` `s` | Accounts, themes, settings | Accounts, themes, settings | Accounts, themes, settings |
 | `?` `q` | Help, quit | Help, quit | Help, quit |
 

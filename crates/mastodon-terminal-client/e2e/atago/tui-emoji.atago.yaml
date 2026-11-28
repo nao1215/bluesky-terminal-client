@@ -1,0 +1,76 @@
+version: '1'
+suite:
+  name: mstdn inline custom emoji
+scenarios:
+- name: entity emoji pictures are fetched while unknown shortcodes remain text
+  mock_servers:
+  - name: api
+    routes:
+    - method: GET
+      path: /api/v2/instance
+      json: {}
+    - method: GET
+      path: /api/v1/notifications
+      json: []
+    - method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: '10'
+        account:
+          acct: alice
+          display_name: 'Alice :cat:'
+          emojis:
+          - shortcode: cat
+            url: ${api.url}/emoji.png
+            static_url: ${api.url}/emoji.png
+        content: '<p>Hello :cat: :unknown:</p>'
+        emojis:
+        - shortcode: cat
+          url: ${api.url}/emoji.png
+          static_url: ${api.url}/emoji.png
+    - method: GET
+      path: /emoji.png
+      body_file: testdata/photo.png
+      header:
+        Content-Type: image/png
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"me","token":"fake-emoji","scopes":["read"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 32
+      cols: 140
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        LC_ALL: C.UTF-8
+        MSTDN_TOKEN: ''
+      timeout: 30s
+      session:
+      - expect_screen:
+          contains:
+          - Hello
+          - ':unknown:'
+          not_contains: ':cat:'
+          images:
+            min_count: 1
+          stable_for: 1s
+      - send: q
+  - assert:
+      exit_code: 0
+  - assert:
+      mock:
+        name: api
+        method: GET
+        path: /emoji.png
+        count: 1
+  - assert:
+      mock:
+        name: api
+        method: POST
+        count: 0

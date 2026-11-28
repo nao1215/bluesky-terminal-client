@@ -28,3 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - `D` deletes your own selected post after `y` confirms, removing it from the lists when the server accepts it.
 - `!` reports a post or account to the current server's moderators with an optional comment; nothing is sent until `y` confirms.
 - `ctrl+o` in the composer opens a file browser for up to four pictures or one video, with alt text edited using `tab` and attachments removed using `ctrl+x`; sending checks the instance limits, strips metadata and waits for uploads to finish processing.
+- The selected post's thread is read ahead after 400 ms, and Notifications shows the count newer than the latest notification viewed during the current run.
+- `e` on your own Profile edits the name, bio, profile fields, locked, bot and discoverable settings, avatar and header, saving only changes and stripping picture metadata.
+- `Q` creates quote posts on Mastodon 4.5 or later, with quote approval chosen using `ctrl+q`; received quotes are shown on any server that supplies them.
+- Custom emoji are drawn as pictures in posts, display names, profiles and notifications on terminals with graphics, with shortcodes kept on other terminals.
+- `+` adds list, hashtag, notification and search columns beside Home; `H` and `L` focus columns, `<` and `>` move them, and `x` then `y` closes one. Columns are saved per account.
+- Chat (`7`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.

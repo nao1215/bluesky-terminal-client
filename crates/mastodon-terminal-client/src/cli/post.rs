@@ -375,6 +375,7 @@ pub(super) fn post(
         &d,
         reply.as_ref().map(|r| r.id.as_str()),
         clock,
+        &json!({}),
         |e| ctx.explained(e),
     )?;
     let url = format::status_url(client.origin(), &made);
@@ -388,10 +389,18 @@ pub(super) fn post(
 }
 
 /// The same validation, uploads, processing wait and post used by the composer.
-pub(crate) fn composed(client: &Client, a: &PostArgs) -> Result<Status> {
+pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
     too_much(&d, &client.limits(), client.host())?;
-    submit(client, a, &d, a.reply.as_deref(), &mut WallClock, |e| e)
+    submit(
+        client,
+        a,
+        &d,
+        a.reply.as_deref(),
+        &mut WallClock,
+        extra,
+        |e| e,
+    )
 }
 
 fn submit(
@@ -400,6 +409,7 @@ fn submit(
     d: &Draft,
     reply: Option<&str>,
     clock: &mut dyn Clock,
+    extra: &serde_json::Value,
     explain: impl Fn(Error) -> Error,
 ) -> Result<Status> {
     let mut ids = Vec::new();
@@ -423,6 +433,9 @@ fn submit(
     }
     if !ids.is_empty() {
         body["media_ids"] = json!(ids);
+    }
+    if let (Some(extra), Some(body)) = (extra.as_object(), body.as_object_mut()) {
+        body.extend(extra.clone());
     }
     let key = api::random_hex("mstdn-")?;
     client.create_status(&body, &key).map_err(|e| {

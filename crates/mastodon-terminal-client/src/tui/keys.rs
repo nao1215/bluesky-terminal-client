@@ -24,7 +24,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("General"),
         keys: &[
-            ("1 2 3 4 5 6", n!("the tabs, in the order shown")),
+            ("1 2 3 4 5 6 7", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
             ("/", n!("search")),
             ("A", n!("switch accounts")),
@@ -32,6 +32,25 @@ pub(crate) const HELP: &[Section] = &[
             ("T", n!("theme: each previewed as you move, enter keeps it")),
             ("?", n!("this help")),
             ("q ctrl+c", n!("quit")),
+        ],
+    },
+    Section {
+        title: n!("Chat"),
+        keys: &[
+            ("7", n!("direct conversations")),
+            ("m", n!("message the profile account")),
+            ("enter", n!("open and mark read / send message")),
+            ("i", n!("write a message")),
+            ("esc", n!("stop writing / close conversation")),
+        ],
+    },
+    Section {
+        title: n!("Columns"),
+        keys: &[
+            ("+", n!("add a column on Home")),
+            ("H L ← →", n!("previous / next column")),
+            ("< >", n!("move the column")),
+            ("x then y", n!("close the focused column")),
         ],
     },
     Section {
@@ -48,9 +67,11 @@ pub(crate) const HELP: &[Section] = &[
         title: n!("Posts"),
         keys: &[
             ("enter", n!("open the author profile")),
+            ("e", n!("edit your own profile")),
             ("space", n!("open pictures and videos")),
             ("d", n!("save the post files")),
             ("n", n!("new post")),
+            ("Q", n!("quote the selected post (Mastodon 4.5+)")),
             ("r", n!("reply to the selected post")),
             ("l", n!("favourite / take back your favourite")),
             ("b", n!("boost / take back your boost")),
@@ -59,6 +80,10 @@ pub(crate) const HELP: &[Section] = &[
             ("D", n!("delete your own post; y confirms")),
             ("!", n!("report the post or account; y confirms")),
             ("v", n!("open the thread with its replies")),
+            (
+                "",
+                n!("threads read ahead after the selection rests for 400 ms"),
+            ),
             ("w", n!("show / hide the text behind a content warning")),
             ("o", n!("open the post in the browser")),
             ("c", n!("copy the post's address to the clipboard")),
@@ -79,12 +104,20 @@ pub(crate) const HELP: &[Section] = &[
             ("v", n!("the thread of the post it is about")),
             ("r l b", n!("reply, favourite, boost the post it is about")),
             ("R", n!("load new notifications")),
+            (
+                "",
+                n!("unread counts notifications newer than those viewed this run"),
+            ),
         ],
     },
     Section {
         title: n!("Composer"),
         keys: &[
             ("ctrl+s", n!("send the post")),
+            (
+                "ctrl+q",
+                n!("quote approval: default, anyone, followers, only me"),
+            ),
             ("ctrl+o", n!("attach pictures or a video")),
             ("ctrl+x", n!("remove the focused attachment, or the last")),
             ("ctrl+w", n!("add / take off a content warning")),
@@ -95,6 +128,17 @@ pub(crate) const HELP: &[Section] = &[
             ),
             ("ctrl+u", n!("clear to the start of the line")),
             ("esc", n!("close without sending")),
+        ],
+    },
+    Section {
+        title: n!("Edit profile"),
+        keys: &[
+            ("tab shift+tab", n!("next / previous field")),
+            ("space enter", n!("toggle the focused flag")),
+            ("ctrl+o", n!("choose avatar or header")),
+            ("ctrl+x", n!("remove chosen picture")),
+            ("ctrl+s", n!("save changed fields")),
+            ("esc", n!("close without saving")),
         ],
     },
     Section {
@@ -161,6 +205,25 @@ fn translated(mut v: Vec<Hint>) -> Vec<Hint> {
 
 fn view_hints(app: &App) -> Vec<Hint> {
     match &app.overlay {
+        Some(Overlay::CloseColumn(_)) => {
+            return vec![("y", n!("confirm")), (t("any other key"), n!("cancel"))];
+        }
+        Some(Overlay::AddColumn { .. }) => {
+            return vec![
+                ("j k", n!("move")),
+                ("enter", n!("choose")),
+                ("esc", n!("cancel")),
+            ];
+        }
+        Some(Overlay::EditProfile(_)) => {
+            return vec![
+                ("ctrl+s", n!("save changed fields")),
+                ("tab", n!("next field")),
+                ("ctrl+o", n!("choose avatar or header")),
+                ("space", n!("toggle the focused flag")),
+                ("esc", n!("cancel")),
+            ];
+        }
         Some(Overlay::Confirm(_)) => {
             return vec![("y", n!("confirm")), (t("any other key"), n!("cancel"))];
         }
@@ -210,6 +273,9 @@ fn view_hints(app: &App) -> Vec<Hint> {
                 ("ctrl+w", n!("warning")),
                 ("ctrl+p", n!("visibility")),
             ];
+            if app.limits.quotes {
+                v.push(("ctrl+q", n!("quote approval")));
+            }
             if c.warning.is_some() || !c.media.is_empty() {
                 v.push(("tab", n!("next field")));
             }
@@ -241,6 +307,14 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ];
         }
         None => {}
+    }
+    if app.tab == Tab::Chat && app.threads.is_empty() {
+        return vec![
+            ("enter", n!("open and mark read / send message")),
+            ("i", n!("write a message")),
+            ("esc", n!("stop writing / close conversation")),
+            ("?", n!("help")),
+        ];
     }
     if app.tab == Tab::Search && app.threads.is_empty() {
         return if app.search.editing {
@@ -285,12 +359,26 @@ fn view_hints(app: &App) -> Vec<Hint> {
     // Help comes first: a narrow terminal cuts the row from the right, and
     // `?` is the key that leads to every other one.
     v.insert(0, ("?", n!("help")));
+    if app.tab == Tab::Profile && app.profile.account.as_ref().is_some_and(|a| app.own(a)) {
+        v.push(("e", n!("edit your own profile")));
+    }
+    if app.tab == Tab::Profile {
+        v.push(("m", n!("message the profile account")));
+    }
     v.push(("enter", n!("open profile")));
     v.push(("space", n!("open pictures and videos")));
     v.push(("f", n!("follow")));
     v.push(("M B", n!("mute / block")));
     v.push(("!", n!("report")));
     v.push(("D", n!("delete")));
+    if app.tab == Tab::Home {
+        v.push(("+", n!("add column")));
+    }
+    if app.in_deck() {
+        v.push(("H L", n!("previous / next column")));
+        v.push(("x", n!("close column")));
+    }
+    v.push(("Q", n!("quote")));
     v.push(("q", n!("quit")));
     v
 }
@@ -334,6 +422,7 @@ pub(crate) fn actions(app: &App) -> Vec<Hint> {
     };
     // Keep the established status action order for the actions menu.
     let mut status = status_actions(app, s);
+    status.push(("Q", n!("quote")));
     status.append(&mut v);
     v = status;
     if app.own(&s.account) {

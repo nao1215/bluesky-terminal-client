@@ -344,6 +344,8 @@ fn the_composer_sends_the_text_warning_and_visibility() {
     assert_eq!(
         jobs[0].1,
         Job::Post(Box::new(Draft {
+            quote: None,
+            quote_policy: None,
             files: Vec::new(),
             text: "こんにちは 🇯🇵".into(),
             cw: "ネタバレ".into(),
@@ -672,6 +674,14 @@ proptest! {
             for (seq, job) in app.handle_key(k) {
                 prop_assert!(seen.insert(seq));
                 let ev = match job {
+                    Job::Conversations { next } => Event::Conversations { first:next.is_none(),result:Err(Error::api("read failed")) },
+                    Job::ChatThread { .. } => Event::ChatThread(Err(Error::api("read failed"))),
+                    Job::ReadConversation { .. } => Event::ConversationRead(Err(Error::api("write failed"))),
+                    Job::ChatPost(_) => Event::ChatPosted(Err(Error::api("write failed"))),
+                    Job::ColumnChoices => Event::ColumnChoices(Ok(Vec::new())),
+                    Job::Column { id, next, .. } => Event::Column { id, first:next.is_none(), result:Err(Error::api("unavailable")) },
+                    Job::ProfileEditor => Event::ProfileEditor(Err(Error::api("unavailable"))),
+                    Job::SaveProfile(_) => Event::ProfileSaved(Err(Error::api("refused"))),
                     Job::Identity => Event::Identity(Ok(account("me"))),
                     Job::Relationship { id } => Event::Relationship { id, result: Err(Error::api("read failed")) },
                     Job::Relate { id, .. } => Event::Related { id, result: Err(Error::api("write failed")) },
@@ -1316,4 +1326,422 @@ fn token_only_sessions_learn_their_identity_before_own_post_deletion() {
     app.handle_answer(jobs[0].0, page(vec![own], Next::End));
     press(&mut app, KeyCode::Char('D'));
     assert!(matches!(&press(&mut app, KeyCode::Char('y'))[0].1, Job::Delete { id } if id == "one"));
+}
+
+#[test]
+fn read_ahead_waits_adopts_and_invalidates_on_a_refused_write() {
+    let mut app = with_home(&["s"]);
+    let now = Instant::now();
+    app.poll_read_ahead(now);
+    assert!(
+        app.poll_read_ahead(now + Duration::from_millis(399))
+            .is_empty()
+    );
+    let jobs = app.poll_read_ahead(now + Duration::from_millis(400));
+    assert_eq!(jobs.len(), 1);
+    let seq = jobs[0].0;
+    assert!(press(&mut app, KeyCode::Char('v')).is_empty());
+    app.handle_answer(
+        seq,
+        Event::Thread {
+            id: "s".into(),
+            result: Ok(Box::new(Thread {
+                status: status("s"),
+                descendants: vec![status("reply")],
+                ..Thread::default()
+            })),
+        },
+    );
+    assert_eq!(app.threads[0].rows.items.len(), 2);
+    press(&mut app, KeyCode::Esc);
+    assert!(press(&mut app, KeyCode::Char('v')).is_empty());
+    press(&mut app, KeyCode::Esc);
+    let jobs = press(&mut app, KeyCode::Char('l'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Favourited {
+            id: "s".into(),
+            on: true,
+            result: Err(Error::api("refused")),
+        },
+    );
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(home(&app).items[0].favourited, Some(false));
+    assert_eq!(press(&mut app, KeyCode::Char('v')).len(), 1);
+}
+
+#[test]
+fn read_ahead_failure_retries_and_old_account_answers_are_ignored() {
+    let mut app = with_home(&["s"]);
+    let now = Instant::now();
+    app.poll_read_ahead(now);
+    let jobs = app.poll_read_ahead(now + Duration::from_millis(400));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Thread {
+            id: "s".into(),
+            result: Err(Error::api("gone")),
+        },
+    );
+    assert!(app.message.is_none());
+    assert_eq!(press(&mut app, KeyCode::Char('v')).len(), 1);
+    app.switched(me());
+    app.handle_answer(
+        jobs[0].0,
+        Event::Thread {
+            id: "s".into(),
+            result: Ok(Box::new(Thread::default())),
+        },
+    );
+    assert!(app.cached_thread("s").is_none());
+}
+
+#[test]
+fn notifications_count_new_ids_and_clear_when_viewed() {
+    let mut app = with_home(&[]);
+    let jobs = app.poll_read_ahead(Instant::now());
+    let answer = |ids: &[&str]| Event::Notifications {
+        max_id: None,
+        result: Ok(Page {
+            items: ids
+                .iter()
+                .map(|id| Notification {
+                    id: (*id).into(),
+                    ..Notification::default()
+                })
+                .collect(),
+            next: Next::End,
+        }),
+    };
+    app.handle_answer(jobs[0].0, answer(&["10", "9", "8"]));
+    assert_eq!(app.unread, 3);
+    assert!(press(&mut app, KeyCode::Char('4')).is_empty());
+    assert_eq!(app.unread, 0);
+    press(&mut app, KeyCode::Char('1'));
+    let jobs = app.poll_read_ahead(Instant::now() + Duration::from_secs(61));
+    app.handle_answer(jobs[0].0, answer(&["11", "10"]));
+    assert_eq!(app.unread, 1);
+    app.switched(me());
+    assert_eq!(app.unread, 0);
+}
+
+fn profile_editor(app: &mut App) {
+    app.tab = Tab::Profile;
+    let account = Account {
+        id: "7".into(),
+        display_name: "Me".into(),
+        source: Some(crate::api::types::AccountSource {
+            note: "raw **bio**".into(),
+            fields: vec![],
+        }),
+        ..Account::default()
+    };
+    app.profile.account = Some(account.clone());
+    let jobs = press(app, KeyCode::Char('e'));
+    app.handle_answer(jobs[0].0, Event::ProfileEditor(Ok(account)));
+}
+
+#[test]
+fn profile_editor_sends_only_changes_on_save_and_keeps_a_refused_draft() {
+    let mut app = with_home(&[]);
+    assert!(press(&mut app, KeyCode::Char('e')).is_empty());
+    profile_editor(&mut app);
+    assert!(app.handle_key(ctrl('s')).is_empty());
+    assert!(app.overlay.is_none());
+    profile_editor(&mut app);
+    app.handle_key(ctrl('u'));
+    typed(&mut app, "New name");
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::SaveProfile(change) = &jobs[0].1 else {
+        panic!()
+    };
+    assert_eq!(
+        change.attributes,
+        serde_json::json!({"display_name":"New name"})
+    );
+    assert!(change.pictures.is_empty());
+    assert!(app.handle_key(ctrl('s')).is_empty());
+    app.handle_answer(jobs[0].0, Event::ProfileSaved(Err(Error::api("refused"))));
+    assert_eq!(app.profile.account.as_ref().unwrap().display_name, "Me");
+    press(&mut app, KeyCode::Esc); // dismiss error
+    assert!(
+        matches!(&app.overlay,Some(Overlay::EditProfile(e)) if e.waiting.is_none() && e.fields[0].text() == "New name")
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn profile_flags_raw_bio_fields_and_cancel_are_lossless() {
+    let mut app = with_home(&[]);
+    profile_editor(&mut app);
+    press(&mut app, KeyCode::Tab);
+    app.handle_paste(" + text");
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Char(' '));
+    }
+    press(&mut app, KeyCode::Tab);
+    typed(&mut app, "Site");
+    press(&mut app, KeyCode::Tab);
+    typed(&mut app, "https://example.test");
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::SaveProfile(change) = &jobs[0].1 else {
+        panic!()
+    };
+    assert_eq!(change.attributes["note"], "raw **bio** + text");
+    assert_eq!(change.attributes["locked"], true);
+    assert_eq!(change.attributes["bot"], true);
+    assert_eq!(change.attributes["discoverable"], true);
+    assert_eq!(
+        change.attributes["fields_attributes"]["0"],
+        serde_json::json!({"name":"Site","value":"https://example.test"})
+    );
+    app.handle_answer(
+        jobs[0].0,
+        Event::ProfileSaved(Ok(Account {
+            id: "7".into(),
+            display_name: "Saved".into(),
+            ..Account::default()
+        })),
+    );
+    assert!(app.overlay.is_none());
+    assert_eq!(app.profile.account.as_ref().unwrap().display_name, "Saved");
+    profile_editor(&mut app);
+    typed(&mut app, " unsaved");
+    assert!(press(&mut app, KeyCode::Esc).is_empty());
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn quotes_require_a_supported_server_and_confirmation_and_keep_refused_text() {
+    let mut app = with_home(&["s"]);
+    for version in ["", "4.4.9", "unknown", "4"] {
+        app.limits = Limits::from_instance(&serde_json::json!({"version":version}));
+        assert!(press(&mut app, KeyCode::Char('Q')).is_empty());
+        assert!(app.overlay.is_none());
+    }
+    for version in ["4.5.0", "4.5.0-rc1", "4.10.0", "5.0.0"] {
+        assert!(Limits::from_instance(&serde_json::json!({"version":version})).quotes);
+    }
+    app.limits.quotes = true;
+    press(&mut app, KeyCode::Char('Q'));
+    typed(&mut app, "My quote");
+    app.handle_key(ctrl('q'));
+    app.handle_key(ctrl('q'));
+    let jobs = app.handle_key(ctrl('s'));
+    let Job::Post(d) = &jobs[0].1 else { panic!() };
+    assert_eq!(d.quote.as_deref(), Some("s"));
+    assert_eq!(d.quote_policy.as_deref(), Some("followers"));
+    assert!(d.reply.is_none());
+    app.handle_answer(jobs[0].0, Event::Posted(Err(Error::api("denied"))));
+    assert!(
+        matches!(&app.overlay,Some(Overlay::Compose(c)) if c.sending.is_none() && c.text.text() == "My quote")
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(press(&mut app, KeyCode::Esc).is_empty());
+    assert!(app.overlay.is_none());
+    app.timelines[0].items[0].quote_approval = Some(crate::api::types::QuoteApproval {
+        current_user: "denied".into(),
+    });
+    press(&mut app, KeyCode::Char('Q'));
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn columns_keep_independent_pages_confirm_close_and_rollback_refused_favourites() {
+    use crate::tui::columns::Source;
+    use crate::tui::worker::ColumnPage;
+    let mut app = with_home(&["home"]);
+    let jobs = app.add_column(Source::Tag("rust".into()));
+    let id = app.deck.columns[1].id;
+    app.handle_answer(
+        jobs[0].0,
+        Event::Column {
+            id,
+            first: true,
+            result: Ok(ColumnPage::Posts((
+                vec![status("tag")],
+                Some("next".into()),
+            ))),
+        },
+    );
+    assert_eq!(app.selected().unwrap().id, "tag");
+    let page = press(&mut app, KeyCode::Char('j'));
+    assert!(matches!(&page[0].1,Job::Column { next:Some(n),.. } if n == "next"));
+    let write = press(&mut app, KeyCode::Char('l'));
+    assert_eq!(app.selected().unwrap().favourited, Some(true));
+    app.handle_answer(
+        write[0].0,
+        Event::Favourited {
+            id: "tag".into(),
+            on: true,
+            result: Err(Error::api("refused")),
+        },
+    );
+    assert_eq!(app.selected().unwrap().favourited, Some(false));
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('x'));
+    press(&mut app, KeyCode::Char('n'));
+    assert_eq!(app.deck.columns.len(), 2);
+    press(&mut app, KeyCode::Char('H'));
+    assert_eq!(app.selected().unwrap().id, "home");
+    press(&mut app, KeyCode::Char('L'));
+    press(&mut app, KeyCode::Char('x'));
+    press(&mut app, KeyCode::Char('y'));
+    assert_eq!(app.deck.columns.len(), 1);
+    app.handle_answer(
+        page[0].0,
+        Event::Column {
+            id,
+            first: false,
+            result: Ok(ColumnPage::Posts((vec![status("late")], None))),
+        },
+    );
+    assert_eq!(app.selected().unwrap().id, "home");
+}
+
+#[test]
+fn column_picker_queries_and_saved_sources_are_separated_by_account() {
+    let mut app = with_home(&[]);
+    app.apply_settings(Some(Settings::default()), ColorDepth::TrueColor);
+    let jobs = press(&mut app, KeyCode::Char('+'));
+    app.handle_answer(jobs[0].0, Event::ColumnChoices(Ok(vec![])));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    app.handle_paste("#rust");
+    let jobs = press(&mut app, KeyCode::Enter);
+    assert!(
+        matches!(&jobs[0].1,Job::Column { source:crate::tui::columns::Source::Tag(tag),.. } if tag == "rust")
+    );
+    let settings = app.take_settings_save().unwrap();
+    assert_eq!(settings.decks.len(), 1);
+    let mut other = me();
+    other.username = "other".into();
+    other.user_id = "8".into();
+    app.switched(other);
+    assert!(app.deck.columns.is_empty());
+    app.switched(me());
+    assert_eq!(app.deck.columns.len(), 2);
+}
+
+#[test]
+fn chat_marks_read_only_after_open_and_load_and_rolls_back_a_refusal() {
+    use crate::api::types::Conversation;
+    let mut app = with_home(&[]);
+    let mut dm = status("dm");
+    dm.visibility = "direct".into();
+    let jobs = press(&mut app, KeyCode::Char('7'));
+    assert!(matches!(jobs[0].1, Job::Conversations { .. }));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Conversations {
+            first: true,
+            result: Ok(Page {
+                items: vec![Conversation {
+                    id: "c".into(),
+                    unread: true,
+                    accounts: vec![account("alice")],
+                    last_status: Some(dm.clone()),
+                }],
+                next: Next::End,
+            }),
+        },
+    );
+    assert!(app.chat.conversations.items[0].unread);
+    let jobs = press(&mut app, KeyCode::Enter);
+    assert!(matches!(jobs[0].1, Job::ChatThread { .. }));
+    assert!(app.chat.conversations.items[0].unread);
+    let mut other_branch = status("other-branch");
+    other_branch.visibility = "direct".into();
+    other_branch.account = account("bob");
+    let jobs = app.handle_answer(
+        jobs[0].0,
+        Event::ChatThread(Ok(Box::new(Thread {
+            status: dm,
+            ancestors: vec![status("public")],
+            descendants: vec![other_branch],
+        }))),
+    );
+    assert_eq!(app.chat.open.as_ref().unwrap().posts.items.len(), 1);
+    assert!(matches!(&jobs[0].1,Job::ReadConversation { id } if id == "c"));
+    assert!(!app.chat.conversations.items[0].unread);
+    app.handle_answer(
+        jobs[0].0,
+        Event::ConversationRead(Err(Error::api("refused"))),
+    );
+    assert!(app.chat.conversations.items[0].unread);
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('i'));
+    typed(&mut app, "Hello");
+    let jobs = press(&mut app, KeyCode::Enter);
+    let Job::ChatPost(draft) = &jobs[0].1 else {
+        panic!()
+    };
+    assert_eq!(draft.text, "@alice Hello");
+    assert_eq!(draft.visibility, Visibility::Direct);
+    assert_eq!(draft.reply.as_deref(), Some("dm"));
+    assert!(press(&mut app, KeyCode::Enter).is_empty());
+    app.handle_answer(jobs[0].0, Event::ChatPosted(Err(Error::api("refused"))));
+    let open = app.chat.open.as_ref().unwrap();
+    assert_eq!(open.input.text(), "Hello");
+    assert!(open.sending.is_none());
+}
+
+#[test]
+fn messaging_a_profile_sends_nothing_until_enter_and_discards_old_account_answers() {
+    let mut app = with_home(&[]);
+    app.tab = Tab::Profile;
+    app.profile.account = Some(account("alice"));
+    assert!(press(&mut app, KeyCode::Char('m')).is_empty());
+    assert_eq!(app.tab, Tab::Chat);
+    app.handle_paste("Private hello");
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(
+        app.chat.open.as_ref().unwrap().input.text(),
+        "Private hello"
+    );
+    assert!(press(&mut app, KeyCode::Enter).is_empty());
+    press(&mut app, KeyCode::Char('i'));
+    let jobs = press(&mut app, KeyCode::Enter);
+    let Job::ChatPost(d) = &jobs[0].1 else {
+        panic!()
+    };
+    assert_eq!(d.text, "@alice Private hello");
+    assert!(d.reply.is_none());
+    app.switched(me());
+    app.handle_answer(jobs[0].0, Event::ChatPosted(Ok(Box::new(status("late")))));
+    assert!(app.chat.open.is_none());
+}
+
+#[test]
+fn writing_while_an_adopted_thread_loads_reloads_after_the_write_finishes() {
+    let mut app = with_home(&["s"]);
+    let now = Instant::now();
+    app.poll_read_ahead(now);
+    let reads = app.poll_read_ahead(now + Duration::from_millis(400));
+    press(&mut app, KeyCode::Char('v'));
+    let writes = press(&mut app, KeyCode::Char('l'));
+    app.handle_answer(
+        reads[0].0,
+        Event::Thread {
+            id: "s".into(),
+            result: Ok(Box::new(Thread {
+                status: status("s"),
+                ..Thread::default()
+            })),
+        },
+    );
+    assert!(!app.threads[0].rows.loaded);
+    let reload = app.handle_answer(
+        writes[0].0,
+        Event::Favourited {
+            id: "s".into(),
+            on: true,
+            result: Err(Error::api("refused")),
+        },
+    );
+    assert!(matches!(&reload[0].1,Job::Thread { id } if id == "s"));
+    assert_eq!(app.threads[0].rows.waiting, Some(reload[0].0));
 }

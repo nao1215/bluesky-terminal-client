@@ -43,6 +43,13 @@ Their existing palette-readability tests now index the shared inventory
 instead of local BLUESKY arrays; matches with terminal-kit are retained tests.
 No Nostr TUI implementation is copied from another client.
 
+The fourth Mastodon stage moved emoji cell substitution and drawing, dwell
+tracking, and column geometry into terminal-kit. The changed HELP and terminal
+startup fingerprints remain client-specific for the reasons above. Extending
+Mastodon's multipart writer to avatar/header parts changed the adjacent existing
+retry-notice fingerprint; that unchanged command-line network retry notice does
+not belong in terminal-kit's drawing API. No new implementation copy is retained.
+
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
 

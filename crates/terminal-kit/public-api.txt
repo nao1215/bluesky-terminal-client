@@ -3,6 +3,22 @@ pub mod terminal_kit::clipboard
 pub fn terminal_kit::clipboard::osc52(&str) -> alloc::string::String
 pub mod terminal_kit::clock
 pub fn terminal_kit::clock::local_time(&str) -> alloc::string::String
+pub mod terminal_kit::columns
+pub fn terminal_kit::columns::visible(ratatui_core::layout::rect::Rect, usize, usize, u16) -> alloc::vec::Vec<(usize, ratatui_core::layout::rect::Rect)>
+pub mod terminal_kit::dwell
+pub struct terminal_kit::dwell::Dwell(_)
+impl terminal_kit::dwell::Dwell
+pub fn terminal_kit::dwell::Dwell::ready(&mut self, core::option::Option<&str>, std::time::Instant, core::time::Duration) -> bool
+impl core::clone::Clone for terminal_kit::dwell::Dwell
+pub fn terminal_kit::dwell::Dwell::clone(&self) -> Self
+impl core::default::Default for terminal_kit::dwell::Dwell
+pub fn terminal_kit::dwell::Dwell::default() -> Self
+impl core::fmt::Debug for terminal_kit::dwell::Dwell
+pub fn terminal_kit::dwell::Dwell::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub mod terminal_kit::emoji
+pub const terminal_kit::emoji::EMOJI_CELLS: &str
+pub fn terminal_kit::emoji::draw_emoji_cells(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &[alloc::string::String], &mut terminal_kit::media::images::Images)
+pub fn terminal_kit::emoji::with_emoji_cells(&str, &mut dyn core::ops::function::FnMut(&str) -> core::option::Option<alloc::string::String>, &mut alloc::vec::Vec<alloc::string::String>) -> alloc::string::String
 pub mod terminal_kit::events
 pub struct terminal_kit::events::Input
 impl terminal_kit::events::Input

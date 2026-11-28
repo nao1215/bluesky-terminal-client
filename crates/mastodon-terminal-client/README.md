@@ -24,16 +24,24 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 
 ## Full-screen client
 
-`mstdn` opens six tabs: Home, Local, Federated, Notifications, Search and Profile, as the account in use or, without one, as a visitor. Visitors can read Local, Federated, hashtag searches and public profiles. `--host` picks the server as it does for the commands.
+`mstdn` opens seven tabs: Home, Local, Federated, Notifications, Search, Profile and Chat, as the account in use or, without one, as a visitor. Visitors can read Local, Federated, hashtag searches and public profiles. `--host` picks the server as it does for the commands.
 
 | Key | What it does |
 |---|---|
-| `1`-`6`, `tab` | The tabs |
+| `1`-`7`, `tab` | The tabs |
 | `j` `k`, `g` `G`, `pgdn` `pgup` | Move; the next page loads near the end |
 | `v` | The thread of the post, with its replies |
 | `enter` | The selected post author or search account in Profile; `esc` returns |
 | `5`, `/` | Search; `t` switches posts and accounts, `ctrl+t` while typing, `enter` searches |
 | `6` | The account in use and its posts |
+| `e` on your own Profile | Edit display name, bio, four profile fields, locked, bot and discoverable; `tab` moves, `space` toggles flags, `ctrl+o` chooses avatar or header, `ctrl+x` clears a chosen picture, `ctrl+s` saves, `esc` cancels |
+| `Q` | Quote the selected post on Mastodon 4.5 or later; `ctrl+s` sends |
+| `ctrl+q` in the composer | Cycle quote approval between the account default, anyone, followers and only yourself on Mastodon 4.5 or later |
+| `+` on Home | Add a list, followed or typed hashtag, Notifications or search beside Home |
+| `H` `L`, left/right | Focus the previous or next column; `<` `>` move the column |
+| `x` then `y` | Close the focused column; another key keeps it |
+| `7`, `m` on a profile | Direct conversations, or a new direct message to that account |
+| `enter`, `i` in Chat | Open a conversation and mark it read, then `i` writes and `enter` sends; `esc` stops writing or returns to the conversation list |
 | `space` | Pictures and videos full screen; `h` `l` or arrows change files, `r` replays video, `esc` closes |
 | `d` | Save the post files in the download folder |
 | `A` | Saved accounts; `j` `k` select, `enter` switches and keeps the account in use |
@@ -53,13 +61,21 @@ Building it needs Rust 1.90 or later. It is not on crates.io.
 | `R` | Refresh |
 | `?`, `q` | The keys, quit |
 
-Pictures and video thumbnails are drawn in the lists with kitty graphics, sixel or iTerm2 inline images, detected from the terminal. `space` opens the original pictures and plays MP4/H.264 videos without sound. Other codecs show a reason; `d` saves the files and `o` opens the post. On a terminal without graphics, the files and their alt text appear as text. A content warning hides its pictures until `w` opens it. Custom emoji remain `:shortcode:`.
+Pictures and video thumbnails are drawn in the lists with kitty graphics, sixel or iTerm2 inline images, detected from the terminal. `space` opens the original pictures and plays MP4/H.264 videos without sound. Other codecs show a reason; `d` saves the files and `o` opens the post. On a terminal without graphics, the files and their alt text appear as text. A content warning hides its pictures until `w` opens it. Custom emoji in posts, names and notifications use their supplied pictures, with `:shortcode:` as the fallback on terminals without graphics.
 
 Search reads a hashtag timeline for visitors and, with a login, searches posts or accounts. Profile shows the account header and its posts, loading more near the end. Switching accounts clears the previous account's views and uses the new server and token for subsequent actions; work already sent finishes as its original account. `q` waits up to 3 seconds for writes still on their way.
 
 Favourites, boosts, follows, mutes and blocks show their new state immediately and restore it if the server refuses the write. Account actions read the relationship before the first toggle; the resulting state appears in the status line, the profile and the actions menu. Mute, block, deletion and reports require `y`; any other answer sends nothing. Deletion removes the post from the lists only after the server accepts it. Reports go to the current server's moderators and are not forwarded to another server.
 
 The composer attaches up to four pictures or one video with alt text, checked against the same instance limits as `mstdn post`. Files upload only on `ctrl+s`, with their metadata stripped, and the post waits for processing to finish. Cancelling the browser or closing the draft uploads nothing. A refused post keeps the draft for editing.
+
+The thread of a selection resting for 400 ms is read ahead; `v` uses a fresh result or joins an in-flight read. Notifications refresh every minute and show the number newer than the latest ID viewed during this run, among the loaded notifications; opening the tab clears the count. This count is local to the run and does not change the server notification marker.
+
+Profile editing reads the account's unformatted source and sends only changed attributes in one `PATCH /api/v1/accounts/update_credentials`. Avatar and header pictures use the shared file browser and have their metadata stripped before saving. Cancelling sends nothing, and a refused save keeps the draft. Login already requests `read write`, which covers profile editing and conversations; no scope change or new environment variable is needed.
+
+Quote creation is enabled by the version from `/api/v2/instance`, starting at Mastodon 4.5; an older or unknown version explains why `Q` is unavailable and sends nothing. Received quotes are drawn regardless of version, with a placeholder for quotes awaiting approval or unavailable to the reader. The server enforces the quoted post's policy; a known denial is refused locally.
+
+Columns keep their own selection and pagination and are saved per account in `settings.json`. Chat reads `/api/v1/conversations` and the context of its latest direct status, refreshing the visible conversation or list every 15 seconds. Only direct statuses with the same participants appear in an open conversation, replies keep direct visibility, and the conversation is marked read after Enter opens it and the messages load. A refused read restores the unread flag; a refused send keeps the input.
 
 Settings are kept in `settings.json`. The language setting takes precedence over `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order, with English as the fallback. Unknown settings are preserved; an unreadable settings file is left untouched. Pictures are cached on disk up to 256 MB and in memory; `MSTDN_CACHE_DIR=off` disables the disk cache.
 

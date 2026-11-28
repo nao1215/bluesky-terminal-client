@@ -216,6 +216,14 @@ impl App {
             l.items.retain(&keep);
             l.step(0);
         }
+        for c in &mut self.deck.columns {
+            c.posts.items.retain(&keep);
+            c.posts.step(0);
+            c.notifications
+                .items
+                .retain(|n| n.status.as_ref().is_none_or(&keep));
+            c.notifications.step(0);
+        }
         self.notifications
             .items
             .retain(|n| n.status.as_ref().is_none_or(&keep));
