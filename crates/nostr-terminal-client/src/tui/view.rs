@@ -37,12 +37,20 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
         Constraint::Length(status_height),
     ])
     .areas(area);
+    let home = if app.searching() {
+        format!(
+            "1 {}: {}",
+            app.t("Search", "検索"),
+            drawable(&app.search.query)
+        )
+    } else {
+        app.t("1 Home", "1 ホーム").into()
+    };
     let labels = [
-        (Tab::Home, app.t("1 Home", "1 ホーム")),
+        (Tab::Home, home.as_str()),
         (Tab::Notifications, app.t("2 Notifications", "2 通知")),
         (Tab::Profile, app.t("3 Profile", "3 プロフィール")),
-        (Tab::Search, app.t("4 Search", "4 検索")),
-        (Tab::Chat, app.t("5 Chat", "5 チャット")),
+        (Tab::Chat, app.t("4 Chat", "4 チャット")),
     ];
     let spans = labels
         .into_iter()
@@ -93,6 +101,15 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
             },
         );
     } else if let Some(dialog) = &app.extra.dialog {
+        if matches!(
+            dialog,
+            super::extras::Dialog::Input {
+                purpose: super::extras::Purpose::Search,
+                ..
+            }
+        ) {
+            draw_lists(frame, body, app, images);
+        }
         draw_dialog(frame, body, app, dialog);
     } else if app.tab == Tab::Chat && app.overlay.is_none() {
         let text = app
@@ -132,38 +149,41 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     } else if let Some(overlay) = &app.overlay {
         draw_overlay(frame, body, app, overlay, images);
     } else {
-        if app.tab == Tab::Search
-            && let Some(focus) = app.extra.column
-        {
-            for (i, area) in
-                terminal_kit::columns::visible(body, app.extra.columns.len(), focus, 40)
-            {
-                frame.render_widget(
-                    Paragraph::new(drawable(&app.extra.columns[i])).style(if i == focus {
-                        app.theme.selected()
-                    } else {
-                        app.theme.dim()
-                    }),
-                    Rect {
-                        height: 1.min(area.height),
-                        ..area
-                    },
-                );
-                draw_notes(
-                    frame,
-                    Rect {
-                        y: area.y + 1,
-                        height: area.height.saturating_sub(1),
-                        ..area
-                    },
-                    app,
-                    images,
-                    app.extra.column_lists.get(i),
-                );
-            }
-        } else {
-            draw_notes(frame, body, app, images, None);
+        draw_lists(frame, body, app, images);
+    }
+}
+
+fn draw_lists(frame: &mut Frame, body: Rect, app: &App, images: &mut Images) {
+    if app.tab == Tab::Home
+        && app.threads.is_empty()
+        && let Some(focus) = app.extra.column
+    {
+        for (i, area) in terminal_kit::columns::visible(body, app.extra.columns.len(), focus, 40) {
+            frame.render_widget(
+                Paragraph::new(drawable(&app.extra.columns[i])).style(if i == focus {
+                    app.theme.selected()
+                } else {
+                    app.theme.dim()
+                }),
+                Rect {
+                    height: 1.min(area.height),
+                    ..area
+                },
+            );
+            draw_notes(
+                frame,
+                Rect {
+                    y: area.y + 1,
+                    height: area.height.saturating_sub(1),
+                    ..area
+                },
+                app,
+                images,
+                app.extra.column_lists.get(i),
+            );
         }
+    } else {
+        draw_notes(frame, body, app, images, None);
     }
 }
 
@@ -252,10 +272,19 @@ fn draw_notes(
     let list = list.unwrap_or_else(|| app.list());
     if list.notes.is_empty() {
         frame.render_widget(
-            Paragraph::new(app.t(
-                "No notes. R refreshes.",
-                "ノートはありません。R で再読み込み。",
-            )),
+            Paragraph::new(if app.searching() && app.threads.is_empty() {
+                format!(
+                    "{} \"{}\"",
+                    app.t("No results for", "検索結果なし:"),
+                    drawable(&app.search.query)
+                )
+            } else {
+                app.t(
+                    "No notes. R refreshes.",
+                    "ノートはありません。R で再読み込み。",
+                )
+                .into()
+            }),
             area,
         );
     }
@@ -539,6 +568,48 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
         extras::{Dialog, Purpose},
         keys::ACTIONS,
     };
+    if let Dialog::Input {
+        purpose: Purpose::Search,
+        text,
+    } = dialog
+    {
+        let width = area.width.saturating_sub(4).clamp(1, 72);
+        let box_area = Rect::new(
+            area.x + (area.width - width) / 2,
+            area.y + 1.min(area.height.saturating_sub(4)),
+            width,
+            4.min(area.height),
+        );
+        frame.render_widget(Clear, box_area);
+        let block = Block::bordered()
+            .title(app.t("Search", "検索"))
+            .style(app.theme.base());
+        let inner = block.inner(box_area);
+        frame.render_widget(block, box_area);
+        if inner.width > 0 && inner.height > 0 {
+            let layout = text.layout(usize::from(inner.width));
+            // Horizontally long queries keep the cursor's segment on the input line.
+            frame.render_widget(
+                Paragraph::new(layout.lines[layout.cursor.0].as_str()),
+                Rect { height: 1, ..inner },
+            );
+            frame.set_cursor_position((inner.x + layout.cursor.1 as u16, inner.y));
+            if inner.height > 1 {
+                frame.render_widget(
+                    Paragraph::new(
+                        app.t("Enter search · Esc cancel", "Enter 検索 · Esc キャンセル"),
+                    )
+                    .style(app.theme.dim()),
+                    Rect {
+                        y: inner.y + 1,
+                        height: 1,
+                        ..inner
+                    },
+                );
+            }
+        }
+        return;
+    }
     let (title, text) = match dialog {
         Dialog::Profile(editor) => (
             app.t(
@@ -578,7 +649,7 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
                     "Add account: name JSON · enter",
                     "アカウント追加: 名前 JSON · enter",
                 ),
-                Purpose::Search => app.t("Search · enter", "検索 · enter"),
+                Purpose::Search => app.t("Search", "検索"),
                 Purpose::ChatPeer => app.t("Recipient public key · enter", "宛先の公開鍵 · enter"),
                 Purpose::ChatMessage => {
                     app.t("Private message · ctrl+s", "非公開メッセージ · ctrl+s")

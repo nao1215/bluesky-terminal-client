@@ -1,0 +1,109 @@
+version: "1"
+suite:
+  name: nstr search box
+scenarios:
+  - name: search overlays the list and Escape restores its selected note without refetching
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --parity
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 36
+          cols: 140
+          env: &env { NSTR_CONFIG_DIR: "${workdir}/cfg", LC_ALL: en_US.UTF-8, NSTR_GRAPHICS: none }
+          timeout: 30s
+          session:
+            - expect_screen: { contains: ["1 Home", "4 Chat", "返信です"], not_contains: ["4 Search", "5 Chat"], stable_for: 300ms }
+            - send: j
+            - send: w
+            - expect_screen: { contains: "bob の二つ目", not_contains: "返信です" }
+            - send: "/"
+            - expect_screen: { contains: ["┌Search", "Enter search · Esc cancel", "1 Home"], not_contains: "Ctrl+T" }
+            - send: "discard this"
+            - send: { key: esc }
+            - expect_screen: { contains: "bob の二つ目", not_contains: ["┌Search", "discard this", "返信です"] }
+            - send: "/"
+            - expect_screen: { contains: "┌Search" }
+            - send: carol
+            - send: { key: enter }
+            - expect_screen: { contains: ["1 Search: carol", "carol is not followed", "Esc back to timeline"], not_contains: ["┌Search", "bob の二つ目", "Loading…"], stable_for: 300ms }
+            - send: "."
+            - expect_screen: { contains: "Actions" }
+            - send: { key: esc }
+            - expect_screen: { contains: "1 Search: carol", not_contains: "Actions" }
+            - send: { key: esc }
+            - expect_screen: { contains: ["1 Home", "bob の二つ目"], not_contains: ["1 Search:", "carol is not followed", "返信です"] }
+            - send: "/"
+            - expect_screen: { contains: ["┌Search", "carol"] }
+            - send: { key: enter }
+            - expect_screen: { contains: ["1 Search: carol", "carol is not followed"], not_contains: "Loading…", stable_for: 300ms }
+            - send: "/"
+            - expect_screen: { contains: "┌Search" }
+            - send: { key: ctrl-u }
+            - send: "#absent"
+            - send: { key: enter }
+            - expect_screen: { contains: ['1 Search: #absent', 'No results for "#absent"'], not_contains: "carol is not followed", stable_for: 300ms }
+            - send: { key: esc }
+            - expect_screen: { contains: ["1 Home", "bob の二つ目"], not_contains: "返信です" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_search.py" restore' }
+      - assert: { exit_code: 0, stdout: { contains: "checked restore" } }
+
+  - name: failed search preserves the previous list content
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready: { file: ready.txt, timeout: 30s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 30
+          cols: 140
+          env: *env
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "返信です", stable_for: 300ms }
+            - send: "/"
+            - expect_screen: { contains: "┌Search" }
+            - send: words
+            - send: { key: enter }
+            - expect_screen: { contains: ["unsupported: NIP-50 search", "返信です"], not_contains: "┌Search", stable_for: 300ms }
+            - send: { key: esc }
+            - expect_screen: { contains: ["1 Home", "返信です"], not_contains: "1 Search:" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_tui.py" none' }
+      - assert: { exit_code: 0 }
+
+  - name: search results page through a timestamp tie and remain usable as a column
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --pages --parity
+        ready: { file: ready.txt, timeout: 60s }
+    steps:
+      - pty:
+          command: nstr
+          rows: 36
+          cols: 140
+          env: *env
+          timeout: 30s
+          session:
+            - expect_screen: { contains: "boundary", not_contains: "Loading…", stable_for: 300ms }
+            - send: "/"
+            - expect_screen: { contains: "┌Search" }
+            - send: boundary
+            - send: { key: enter }
+            - expect_screen: { contains: ["1 Search: boundary", "boundary"], not_contains: "Loading…", stable_for: 300ms }
+            - send: G
+            - expect_screen: { contains: "1 Search: boundary", not_contains: "Loading…", stable_for: 500ms }
+            - send: G
+            - expect_screen: { contains: "boundary", not_contains: "Loading…", stable_for: 300ms }
+            - send: "+"
+            - expect_screen: { contains: "search:boundary" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - run: { command: 'python3 "${specdir}/testdata/check_search.py" pages' }
+      - assert: { exit_code: 0, stdout: { contains: "checked pages" } }

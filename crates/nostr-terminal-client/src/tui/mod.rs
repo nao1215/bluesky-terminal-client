@@ -5,6 +5,7 @@ mod keys;
 mod login;
 mod note;
 mod profile;
+mod search;
 mod settings;
 mod state;
 mod view;

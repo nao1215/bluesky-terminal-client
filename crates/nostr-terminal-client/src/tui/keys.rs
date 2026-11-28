@@ -1,9 +1,9 @@
 //! English and Japanese key help for the full-screen client.
 pub(super) const HELP: &[(&str, &str, &str)] = &[
     (
-        "1…5 / tab",
-        "Home / Notifications / Profile / Search / Chat",
-        "ホーム / 通知 / プロフィール / 検索 / チャット",
+        "1…4 / tab",
+        "Home / Notifications / Profile / Chat",
+        "ホーム / 通知 / プロフィール / チャット",
     ),
     ("j k / ↓ ↑", "move the selection", "選択を移動"),
     ("g G / home end", "first / last note", "最初 / 最後のノート"),
@@ -64,6 +64,11 @@ pub(super) const HELP: &[(&str, &str, &str)] = &[
         "search / chat recipient / message",
         "検索 / チャット宛先 / 入力",
     ),
+    (
+        "Esc",
+        "back to timeline from search results",
+        "検索結果からタイムラインに戻る",
+    ),
     (". / A", "actions / accounts", "操作一覧 / アカウント"),
     (
         "e",
@@ -106,6 +111,22 @@ pub(super) const HELP: &[(&str, &str, &str)] = &[
 
 use super::app::{App, Overlay};
 pub(super) fn hint(app: &App) -> &str {
+    if matches!(
+        app.extra.dialog,
+        Some(super::extras::Dialog::Input {
+            purpose: super::extras::Purpose::Search,
+            ..
+        })
+    ) {
+        return app.t("Enter search · Esc cancel", "Enter 検索 · Esc キャンセル");
+    }
+    if app.searching()
+        && app.threads.is_empty()
+        && app.overlay.is_none()
+        && app.extra.dialog.is_none()
+    {
+        return app.t("Esc back to timeline", "Esc タイムラインに戻る");
+    }
     match app.overlay {
         Some(Overlay::Compose { .. }) => app.t("ctrl+s send   esc cancel", "ctrl+s 送信   esc 中止"),
         Some(Overlay::Themes { .. }) => app.t("j k preview   enter apply   esc cancel", "j k プレビュー   enter 適用   esc 中止"),
@@ -113,7 +134,7 @@ pub(super) fn hint(app: &App) -> &str {
         Some(Overlay::Languages(_)) => app.t("j k move   enter choose   esc close", "j k 移動   enter 選択   esc 閉じる"),
         Some(Overlay::Pictures { .. }) => app.t("h l previous / next   d save   r replay   esc close", "h l 前 / 次   d 保存   r 再生   esc 閉じる"),
         Some(Overlay::Help(_)) => app.t("j k scroll   esc close", "j k スクロール   esc 閉じる"),
-        None => app.t("? help   j k move   tab next tab   n post   r reply   l like   b repost   v thread   c copy   s settings   T themes   q quit", "? ヘルプ   j k 移動   tab タブ   n 投稿   r 返信   l リアクション   b リポスト   v スレッド   c コピー   s 設定   T テーマ   q 終了"),
+        None => app.t("? help   / search   1–4 tabs   j k move   tab next tab   n post   r reply   l like   b repost   v thread   c copy   s settings   T themes   q quit", "? ヘルプ   / 検索   1–4 タブ   j k 移動   tab タブ   n 投稿   r 返信   l リアクション   b リポスト   v スレッド   c コピー   s 設定   T テーマ   q 終了"),
     }
 }
 

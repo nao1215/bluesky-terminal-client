@@ -17,18 +17,11 @@ pub(super) enum Tab {
     Home,
     Notifications,
     Profile,
-    Search,
     Chat,
 }
 impl Tab {
-    const ALL: [Self; 5] = [
-        Self::Home,
-        Self::Notifications,
-        Self::Profile,
-        Self::Search,
-        Self::Chat,
-    ];
-    fn index(self) -> usize {
+    const ALL: [Self; 4] = [Self::Home, Self::Notifications, Self::Profile, Self::Chat];
+    pub(super) fn index(self) -> usize {
         Self::ALL.iter().position(|t| *t == self).unwrap_or(0)
     }
 }
@@ -66,8 +59,9 @@ pub(super) enum Overlay {
 
 pub(super) struct App {
     pub extra: super::extras::Extra,
+    pub search: super::search::Search,
     pub tab: Tab,
-    pub lists: [List; 5],
+    pub lists: [List; 4],
     pub threads: Vec<(Event, List)>,
     pub overlay: Option<Overlay>,
     pub quit: bool,
@@ -101,6 +95,7 @@ impl App {
         let language = settings.language();
         Self {
             extra: super::extras::Extra::default(),
+            search: super::search::Search::default(),
             tab: Tab::Home,
             lists: std::array::from_fn(|_| List::default()),
             threads: Vec::new(),
@@ -129,8 +124,11 @@ impl App {
         if self.language == "ja" { ja } else { en }
     }
     pub(super) fn list(&self) -> &List {
+        if self.searching() && self.threads.is_empty() {
+            return &self.search.list;
+        }
         if self.threads.is_empty()
-            && self.tab == Tab::Search
+            && self.tab == Tab::Home
             && let Some(i) = self.extra.column
             && let Some(list) = self.extra.column_lists.get(i)
         {
@@ -142,8 +140,11 @@ impl App {
             .unwrap_or(&self.lists[self.tab.index()])
     }
     fn list_mut(&mut self) -> &mut List {
+        if self.searching() && self.threads.is_empty() {
+            return &mut self.search.list;
+        }
         if self.threads.is_empty()
-            && self.tab == Tab::Search
+            && self.tab == Tab::Home
             && let Some(i) = self.extra.column
             && i < self.extra.column_lists.len()
         {
@@ -270,15 +271,19 @@ impl App {
                 }
             }
             KeyCode::Esc => {
-                self.threads.pop();
+                if self.threads.pop().is_none() {
+                    self.leave_search();
+                }
             }
             KeyCode::Char('R') | KeyCode::F(5) => return self.load(true),
-            KeyCode::Char('1'..='5') | KeyCode::Tab | KeyCode::BackTab => {
+            KeyCode::Char('1'..='4') | KeyCode::Tab | KeyCode::BackTab => {
                 let index = match code {
                     KeyCode::Char(c) => c as usize - '1' as usize,
-                    KeyCode::BackTab => (self.tab.index() + 4) % 5,
-                    _ => (self.tab.index() + 1) % 5,
+                    KeyCode::BackTab => (self.tab.index() + 3) % 4,
+                    _ => (self.tab.index() + 1) % 4,
                 };
+                self.leave_search();
+                self.extra.column = None;
                 self.tab = Tab::ALL[index];
                 self.threads.clear();
                 if self.tab == Tab::Notifications {
@@ -606,6 +611,8 @@ impl App {
                 )
             }
             Answer::Loaded(seq, result) => {
+                let reset_selection = self.search.list.loading == Some(seq)
+                    && std::mem::take(&mut self.search.reset_selection);
                 let notifications = self.lists[1].loading == Some(seq);
                 let focal = self
                     .threads
@@ -617,6 +624,7 @@ impl App {
                     .iter_mut()
                     .chain(self.threads.iter_mut().map(|(_, l)| l))
                     .chain(self.extra.column_lists.iter_mut())
+                    .chain(std::iter::once(&mut self.search.list))
                     .find(|l| l.loading == Some(seq));
                 let Some(list) = list else {
                     return;
@@ -624,11 +632,15 @@ impl App {
                 list.loading = None;
                 match result {
                     Ok(out) => {
-                        let selected = list
-                            .notes
-                            .get(list.selected)
-                            .map(|n| n.id.clone())
-                            .or(focal);
+                        let selected = if reset_selection {
+                            list.selected = 0;
+                            None
+                        } else {
+                            list.notes
+                                .get(list.selected)
+                                .map(|n| n.id.clone())
+                                .or(focal)
+                        };
                         if out.value.append {
                             let mut ids: HashSet<_> =
                                 list.notes.iter().map(|e| e.id.clone()).collect();

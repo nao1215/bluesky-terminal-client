@@ -145,7 +145,6 @@ pub(super) struct Extra {
     pub author: Option<String>,
     pub relationship: Option<(String, bool, bool)>,
     pub relationship_seq: u64,
-    pub search: String,
     pub peer: Option<String>,
     pub messages: Vec<Value>,
     pub chat_selected: usize,
@@ -315,7 +314,7 @@ impl App {
                     return Some(self.load(true));
                 }
             }
-            KeyCode::Char('/') => self.input(Purpose::Search, self.extra.search.clone()),
+            KeyCode::Char('/') => self.input(Purpose::Search, self.search.query.clone()),
             KeyCode::Char('I') => {
                 self.extra.dialog = Some(Dialog::Confirm {
                     operation: Operation::DmRelays,
@@ -382,21 +381,24 @@ impl App {
                 }
             }
             KeyCode::Char('+') => {
-                let label = match self.tab {
-                    Tab::Home => "home".into(),
-                    Tab::Notifications => "notifications".into(),
-                    Tab::Profile => format!(
-                        "author:{}",
-                        self.extra.author.as_deref().unwrap_or(&self.public)
-                    ),
-                    Tab::Search => format!("search:{}", self.extra.search),
-                    Tab::Chat => return Some(vec![]),
+                let label = match self.target() {
+                    Target::Search(query) => format!("search:{query}"),
+                    Target::Author(author) => format!("author:{author}"),
+                    _ => match self.tab {
+                        Tab::Home => "home".into(),
+                        Tab::Notifications => "notifications".into(),
+                        Tab::Profile => format!(
+                            "author:{}",
+                            self.extra.author.as_deref().unwrap_or(&self.public)
+                        ),
+                        Tab::Chat => return Some(vec![]),
+                    },
                 };
                 let list = self.list().clone();
                 self.extra.columns.push(label);
                 self.extra.column_lists.push(list);
                 self.extra.column = Some(self.extra.columns.len() - 1);
-                self.tab = Tab::Search;
+                self.tab = Tab::Home;
                 self.extra.persist = true;
             }
             KeyCode::Char('H' | 'L') | KeyCode::Left | KeyCode::Right
@@ -410,8 +412,7 @@ impl App {
                     (old + 1) % len
                 };
                 self.extra.column = Some(next);
-                self.tab = Tab::Search;
-                self.lists[3] = List::default();
+                self.tab = Tab::Home;
                 return Some(self.load(true));
             }
             KeyCode::Char('x') if self.extra.column.is_some() => {
@@ -443,7 +444,11 @@ impl App {
                 self.extra.chat_selected = 0;
                 return Some(self.load(true));
             }
-            KeyCode::Esc if self.extra.author.is_some() && self.threads.is_empty() => {
+            KeyCode::Esc
+                if self.tab == Tab::Profile
+                    && self.extra.author.is_some()
+                    && self.threads.is_empty() =>
+            {
                 self.extra.author = None;
                 self.lists[2] = List::default();
                 self.tab = Tab::Home;
@@ -455,7 +460,11 @@ impl App {
     fn input(&mut self, purpose: Purpose, text: String) {
         self.extra.dialog = Some(Dialog::Input {
             purpose,
-            text: TextInput::multi(&text),
+            text: if matches!(purpose, Purpose::Search) {
+                TextInput::single(&text)
+            } else {
+                TextInput::multi(&text)
+            },
         });
     }
     fn dialog_key(&mut self, mut dialog: Dialog, key: KeyEvent) -> Vec<Job> {
@@ -553,12 +562,11 @@ impl App {
                             }
                         }
                         Purpose::Search => {
-                            self.extra.search = value;
-                            self.extra.column = None;
-                            self.tab = Tab::Search;
-                            self.threads.clear();
-                            self.lists[3] = List::default();
-                            jobs = self.load(true);
+                            if value.trim().is_empty() {
+                                keep = true;
+                            } else {
+                                jobs = self.start_search(value.trim().into());
+                            }
                         }
                         Purpose::ChatPeer => match actions::public(value.trim()) {
                             Ok(p) => {
@@ -833,7 +841,7 @@ impl App {
         if let Some((e, _)) = self.threads.last() {
             return Target::Thread(e.clone());
         }
-        if self.tab == Tab::Search {
+        if self.tab == Tab::Home {
             if let Some(i) = self.extra.column
                 && let Some(column) = self.extra.columns.get(i)
             {
@@ -848,7 +856,9 @@ impl App {
                 }
                 return Target::Search(column.strip_prefix("search:").unwrap_or(column).into());
             }
-            return Target::Search(self.extra.search.clone());
+            if self.searching() {
+                return Target::Search(self.search.query.clone());
+            }
         }
         if self.tab == Tab::Profile
             && let Some(author) = &self.extra.author
