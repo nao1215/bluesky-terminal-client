@@ -232,9 +232,7 @@ impl App {
                 match key.code {
                     KeyCode::Char('o') => {
                         if self.extra.attachments.len() >= 8 {
-                            self.message = self
-                                .t("At most eight attachments", "添付は最大8件です")
-                                .into();
+                            self.message = self.t("At most eight attachments").into();
                             return Some(vec![]);
                         }
                         self.extra.browser = Some(Browser::open(
@@ -551,12 +549,8 @@ impl App {
                                     jobs = self.task(Operation::AddAccount(name.into(), v))
                                 }
                                 None => {
-                                    self.message = self
-                                        .t(
-                                            "Enter name followed by configuration JSON",
-                                            "名前と設定 JSON を空白で区切って入力してください",
-                                        )
-                                        .into();
+                                    self.message =
+                                        self.t("Enter name followed by configuration JSON").into();
                                     keep = true;
                                 }
                             }
@@ -734,7 +728,7 @@ impl App {
                             .collect::<Vec<_>>()
                             .join("; ")
                     })
-                    .unwrap_or_else(|| self.t("Completed", "完了しました").into());
+                    .unwrap_or_else(|| self.t("Completed").into());
             }
             Err(e) => {
                 self.extra.operation = None;

@@ -1,12 +1,6 @@
 //! Translations into German, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter suchen · Strg+T Beiträge/Konten · Esc abbrechen",
-    ),
-    ("Esc back to timeline", "Esc zurück zur Timeline"),
-    ("No results for \"{}\"", "Keine Ergebnisse für „{}“"),
     ("open the search box", "Suchfeld öffnen"),
     (
         "Play videos in the timeline",
@@ -62,9 +56,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, als Video gepostet"),
     ("Global", "Allgemein"),
     ("Handle or email", "Handle oder E-Mail"),
-    ("Help", "Hilfe"),
     ("Keys", "Tasten"),
-    ("Language", "Sprache"),
     ("Link cards", "Linkkarten"),
     ("Lists", "Listen"),
     ("Log in to Bluesky", "Bei Bluesky anmelden"),
@@ -93,21 +85,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "Profil"),
     ("Quote @{}", "@{} zitieren"),
     ("Reply to @{}", "@{} antworten"),
-    ("Search", "Suche"),
     ("Search posts for:", "Beiträge suchen nach:"),
-    ("Search: {}", "Suche: {}"),
     ("Search…", "Suchen…"),
     ("Service", "Dienst"),
-    ("Settings", "Einstellungen"),
     (
         "Settings → Privacy and security → App passwords",
         "Einstellungen → Privatsphäre und Sicherheit → App-Passwörter",
     ),
-    ("Terminal too small", "Terminal zu klein"),
     ("The thread is empty.", "Der Thread ist leer."),
-    ("Theme", "Design"),
     ("Theme picker", "Designauswahl"),
-    ("Thread", "Thread"),
     ("Timeline", "Timeline"),
     ("Video service", "Videodienst"),
     ("Viewer", "Betrachter"),
@@ -159,7 +145,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "beliebige Taste schließt"),
     ("apply", "anwenden"),
-    ("attach", "anhängen"),
     (
         "attach pictures or a video / an avatar",
         "Bilder oder Video / Avatar anhängen",
@@ -469,7 +454,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "move the column left / right",
         "Spalte nach links / rechts schieben",
     ),
-    ("move the selection", "Auswahl bewegen"),
     (
         "move through the posts and replies",
         "durch Beiträge und Antworten gehen",
@@ -533,7 +517,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "jetzt @{}"),
     ("off", "aus"),
     ("on", "an"),
-    ("open", "öffnen"),
     ("open / choose", "öffnen / wählen"),
     ("open in browser", "im Browser öffnen"),
     ("open it in the web browser", "im Browser öffnen"),
@@ -630,7 +613,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "Einstellung auf Standard zurücksetzen",
     ),
-    ("quit", "beenden"),
     ("quote it in a new post", "in neuem Beitrag zitieren"),
     (
         "quote removed by the post's author",

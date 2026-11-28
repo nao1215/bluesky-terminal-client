@@ -1,12 +1,6 @@
 //! Translations into Simplified Chinese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter 搜索 · Ctrl+T 帖子/账号 · Esc 取消",
-    ),
-    ("Esc back to timeline", "Esc 返回时间线"),
-    ("No results for \"{}\"", "没有“{}”的搜索结果"),
     ("open the search box", "打开搜索框"),
     ("Play videos in the timeline", "在时间线中播放视频"),
     (
@@ -53,9 +47,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF（作为视频发布）"),
     ("Global", "全局"),
     ("Handle or email", "用户名或邮箱"),
-    ("Help", "帮助"),
     ("Keys", "按键"),
-    ("Language", "语言"),
     ("Link cards", "链接卡片"),
     ("Lists", "列表"),
     ("Log in to Bluesky", "登录 Bluesky"),
@@ -84,21 +76,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "个人资料"),
     ("Quote @{}", "引用 @{}"),
     ("Reply to @{}", "回复 @{}"),
-    ("Search", "搜索"),
     ("Search posts for:", "搜索帖子："),
-    ("Search: {}", "搜索：{}"),
     ("Search…", "搜索…"),
     ("Service", "服务"),
-    ("Settings", "设置"),
     (
         "Settings → Privacy and security → App passwords",
         "设置 → 隐私与安全 → 应用专用密码",
     ),
-    ("Terminal too small", "终端窗口太小"),
     ("The thread is empty.", "此帖子串为空。"),
-    ("Theme", "主题"),
     ("Theme picker", "主题选择"),
-    ("Thread", "帖子串"),
     ("Timeline", "时间线"),
     ("Video service", "视频服务"),
     ("Viewer", "查看器"),
@@ -147,7 +133,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "按任意键关闭"),
     ("apply", "应用"),
-    ("attach", "附加"),
     (
         "attach pictures or a video / an avatar",
         "附加图片或视频 / 头像",
@@ -400,7 +385,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("move", "移动"),
     ("move five items", "移动 5 项"),
     ("move the column left / right", "将此栏左移 / 右移"),
-    ("move the selection", "移动选择"),
     ("move through the posts and replies", "在帖子和回复间移动"),
     ("move; a video is described", "移动（视频显示说明）"),
     ("move; pictures are previewed", "移动（图片会预览）"),
@@ -449,7 +433,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "当前为 @{}"),
     ("off", "关闭"),
     ("on", "开启"),
-    ("open", "打开"),
     ("open / choose", "打开 / 选择"),
     ("open in browser", "在浏览器中打开"),
     ("open it in the web browser", "在浏览器中打开"),
@@ -531,7 +514,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("previous / next picture", "上一张 / 下一张图片"),
     ("profile updated", "个人资料已更新"),
     ("put the setting back to its default", "将设置恢复为默认值"),
-    ("quit", "退出"),
     ("quote it in a new post", "在新帖子中引用"),
     ("quote removed by the post's author", "帖子作者已移除引用"),
     (

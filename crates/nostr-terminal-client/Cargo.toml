@@ -47,6 +47,7 @@ ureq.workspace = true
 zeroize = "1"
 
 [dev-dependencies]
+terminal-kit = { path = "../terminal-kit", features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
 

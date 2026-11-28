@@ -2,7 +2,6 @@
 //! and pages with odd items.
 
 use super::*;
-use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -13,55 +12,22 @@ type Handler = Arc<dyn Fn(&str, &str) -> Option<(u16, String, u64)> + Send + Syn
 type Calls = Arc<Mutex<Vec<(String, String)>>>;
 
 fn serve(h: Handler) -> (String, Calls) {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
     let log: Calls = Arc::default();
     let kept = Arc::clone(&log);
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let h = Arc::clone(&h);
-            let kept = Arc::clone(&kept);
-            std::thread::spawn(move || {
-                let mut r = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                if r.read_line(&mut line).is_err() {
-                    return;
-                }
-                let path = line.split(' ').nth(1).unwrap_or("").to_string();
-                let (mut auth, mut len) = (String::new(), 0usize);
-                loop {
-                    let mut hd = String::new();
-                    if r.read_line(&mut hd).is_err() {
-                        return;
-                    }
-                    if hd.trim().is_empty() {
-                        break;
-                    }
-                    let (name, value) = hd.split_once(':').unwrap_or_default();
-                    match name.to_ascii_lowercase().as_str() {
-                        "authorization" => auth = value.trim().to_string(),
-                        "content-length" => len = value.trim().parse().unwrap(),
-                        _ => {}
-                    }
-                }
-                let _ = r.read_exact(&mut vec![0; len]);
-                kept.lock().unwrap().push((path.clone(), auth.clone()));
-                match h(&path, &auth) {
-                    None => std::thread::sleep(Duration::from_secs(3600)),
-                    Some((status, body, delay)) => {
-                        std::thread::sleep(Duration::from_millis(delay));
-                        let _ = write!(
-                            stream,
-                            "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                            body.len()
-                        );
-                    }
-                }
-            });
-        }
-    });
-    (url, log)
+    let server = terminal_kit::test_support::http::serve_http(move |request, _| {
+        let path = request.target.clone();
+        let auth = request
+            .header("authorization")
+            .unwrap_or_default()
+            .to_owned();
+        kept.lock().unwrap().push((path.clone(), auth.clone()));
+        h(&path, &auth).map(|(status, body, delay)| {
+            std::thread::sleep(Duration::from_millis(delay));
+            terminal_kit::test_support::http::reply(status, &body)
+        })
+    })
+    .unwrap();
+    (server.url().to_owned(), log)
 }
 
 fn session(url: &str) -> Session {

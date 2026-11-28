@@ -421,7 +421,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
     }
     if app.search_shown() {
         return vec![
-            ("Esc", n!("back to timeline")),
+            ("", n!("Esc back to timeline")),
             ("j k", n!("move")),
             (".", n!("actions")),
             ("/", n!("edit query")),

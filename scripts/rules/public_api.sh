@@ -26,7 +26,7 @@ if ! command -v cargo-public-api >/dev/null 2>&1; then
 	exit 127
 fi
 
-now="$(cargo "+$TOOLCHAIN" public-api --manifest-path "$ROOT/crates/terminal-kit/Cargo.toml" -ss 2>/dev/null)"
+now="$(cargo "+$TOOLCHAIN" public-api --manifest-path "$ROOT/crates/terminal-kit/Cargo.toml" --all-features -ss 2>/dev/null)"
 if [ "${1:-}" = "--update" ]; then
 	printf '%s\n' "$now" >"$LIST"
 	exit 0

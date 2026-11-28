@@ -3,55 +3,26 @@ use super::*;
 
 /// A single input line over the current list, near its top edge.
 pub(super) fn search_box(frame: &mut Frame, area: Rect, app: &App, th: &Theme) {
-    let width = 72.min(area.width.saturating_sub(2));
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + 1,
-        width,
-        4.min(area.height.saturating_sub(1)),
+    terminal_kit::view::draw_input_box(
+        frame,
+        area,
+        &app.search.input,
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(format!(
+                " {} · {} ",
+                t("Search"),
+                t(if app.search.accounts {
+                    n!("Accounts")
+                } else {
+                    n!("Posts")
+                })
+            ))
+            .style(th.base())
+            .border_style(th.accent()),
+        t("Enter search · Ctrl+T posts/accounts · Esc cancel"),
+        th.dim(),
     );
-    frame.render_widget(Clear, rect);
-    let title = format!(
-        " {} · {} ",
-        t("Search"),
-        t(if app.search.accounts {
-            n!("Accounts")
-        } else {
-            n!("Posts")
-        })
-    );
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .title(title)
-        .border_style(th.accent())
-        .style(th.base());
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
-    let input = app.search.input.layout(usize::from(inner.width.max(1)));
-    let line = input.lines.get(input.cursor.0).cloned().unwrap_or_default();
-    frame.render_widget(
-        Paragraph::new(line),
-        Rect {
-            height: 1.min(inner.height),
-            ..inner
-        },
-    );
-    if inner.height > 1 {
-        frame.render_widget(
-            Paragraph::new(t("Enter search · Ctrl+T posts/accounts · Esc cancel")).style(th.dim()),
-            Rect {
-                y: inner.y + 1,
-                height: 1,
-                ..inner
-            },
-        );
-    }
-    if inner.width > 0 && inner.height > 0 {
-        frame.set_cursor_position((
-            inner.x + (input.cursor.1 as u16).min(inner.width - 1),
-            inner.y,
-        ));
-    }
 }
 
 pub(super) fn thumbnails<'a>(s: &'a Status, ctx: &Ctx, pictures: bool) -> Vec<&'a str> {

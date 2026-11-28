@@ -22,10 +22,7 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     images.begin_frame(area.as_size(), app.theme.dim());
     frame.render_widget(Block::new().style(app.theme.base()), area);
     if area.width < 24 || area.height < 8 {
-        frame.render_widget(
-            Paragraph::new(app.t("Terminal too small", "端末が小さすぎます")),
-            area,
-        );
+        frame.render_widget(Paragraph::new(app.t("Terminal too small")), area);
         return;
     }
     let message_lines = wrap(&app.message, usize::from(area.width));
@@ -39,18 +36,17 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     .areas(area);
     let home = if app.searching() {
         format!(
-            "1 {}: {}",
-            app.t("Search", "検索"),
-            drawable(&app.search.query)
+            "1 {}",
+            app.tf("Search: {}", &[&drawable(&app.search.query)])
         )
     } else {
-        app.t("1 Home", "1 ホーム").into()
+        app.t("1 Home").into()
     };
     let labels = [
         (Tab::Home, home.as_str()),
-        (Tab::Notifications, app.t("2 Notifications", "2 通知")),
-        (Tab::Profile, app.t("3 Profile", "3 プロフィール")),
-        (Tab::Chat, app.t("4 Chat", "4 チャット")),
+        (Tab::Notifications, app.t("2 Notifications")),
+        (Tab::Profile, app.t("3 Profile")),
+        (Tab::Chat, app.t("4 Chat")),
     ];
     let spans = labels
         .into_iter()
@@ -74,12 +70,12 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
     frame.render_widget(
         Paragraph::new(format!(
             "nstr · {} {}/{} · {}{}\n{}",
-            app.t("relays", "リレー"),
+            app.t("relays"),
             app.answered,
             app.relays,
             app.public,
             if app.list().loading.is_some() {
-                app.t(" · Loading…", " · 読み込み中…")
+                app.t(" · Loading…")
             } else {
                 ""
             },
@@ -140,10 +136,9 @@ pub(super) fn draw(frame: &mut Frame, app: &App, images: &mut Images) {
             .collect::<Vec<_>>()
             .join("\n\n");
         frame.render_widget(
-            Paragraph::new(drawable(&text)).block(Block::bordered().title(app.t(
-                "Chat · m recipient · i message · ctrl+s send",
-                "チャット · m 宛先 · i 入力 · ctrl+s 送信",
-            ))),
+            Paragraph::new(drawable(&text)).block(
+                Block::bordered().title(app.t("Chat · m recipient · i message · ctrl+s send")),
+            ),
             body,
         );
     } else if let Some(overlay) = &app.overlay {
@@ -201,13 +196,13 @@ fn draw_notes(
         .count();
     let summary = format!(
         "{}: {unread} · {}",
-        app.t("Unread", "未読"),
+        app.t("Unread"),
         app.extra.columns.join(" | ")
     );
     let title = if app.threads.is_empty() {
         summary.as_str()
     } else {
-        app.t("Thread", "スレッド")
+        app.t("Thread")
     };
     let block = Block::default().borders(Borders::TOP).title(title);
     let inner = block.inner(area);
@@ -246,18 +241,10 @@ fn draw_notes(
         {
             text.push_str(&format!(
                 "\n{}: {} · {}: {}",
-                app.t("Following", "フォロー中"),
-                if *follow {
-                    app.t("yes", "はい")
-                } else {
-                    app.t("no", "いいえ")
-                },
-                app.t("Muted", "ミュート"),
-                if *mute {
-                    app.t("yes", "はい")
-                } else {
-                    app.t("no", "いいえ")
-                }
+                app.t("Following"),
+                if *follow { app.t("yes") } else { app.t("no") },
+                app.t("Muted"),
+                if *mute { app.t("yes") } else { app.t("no") }
             ));
         }
         let lines = wrap(&text, usize::from(area.width));
@@ -273,17 +260,9 @@ fn draw_notes(
     if list.notes.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.searching() && app.threads.is_empty() {
-                format!(
-                    "{} \"{}\"",
-                    app.t("No results for", "検索結果なし:"),
-                    drawable(&app.search.query)
-                )
+                app.tf("No results for \"{}\"", &[&drawable(&app.search.query)])
             } else {
-                app.t(
-                    "No notes. R refreshes.",
-                    "ノートはありません。R で再読み込み。",
-                )
-                .into()
+                app.t("No notes. R refreshes.").into()
             }),
             area,
         );
@@ -331,16 +310,12 @@ fn draw_notes(
         let content = if hidden {
             format!(
                 "{}: {} · w {}",
-                app.t("Content warning", "閲覧注意"),
+                app.t("Content warning"),
                 shown.tag_values("content-warning").next().unwrap_or(""),
-                app.t("open", "開く")
+                app.t("open")
             )
         } else if matches!(note.kind, 6 | 16) && embedded.is_none() {
-            app.t(
-                "Repost (original unavailable)",
-                "リポスト（元の投稿を取得できません）",
-            )
-            .into()
+            app.t("Repost (original unavailable)").into()
         } else if images.shows() {
             terminal_kit::emoji::with_emoji_cells(
                 &shown.content,
@@ -366,14 +341,11 @@ fn draw_notes(
             lines.push(format!(
                 "↪ {} · V {}",
                 &id[..id.len().min(12)],
-                app.t("open quote", "引用を開く")
+                app.t("open quote")
             ));
             if let Some(quote) = app.extra.references.get(id) {
                 let body = if app.hidden(quote) {
-                    app.t(
-                        "Content warning · V to open quote",
-                        "閲覧注意 · V で引用を開く",
-                    )
+                    app.t("Content warning · V to open quote")
                 } else {
                     &quote.content
                 };
@@ -394,13 +366,10 @@ fn draw_notes(
         ));
         let urls = if hidden { vec![] } else { note::pictures(note) };
         if !urls.is_empty() {
-            lines.push(format!("▣ {} {}", urls.len(), app.t("pictures", "画像")));
+            lines.push(format!("▣ {} {}", urls.len(), app.t("pictures")));
         }
         if !hidden && note::has_video(note) {
-            lines.push(
-                app.t("▶ video · space to play", "▶ 動画 · space で再生")
-                    .into(),
-            );
+            lines.push(app.t("▶ video · space to play").into());
         }
         let height = (lines.len() as u16).min(area.height);
         frame.render_widget(
@@ -431,30 +400,28 @@ fn draw_notes(
 }
 
 fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, images: &mut Images) {
-    frame.render_widget(Clear, area);
     let title = match overlay {
-        Overlay::Help(_) => app.t("Help", "ヘルプ"),
+        Overlay::Help(_) => app.t("Help"),
         Overlay::Compose {
             target: Some(_), ..
-        } => app.t("Reply", "返信"),
-        Overlay::Compose { .. } => app.t("New note", "新規ノート"),
-        Overlay::Settings(_) => app.t("Settings", "設定"),
-        Overlay::Themes { .. } => app.t("Themes", "テーマ"),
-        Overlay::Languages(_) => app.t("Language", "言語"),
-        Overlay::Pictures { .. } => app.t("Pictures", "画像"),
+        } => app.t("Reply"),
+        Overlay::Compose { .. } => app.t("New note"),
+        Overlay::Settings(_) => app.t("Settings"),
+        Overlay::Themes { .. } => app.t("Themes"),
+        Overlay::Languages(_) => app.t("Language"),
+        Overlay::Pictures { .. } => app.t("Pictures"),
     };
     let block = Block::bordered().title(title).style(app.theme.base());
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = terminal_kit::view::draw_panel(frame, area, block, None);
     match overlay {
         Overlay::Compose { text, .. } => {
             frame.render_widget(
                 Paragraph::new(format!(
                     "{} {} · CW: {} · ctrl+o {} · tab alt",
                     app.extra.attachments.len(),
-                    app.t("attachments", "添付"),
+                    app.t("attachments"),
                     app.extra.cw.as_deref().unwrap_or(""),
-                    app.t("attach", "添付")
+                    app.t("attach")
                 )),
                 Rect {
                     height: 1.min(inner.height),
@@ -493,7 +460,7 @@ fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, ima
             let text = HELP
                 .iter()
                 .skip(*scroll)
-                .map(|(key, en, ja)| format!("{key:<18} {}", app.t(en, ja)))
+                .map(|(key, en)| format!("{key:<18} {}", app.t(en)))
                 .collect::<Vec<_>>()
                 .join("\n");
             frame.render_widget(Paragraph::new(text), inner);
@@ -502,7 +469,7 @@ fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, ima
             frame,
             inner,
             app,
-            &[app.t("Theme", "テーマ"), app.t("Language", "言語")],
+            &[app.t("Theme"), app.t("Language")],
             *selected,
         ),
         Overlay::Themes { selected, .. } => menu(
@@ -544,7 +511,7 @@ fn draw_overlay(frame: &mut Frame, area: Rect, app: &App, overlay: &Overlay, ima
 }
 
 fn menu(frame: &mut Frame, area: Rect, app: &App, choices: &[&str], selected: usize) {
-    let first = selected.saturating_sub(usize::from(area.height.saturating_sub(1)));
+    let first = terminal_kit::view::first_visible(selected, area.height);
     let lines = choices
         .iter()
         .enumerate()
@@ -573,49 +540,23 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
         text,
     } = dialog
     {
-        let width = area.width.saturating_sub(4).clamp(1, 72);
-        let box_area = Rect::new(
-            area.x + (area.width - width) / 2,
-            area.y + 1.min(area.height.saturating_sub(4)),
-            width,
-            4.min(area.height),
+        terminal_kit::view::draw_input_box(
+            frame,
+            area,
+            text,
+            Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Rounded)
+                .title(format!(" {} ", app.t("Search")))
+                .style(app.theme.base())
+                .border_style(app.theme.accent()),
+            app.t("Enter search · Esc cancel"),
+            app.theme.dim(),
         );
-        frame.render_widget(Clear, box_area);
-        let block = Block::bordered()
-            .title(app.t("Search", "検索"))
-            .style(app.theme.base());
-        let inner = block.inner(box_area);
-        frame.render_widget(block, box_area);
-        if inner.width > 0 && inner.height > 0 {
-            let layout = text.layout(usize::from(inner.width));
-            // Horizontally long queries keep the cursor's segment on the input line.
-            frame.render_widget(
-                Paragraph::new(layout.lines[layout.cursor.0].as_str()),
-                Rect { height: 1, ..inner },
-            );
-            frame.set_cursor_position((inner.x + layout.cursor.1 as u16, inner.y));
-            if inner.height > 1 {
-                frame.render_widget(
-                    Paragraph::new(
-                        app.t("Enter search · Esc cancel", "Enter 検索 · Esc キャンセル"),
-                    )
-                    .style(app.theme.dim()),
-                    Rect {
-                        y: inner.y + 1,
-                        height: 1,
-                        ..inner
-                    },
-                );
-            }
-        }
         return;
     }
     let (title, text) = match dialog {
         Dialog::Profile(editor) => (
-            app.t(
-                "Edit profile · tab field · ctrl+o picture · ctrl+s save",
-                "プロフィール編集 · tab 項目 · ctrl+o 画像 · ctrl+s 保存",
-            ),
+            app.t("Edit profile · tab field · ctrl+o picture · ctrl+s save"),
             format!(
                 "{}\n{}",
                 editor.summary(app.language == "ja"),
@@ -633,34 +574,22 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
             ),
         ),
         Dialog::Confirm { .. } => (
-            app.t(
-                "Confirm · y yes / n no · esc cancel",
-                "確認 · y 実行 / n 中止 · esc 戻る",
-            ),
-            app.t(
-                "Publish this request? Relays decide what they honor.",
-                "この要求を公開しますか？対応の判断はリレーによります。",
-            )
-            .to_owned(),
+            app.t("Confirm · y yes / n no · esc cancel"),
+            app.t("Publish this request? Relays decide what they honor.")
+                .to_owned(),
         ),
         Dialog::Input { purpose, text } => {
             let title = match purpose {
-                Purpose::AddAccount => app.t(
-                    "Add account: name JSON · enter",
-                    "アカウント追加: 名前 JSON · enter",
-                ),
-                Purpose::Search => app.t("Search", "検索"),
-                Purpose::ChatPeer => app.t("Recipient public key · enter", "宛先の公開鍵 · enter"),
+                Purpose::AddAccount => app.t("Add account: name JSON · enter"),
+                Purpose::Search => app.t("Search"),
+                Purpose::ChatPeer => app.t("Recipient public key · enter"),
                 Purpose::ChatMessage => {
-                    app.t("Private message · ctrl+s", "非公開メッセージ · ctrl+s")
+                    app.t("Private message · ctrl+s")
                 }
-                Purpose::Reaction => app.t("Reaction · enter", "リアクション · enter"),
-                Purpose::Report => app.t(
-                    "Report: reason comment · enter",
-                    "通報: 理由 コメント · enter",
-                ),
-                Purpose::Warning => app.t("Content warning · enter", "閲覧注意文 · enter"),
-                Purpose::Alt => app.t("Attachment alt text · tab next · shift+tab previous · ctrl+x remove · enter done", "添付の代替テキスト · tab 次 · shift+tab 前 · ctrl+x 除去 · enter 完了"),
+                Purpose::Reaction => app.t("Reaction · enter"),
+                Purpose::Report => app.t("Report: reason comment · enter"),
+                Purpose::Warning => app.t("Content warning · enter"),
+                Purpose::Alt => app.t("Attachment alt text · tab next · shift+tab previous · ctrl+x remove · enter done"),
             };
             let body = if matches!(purpose, Purpose::Alt) {
                 format!(
@@ -681,25 +610,18 @@ fn draw_dialog(frame: &mut Frame, area: Rect, app: &App, dialog: &super::extras:
             (title, body)
         }
         Dialog::Actions(selected) => (
-            app.t("Actions", "操作一覧"),
+            app.t("Actions"),
             ACTIONS
                 .iter()
                 .enumerate()
-                .map(|(i, (_, en, ja))| {
-                    format!(
-                        "{} {}",
-                        if i == *selected { "›" } else { " " },
-                        app.t(en, ja)
-                    )
+                .map(|(i, (_, en))| {
+                    format!("{} {}", if i == *selected { "›" } else { " " }, app.t(en))
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
         ),
         Dialog::Accounts { names, selected } => (
-            app.t(
-                "Saved accounts · enter switch · a add · x remove",
-                "保存済みアカウント · enter 切替 · a 追加 · x 削除",
-            ),
+            app.t("Saved accounts · enter switch · a add · x remove"),
             names
                 .iter()
                 .enumerate()

@@ -20,15 +20,15 @@ scenarios:
             - send: w
             - expect_screen: { contains: "bob の二つ目", not_contains: "返信です" }
             - send: "/"
-            - expect_screen: { contains: ["┌Search", "Enter search · Esc cancel", "1 Home"], not_contains: "Ctrl+T" }
+            - expect_screen: { contains: ["╭ Search", "Enter search · Esc cancel", "1 Home"], not_contains: "Ctrl+T" }
             - send: "discard this"
             - send: { key: esc }
-            - expect_screen: { contains: "bob の二つ目", not_contains: ["┌Search", "discard this", "返信です"] }
+            - expect_screen: { contains: "bob の二つ目", not_contains: ["╭ Search", "discard this", "返信です"] }
             - send: "/"
-            - expect_screen: { contains: "┌Search" }
+            - expect_screen: { contains: "╭ Search" }
             - send: carol
             - send: { key: enter }
-            - expect_screen: { contains: ["1 Search: carol", "carol is not followed", "Esc back to timeline"], not_contains: ["┌Search", "bob の二つ目", "Loading…"], stable_for: 300ms }
+            - expect_screen: { contains: ["1 Search: carol", "carol is not followed", "Esc back to timeline"], not_contains: ["╭ Search", "bob の二つ目", "Loading…"], stable_for: 300ms }
             - send: "."
             - expect_screen: { contains: "Actions" }
             - send: { key: esc }
@@ -36,11 +36,11 @@ scenarios:
             - send: { key: esc }
             - expect_screen: { contains: ["1 Home", "bob の二つ目"], not_contains: ["1 Search:", "carol is not followed", "返信です"] }
             - send: "/"
-            - expect_screen: { contains: ["┌Search", "carol"] }
+            - expect_screen: { contains: ["╭ Search", "carol"] }
             - send: { key: enter }
             - expect_screen: { contains: ["1 Search: carol", "carol is not followed"], not_contains: "Loading…", stable_for: 300ms }
             - send: "/"
-            - expect_screen: { contains: "┌Search" }
+            - expect_screen: { contains: "╭ Search" }
             - send: { key: ctrl-u }
             - send: "#absent"
             - send: { key: enter }
@@ -67,10 +67,10 @@ scenarios:
           session:
             - expect_screen: { contains: "返信です", stable_for: 300ms }
             - send: "/"
-            - expect_screen: { contains: "┌Search" }
+            - expect_screen: { contains: "╭ Search" }
             - send: words
             - send: { key: enter }
-            - expect_screen: { contains: ["unsupported: NIP-50 search", "返信です"], not_contains: "┌Search", stable_for: 300ms }
+            - expect_screen: { contains: ["unsupported: NIP-50 search", "返信です"], not_contains: "╭ Search", stable_for: 300ms }
             - send: { key: esc }
             - expect_screen: { contains: ["1 Home", "返信です"], not_contains: "1 Search:" }
             - send: q
@@ -93,7 +93,7 @@ scenarios:
           session:
             - expect_screen: { contains: "boundary", not_contains: "Loading…", stable_for: 300ms }
             - send: "/"
-            - expect_screen: { contains: "┌Search" }
+            - expect_screen: { contains: "╭ Search" }
             - send: boundary
             - send: { key: enter }
             - expect_screen: { contains: ["1 Search: boundary", "boundary"], not_contains: "Loading…", stable_for: 300ms }

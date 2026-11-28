@@ -358,7 +358,7 @@ fn view_hints(app: &App) -> Vec<Hint> {
     }
     if app.search_results() && app.threads.is_empty() {
         return vec![
-            ("Esc", n!("back to timeline")),
+            ("", n!("Esc back to timeline")),
             ("/", n!("search")),
             ("enter", n!("open profile")),
             (

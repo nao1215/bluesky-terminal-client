@@ -1,12 +1,6 @@
 //! Translations into French, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Entrée rechercher · Ctrl+T posts/comptes · Échap annuler",
-    ),
-    ("Esc back to timeline", "Échap retour au fil"),
-    ("No results for \"{}\"", "Aucun résultat pour « {} »"),
     ("open the search box", "ouvrir la zone de recherche"),
     ("Play videos in the timeline", "Lire les vidéos dans le fil"),
     (
@@ -59,9 +53,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, publié en vidéo"),
     ("Global", "Général"),
     ("Handle or email", "Identifiant ou e-mail"),
-    ("Help", "Aide"),
     ("Keys", "Touches"),
-    ("Language", "Langue"),
     ("Link cards", "Cartes de lien"),
     ("Lists", "Listes"),
     ("Log in to Bluesky", "Connexion à Bluesky"),
@@ -93,21 +85,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "Profil"),
     ("Quote @{}", "Citer @{}"),
     ("Reply to @{}", "Répondre à @{}"),
-    ("Search", "Rechercher"),
     ("Search posts for:", "Rechercher des posts :"),
-    ("Search: {}", "Recherche : {}"),
     ("Search…", "Rechercher…"),
     ("Service", "Service"),
-    ("Settings", "Réglages"),
     (
         "Settings → Privacy and security → App passwords",
         "Réglages → Confidentialité et sécurité → Mots de passe d’application",
     ),
-    ("Terminal too small", "Terminal trop petit"),
     ("The thread is empty.", "Le fil est vide."),
-    ("Theme", "Thème"),
     ("Theme picker", "Choix du thème"),
-    ("Thread", "Fil"),
     ("Timeline", "Fil"),
     ("Video service", "Service vidéo"),
     ("Viewer", "Visionneuse"),
@@ -159,7 +145,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "une touche pour fermer"),
     ("apply", "appliquer"),
-    ("attach", "joindre"),
     (
         "attach pictures or a video / an avatar",
         "joindre images ou vidéo / un avatar",
@@ -469,7 +454,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "move the column left / right",
         "déplacer la colonne à gauche / droite",
     ),
-    ("move the selection", "déplacer la sélection"),
     (
         "move through the posts and replies",
         "parcourir les posts et les réponses",
@@ -533,7 +517,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "maintenant @{}"),
     ("off", "désactivé"),
     ("on", "activé"),
-    ("open", "ouvrir"),
     ("open / choose", "ouvrir / choisir"),
     ("open in browser", "ouvrir dans le navigateur"),
     ("open it in the web browser", "ouvrir dans le navigateur"),
@@ -633,7 +616,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "remettre le réglage par défaut",
     ),
-    ("quit", "quitter"),
     ("quote it in a new post", "le citer dans un nouveau post"),
     (
         "quote removed by the post's author",

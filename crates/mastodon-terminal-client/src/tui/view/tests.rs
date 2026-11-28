@@ -276,7 +276,7 @@ fn the_scroll_keeps_the_selection_on_screen() {
 
 #[test]
 fn new_screens_draw_in_both_languages_and_small_terminals() {
-    for lang in crate::i18n::Lang::ALL {
+    for lang in crate::i18n::ALL {
         crate::i18n::set(lang);
         let mut app = app_with(vec![status("1", "<script>bad</script> hello")]);
         app.accounts = vec![app.session.clone().unwrap()];
@@ -334,11 +334,11 @@ fn search_scrolls_long_input_and_places_the_cursor_at_the_edit_position() {
     app.handle_paste(&"a".repeat(60));
     let mut term = Terminal::new(TestBackend::new(24, 12)).unwrap();
     term.draw(|f| draw(f, &mut app)).unwrap();
-    // The popup has a 20-cell input; the cursor wraps to the next input segment.
-    assert_eq!(term.get_cursor_position().unwrap(), (2, 3).into());
+    // The common popup has an 18-cell input; the last segment holds six characters.
+    assert_eq!(term.get_cursor_position().unwrap(), (9, 3).into());
     app.handle_key(KeyEvent::from(KeyCode::Home));
     term.draw(|f| draw(f, &mut app)).unwrap();
-    assert_eq!(term.get_cursor_position().unwrap(), (2, 3).into());
+    assert_eq!(term.get_cursor_position().unwrap(), (3, 3).into());
 }
 
 #[test]
@@ -427,7 +427,7 @@ fn custom_emoji_resolve_from_the_entity_and_fall_back_without_graphics() {
 fn stage_four_screens_fit_in_both_languages() {
     use crate::api::types::{AccountSource, Conversation};
     use crate::tui::worker::Event;
-    for lang in crate::i18n::Lang::ALL {
+    for lang in crate::i18n::ALL {
         crate::i18n::set(lang);
         for width in [40, 80, 160] {
             let mut app = app_with(vec![status("s", "body")]);
@@ -507,7 +507,7 @@ fn search_box_results_title_empty_message_and_cancel_in_both_languages() {
         (
             Lang::Ja,
             "検索 · 投稿",
-            "Enter 検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
+            "Enter で検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
             "1 検索: rust",
             "Esc タイムラインに戻る",
             "「rust」の検索結果はありません",

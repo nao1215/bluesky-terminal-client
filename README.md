@@ -109,11 +109,11 @@ Only bsky makes link cards and speaks nine languages (msky and mstdn speak Engli
 | bsky `space`: pictures and videos | msky `n` `ctrl+o`: attach pictures or a video |
 |:--:|:--:|
 | ![bsky: a picture and a video, full screen](crates/bluesky-terminal-client/doc/img/viewer.gif) | ![msky: the picture browser of the composer](crates/misskey-terminal-client/doc/img/compose.png) |
-| msky `v`: thread | bsky `/`: search |
+| msky `v`: thread | bsky `/`: search box |
 | ![msky: a thread](crates/misskey-terminal-client/doc/img/thread.png) | ![bsky: accounts found for a search](crates/bluesky-terminal-client/doc/img/search.png) |
 | bsky `.`: actions | msky `e`: edit your profile |
 | ![bsky: the list of what the keys do to a post](crates/bluesky-terminal-client/doc/img/actions.png) | ![msky: the profile editor](crates/misskey-terminal-client/doc/img/editor.png) |
-| msky `7`: chat | bsky `A`: accounts |
+| msky `6`: chat | bsky `A`: accounts |
 | ![msky: a conversation](crates/misskey-terminal-client/doc/img/chat.png) | ![bsky: the account list](crates/bluesky-terminal-client/doc/img/accounts.png) |
 | bsky `s`: settings | bsky without pictures |
 | ![bsky: the settings screen](crates/bluesky-terminal-client/doc/img/settings.png) | ![bsky: the timeline as text](crates/bluesky-terminal-client/doc/img/text.png) |
@@ -139,7 +139,7 @@ msky's screens and bsky's chat and accounts show made-up data served by each cli
 
 | Key | bsky | msky | mstdn |
 |---|---|---|---|
-| `1` … | `1`–`5`: Timeline, Chat, Search, Notifications, Profile | `1`–`7`: Home, Local, Global, Notifications, Search, Profile, Chat | `1`–`7`: Home, Local, Federated, Notifications, Search, Profile, Chat |
+| `1` … | `1`–`4`: Timeline, Chat, Notifications, Profile | `1`–`6`: Home, Local, Global, Notifications, Profile, Chat | `1`–`6`: Home, Local, Federated, Notifications, Profile, Chat |
 | `+` `x` | Add a column, remove one | Add a column, remove one | Add a column, remove one |
 | `j` `k` | Move | Move | Move |
 | `n` `r` `Q` | Post, reply, quote | Note, reply, quote | Post, reply, quote (Mastodon 4.5+) |
@@ -151,7 +151,7 @@ msky's screens and bsky's chat and accounts show made-up data served by each cli
 | `v` `space` | Thread, pictures or video | Thread, pictures or video | Thread, pictures or video |
 | `w` | | Content warning | Content warning |
 | `d` `o` `c` | `d` in the viewer: save; `o`: link | Save files, open in the browser, copy the address | Save files, open in the browser, copy the address |
-| `/` `m` | Search, message the profile shown | Search, message the profile shown | Search, message the profile shown |
+| `/` `m` | Open the search box, message the profile shown | Open the search box, message the profile shown | Open the search box, message the profile shown |
 | `A` `T` `s` | Accounts, themes, settings | Accounts, themes, settings | Accounts, themes, settings |
 | `?` `q` | Help, quit | Help, quit | Help, quit |
 

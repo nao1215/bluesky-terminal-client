@@ -1,12 +1,6 @@
 //! Translations into Korean, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter 검색 · Ctrl+T 게시물/계정 · Esc 취소",
-    ),
-    ("Esc back to timeline", "Esc 타임라인으로 돌아가기"),
-    ("No results for \"{}\"", "“{}” 검색 결과가 없습니다"),
     ("open the search box", "검색창 열기"),
     ("Play videos in the timeline", "타임라인에서 동영상 재생"),
     (
@@ -53,9 +47,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, 동영상으로 게시"),
     ("Global", "전체"),
     ("Handle or email", "핸들 또는 이메일"),
-    ("Help", "도움말"),
     ("Keys", "키"),
-    ("Language", "언어"),
     ("Link cards", "링크 카드"),
     ("Lists", "목록"),
     ("Log in to Bluesky", "Bluesky에 로그인"),
@@ -84,21 +76,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "프로필"),
     ("Quote @{}", "@{} 인용"),
     ("Reply to @{}", "@{}에게 답글"),
-    ("Search", "검색"),
     ("Search posts for:", "게시물 검색:"),
-    ("Search: {}", "검색: {}"),
     ("Search…", "검색…"),
     ("Service", "서비스"),
-    ("Settings", "설정"),
     (
         "Settings → Privacy and security → App passwords",
         "설정 → 개인정보 및 보안 → 앱 비밀번호",
     ),
-    ("Terminal too small", "터미널이 너무 작습니다"),
     ("The thread is empty.", "스레드가 비어 있습니다."),
-    ("Theme", "테마"),
     ("Theme picker", "테마 선택"),
-    ("Thread", "스레드"),
     ("Timeline", "타임라인"),
     ("Video service", "동영상 서비스"),
     ("Viewer", "뷰어"),
@@ -150,7 +136,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "아무 키나 누르면 닫힘"),
     ("apply", "적용"),
-    ("attach", "첨부"),
     (
         "attach pictures or a video / an avatar",
         "이미지·동영상 / 아바타 첨부",
@@ -436,7 +421,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "move the column left / right",
         "칼럼을 왼쪽 / 오른쪽으로 이동",
     ),
-    ("move the selection", "선택 이동"),
     (
         "move through the posts and replies",
         "게시물과 답글 사이 이동",
@@ -488,7 +472,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "현재 @{}"),
     ("off", "끔"),
     ("on", "켬"),
-    ("open", "열기"),
     ("open / choose", "열기 / 선택"),
     ("open in browser", "브라우저에서 열기"),
     ("open it in the web browser", "웹 브라우저에서 열기"),
@@ -585,7 +568,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "설정을 기본값으로 되돌리기",
     ),
-    ("quit", "종료"),
     ("quote it in a new post", "새 게시물에서 인용"),
     (
         "quote removed by the post's author",

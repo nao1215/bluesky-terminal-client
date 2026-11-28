@@ -6,6 +6,10 @@
 //! [`terminal_kit::text::drawable`] (in [`wrap`], [`truncate`] and
 //! [`truncate_line`]), so an escape sequence in a post is drawn as text.
 
+use terminal_kit::view::hint_lines;
+use terminal_kit::view::scroll_offset;
+use terminal_kit::view::truncate_line;
+
 use ratatui::Frame;
 use terminal_kit::media::images::Images;
 mod accounts;
@@ -17,7 +21,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
-use terminal_kit::text::{cells, cluster_width, drawable, format_time, graphemes, truncate, wrap};
+use terminal_kit::text::{cells, drawable, format_time, graphemes, truncate, wrap};
 
 use crate::api::types::{Account, Media, Notification, Status};
 use crate::i18n::{n, t, tf};
@@ -291,20 +295,13 @@ fn draw_error(frame: &mut Frame, area: Rect, text: &str, th: &Theme) {
     lines.push(Line::default());
     lines.push(Line::styled(t("any key closes this"), th.dim()));
     let h = lines.len() as u16 + 2;
-    let r = Rect {
-        x: area.x + area.width.saturating_sub(w) / 2,
-        y: area.y + area.height.saturating_sub(h) / 2,
-        width: w.min(area.width),
-        height: h.min(area.height),
-    };
-    frame.render_widget(Clear, r);
+    let r = terminal_kit::view::centered_rect(area, w, h);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .title(format!(" {} ", t("Error")))
         .border_style(th.error())
         .style(th.base());
-    let inner = block.inner(r);
-    frame.render_widget(block, r);
+    let inner = terminal_kit::view::draw_panel(frame, r, block, None);
     frame.render_widget(
         Paragraph::new(lines),
         Rect {
@@ -336,52 +333,17 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             th.dim()
         };
         spans.push(Span::styled(label, style));
-        spans.push(Span::raw(" "));
     }
-    // Who the client reads as, at the right where it fits whole: the
-    // account in use, or the server read as a visitor.
-    let used: usize = spans.iter().map(|s| cells(&s.content)).sum();
     let name = match app.session.as_ref().filter(|s| !s.username.is_empty()) {
         Some(s) => format!("@{}@{} ", s.username, app.host()),
         None if app.session.is_some() => format!("{} ", app.host()),
         None => format!("{} ({}) ", app.host(), t("visitor")),
     };
     let name = drawable(&name).into_owned();
-    let room = usize::from(area.width).saturating_sub(used);
-    let name_w = cells(&name);
-    if name_w <= room {
-        spans.push(Span::raw(" ".repeat(room - name_w)));
-        spans.push(Span::styled(name, th.accent()));
-    }
-    frame.render_widget(Line::from(spans), area);
-}
-
-/// The keys that work in the current view, packed into as many rows of
-/// `width` as they need; a hint is never split across rows.
-fn hint_lines(hints: &[keys::Hint], width: u16, th: &Theme) -> Vec<Line<'static>> {
-    let width = usize::from(width.max(1));
-    let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
-    let mut row: Vec<Span<'static>> = vec![Span::raw(" ")];
-    let mut used = 1;
-    for (key, what) in hints {
-        let w = cells(key) + 1 + cells(what);
-        let first = row.len() == 1;
-        if !first && used + 2 + w > width {
-            lines.push(std::mem::replace(&mut row, vec![Span::raw(" ")]));
-            used = 1;
-        } else if !first {
-            row.push(Span::raw("  "));
-            used += 2;
-        }
-        row.push(Span::styled(*key, th.accent().bold()));
-        row.push(Span::styled(format!(" {what}"), th.dim()));
-        used += w;
-    }
-    lines.push(row);
-    lines
-        .into_iter()
-        .map(|spans| truncate_line(Line::from(spans), width))
-        .collect()
+    frame.render_widget(
+        terminal_kit::view::tab_line(spans, Some(Span::styled(name, th.accent())), area.width, 0),
+        area,
+    );
 }
 
 /// The last message on the left; activity on the right, as bsky's.
@@ -397,7 +359,6 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     } else {
         format!("{} ", t("text"))
     };
-    let w = cells(&right) as u16;
     let relationship = app
         .account_target()
         .and_then(|a| app.relationships.get(&a.id))
@@ -412,67 +373,8 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
         (Some(r), None) => Some(r),
         (None, m) => m.map(str::to_owned),
     };
-    if let Some(text) = text {
-        let room = usize::from(area.width.saturating_sub(w + 2));
-        frame.render_widget(
-            Line::styled(format!(" {}", truncate(&text, room)), th.ok()),
-            area,
-        );
-    }
-    if w < area.width {
-        frame.render_widget(
-            Paragraph::new(right).style(th.dim()),
-            Rect {
-                x: area.right() - w,
-                width: w,
-                ..area
-            },
-        );
-    }
-}
-
-/// The first item to draw so that `selected` is on screen, as bsky picks
-/// it: `offset` when it already is, otherwise the lowest start that still
-/// fits the selection; room left at the end goes to the items above.
-pub(crate) fn scroll_offset(
-    selected: usize,
-    offset: usize,
-    len: usize,
-    viewport: u16,
-    mut height: impl FnMut(usize) -> u16,
-) -> usize {
-    let viewport = u32::from(viewport);
-    let mut top = if selected <= offset {
-        selected
-    } else {
-        let mut used = u32::from(height(selected));
-        let mut top = selected;
-        while top > offset {
-            let h = u32::from(height(top - 1));
-            if used + h > viewport {
-                break;
-            }
-            used += h;
-            top -= 1;
-        }
-        top
-    };
-    let mut used = 0;
-    for i in top..len {
-        used += u32::from(height(i));
-        if used >= viewport {
-            return top;
-        }
-    }
-    while top > 0 {
-        let h = u32::from(height(top - 1));
-        if used + h > viewport {
-            break;
-        }
-        used += h;
-        top -= 1;
-    }
-    top
+    let left = text.as_deref().map(|text| Span::styled(text, th.ok()));
+    terminal_kit::view::draw_status_line(frame, area, left, Span::styled(right, th.dim()));
 }
 
 /// `text` wrapped to `width` cells by the client's own rule.
@@ -504,43 +406,6 @@ fn draw_needs_login(frame: &mut Frame, area: Rect, host: &str, th: &Theme) {
         wrapped(&format!(" {text}"), area.width).style(th.dim()),
         area,
     );
-}
-
-/// `line` cut to `width` columns as one piece: whole grapheme clusters up
-/// to the cut and one ellipsis there, in the style of the span it cuts.
-fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
-    let spans: Vec<(String, Style)> = line
-        .spans
-        .into_iter()
-        .map(|s| (drawable(&s.content).into_owned(), s.style))
-        .collect();
-    if spans.iter().map(|(t, _)| cells(t)).sum::<usize>() <= width {
-        return Line::from(
-            spans
-                .into_iter()
-                .map(|(t, s)| Span::styled(t, s))
-                .collect::<Vec<_>>(),
-        );
-    }
-    let mut left = width.saturating_sub(1);
-    let mut out = Vec::new();
-    for (text, style) in spans {
-        let mut kept = String::new();
-        for (_, g) in graphemes(&text) {
-            let gw = cluster_width(g);
-            if gw > left {
-                if width > 0 {
-                    kept.push('…');
-                }
-                out.push(Span::styled(kept, style));
-                return Line::from(out);
-            }
-            kept.push_str(g);
-            left -= gw;
-        }
-        out.push(Span::styled(kept, style));
-    }
-    Line::from(out)
 }
 
 /// `@name` for an account of the server read, `@name@host` for one of
@@ -1144,23 +1009,13 @@ fn draw_notifications(
 
 /// A box of `w` x `h` centered in `area`, cleared, as bsky's.
 fn popup(frame: &mut Frame, area: Rect, w: u16, h: u16, title: &str, th: &Theme) -> Rect {
-    let w = w.min(area.width);
-    let h = h.min(area.height);
-    let r = Rect {
-        x: area.x + (area.width - w) / 2,
-        y: area.y + (area.height - h) / 2,
-        width: w,
-        height: h,
-    };
-    frame.render_widget(Clear, r);
+    let r = terminal_kit::view::centered_rect(area, w, h);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .title(format!(" {title} "))
         .border_style(th.accent())
         .style(th.base());
-    let inner = block.inner(r);
-    frame.render_widget(block, r);
-    inner
+    terminal_kit::view::draw_panel(frame, r, block, None)
 }
 
 /// A list to choose from, in a box, the selection on screen.
@@ -1177,7 +1032,7 @@ fn draw_choices(
         .max(3);
     let inner = popup(frame, area, LIST_W, h, title, th);
     let shown = usize::from(inner.height.max(1));
-    let first = (selected + 1).saturating_sub(shown);
+    let first = terminal_kit::view::first_visible(selected, inner.height);
     let lines: Vec<Line> = rows
         .iter()
         .enumerate()

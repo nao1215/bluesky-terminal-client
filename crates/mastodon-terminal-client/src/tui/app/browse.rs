@@ -1,6 +1,6 @@
 //! Search, profile, media, accounts and settings transitions.
 use super::*;
-use crate::i18n::{self, Lang};
+use crate::i18n;
 use crate::tui::worker::{ProfilePage, SearchPage};
 
 pub(crate) struct Search {
@@ -377,7 +377,7 @@ impl App {
                     KeyCode::Char('j') | KeyCode::Down => selected = 1,
                     KeyCode::Char('k') | KeyCode::Up => selected = 0,
                     KeyCode::Enter => {
-                        let lang = Lang::ALL[selected];
+                        let lang = crate::i18n::ALL[selected];
                         i18n::set(lang);
                         if let Some(s) = &mut self.settings {
                             s.language = Some(lang.code().into());

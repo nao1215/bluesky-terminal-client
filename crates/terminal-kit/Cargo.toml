@@ -12,6 +12,9 @@ repository.workspace = true
 keywords = ["tui", "ratatui", "terminal", "unicode", "theme"]
 categories = ["command-line-interface"]
 
+[features]
+test-support = []
+
 [dependencies]
 dirs.workspace = true
 crossterm.workspace = true

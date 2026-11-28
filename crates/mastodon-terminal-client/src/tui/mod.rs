@@ -136,11 +136,11 @@ pub(crate) fn run(
     }
     let mut images = match terminal_kit::terminal::detect_graphics(protocol) {
         Some(p) => {
-            let dir = match std::env::var_os("MSTDN_CACHE_DIR") {
-                Some(v) if v == "off" => None,
-                Some(v) if !v.is_empty() => Some(std::path::PathBuf::from(v)),
-                _ => dirs::cache_dir().map(|p| p.join("mstdn")),
-            };
+            let dir = terminal_kit::paths::resolve_cache_dir(
+                std::env::var_os("MSTDN_CACHE_DIR").as_deref(),
+                dirs::cache_dir().as_deref(),
+                "mstdn",
+            );
             match Images::new(
                 p,
                 dir.map(|p| DiskCache::new(p.join("images"), CACHE_BYTES)),

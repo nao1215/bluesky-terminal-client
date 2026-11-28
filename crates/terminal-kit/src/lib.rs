@@ -52,3 +52,13 @@ pub mod browser;
 
 /// Command errors and exit statuses used by the clients.
 pub mod error;
+
+pub mod i18n;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
+pub mod view;
+
+pub mod output;
+pub mod paths;

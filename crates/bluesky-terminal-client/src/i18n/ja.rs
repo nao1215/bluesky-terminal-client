@@ -1,12 +1,6 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter で検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
-    ),
-    ("Esc back to timeline", "Esc タイムラインに戻る"),
-    ("No results for \"{}\"", "「{}」の検索結果はありません"),
     ("open the search box", "検索ボックスを開く"),
     ("Play videos in the timeline", "タイムラインで動画を再生"),
     (
@@ -53,9 +47,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF (動画として投稿)"),
     ("Global", "全体"),
     ("Handle or email", "ハンドルまたはメール"),
-    ("Help", "ヘルプ"),
     ("Keys", "キー"),
-    ("Language", "言語"),
     ("Link cards", "リンクカード"),
     ("Lists", "一覧"),
     ("Log in to Bluesky", "Bluesky にログイン"),
@@ -84,21 +76,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "プロフィール"),
     ("Quote @{}", "@{} を引用"),
     ("Reply to @{}", "@{} に返信"),
-    ("Search", "検索"),
     ("Search posts for:", "投稿を検索:"),
-    ("Search: {}", "検索: {}"),
     ("Search…", "検索…"),
     ("Service", "サービス"),
-    ("Settings", "設定"),
     (
         "Settings → Privacy and security → App passwords",
         "設定 → プライバシーとセキュリティ → アプリパスワード",
     ),
-    ("Terminal too small", "端末が小さすぎます"),
     ("The thread is empty.", "スレッドは空です。"),
-    ("Theme", "テーマ"),
     ("Theme picker", "テーマ選択"),
-    ("Thread", "スレッド"),
     ("Timeline", "タイムライン"),
     ("Video service", "動画サービス"),
     ("Viewer", "ビューア"),
@@ -150,7 +136,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "いずれかのキーで閉じる"),
     ("apply", "適用"),
-    ("attach", "添付"),
     (
         "attach pictures or a video / an avatar",
         "画像か動画 / アバターを添付",
@@ -433,7 +418,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("move", "移動"),
     ("move five items", "5 項目移動"),
     ("move the column left / right", "カラムを左 / 右へ移動"),
-    ("move the selection", "選択を移動"),
     ("move through the posts and replies", "投稿と返信の間を移動"),
     ("move; a video is described", "移動 (動画は説明を表示)"),
     ("move; pictures are previewed", "移動 (画像はプレビュー)"),
@@ -485,7 +469,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "現在は @{}"),
     ("off", "オフ"),
     ("on", "オン"),
-    ("open", "開く"),
     ("open / choose", "開く / 選択"),
     ("open in browser", "ブラウザで開く"),
     ("open it in the web browser", "ブラウザで開く"),
@@ -576,7 +559,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("previous / next picture", "前 / 次の画像"),
     ("profile updated", "プロフィールを更新しました"),
     ("put the setting back to its default", "設定を既定値に戻す"),
-    ("quit", "終了"),
     ("quote it in a new post", "新しい投稿で引用"),
     (
         "quote removed by the post's author",

@@ -102,6 +102,41 @@ impl core::marker::StructuralPartialEq for terminal_kit::files::Browser
 pub fn terminal_kit::files::expand_home(&str) -> std::path::PathBuf
 pub fn terminal_kit::files::is_picture_name(&str) -> bool
 pub fn terminal_kit::files::is_video_name(&str) -> bool
+pub mod terminal_kit::i18n
+pub macro terminal_kit::i18n::n!
+pub enum terminal_kit::i18n::Lang
+pub terminal_kit::i18n::Lang::De
+pub terminal_kit::i18n::Lang::En
+pub terminal_kit::i18n::Lang::Es
+pub terminal_kit::i18n::Lang::Fr
+pub terminal_kit::i18n::Lang::Ja
+pub terminal_kit::i18n::Lang::Ko
+pub terminal_kit::i18n::Lang::Pt
+pub terminal_kit::i18n::Lang::Ru
+pub terminal_kit::i18n::Lang::Zh
+impl terminal_kit::i18n::Lang
+pub const terminal_kit::i18n::Lang::ALL: [terminal_kit::i18n::Lang; 9]
+pub fn terminal_kit::i18n::Lang::code(self) -> &'static str
+pub fn terminal_kit::i18n::Lang::from_code(&str) -> core::option::Option<terminal_kit::i18n::Lang>
+pub fn terminal_kit::i18n::Lang::name(self) -> &'static str
+impl core::clone::Clone for terminal_kit::i18n::Lang
+pub fn terminal_kit::i18n::Lang::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::i18n::Lang
+impl core::cmp::PartialEq for terminal_kit::i18n::Lang
+pub fn terminal_kit::i18n::Lang::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::i18n::Lang
+pub fn terminal_kit::i18n::Lang::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for terminal_kit::i18n::Lang
+impl core::marker::StructuralPartialEq for terminal_kit::i18n::Lang
+pub struct terminal_kit::i18n::Catalog
+impl terminal_kit::i18n::Catalog
+pub fn terminal_kit::i18n::Catalog::fallback_table(&self, terminal_kit::i18n::Lang) -> terminal_kit::i18n::Table
+pub const fn terminal_kit::i18n::Catalog::new(&'static [(terminal_kit::i18n::Lang, terminal_kit::i18n::Table)]) -> Self
+pub fn terminal_kit::i18n::Catalog::t<'a>(&self, terminal_kit::i18n::Lang, &'a str) -> &'a str
+pub fn terminal_kit::i18n::Catalog::table(&self, terminal_kit::i18n::Lang) -> terminal_kit::i18n::Table
+pub fn terminal_kit::i18n::Catalog::tf(&self, terminal_kit::i18n::Lang, &str, &[&str]) -> alloc::string::String
+pub fn terminal_kit::i18n::fill(&str, &[&str]) -> alloc::string::String
+pub type terminal_kit::i18n::Table = &'static [(&'static str, &'static str)]
 pub mod terminal_kit::inflight
 pub struct terminal_kit::inflight::InFlight(_)
 impl terminal_kit::inflight::InFlight
@@ -236,6 +271,15 @@ pub type terminal_kit::media::player::VideoJob = fn(&ratatui_image::picker::Pick
 pub mod terminal_kit::media::transfer
 pub fn terminal_kit::media::transfer::get(&str, u64) -> core::result::Result<alloc::vec::Vec<u8>, alloc::string::String>
 pub fn terminal_kit::media::transfer::put(&str, &str, &str, &[u8], core::time::Duration) -> core::result::Result<alloc::vec::Vec<u8>, alloc::string::String>
+pub mod terminal_kit::output
+pub fn terminal_kit::output::error_json(&str, core::option::Option<&str>, u8) -> alloc::string::String
+pub fn terminal_kit::output::first_paragraph(&str) -> alloc::string::String
+pub fn terminal_kit::output::write_json_line(&mut dyn core::io::write::Write, &str) -> core::io::error::Result<()>
+pub fn terminal_kit::output::write_text(&mut dyn core::io::write::Write, &str) -> core::io::error::Result<()>
+pub mod terminal_kit::paths
+pub fn terminal_kit::paths::resolve_app_dir(core::option::Option<&std::ffi::os_str::OsStr>, core::option::Option<&std::path::Path>, &str) -> core::option::Option<std::path::PathBuf>
+pub fn terminal_kit::paths::resolve_cache_dir(core::option::Option<&std::ffi::os_str::OsStr>, core::option::Option<&std::path::Path>, &str) -> core::option::Option<std::path::PathBuf>
+pub fn terminal_kit::paths::write_private(&std::path::Path, &[u8]) -> core::io::error::Result<()>
 pub mod terminal_kit::scale
 pub fn terminal_kit::scale::pad_to_cells(image::images::dynimage::DynamicImage, ratatui_core::layout::size::Size, (u16, u16)) -> image::images::dynimage::DynamicImage
 pub fn terminal_kit::scale::thumbnail(&image::images::dynimage::DynamicImage, u32, u32) -> image::images::dynimage::DynamicImage
@@ -256,6 +300,37 @@ pub fn terminal_kit::terminal::detect_graphics(core::option::Option<ratatui_imag
 pub fn terminal_kit::terminal::is_interactive() -> bool
 pub fn terminal_kit::terminal::parse_protocol(&str) -> core::option::Option<ratatui_image::picker::ProtocolType>
 pub fn terminal_kit::terminal::protocol_name(ratatui_image::picker::ProtocolType) -> &'static str
+pub mod terminal_kit::test_support
+pub mod terminal_kit::test_support::http
+pub struct terminal_kit::test_support::http::MockServer
+impl terminal_kit::test_support::http::MockServer
+pub fn terminal_kit::test_support::http::MockServer::calls(&self) -> alloc::vec::Vec<terminal_kit::test_support::http::Request>
+pub fn terminal_kit::test_support::http::MockServer::url(&self) -> &str
+pub struct terminal_kit::test_support::http::Request
+pub terminal_kit::test_support::http::Request::body: alloc::vec::Vec<u8>
+pub terminal_kit::test_support::http::Request::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub terminal_kit::test_support::http::Request::method: alloc::string::String
+pub terminal_kit::test_support::http::Request::target: alloc::string::String
+impl terminal_kit::test_support::http::Request
+pub fn terminal_kit::test_support::http::Request::header(&self, &str) -> core::option::Option<&str>
+impl core::clone::Clone for terminal_kit::test_support::http::Request
+pub fn terminal_kit::test_support::http::Request::clone(&self) -> Self
+impl core::default::Default for terminal_kit::test_support::http::Request
+pub fn terminal_kit::test_support::http::Request::default() -> Self
+impl core::fmt::Debug for terminal_kit::test_support::http::Request
+pub fn terminal_kit::test_support::http::Request::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct terminal_kit::test_support::http::Response
+pub terminal_kit::test_support::http::Response::body: alloc::vec::Vec<u8>
+pub terminal_kit::test_support::http::Response::headers: alloc::vec::Vec<(&'static str, alloc::string::String)>
+pub terminal_kit::test_support::http::Response::status: u16
+pub fn terminal_kit::test_support::http::reply(u16, &str) -> terminal_kit::test_support::http::Response
+pub fn terminal_kit::test_support::http::serve_http(impl core::ops::function::Fn(&terminal_kit::test_support::http::Request, usize) -> core::option::Option<terminal_kit::test_support::http::Response> + core::marker::Send + core::marker::Sync + 'static) -> core::io::error::Result<terminal_kit::test_support::http::MockServer>
+pub mod terminal_kit::test_support::i18n
+pub struct terminal_kit::test_support::i18n::SourceRoot<'a>
+pub terminal_kit::test_support::i18n::SourceRoot::marks: &'a [&'a str]
+pub terminal_kit::test_support::i18n::SourceRoot::path: &'a str
+pub fn terminal_kit::test_support::i18n::marked_strings(&std::path::Path, &[terminal_kit::test_support::i18n::SourceRoot<'_>], &[&str]) -> core::io::error::Result<alloc::collections::btree::set::BTreeSet<alloc::string::String>>
+pub fn terminal_kit::test_support::i18n::validate_catalog(&alloc::collections::btree::set::BTreeSet<alloc::string::String>, &terminal_kit::i18n::Catalog, &[terminal_kit::i18n::Lang], usize) -> alloc::vec::Vec<alloc::string::String>
 pub mod terminal_kit::text
 pub fn terminal_kit::text::cells(&str) -> usize
 pub fn terminal_kit::text::cluster_width(&str) -> usize
@@ -320,3 +395,18 @@ pub static terminal_kit::theme::THEMES: [terminal_kit::theme::Theme; 42]
 pub fn terminal_kit::theme::chosen(core::option::Option<&str>, terminal_kit::theme::ColorDepth) -> (usize, terminal_kit::theme::Theme)
 pub fn terminal_kit::theme::color_depth(impl core::ops::function::Fn(&str) -> core::option::Option<alloc::string::String>) -> terminal_kit::theme::ColorDepth
 pub const fn terminal_kit::theme::palette(&'static str, [u32; 8]) -> terminal_kit::theme::Theme
+pub mod terminal_kit::view
+pub const terminal_kit::view::HELP_KEYS: usize
+pub fn terminal_kit::view::centered_rect(ratatui_core::layout::rect::Rect, u16, u16) -> ratatui_core::layout::rect::Rect
+pub fn terminal_kit::view::draw_input_box(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, ratatui_widgets::block::Block<'_>, &str, ratatui_core::style::Style)
+pub fn terminal_kit::view::draw_multi_input(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, bool)
+pub fn terminal_kit::view::draw_panel(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, ratatui_widgets::block::Block<'_>, core::option::Option<u16>) -> ratatui_core::layout::rect::Rect
+pub fn terminal_kit::view::draw_single_input(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, &terminal_kit::input::TextInput, bool)
+pub fn terminal_kit::view::draw_status_line(&mut ratatui_core::terminal::frame::Frame<'_>, ratatui_core::layout::rect::Rect, core::option::Option<ratatui_core::text::span::Span<'_>>, ratatui_core::text::span::Span<'_>)
+pub fn terminal_kit::view::first_visible(usize, u16) -> usize
+pub fn terminal_kit::view::help_lines(alloc::vec::Vec<(&str, alloc::vec::Vec<(&str, &str)>)>, u16, &terminal_kit::theme::Theme) -> alloc::vec::Vec<ratatui_core::text::line::Line<'static>>
+pub fn terminal_kit::view::hint_lines(&[(&str, &str)], u16, &terminal_kit::theme::Theme) -> alloc::vec::Vec<ratatui_core::text::line::Line<'static>>
+pub fn terminal_kit::view::scroll_offset(usize, usize, usize, u16, impl core::ops::function::FnMut(usize) -> u16) -> usize
+pub fn terminal_kit::view::tab_line(alloc::vec::Vec<ratatui_core::text::span::Span<'static>>, core::option::Option<ratatui_core::text::span::Span<'static>>, u16, usize) -> ratatui_core::text::line::Line<'static>
+pub fn terminal_kit::view::truncate_line(ratatui_core::text::line::Line<'static>, usize) -> ratatui_core::text::line::Line<'static>
+pub macro terminal_kit::n!

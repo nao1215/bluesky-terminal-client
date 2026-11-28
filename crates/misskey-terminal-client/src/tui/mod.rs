@@ -67,11 +67,11 @@ const CACHE_DIR_ENV: &str = "MSKY_CACHE_DIR";
 /// The folder pictures are kept in: `MSKY_CACHE_DIR`, else `msky` in the
 /// platform cache folder; none when it is `off` or there is none.
 fn cache_dir() -> Option<PathBuf> {
-    match std::env::var_os(CACHE_DIR_ENV) {
-        Some(v) if v == "off" => None,
-        Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
-        _ => dirs::cache_dir().map(|d| d.join("msky")),
-    }
+    terminal_kit::paths::resolve_cache_dir(
+        std::env::var_os(CACHE_DIR_ENV).as_deref(),
+        dirs::cache_dir().as_deref(),
+        "msky",
+    )
 }
 
 /// A client of `origin`, as `session` when there is one.

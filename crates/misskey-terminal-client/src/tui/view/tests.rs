@@ -1389,18 +1389,18 @@ fn search_box_overlays_the_list_and_results_title_replaces_the_timeline_title() 
     ]);
     app.handle_key(key('/'));
     let screen = render_text(&mut app, 100, 20);
-    assert!(screen.contains("Search (Posts)"), "{screen}");
+    assert!(screen.contains("Search · Posts"), "{screen}");
     assert!(
         screen.contains("Enter search · Ctrl+T posts/accounts · Esc cancel"),
         "{screen}"
     );
-    assert!(screen.contains('┌') && screen.contains('┘'), "{screen}");
+    assert!(screen.contains('╭') && screen.contains('╯'), "{screen}");
     assert!(screen.starts_with(" 1 Home"), "{screen}");
     assert!(!screen.contains("5 Search"), "{screen}");
     crate::i18n::set(crate::i18n::Lang::Ja);
     let ja = render_text(&mut app, 100, 20);
     crate::i18n::set(crate::i18n::Lang::En);
-    assert!(ja.contains("検索 (投稿)"), "{ja}");
+    assert!(ja.contains("検索 · 投稿"), "{ja}");
     app.handle_key(KeyEvent::from(KeyCode::Esc));
     assert!(render_text(&mut app, 100, 20).contains("Original timeline"));
     app.handle_key(key('/'));
@@ -1421,7 +1421,7 @@ fn search_box_overlays_the_list_and_results_title_replaces_the_timeline_title() 
     assert!(screen.contains("No results for \"rust\""), "{screen}");
     assert!(screen.contains("Esc back to timeline"), "{screen}");
     assert!(!screen.contains("Original timeline"), "{screen}");
-    assert!(!screen.contains("Search (Posts)"), "{screen}");
+    assert!(!screen.contains("Search · Posts"), "{screen}");
     let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
     term.draw(|f| draw(f, &mut app, &mut Images::none()))
         .unwrap();
@@ -1442,7 +1442,7 @@ fn account_box_title_and_empty_results_use_the_same_search_area() {
     app.handle_key(key('/'));
     app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
     app.search.input = crate::tui::input::TextInput::single("nobody");
-    assert!(render_text(&mut app, 100, 20).contains("Search (Accounts)"));
+    assert!(render_text(&mut app, 100, 20).contains("Search · Accounts"));
     let jobs = app.handle_key(KeyEvent::from(KeyCode::Enter));
     app.handle_answer(
         jobs[0].0,

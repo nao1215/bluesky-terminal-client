@@ -120,8 +120,18 @@ impl App {
             copy: None,
         }
     }
-    pub(super) fn t<'a>(&self, en: &'a str, ja: &'a str) -> &'a str {
-        if self.language == "ja" { ja } else { en }
+    pub(super) fn t<'a>(&self, en: &'a str) -> &'a str {
+        crate::i18n::CATALOG.t(self.lang(), en)
+    }
+    pub(super) fn tf(&self, template: &str, args: &[&str]) -> String {
+        crate::i18n::CATALOG.tf(self.lang(), template, args)
+    }
+    fn lang(&self) -> terminal_kit::i18n::Lang {
+        if self.language == "ja" {
+            terminal_kit::i18n::Lang::Ja
+        } else {
+            terminal_kit::i18n::Lang::En
+        }
     }
     pub(super) fn list(&self) -> &List {
         if self.searching() && self.threads.is_empty() {
@@ -342,10 +352,7 @@ impl App {
             self.save = true;
         } else {
             self.message = self
-                .t(
-                    "Settings file could not be read; changes are not saved",
-                    "設定ファイルを読めないため変更は保存されません",
-                )
+                .t("Settings file could not be read; changes are not saved")
                 .into();
         }
     }
@@ -390,7 +397,7 @@ impl App {
                                 });
                             }
                             *sending = Some(seq);
-                            self.message = self.t("Sending…", "送信中…").into();
+                            self.message = self.t("Sending…").into();
                         }
                     } else {
                         text.handle_key(key);
@@ -540,7 +547,7 @@ impl App {
         };
         let seq = self.seq();
         self.pending.insert(seq, mark);
-        self.message = self.t("Sending…", "送信中…").into();
+        self.message = self.t("Sending…").into();
         vec![Job::Write {
             seq,
             event: note::draft(kind, content, Some(&note)),
@@ -563,9 +570,7 @@ impl App {
         match identifier {
             Ok(encoded) => {
                 self.copy = Some(format!("nostr:{encoded}"));
-                self.message = self
-                    .t("Copied note identifier", "ノートの識別子をコピーしました")
-                    .into();
+                self.message = self.t("Copied note identifier").into();
             }
             Err(e) => self.message = e.error,
         }
@@ -605,10 +610,7 @@ impl App {
                 }
             }
             Answer::Authorize(url) => {
-                self.message = format!(
-                    "{}: {url}",
-                    self.t("Remote signer authorization", "リモート署名者の認証")
-                )
+                self.message = format!("{}: {url}", self.t("Remote signer authorization"))
             }
             Answer::Loaded(seq, result) => {
                 let reset_selection = self.search.list.loading == Some(seq)
@@ -701,7 +703,7 @@ impl App {
                             self.overlay = None;
                         }
                         self.message = if out.warnings.is_empty() {
-                            self.t("Sent", "送信しました").into()
+                            self.t("Sent").into()
                         } else {
                             out.warnings.join("; ")
                         };

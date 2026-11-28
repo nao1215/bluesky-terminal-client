@@ -611,7 +611,10 @@ fn the_language_is_chosen_on_the_settings_screen_and_kept() {
     settings_on(&mut app, "Language");
     assert_eq!(app.settings_rows()[7].value, "Русский");
     app.handle_key(code(KeyCode::Enter));
-    let ru = Lang::ALL.iter().position(|l| *l == Lang::Ru).unwrap();
+    let ru = crate::i18n::ALL
+        .iter()
+        .position(|l| *l == Lang::Ru)
+        .unwrap();
     assert!(matches!(app.overlay, Some(Overlay::Languages { selected }) if selected == ru));
     // Esc goes back without changing it.
     app.handle_key(code(KeyCode::Esc));

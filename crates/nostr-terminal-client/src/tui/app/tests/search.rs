@@ -276,23 +276,23 @@ fn view_has_bordered_box_bilingual_hints_result_title_and_empty_message() {
             "Search",
             "Enter search · Esc cancel",
             "Esc back to timeline",
-            "No results for",
+            r#"No results for "猫""#,
         ),
         (
             "ja",
             "検索",
             "Enter 検索 · Esc キャンセル",
             "Esc タイムラインに戻る",
-            "検索結果なし:",
+            "「猫」の検索結果はありません",
         ),
     ] {
         let (mut app, _) = fixture();
         app.language = language;
         ch(&mut app, '/');
         let box_screen = screen(&app);
-        assert!(box_screen.contains(&format!("┌{title}")), "{box_screen}");
+        assert!(box_screen.contains(&format!("╭ {title}")), "{box_screen}");
         assert!(box_screen.contains(hint));
-        assert!(box_screen.contains('└'));
+        assert!(box_screen.contains('╰'));
         assert!(!box_screen.contains("Ctrl+T"));
         assert!(!box_screen.contains("5 Chat"));
         app.paste("猫");
@@ -304,7 +304,7 @@ fn view_has_bordered_box_bilingual_hints_result_title_and_empty_message() {
         let results = screen(&app);
         assert!(results.contains(&format!("1 {title}: 猫")));
         assert!(results.contains(back));
-        assert!(results.contains(&format!(r#"{empty} "猫""#)), "{results}");
+        assert!(results.contains(empty), "{results}");
         assert!(!results.contains(hint));
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 25)).unwrap();
         term.draw(|f| {

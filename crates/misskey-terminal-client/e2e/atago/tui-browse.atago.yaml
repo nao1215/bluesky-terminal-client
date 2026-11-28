@@ -65,23 +65,23 @@ scenarios:
             - send: j
             - send: "/"
             - expect_screen:
-                contains: ["Search (Posts)", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
+                contains: ["Search · Posts", "Enter search · Ctrl+T posts/accounts · Esc cancel"]
             - send: { key: esc }
             - expect_screen:
                 contains: "タイムラインのノート"
-                not_contains: "Search (Posts)"
+                not_contains: "Search · Posts"
             - send: "/"
             - expect_screen:
-                contains: "Search (Posts)"
+                contains: "Search · Posts"
             - send: "rust"
             - send: { key: enter }
             - expect_screen:
                 contains: ["Search: rust", "cat @cat", "Rust の話 🦀", "Esc back to timeline"]
-                not_contains: ["$[x2", "タイムラインのノート", "Search (Posts)"]
+                not_contains: ["$[x2", "タイムラインのノート", "Search · Posts"]
             - send: /
             - send: { key: ctrl-t }
             - expect_screen:
-                contains: "Search (Accounts)"
+                contains: "Search · Accounts"
             - send: { key: enter }
             - expect_screen:
                 contains: ["Search: rust", "Ferris 🦀 @ferris@x.test", "crab"]

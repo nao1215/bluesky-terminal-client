@@ -396,7 +396,7 @@ impl App {
         let lang = settings
             .as_ref()
             .and_then(|s| s.language.as_deref())
-            .and_then(crate::i18n::Lang::from_code)
+            .and_then(crate::i18n::from_code)
             .unwrap_or(self.locale);
         crate::i18n::set(lang);
         let name = settings.as_ref().and_then(|s| s.theme.clone());

@@ -1,13 +1,7 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    ("Search (Posts)", "検索 (投稿)"),
-    ("Search (Accounts)", "検索 (アカウント)"),
-    ("No results for \"{}\"", "「{}」の検索結果はありません"),
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter 検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
-    ),
+    ("Posts", "投稿"),
     ("posts/accounts", "投稿/アカウント"),
     ("open the search box", "検索ボックスを開く"),
     (
@@ -36,9 +30,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("File browser", "ファイル選択"),
     ("General", "全体"),
     ("Global", "グローバル"),
-    ("Help", "ヘルプ"),
     ("Home", "ホーム"),
-    ("Language", "言語"),
     ("Lists", "一覧"),
     ("load the column again", "カラムを再読み込み"),
     ("Local", "ローカル"),
@@ -70,11 +62,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("remove the column: y confirms", "カラムを削除 (y で確定)"),
     ("Report", "通報"),
     ("Rude or harassing", "失礼、嫌がらせ"),
-    ("Search", "検索"),
     ("Search notes for:", "ノートを検索:"),
-    ("Search: {}", "検索: {}"),
     ("Search…", "検索…"),
-    ("Settings", "設定"),
     (
         "settings: theme, language, download folder, browser",
         "設定: テーマ、言語、保存先フォルダ、ブラウザ",
@@ -91,8 +80,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "the last one removed, the timeline is alone",
         "最後を消すとタイムラインのみ",
     ),
-    ("Theme", "テーマ"),
-    ("Thread", "スレッド"),
     ("Viewer", "ビューア"),
     ("accounts: switch, log out", "アカウント: 切替、ログアウト"),
     ("actions", "操作"),
@@ -108,7 +95,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("antenna", "アンテナ"),
     ("apply", "適用"),
-    ("attach", "添付"),
     ("attach pictures or a video", "画像か動画を添付"),
     ("back", "戻る"),
     ("back to the conversations", "会話の一覧へ戻る"),
@@ -230,7 +216,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("move", "移動"),
     ("move five items", "5 件移動"),
-    ("move the selection", "選択を移動"),
     (
         "move through the notes and replies",
         "ノートと返信の間を移動",
@@ -258,7 +243,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("note", "ノート"),
     ("notes", "ノート"),
     ("nothing changed", "変更はありません"),
-    ("open", "開く"),
     ("open / choose", "開く / 選ぶ"),
     ("open in browser", "ブラウザで開く"),
     ("open it in the browser", "ブラウザで開く"),
@@ -301,7 +285,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("previous / next", "前 / 次"),
     ("previous / next file", "前 / 次のファイル"),
     ("profile saved", "プロフィールを保存しました"),
-    ("quit", "終了"),
     ("quote it in a new note", "新しいノートで引用"),
     (
         "quote the selected note in a new note",
@@ -498,7 +481,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Quote {}", "{} を引用"),
     ("React", "リアクション"),
     ("Reply to {}", "{} に返信"),
-    ("Terminal too small", "端末が小さすぎます"),
     (
         "The server to log in on (MiAuth: msky never sees the password)",
         "ログインするサーバー (MiAuth: msky がパスワードを見ることはありません)",

@@ -152,38 +152,25 @@ pub(super) fn draw_search_results(
 
 /// A bordered input near the top, over the list it will replace.
 pub(super) fn draw_search_box(frame: &mut Frame, area: Rect, s: &Search, t: &Theme) {
-    let width = 72.min(area.width.saturating_sub(2));
-    let rect = Rect {
-        x: area.x + area.width.saturating_sub(width) / 2,
-        y: area.y + 1,
-        width,
-        height: 4.min(area.height.saturating_sub(1)),
-    };
-    let title = match s.mode {
-        SearchMode::Notes => i18n::t("Search (Posts)"),
-        SearchMode::Accounts => i18n::t("Search (Accounts)"),
-    };
-    let block = Block::bordered()
-        .title(title)
-        .style(t.base())
-        .border_style(t.accent());
-    let inner = block.inner(rect);
-    frame.render_widget(Clear, rect);
-    frame.render_widget(block, rect);
-    if inner.height > 0 {
-        compose::draw_single_input(frame, Rect { height: 1, ..inner }, &s.input, true);
-    }
-    if inner.height > 1 {
-        frame.render_widget(
-            Paragraph::new(i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel"))
-                .style(t.dim()),
-            Rect {
-                y: inner.y + 1,
-                height: 1,
-                ..inner
-            },
-        );
-    }
+    terminal_kit::view::draw_input_box(
+        frame,
+        area,
+        &s.input,
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(format!(
+                " {} · {} ",
+                i18n::t("Search"),
+                i18n::t(match s.mode {
+                    SearchMode::Notes => n!("Posts"),
+                    SearchMode::Accounts => n!("Accounts"),
+                })
+            ))
+            .style(t.base())
+            .border_style(t.accent()),
+        i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel"),
+        t.dim(),
+    );
 }
 
 /// The account's header lines, as bsky's: the name, the address, the

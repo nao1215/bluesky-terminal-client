@@ -1,15 +1,8 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    ("Search: {}", "検索: {}"),
-    ("No results for \"{}\"", "「{}」の検索結果はありません"),
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter 検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
-    ),
     ("open search box", "検索ボックスを開く"),
     ("posts/accounts", "投稿/アカウント"),
-    ("back to timeline", "タイムラインに戻る"),
     (
         "cancel / back to timeline",
         "キャンセル / タイムラインに戻る",
@@ -210,7 +203,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "フォロー解除 / リクエスト取消",
     ),
     ("remove attachment", "添付を削除"),
-    ("attach", "添付"),
     ("hidden files", "隠しファイル"),
     ("parent folder", "親フォルダー"),
     ("mark", "選択"),
@@ -248,7 +240,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Error", "エラー"),
     ("Federated", "連合"),
     ("General", "全体"),
-    ("Help", "ヘルプ"),
     ("Home", "ホーム"),
     ("Keys", "キー"),
     ("Lists", "一覧"),
@@ -266,9 +257,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Notifications", "通知"),
     ("Posts", "投稿"),
     ("Reply", "返信"),
-    ("Terminal too small", "端末が小さすぎます"),
-    ("Theme", "テーマ"),
-    ("Thread", "スレッド"),
     ("a poll has ended", "アンケートが終了しました"),
     (
         "a post for followers or the mentioned only cannot be boosted",
@@ -341,7 +329,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("move", "移動"),
     ("move five items", "5 件移動"),
-    ("move the selection", "選択を移動"),
     ("move through the posts and replies", "投稿と返信の間を移動"),
     ("new post", "新しい投稿"),
     ("next / previous tab", "次 / 前のタブ"),
@@ -369,7 +356,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("preview", "プレビュー"),
     ("public", "公開"),
     ("quiet public", "未収載"),
-    ("quit", "終了"),
     ("quoted your post", "があなたの投稿を引用しました"),
     ("refresh", "更新"),
     ("refresh the current view", "表示中の画面を更新"),
@@ -467,14 +453,11 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("(no alt text)", "(代替テキストなし)"),
     ("Accounts", "アカウント"),
-    ("Language", "言語"),
     (
         "No saved accounts. Press a to log in.",
         "保存済みアカウントがありません。mstdn login を実行してください。",
     ),
     ("Profile", "プロフィール"),
-    ("Search", "検索"),
-    ("Settings", "設定"),
     ("Viewer", "ビューアー"),
     (
         "cannot play this video; d saves it, o opens it",
@@ -487,7 +470,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "log in to search accounts or posts; visitors can search #hashtags",
         "アカウント・投稿の検索にはログインが必要です。訪問者は #ハッシュタグ を検索できます",
     ),
-    ("open", "開く"),
     ("open pictures and videos", "画像・動画を開く"),
     ("open profile", "プロフィールを開く"),
     ("open the author profile", "投稿者のプロフィールを開く"),

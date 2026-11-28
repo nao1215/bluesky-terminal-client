@@ -1,12 +1,6 @@
 //! Translations into Russian, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
-    (
-        "Enter search · Ctrl+T posts/accounts · Esc cancel",
-        "Enter поиск · Ctrl+T посты/аккаунты · Esc отмена",
-    ),
-    ("Esc back to timeline", "Esc назад к ленте"),
-    ("No results for \"{}\"", "Нет результатов для «{}»"),
     ("open the search box", "открыть поле поиска"),
     (
         "Play videos in the timeline",
@@ -62,9 +56,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("GIF, posted as a video", "GIF, публикуется как видео"),
     ("Global", "Общие"),
     ("Handle or email", "Хэндл или почта"),
-    ("Help", "Справка"),
     ("Keys", "Клавиши"),
-    ("Language", "Язык"),
     ("Link cards", "Карточки ссылок"),
     ("Lists", "Списки"),
     ("Log in to Bluesky", "Вход в Bluesky"),
@@ -93,21 +85,15 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Profile", "Профиль"),
     ("Quote @{}", "Цитата @{}"),
     ("Reply to @{}", "Ответ @{}"),
-    ("Search", "Поиск"),
     ("Search posts for:", "Искать посты:"),
-    ("Search: {}", "Поиск: {}"),
     ("Search…", "Поиск…"),
     ("Service", "Сервис"),
-    ("Settings", "Настройки"),
     (
         "Settings → Privacy and security → App passwords",
         "Настройки → Конфиденциальность и безопасность → Пароли приложений",
     ),
-    ("Terminal too small", "Терминал слишком мал"),
     ("The thread is empty.", "Ветка пуста."),
-    ("Theme", "Тема"),
     ("Theme picker", "Выбор темы"),
-    ("Thread", "Ветка"),
     ("Timeline", "Лента"),
     ("Video service", "Видеосервис"),
     ("Viewer", "Просмотр"),
@@ -156,7 +142,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("any key closes this", "любая клавиша закрывает"),
     ("apply", "применить"),
-    ("attach", "прикрепить"),
     (
         "attach pictures or a video / an avatar",
         "прикрепить изобр., видео / аватар",
@@ -448,7 +433,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "move the column left / right",
         "сдвинуть колонку влево/вправо",
     ),
-    ("move the selection", "двигать выделение"),
     ("move through the posts and replies", "по постам и ответам"),
     ("move; a video is described", "двигать; видео описывается"),
     ("move; pictures are previewed", "двигать; изобр. с превью"),
@@ -500,7 +484,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("now @{}", "сейчас @{}"),
     ("off", "выкл."),
     ("on", "вкл."),
-    ("open", "открыть"),
     ("open / choose", "открыть / выбрать"),
     ("open in browser", "открыть в браузере"),
     ("open it in the web browser", "открыть в браузере"),
@@ -600,7 +583,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "put the setting back to its default",
         "вернуть значение по умолчанию",
     ),
-    ("quit", "выход"),
     ("quote it in a new post", "цитировать в новом посте"),
     (
         "quote removed by the post's author",

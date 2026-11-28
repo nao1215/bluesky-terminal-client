@@ -46,6 +46,7 @@ unicode-segmentation.workspace = true
 ureq.workspace = true
 
 [dev-dependencies]
+terminal-kit = { path = "../terminal-kit", features = ["test-support"] }
 proptest.workspace = true
 rstest.workspace = true
 tempfile.workspace = true

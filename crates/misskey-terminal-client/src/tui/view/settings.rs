@@ -87,11 +87,11 @@ pub(super) fn draw_languages(frame: &mut Frame, area: Rect, selected: usize, now
         frame,
         area,
         34,
-        Lang::ALL.len() as u16 + 2,
+        crate::i18n::ALL.len() as u16 + 2,
         i18n::t("Language"),
         t,
     );
-    let lines: Vec<Line> = Lang::ALL
+    let lines: Vec<Line> = crate::i18n::ALL
         .iter()
         .enumerate()
         .map(|(i, lang)| {
