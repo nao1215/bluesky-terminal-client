@@ -621,8 +621,7 @@ fn a_list_opened_from_the_settings_does_not_return_there_after_an_expiry() {
     app.handle_key(code(KeyCode::Esc));
     assert!(
         app.overlay.is_none(),
-        "Esc on A's list opened {:?}",
-        app.overlay
+        "Esc on A's list left an overlay open"
     );
 }
 

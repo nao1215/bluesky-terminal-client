@@ -392,7 +392,10 @@ mod tests {
                 }],
             }),
         ] {
-            assert!(!out.chars().any(|c| c.is_control() && c != '\n'), "{out:?}");
+            assert!(
+                !out.chars().any(|c| c.is_control() && c != '\n'),
+                "a control character reached the output"
+            );
         }
         let first = post(&p);
         assert!(
