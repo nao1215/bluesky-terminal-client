@@ -61,7 +61,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e573acee4be10bbfc6089f3319cb406918d566fa # v0.1.6
         with:
-          version: v0.27.0
+          version: v0.27.1
           verify-attestation: "true"
 
       - name: Measure unit + E2E coverage
