@@ -612,14 +612,26 @@ fn download_saves_the_files_of_a_post() {
     }))
     .unwrap();
     let out_dir = dir.path().join("out");
-    let (r, out) = out_of(|o| save_files(&ctx, o, &api::agent(), &url, &boosted, &out_dir));
+    let (r, out) = out_of(|o| save_files(&ctx, o, &api::agent(), &boosted, &out_dir));
     r.unwrap();
     let lines: Vec<Value> = out
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
-    assert_eq!(lines[0]["status"], format!("{url}/@b@far.test/88"));
-    assert_eq!(lines[0]["kind"], "image");
+    assert_eq!(lines[0]["postId"], "88");
+    assert_eq!(lines[0]["type"], "image");
+    assert!(
+        crate::json_keys::missing(
+            crate::json_keys::SAVED,
+            &lines[0]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        )
+        .is_empty()
+    );
     assert!(lines[0]["path"].as_str().unwrap().ends_with("88-1.webp"));
     assert!(lines[1]["path"].as_str().unwrap().ends_with("88-2.webp"));
     assert_eq!(
@@ -937,7 +949,7 @@ fn login_with_oob_takes_the_pasted_code() {
     let v: Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(
         v,
-        json!({"id": "u1", "username": "alice", "host": api::authority(&url)})
+        json!({"id": "u1", "username": "alice", "host": api::authority(&url), "service": url})
     );
     let err = String::from_utf8(err).unwrap();
     assert!(

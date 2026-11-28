@@ -20,6 +20,12 @@
 //! - [`clock`]: timestamps as local time.
 //! - [`inflight`]: the jobs on their way, waited for before quitting.
 
+// Every item another crate can reach says what it is for: the clients read
+// it from rustdoc, and an undocumented addition is the first sign of API
+// that nobody asked for. It is here rather than in Cargo.toml because a
+// package that takes the workspace's lints cannot add its own there.
+#![deny(missing_docs)]
+
 pub mod clipboard;
 pub mod clock;
 pub mod events;

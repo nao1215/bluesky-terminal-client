@@ -1,0 +1,135 @@
+pub mod terminal_kit
+pub mod terminal_kit::clipboard
+pub fn terminal_kit::clipboard::osc52(&str) -> alloc::string::String
+pub mod terminal_kit::clock
+pub fn terminal_kit::clock::local_time(&str) -> alloc::string::String
+pub mod terminal_kit::events
+pub struct terminal_kit::events::Input
+impl terminal_kit::events::Input
+pub fn terminal_kit::events::Input::new() -> core::io::error::Result<terminal_kit::events::Input>
+pub fn terminal_kit::events::Input::next(&mut self, core::time::Duration) -> core::io::error::Result<core::option::Option<crossterm::event::Event>>
+pub mod terminal_kit::inflight
+pub struct terminal_kit::inflight::InFlight(_)
+impl terminal_kit::inflight::InFlight
+pub fn terminal_kit::inflight::InFlight::done(&self)
+pub fn terminal_kit::inflight::InFlight::start(&self)
+pub fn terminal_kit::inflight::InFlight::wait(&self, core::time::Duration)
+impl core::clone::Clone for terminal_kit::inflight::InFlight
+pub fn terminal_kit::inflight::InFlight::clone(&self) -> Self
+impl core::default::Default for terminal_kit::inflight::InFlight
+pub fn terminal_kit::inflight::InFlight::default() -> Self
+impl core::fmt::Debug for terminal_kit::inflight::InFlight
+pub fn terminal_kit::inflight::InFlight::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub mod terminal_kit::input
+pub struct terminal_kit::input::Layout
+pub terminal_kit::input::Layout::cursor: (usize, usize)
+pub terminal_kit::input::Layout::lines: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for terminal_kit::input::Layout
+pub fn terminal_kit::input::Layout::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::input::Layout
+impl core::cmp::PartialEq for terminal_kit::input::Layout
+pub fn terminal_kit::input::Layout::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::input::Layout
+pub fn terminal_kit::input::Layout::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::input::Layout
+pub struct terminal_kit::input::TextInput
+impl terminal_kit::input::TextInput
+pub fn terminal_kit::input::TextInput::handle_key(&mut self, crossterm::event::KeyEvent) -> bool
+pub fn terminal_kit::input::TextInput::insert_str(&mut self, &str)
+pub fn terminal_kit::input::TextInput::is_empty(&self) -> bool
+pub fn terminal_kit::input::TextInput::layout(&self, usize) -> terminal_kit::input::Layout
+pub fn terminal_kit::input::TextInput::multi(&str) -> Self
+pub fn terminal_kit::input::TextInput::password() -> Self
+pub fn terminal_kit::input::TextInput::single(&str) -> Self
+pub fn terminal_kit::input::TextInput::text(&self) -> alloc::string::String
+impl core::clone::Clone for terminal_kit::input::TextInput
+pub fn terminal_kit::input::TextInput::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::input::TextInput
+impl core::cmp::PartialEq for terminal_kit::input::TextInput
+pub fn terminal_kit::input::TextInput::eq(&self, &Self) -> bool
+impl core::default::Default for terminal_kit::input::TextInput
+pub fn terminal_kit::input::TextInput::default() -> Self
+impl core::fmt::Debug for terminal_kit::input::TextInput
+pub fn terminal_kit::input::TextInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for terminal_kit::input::TextInput
+pub mod terminal_kit::scale
+pub fn terminal_kit::scale::pad_to_cells(image::images::dynimage::DynamicImage, ratatui_core::layout::size::Size, (u16, u16)) -> image::images::dynimage::DynamicImage
+pub fn terminal_kit::scale::thumbnail(&image::images::dynimage::DynamicImage, u32, u32) -> image::images::dynimage::DynamicImage
+pub fn terminal_kit::scale::to_box(&image::images::dynimage::DynamicImage, ratatui_core::layout::size::Size, (u16, u16)) -> image::images::dynimage::DynamicImage
+pub mod terminal_kit::screen
+pub struct terminal_kit::screen::FrameWriter<W: core::io::write::Write>
+impl<W: core::io::write::Write> terminal_kit::screen::FrameWriter<W>
+pub fn terminal_kit::screen::FrameWriter<W>::new(W) -> Self
+impl<W: core::io::write::Write> core::io::write::Write for terminal_kit::screen::FrameWriter<W>
+pub fn terminal_kit::screen::FrameWriter<W>::flush(&mut self) -> core::io::error::Result<()>
+pub fn terminal_kit::screen::FrameWriter<W>::write(&mut self, &[u8]) -> core::io::error::Result<usize>
+pub fn terminal_kit::screen::init_terminal() -> core::io::error::Result<terminal_kit::screen::Term>
+pub fn terminal_kit::screen::restore_terminal() -> core::result::Result<(), alloc::string::String>
+pub fn terminal_kit::screen::write_now(&str) -> core::io::error::Result<()>
+pub type terminal_kit::screen::Term = ratatui_core::terminal::Terminal<ratatui_crossterm::CrosstermBackend<terminal_kit::screen::FrameWriter>>
+pub mod terminal_kit::terminal
+pub fn terminal_kit::terminal::detect_graphics(core::option::Option<ratatui_image::picker::ProtocolType>) -> core::option::Option<ratatui_image::picker::Picker>
+pub fn terminal_kit::terminal::is_interactive() -> bool
+pub fn terminal_kit::terminal::parse_protocol(&str) -> core::option::Option<ratatui_image::picker::ProtocolType>
+pub fn terminal_kit::terminal::protocol_name(ratatui_image::picker::ProtocolType) -> &'static str
+pub mod terminal_kit::text
+pub fn terminal_kit::text::cells(&str) -> usize
+pub fn terminal_kit::text::cluster_width(&str) -> usize
+pub fn terminal_kit::text::drawable(&str) -> alloc::borrow::Cow<'_, str>
+pub fn terminal_kit::text::fit_hints(&str, usize) -> alloc::string::String
+pub fn terminal_kit::text::format_time(&str) -> alloc::string::String
+pub fn terminal_kit::text::graphemes(&str) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &str)>
+pub fn terminal_kit::text::one_line(&str) -> alloc::string::String
+pub fn terminal_kit::text::truncate(&str, usize) -> alloc::string::String
+pub fn terminal_kit::text::truncate_start(&str, usize) -> alloc::string::String
+pub fn terminal_kit::text::wrap(&str, usize) -> alloc::vec::Vec<alloc::string::String>
+pub fn terminal_kit::text::wrap_cached(&str, usize) -> alloc::vec::Vec<alloc::string::String>
+pub mod terminal_kit::theme
+pub enum terminal_kit::theme::ColorDepth
+pub terminal_kit::theme::ColorDepth::Ansi256
+pub terminal_kit::theme::ColorDepth::None
+pub terminal_kit::theme::ColorDepth::TrueColor
+impl core::clone::Clone for terminal_kit::theme::ColorDepth
+pub fn terminal_kit::theme::ColorDepth::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::theme::ColorDepth
+impl core::cmp::PartialEq for terminal_kit::theme::ColorDepth
+pub fn terminal_kit::theme::ColorDepth::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::theme::ColorDepth
+pub fn terminal_kit::theme::ColorDepth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for terminal_kit::theme::ColorDepth
+impl core::marker::StructuralPartialEq for terminal_kit::theme::ColorDepth
+pub struct terminal_kit::theme::Theme
+pub terminal_kit::theme::Theme::accent: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::bg: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::dim: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::error: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::fg: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::like: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::mono: bool
+pub terminal_kit::theme::Theme::name: &'static str
+pub terminal_kit::theme::Theme::ok: ratatui_core::style::color::Color
+pub terminal_kit::theme::Theme::repost: ratatui_core::style::color::Color
+impl terminal_kit::theme::Theme
+pub fn terminal_kit::theme::Theme::accent(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::base(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::dim(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::error(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::for_depth(&self, terminal_kit::theme::ColorDepth) -> terminal_kit::theme::Theme
+pub fn terminal_kit::theme::Theme::like(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::ok(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::repost(&self) -> ratatui_core::style::Style
+pub fn terminal_kit::theme::Theme::selected(&self) -> ratatui_core::style::Style
+impl core::clone::Clone for terminal_kit::theme::Theme
+pub fn terminal_kit::theme::Theme::clone(&self) -> Self
+impl core::cmp::Eq for terminal_kit::theme::Theme
+impl core::cmp::PartialEq for terminal_kit::theme::Theme
+pub fn terminal_kit::theme::Theme::eq(&self, &Self) -> bool
+impl core::fmt::Debug for terminal_kit::theme::Theme
+pub fn terminal_kit::theme::Theme::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for terminal_kit::theme::Theme
+impl core::marker::StructuralPartialEq for terminal_kit::theme::Theme
+pub const terminal_kit::theme::EDITOR_THEMES: [terminal_kit::theme::Theme; 37]
+pub const terminal_kit::theme::MONOCHROME: terminal_kit::theme::Theme
+pub const terminal_kit::theme::TERMINAL: terminal_kit::theme::Theme
+pub fn terminal_kit::theme::color_depth(impl core::ops::function::Fn(&str) -> core::option::Option<alloc::string::String>) -> terminal_kit::theme::ColorDepth
+pub const fn terminal_kit::theme::palette(&'static str, [u32; 8]) -> terminal_kit::theme::Theme

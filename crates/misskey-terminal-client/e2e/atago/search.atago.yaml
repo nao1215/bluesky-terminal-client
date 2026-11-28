@@ -54,7 +54,7 @@ scenarios:
               - { path: "$.id", equals: s2 }
               - { path: "$.user.host", equals: misskey.design }
               - { path: "$.user.name", equals: "キャロル🇰🇷" }
-              - { path: "$.reactionCount", equals: 1 }
+              - { path: "$.likeCount", equals: 1 }
               - { path: "$.files", length: 0 }
 
   - name: a search still turned away after three waits fails with the server's words

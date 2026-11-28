@@ -6,7 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- `bsky whoami` prints the account in use, as msky's and mstdn's do, so a job can tell which account it posts as (`bsky whoami --json | jq -r .username`).
+- `bsky post --dry-run` shows what would be posted, as the account in use, with the card its first link would get, and sends nothing: no picture, video or card picture is uploaded. With `--json` it prints `{"dryRun", "host", "username", "post", "characters", "maxCharacters", "card"}`, as msky's and mstdn's do.
+- `--raw` prints the server's own objects as JSON, as `--json` did in 0.15.0 and earlier: each feedViewPost, postView, profile and notification, and the thread as one object. A write prints the object below with `--raw` too.
+
 ### Changed
+
+- `--json` prints the shape msky and mstdn print (`doc/json.md` in the repository lists every key) in place of the server's own objects. Scripts that read those move to `--raw`, or to these keys:
+
+  | 0.15.0 | Now |
+  |---|---|
+  | a feedViewPost's `post.uri` | `id` and `uri` (`url` is the page on bsky.app) |
+  | `post.record.text`, `post.record.createdAt` | `text`, `createdAt` |
+  | `post.author.did`, `.handle`, `.displayName` | `user.id`, `user.username`, `user.name` |
+  | `post.likeCount`, `.repostCount`, `.replyCount`, `.quoteCount` | `likeCount`, `repostCount`, `repliesCount`, `quoteCount` |
+  | `post.embed` | `files` (the post's own pictures and video) and `quoteId` |
+  | `post.record.reply.parent.uri` | `replyId` |
+  | `reason` of a repost | a post by who reposted it, with the post in `repostOf` |
+  | a profile's `did`, `handle`, `followsCount` | `id`, `username`, `followingCount`; `following` says whether you follow it |
+  | a notification's `uri`, `reason`, `reasonSubject`, `indexedAt` | `id`, `type`, `postId`, `createdAt`, with the post of a reply, a mention or a quote in `post` |
+  | `likes`' `{"actor", "createdAt"}`, `list`'s `{"uri", "subject"}` | the account, with `likedAt` for a like |
+  | `thread`'s one thread object | a post a line: those above it, it, then its replies |
+  | `download`'s `{"post", "kind", "url", "path"}` | `{"postId", "type", "url", "path"}` |
+  | a write's `{"uri", "cid"}`, `{"uri", "already"}`, `{"deleted"}`, `{"muted"}`... | `{"action", "target", "id", "url", "already"}`, with `cid` for `post` |
+  | `login`, `accounts` and `logout`'s `did`, `handle` | `id`, `username`, with `host` null |
+  | a chat message's `sender`, `sentAt` | `user`, `createdAt` |
+- `-n 0` is a usage error (exit 1), as in msky and mstdn: it asked for nothing and printed nothing.
 
 - bsky's crate is `crates/bluesky-terminal-client` of the workspace, beside msky and terminal-kit, and the repository root holds no package. The crate, the `bsky` binary, the `vX.Y.Z` tags and the release files keep their names.
 - The repository is a Cargo workspace: the terminal drawing helpers that know nothing of Bluesky (text layout in cells, the text field, picture scaling, OSC 52, themes, input events, terminal checks) are the `terminal-kit` crate in `crates/terminal-kit`, published to crates.io before `bluesky-terminal-client`, which depends on it. bsky behaves as before.

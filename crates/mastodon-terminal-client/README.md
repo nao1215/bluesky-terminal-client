@@ -1,8 +1,9 @@
 # mstdn
 
-A [Mastodon](https://joinmastodon.org) client for the terminal: commands that read timelines, posts and accounts, save their files, and post with pictures. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
+A [Mastodon](https://joinmastodon.org) client for the terminal: a full-screen client for the timelines and notifications, and commands that read timelines, posts and accounts, save their files, and post with pictures. It lives in the same workspace as [msky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/misskey-terminal-client) (Misskey) and [bsky](https://github.com/nao1215/social-terminal-clients/tree/main/crates/bluesky-terminal-client) (Bluesky).
 
 ```sh
+mstdn                       # the full-screen client
 mstdn author Gargron@mastodon.social -n 5
 mstdn status https://mastodon.social/@Gargron/109372
 mstdn timeline local --host fosstodon.org
@@ -11,7 +12,7 @@ mstdn login
 mstdn post "hello" --image cat.jpg --alt "a cat"
 ```
 
-mstdn is commands only: each one prints its result and exits, as plain lines or as JSON.
+Without a command, mstdn opens the full-screen client; each command prints its result and exits, as plain lines or as JSON.
 
 ## Install
 
@@ -20,6 +21,26 @@ cargo install --locked --git https://github.com/nao1215/social-terminal-clients 
 ```
 
 Building it needs Rust 1.90 or later. It is not on crates.io.
+
+## Full-screen client
+
+`mstdn` opens four tabs: Home, Local, Federated and Notifications, as the account in use or, without one, as a visitor (Local and Federated only). `--host` picks the server as it does for the commands.
+
+| Key | What it does |
+|---|---|
+| `1`-`4`, `tab` | The tabs |
+| `j` `k`, `g` `G`, `pgdn` `pgup` | Move; the next page loads near the end |
+| `v`, `enter` | The thread of the post, with its replies |
+| `l`, `b` | Favourite, boost, or take it back |
+| `n`, `r` | A new post, a reply; `ctrl+s` sends, `ctrl+w` adds a content warning, `ctrl+p` changes who may see it |
+| `w` | Show the text behind a content warning |
+| `o`, `c` | Open the post in the browser, copy its address |
+| `.` | What the keys do to the post |
+| `T` | The theme, from the 42 bsky and msky have; kept in `settings.json` |
+| `R` | Refresh |
+| `?`, `q` | The keys, quit |
+
+A post's pictures and videos are listed with their alt text, not drawn. `q` waits up to 3 seconds for a favourite, a boost or a post still on its way.
 
 ## Commands
 
@@ -81,13 +102,13 @@ For a job with no one at the keyboard, set `MSTDN_TOKEN` to an access token made
 
 ## JSON
 
-`--json` prints one post a line, in the same shape for every command:
+`--json` prints one post a line, in the shape bsky and msky print too ([doc/json.md](https://github.com/nao1215/social-terminal-clients/blob/main/doc/json.md) lists every key):
 
 ```json
-{"content":"<p>山の写真 🏔️</p>","createdAt":"2026-11-26T10:54:49.672Z","cw":null,"favouritesCount":19,"files":[{"description":"a mountain","id":"113","previewUrl":"https://files.example/small/a.jpg","type":"image","url":"https://files.example/original/a.jpg"}],"id":"113562","language":"ja","mentions":[],"poll":null,"reblog":null,"reblogsCount":3,"repliesCount":1,"replyId":null,"sensitive":false,"tags":[],"text":"山の写真 🏔️","uri":"https://mastodon.social/users/alice/statuses/113562","url":"https://mastodon.social/@alice/113562","user":{"host":"mastodon.social","id":"1","name":"Alice","username":"alice"},"visibility":"public"}
+{"content":"<p>山の写真 🏔️</p>","createdAt":"2026-11-26T10:54:49.672Z","cw":null,"files":[{"description":"a mountain","id":"113","mime":null,"previewUrl":"https://files.example/small/a.jpg","type":"image","url":"https://files.example/original/a.jpg"}],"id":"113562","language":"ja","likeCount":19,"mentions":[],"poll":null,"quoteId":null,"repliesCount":1,"replyId":null,"repostCount":3,"repostOf":null,"sensitive":false,"tags":[],"text":"山の写真 🏔️","uri":"https://mastodon.social/users/alice/statuses/113562","url":"https://mastodon.social/@alice/113562","user":{"host":"mastodon.social","id":"1","name":"Alice","username":"alice"},"visibility":"public"}
 ```
 
-`text` is the HTML read as text and `content` the HTML itself. `notifications` prints `{"id", "createdAt", "type", "user", "status"}`, `profile` and `whoami` an account, `post` `{"id", "url", "uri"}`, and `download` one line a file, `{"status", "kind", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
+`text` is the HTML read as text and `content` the HTML itself; `likeCount` counts the favourites and `repostCount` the boosts, and a boost holds the post it boosts in `repostOf`. `notifications` prints `{"id", "createdAt", "type", "user", "postId", "post"}`, a favourite as the `type` `like` and a boost as `repost`; `profile` and `whoami` an account; `post` `{"action", "target", "id", "url", "already", "uri"}`; and `download` one line a file, `{"postId", "type", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
 
 When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more times, after its `Retry-After` or `X-RateLimit-Reset`, or after 1, 2 and 4 seconds. A write is never sent again.
 
@@ -97,6 +118,7 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 |---|---|
 | 0 | Success |
 | 1 | Usage error: a wrong flag or argument, no login where one is needed, a post the server would not take |
+| 2 | The full-screen client was started without a terminal, or the terminal failed |
 | 3 | A file could not be read or written |
 | 4 | The server could not be reached or said no |
 
@@ -108,8 +130,9 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | `MSTDN_TOKEN` | Access token in place of the saved login, on `MSTDN_HOST` only |
 | `MSTDN_CONFIG_DIR` | Config folder |
 | `MSTDN_DOWNLOAD_DIR` | Where `download` saves |
-| `MSTDN_BROWSER` | Program that opens the login page |
-| `LC_ALL` `LC_MESSAGES` `LANG` | Language of the login's directions: English or 日本語 |
+| `MSTDN_BROWSER` | Program that opens the login page and, in the full-screen client, a post |
+| `LC_ALL` `LC_MESSAGES` `LANG` | Language of the full-screen client and the login's directions: English or 日本語 |
+| `NO_COLOR` | The full-screen client in `monochrome` |
 | `TZ` | Time zone of the times shown |
 
 ## Contributing

@@ -44,9 +44,8 @@ scenarios:
           stdout:
             json:
               - { path: "$.id", equals: 9abc }
-              - { path: "$.renoteId", equals: q1 }
-              - { path: "$.renote.text", equals: "元" }
-              - { path: "$.renote.user.host", equals: other.example }
+              - { path: "$.quoteId", equals: q1 }
+              - { path: "$.repostOf", equals: null }
       - assert:
           mock:
             name: api

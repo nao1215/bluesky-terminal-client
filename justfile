@@ -52,8 +52,24 @@ e2e-mstdn *ARGS:
 # Run every end-to-end suite
 e2e: e2e-bsky e2e-msky e2e-mstdn
 
+# The rules CI checks in .github/workflows/rules.yml (needs npx, cargo-machete, cargo-public-api and the nightly public_api.sh names)
+rules:
+    ./scripts/rules/fast.sh
+    cargo build --locked --workspace --bins
+    python3 scripts/rules/cli.py
+    cargo machete
+    python3 scripts/rules/duplicates.py
+    ./scripts/rules/public_api.sh
+
+# Write the lists the rules compare against again: the clients' commands and flags, terminal-kit's API, and the copies of code allowed
+rules-update:
+    cargo build --locked --workspace --bins
+    python3 scripts/rules/cli.py --update surface
+    ./scripts/rules/public_api.sh --update
+    python3 scripts/rules/duplicates.py --update
+
 # Run every CI check locally
-ci: test lint fmt-check doc e2e
+ci: test lint fmt-check doc e2e rules
 
 # Build a release binary of every client
 build-release:

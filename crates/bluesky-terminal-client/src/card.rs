@@ -45,10 +45,23 @@ fn first_link(text: &str) -> Option<String> {
         .map(|(_, uri)| uri)
 }
 
-/// The card for the first link in `text`, its picture uploaded as the
-/// account `client` is logged in to; `None` when there is no link or its
-/// page gives no card.
-pub(crate) fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
+/// What the page of the first link in `text` gives a card: its address,
+/// title and description, and the address of its picture when one may be
+/// fetched. Nothing is uploaded; `post --dry-run` shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Page {
+    pub uri: String,
+    pub title: String,
+    pub description: String,
+    pub image: Option<String>,
+    /// Whether the page is on the user's own network, so that its picture
+    /// may be too.
+    local: bool,
+}
+
+/// The card the first link in `text` would get, read from its page; `None`
+/// when there is no link or its page gives no card.
+pub(crate) fn read(text: &str) -> Option<Page> {
     let uri = first_link(text)?;
     let agent = crate::api::agent();
     let (html, base) = page(&agent, &uri)?;
@@ -58,17 +71,32 @@ pub(crate) fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
     }
     // A page on the web may name a picture on the user's own network; that
     // is not fetched and published, unless the page itself is there.
-    let page_local = is_local(&uri) || is_local(&base);
-    let thumb = found
-        .image
-        .as_deref()
-        .filter(|src| page_local || !is_local(src))
-        .and_then(|src| picture(&agent, src, page_local))
-        .and_then(|p| client.upload_blob(&p.bytes, p.mime).ok());
-    Some(PostExternal {
-        uri,
+    let local = is_local(&uri) || is_local(&base);
+    let image = found.image.filter(|src| local || !is_local(src));
+    Some(Page {
         title: shorten(&found.title, MAX_TITLE_GRAPHEMES),
         description: shorten(&found.description, MAX_DESCRIPTION_GRAPHEMES),
+        uri,
+        image,
+        local,
+    })
+}
+
+/// The card for the first link in `text`, its picture uploaded as the
+/// account `client` is logged in to; `None` when there is no link or its
+/// page gives no card.
+pub(crate) fn fetch(client: &Client, text: &str) -> Option<PostExternal> {
+    let p = read(text)?;
+    let agent = crate::api::agent();
+    let thumb = p
+        .image
+        .as_deref()
+        .and_then(|src| picture(&agent, src, p.local))
+        .and_then(|pic| client.upload_blob(&pic.bytes, pic.mime).ok());
+    Some(PostExternal {
+        uri: p.uri,
+        title: p.title,
+        description: p.description,
         thumb,
     })
 }

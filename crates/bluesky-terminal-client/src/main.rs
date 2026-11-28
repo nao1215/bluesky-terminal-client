@@ -17,6 +17,15 @@ mod download;
 mod error;
 mod hls;
 mod i18n;
+// The keys every client prints with --json (doc/json.md), which the tests
+// check this client's output against. Each test uses some of the lists.
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "each client's tests read only the lists of what it prints"
+)]
+#[path = "../../../doc/json_keys.rs"]
+mod json_keys;
 mod langs;
 mod media;
 mod og;
@@ -62,10 +71,17 @@ struct Cli {
     )]
     account: Option<String>,
 
-    /// Print JSON: the server's objects, one per line for a list, what a
-    /// write answered, and errors as {"error": ...} on stdout too.
+    /// Print JSON, one object per line in the shape msky and mstdn print:
+    /// each post, account or notification, what a write did, and errors as
+    /// {"error": ...} on stdout too.
     #[arg(long, global = true)]
     json: bool,
+
+    /// Print the server's own objects as JSON in place of that shape, as
+    /// bsky 0.15.0 and earlier printed with --json. Writes print as with
+    /// --json.
+    #[arg(long, global = true)]
+    raw: bool,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -90,7 +106,7 @@ Space opens a post's pictures or video on bsky.app in the web browser.
 
 Without a command bsky opens the client. The commands read and write
 Bluesky from scripts, as the account in use or the one -a names; --json
-prints the server's own objects.
+prints the JSON msky and mstdn print, --raw the server's own objects.
 
 Exit status: 0 success, 1 usage error, 2 not an interactive terminal,
 3 local file error, 4 network or server error (a command's; the client
@@ -104,7 +120,7 @@ fn run(cli: Cli) -> Result<()> {
             &dir,
             cli.account.as_deref(),
             all,
-            cli.json,
+            cli.json || cli.raw,
             &mut std::io::stdout().lock(),
         )),
         Some(Command::Other(cmd)) => {
@@ -120,7 +136,8 @@ fn run(cli: Cli) -> Result<()> {
                 accounts: &accounts,
                 session,
                 service: &service,
-                json: cli.json,
+                json: cli.json || cli.raw,
+                raw: cli.raw,
             };
             cli::run(cmd, &ctx)
         }
@@ -177,7 +194,7 @@ fn logout(
     if json {
         let gone: Vec<serde_json::Value> = chosen
             .iter()
-            .map(|s| serde_json::json!({"did": s.did, "handle": s.handle}))
+            .map(|s| serde_json::json!({"id": s.did, "username": s.handle, "host": null}))
             .collect();
         cli::json_line(out, &serde_json::json!({ "loggedOut": gone }))?;
     } else if chosen.is_empty() {
@@ -211,13 +228,16 @@ fn main() -> ExitCode {
                 .with_hint("run `bsky --help` for usage");
             report(&err);
             // The flags were not read, so --json is looked for by hand.
-            if std::env::args_os().skip(1).any(|a| a == "--json") {
+            if std::env::args_os()
+                .skip(1)
+                .any(|a| a == "--json" || a == "--raw")
+            {
                 print_json_error(&err);
             }
             return ExitCode::from(Kind::Usage.exit_code());
         }
     };
-    let json = cli.json;
+    let json = cli.json || cli.raw;
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -320,6 +340,17 @@ mod tests {
     fn usage_error(args: &[&str]) -> String {
         let e = Cli::try_parse_from(args).unwrap_err();
         first_paragraph(&e.to_string())
+    }
+
+    // -n asks for how many: none is a mistake said before anything is
+    // asked, not an empty answer.
+    #[test]
+    fn a_limit_of_none_is_a_usage_error() {
+        assert_eq!(
+            usage_error(&["bsky", "timeline", "-n", "0"]),
+            "invalid value '0' for '--limit <LIMIT>': it is how many to list, so 1 or more"
+        );
+        assert!(Cli::try_parse_from(["bsky", "timeline", "-n", "1"]).is_ok());
     }
 
     // clap names the missing arguments on the lines after the first; the

@@ -24,6 +24,16 @@ use crate::error::{Error, Result};
 use crate::miauth::{self, Clock};
 use crate::{browser, download};
 
+/// What `-n` takes: how many to list, one at least. `-n 0` asks for
+/// nothing, which is a mistake to say rather than an empty answer.
+fn at_least_one(s: &str) -> std::result::Result<usize, String> {
+    match s.trim().parse::<usize>() {
+        Ok(0) => Err("it is how many to list, so 1 or more".into()),
+        Ok(n) => Ok(n),
+        Err(_) => Err("it is how many to list, a whole number of 1 or more".into()),
+    }
+}
+
 /// The commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
@@ -34,7 +44,7 @@ pub(crate) enum Command {
     /// the account has no more.
     Author {
         actor: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Which of the account's notes.
         #[arg(long, value_enum, default_value_t = AuthorFilter::WithReplies)]
@@ -61,14 +71,14 @@ pub(crate) enum Command {
     #[command(alias = "likes")]
     Reactions {
         note: String,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// The renotes of a note, newest first (bsky's `reposts`).
     #[command(alias = "reposts")]
     Renotes {
         note: String,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// React to a note: ❤ (Misskey's like), or --reaction; one given
@@ -97,7 +107,7 @@ pub(crate) enum Command {
     Unmute { actor: String },
     /// The accounts you muted.
     Mutes {
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Block an account.
@@ -106,7 +116,7 @@ pub(crate) enum Command {
     Unblock { actor: String },
     /// The accounts you blocked.
     Blocks {
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
     },
     /// Report an account, or a note's author with the note, to the
@@ -128,13 +138,13 @@ pub(crate) enum Command {
     Chat {
         actor: Option<String>,
         text: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// Notes that match QUERY, newest first.
     Search {
         query: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// Save the files attached to a note in the download folder.
@@ -158,7 +168,7 @@ pub(crate) enum Command {
     Timeline {
         #[arg(value_enum, default_value_t = TimelineKind::Home)]
         kind: TimelineKind,
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
         /// Keep the renotes too.
         #[arg(long)]
@@ -166,7 +176,7 @@ pub(crate) enum Command {
     },
     /// Your notifications, newest first. They are left unread.
     Notifications {
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// The account logged in on the server.
@@ -215,7 +225,7 @@ pub(crate) enum Command {
     /// your approval.
     Followers {
         actor: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
         /// The requests to follow you not yet approved.
         #[arg(long)]
@@ -229,7 +239,7 @@ pub(crate) enum Command {
     /// has not answered).
     Follows {
         actor: Option<String>,
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, value_parser = at_least_one)]
         limit: usize,
         /// Your requests to follow not yet accepted.
         #[arg(long)]
@@ -261,7 +271,7 @@ pub(crate) enum Command {
     /// of servers that run Misskey, or, when it cannot be read, a short
     /// one msky carries.
     Servers {
-        #[arg(short = 'n', long, default_value_t = 20)]
+        #[arg(short = 'n', long, default_value_t = 20, value_parser = at_least_one)]
         limit: usize,
     },
     /// The accounts logged in, the one in use marked.
@@ -906,7 +916,7 @@ fn author(
     if let Some(dir) = save_in {
         let agent = api::agent();
         for n in &notes {
-            save_files(ctx, out, &agent, client.origin(), n, &dir)?;
+            save_files(ctx, out, &agent, n, &dir)?;
         }
         return Ok(());
     }
@@ -928,24 +938,12 @@ fn print_notes(ctx: &Ctx, out: &mut dyn Write, origin: &str, notes: &[Note]) -> 
     Ok(())
 }
 
-/// What a file is, as `download --json` says it: `image`, `video`,
-/// `audio`, or `file`.
-fn kind(mime: &str) -> &'static str {
-    match mime.split('/').next().unwrap_or("") {
-        "image" => "image",
-        "video" => "video",
-        "audio" => "audio",
-        _ => "file",
-    }
-}
-
 /// Save every file `n` carries, its own and those of the note it renotes
 /// or quotes, in `dir`, printing each as it is written.
 fn save_files(
     ctx: &Ctx,
     out: &mut dyn Write,
     agent: &ureq::Agent,
-    origin: &str,
     n: &Note,
     dir: &std::path::Path,
 ) -> Result<()> {
@@ -956,8 +954,8 @@ fn save_files(
             json_line(
                 out,
                 &json!({
-                    "note": format::note_url(origin, &n.id),
-                    "kind": kind(&f.mime),
+                    "postId": owner.id,
+                    "type": format::file_type(&f.mime),
                     "url": f.url,
                     "path": shown,
                 }),
@@ -1000,7 +998,7 @@ fn download_note(ctx: &Ctx, out: &mut dyn Write, note: &str, dir: &std::path::Pa
             format::note_url(client.origin(), &n.id)
         )));
     }
-    save_files(ctx, out, &api::agent(), client.origin(), &n, dir)
+    save_files(ctx, out, &api::agent(), &n, dir)
 }
 
 fn timeline(
@@ -1333,7 +1331,7 @@ fn login(
     if ctx.json {
         return json_line(
             out,
-            &json!({"id": saved.user_id, "username": saved.username, "host": host}),
+            &json!({"id": saved.user_id, "username": saved.username, "host": host, "service": saved.service}),
         );
     }
     text(
@@ -1838,7 +1836,7 @@ mod tests {
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(
             v,
-            json!({"id": "u2", "username": "bob", "host": api::authority(&url)})
+            json!({"id": "u2", "username": "bob", "host": api::authority(&url), "service": url})
         );
         let log = log.lock().unwrap();
         assert_eq!(log[1].0, "/api/i");
@@ -2081,7 +2079,7 @@ mod tests {
             first,
             format::account_json(
                 &serde_json::from_value(
-                    json!({"id":"u-bob","username":"bob","host":"mstdn.test","name":"ボブ 👨‍👩‍👧"})
+                    json!({"id":"u-bob","username":"bob","host":"mstdn.test","name":"ボブ 👨‍👩‍👧","isFollowing":true})
                 )
                 .unwrap(),
                 &url

@@ -106,7 +106,7 @@ scenarios:
               - { path: "$.url", equals: "${api.url}/@alice" }
               - { path: "$.followersCount", equals: 12 }
               - { path: "$.followingCount", equals: 34 }
-              - { path: "$.notesCount", equals: 56 }
+              - { path: "$.postsCount", equals: 56 }
       - run:
           command: msky logout
           env: *env

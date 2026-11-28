@@ -76,14 +76,12 @@ pub(crate) fn reactions(ctx: &Ctx, out: &mut dyn Write, note: &str, limit: usize
     )?;
     for r in &all {
         if ctx.json {
-            json_line(
-                out,
-                &json!({
-                    "reaction": r.reaction,
-                    "createdAt": r.created_at,
-                    "user": format::account_json(&r.user, client.origin()),
-                }),
-            )?;
+            json_line(out, &{
+                let mut v = format::account_json(&r.user, client.origin());
+                v["reaction"] = json!(r.reaction);
+                v["reactedAt"] = json!(r.created_at);
+                v
+            })?;
         } else {
             text(
                 out,
@@ -160,7 +158,7 @@ pub(crate) fn like(
         return did(
             ctx,
             out,
-            json!({"id": id, "reaction": reaction, "already": true}),
+            with_reaction(format::wrote("like", Some(&id), None, None, true), reaction),
             format!("reacted {reaction} already"),
         );
     }
@@ -171,7 +169,10 @@ pub(crate) fn like(
     did(
         ctx,
         out,
-        json!({"id": id, "reaction": reaction}),
+        with_reaction(
+            format::wrote("like", Some(&id), None, None, false),
+            reaction,
+        ),
         format!(
             "reacted {reaction} to {}",
             format::note_url(client.origin(), &id)
@@ -187,7 +188,7 @@ pub(crate) fn unlike(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     did(
         ctx,
         out,
-        json!({"deleted": id}),
+        format::wrote("unlike", Some(&id), None, None, false),
         format!(
             "took back the reaction to {}",
             format::note_url(client.origin(), &id)
@@ -204,13 +205,14 @@ pub(crate) fn repost(ctx: &Ctx, out: &mut dyn Write, note: &str, on: bool) -> Re
             .create_note(&json!({"renoteId": id, "visibility": "public"}))
             .map_err(|e| ctx.explained(e))?;
         let url = format::note_url(client.origin(), &made.id);
-        return did(ctx, out, json!({"uri": url, "id": made.id}), url);
+        let v = format::wrote("repost", Some(&id), Some(&made.id), Some(&url), false);
+        return did(ctx, out, v, url);
     }
     client.unrenote(&id).map_err(|e| ctx.explained(e))?;
     did(
         ctx,
         out,
-        json!({"deleted": id}),
+        format::wrote("unrepost", Some(&id), None, None, false),
         format!(
             "took back the renotes of {}",
             format::note_url(client.origin(), &id)
@@ -227,7 +229,7 @@ pub(crate) fn delete(ctx: &Ctx, out: &mut dyn Write, note: &str) -> Result<()> {
     did(
         ctx,
         out,
-        json!({"deleted": id}),
+        format::wrote("delete", Some(&id), None, None, false),
         format!("deleted {}", format::note_url(client.origin(), &id)),
     )
 }
@@ -303,8 +305,18 @@ pub(crate) fn guard(
         Some(h) => format!("@{}@{h}", crate::text::one_line(&u.username)),
         None => format!("@{}@{}", crate::text::one_line(&u.username), client.host()),
     };
-    let key = if on { "id" } else { "deleted" };
-    did(ctx, out, json!({ key: u.id }), format!("{verb} {shown}"))
+    let action = match (what, on) {
+        (Guard::Mute, true) => "mute",
+        (Guard::Mute, false) => "unmute",
+        (Guard::Block, true) => "block",
+        (Guard::Block, false) => "unblock",
+    };
+    did(
+        ctx,
+        out,
+        format::wrote(action, Some(&u.id), None, None, false),
+        format!("{verb} {shown}"),
+    )
 }
 
 /// `msky mutes`, `msky blocks`: the accounts you muted or blocked.
@@ -470,22 +482,39 @@ pub(crate) fn report(
     did(
         ctx,
         out,
-        json!({"reported": user_id, "comment": body}),
+        {
+            let mut v = format::wrote("report", Some(&user_id), None, None, false);
+            v["comment"] = json!(body);
+            v
+        },
         format!("reported {}", crate::text::one_line(&shown)),
     )
 }
 
-/// A chat message as `--json` prints it: who sent it and to whom (or to
-/// which room), in the account shape the other commands print.
+/// A chat message as `--json` prints it, the message of `doc/json.md`:
+/// who sent it, and to whom (or to which room) beside.
 fn chat_json(m: &crate::api::types::ChatMessage, origin: &str) -> Value {
     json!({
         "id": m.id,
         "createdAt": m.created_at,
-        "from": m.from_user.as_ref().map(|u| format::account_json(u, origin)),
+        "user": m.from_user.as_ref().map(|u| format::account_json(u, origin)),
         "to": m.to_user.as_ref().map(|u| format::account_json(u, origin)),
         "room": m.to_room.as_ref().map(|r| json!({"id": r.id, "name": r.name})),
         "text": m.text,
+        "file": m.file.as_ref().map(|f| json!({
+            "id": f.id,
+            "type": format::file_type(&f.mime),
+            "mime": (!f.mime.is_empty()).then_some(&f.mime),
+            "url": f.url,
+            "name": f.name,
+        })),
     })
+}
+
+/// `v` with the reaction a `like` gave.
+fn with_reaction(mut v: Value, reaction: &str) -> Value {
+    v["reaction"] = json!(reaction);
+    v
 }
 
 /// A chat message as text: who, when, and what it says.
@@ -702,11 +731,14 @@ mod tests {
         r.unwrap();
         assert_eq!(
             out,
-            "{\"already\":true,\"id\":\"n1\",\"reaction\":\"👍\"}\n"
+            "{\"action\":\"like\",\"already\":true,\"id\":null,\"reaction\":\"👍\",\"target\":\"n1\",\"url\":null}\n"
         );
         let (r, out) = run(|o| unlike(&c, o, "n1"));
         r.unwrap();
-        assert_eq!(out, "{\"deleted\":\"n1\"}\n");
+        assert_eq!(
+            out,
+            "{\"action\":\"unlike\",\"already\":false,\"id\":null,\"target\":\"n1\",\"url\":null}\n"
+        );
         // A note given by its address on another server is not written to.
         let e = run(|o| like(&c, o, "https://other.test/notes/x", None))
             .0
@@ -798,7 +830,7 @@ mod tests {
             ),
             "/api/notes/renotes" if !body.contains("untilId") => reply(
                 200,
-                r#"[{"id":"rn","user":{"username":"cat"},"renoteId":"n"}]"#,
+                r#"[{"id":"rn","user":{"username":"cat"},"renoteId":"n","renote":{"id":"n","user":{"username":"me"}}}]"#,
             ),
             "/api/notes/show" => reply(
                 200,
@@ -835,7 +867,7 @@ mod tests {
         assert_eq!(ids, ["root", "p", "n", "c"]);
         let out = run(|o| renotes(&cj, o, "n", 10)).1;
         assert_eq!(
-            serde_json::from_str::<Value>(out.trim()).unwrap()["renoteId"],
+            serde_json::from_str::<Value>(out.trim()).unwrap()["repostOf"]["id"],
             "n"
         );
     }

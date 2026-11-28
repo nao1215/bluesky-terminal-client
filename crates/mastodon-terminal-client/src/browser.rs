@@ -1,7 +1,8 @@
-//! Opening the login page in the web browser, with what the system already
-//! has: `xdg-open` on Linux and the BSDs, `open` on macOS, the URL handler
-//! on Windows. `MSTDN_BROWSER` names another program, as `MSKY_BROWSER`
-//! does for msky and `BSKY_BROWSER` for bsky.
+//! Opening the login page, and a post from the full-screen client, in the
+//! web browser, with what the system already has: `xdg-open` on Linux and
+//! the BSDs, `open` on macOS, the URL handler on Windows. `MSTDN_BROWSER`
+//! names another program, as `MSKY_BROWSER` does for msky and
+//! `BSKY_BROWSER` for bsky.
 
 use std::process::{Command, Stdio};
 

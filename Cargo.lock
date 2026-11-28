@@ -1136,11 +1136,13 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
+ "crossterm",
  "dirs",
  "getrandom 0.4.3",
  "image",
  "jiff",
  "proptest",
+ "ratatui",
  "rstest",
  "serde",
  "serde_json",

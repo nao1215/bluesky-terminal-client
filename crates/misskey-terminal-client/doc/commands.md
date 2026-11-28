@@ -90,13 +90,13 @@ For a job with no one at the keyboard, set `MSKY_TOKEN` to an access token. msky
 
 ## JSON
 
-`--json` prints one note a line, in the same shape for every command:
+`--json` prints one note a line, in the shape bsky and mstdn print too ([doc/json.md](https://github.com/nao1215/social-terminal-clients/blob/main/doc/json.md) lists every key):
 
 ```json
-{"id":"9xyz0abc12","createdAt":"2026-11-26T10:54:49.672Z","url":"https://misskey.io/notes/9xyz0abc12","uri":null,"user":{"id":"9u0000abcd","username":"alice","host":"misskey.io","name":"Alice"},"text":"山の写真 🏔️","cw":null,"reactionCount":19,"reactions":{":blobcat@misskey.design:":2,":igyo@.:":12,"👍":5},"renoteCount":3,"repliesCount":1,"files":[{"id":"9xyz0f0001","name":"mountain.jpg","url":"https://media.misskey.example/files/mountain.jpg","type":"image/jpeg","size":204800,"isSensitive":false}],"replyId":null,"renoteId":null,"renote":null}
+{"createdAt":"2026-11-26T10:54:49.672Z","cw":null,"files":[{"description":null,"id":"9xyz0f0001","isSensitive":false,"mime":"image/jpeg","name":"mountain.jpg","previewUrl":"https://media.misskey.example/files/thumbnail-mountain.webp","size":204800,"type":"image","url":"https://media.misskey.example/files/mountain.jpg"}],"id":"9xyz0abc12","likeCount":19,"quoteId":null,"reactions":{":blobcat@misskey.design:":2,":igyo@.:":12,"👍":5},"repliesCount":1,"replyId":null,"repostCount":3,"repostOf":null,"text":"山の写真 🏔️","uri":null,"url":"https://misskey.io/notes/9xyz0abc12","user":{"host":"misskey.io","id":"9u0000abcd","name":"Alice","username":"alice"},"visibility":"public"}
 ```
 
-`notifications` prints `{"id", "createdAt", "type", "user", "reaction", "note"}`. `post` prints `{"uri", "id"}`, `follow` `{"id"}`, `unfollow` `{"deleted"}`, and `download` one line a file, `{"note", "kind", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
+`likeCount` counts the reactions of every kind, and `reactions` each of them. A renote with nothing of its own is a repost: its note is in `repostOf`, whole; one with words quotes the note named by `quoteId`. `notifications` prints `{"id", "createdAt", "type", "user", "postId", "post", "reaction"}`, a reaction as the `type` `like`. A write prints `{"action", "target", "id", "url", "already"}`: `post` the note it made, `follow` the account followed, with `requested` when the account has to accept. `download` prints one line a file, `{"postId", "type", "url", "path"}`. An error is `{"error", "hint", "status"}`, on stdout as well as stderr.
 
 When a server says it is busy (429, 502, 503, 504), msky asks up to three more times, after its `Retry-After` or after 1, 2 and 4 seconds.
 

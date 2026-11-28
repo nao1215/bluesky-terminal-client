@@ -72,6 +72,18 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
+            json:
+              - { path: "$.id", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.url", equals: "https://bsky.app/profile/did:plc:alice/post/p1" }
+              - { path: "$.user.id", equals: "did:plc:alice" }
+              - { path: "$.repostOf", equals: null }
+      # --raw prints the server's own feedViewPost, as --json did before.
+      - run:
+          command: bsky timeline --raw -n 1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
             matches: '^\{"post":\{.*"uri":"at://did:plc:alice/app.bsky.feed.post/p1".*\}\n$'
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getTimeline, header: { name: Authorization, equals: "Bearer acc" } }
@@ -153,7 +165,7 @@ scenarios:
                 - { path: "$.record.facets[1].features[0].uri", equals: "https://example.com" }
                 - { path: "$.record.facets[2].features[0].did", equals: "did:plc:bob" }
                 - { path: "$.record.langs[0]", equals: "ja" }
-      # From stdin, with --json: the server's answer.
+      # From stdin, with --json: what it made.
       - run:
           command: bsky post - --json
           env: *env
@@ -162,7 +174,9 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.uri", equals: "at://did:plc:me/app.bsky.feed.post/new1" }
+              - { path: "$.action", equals: post }
+              - { path: "$.id", equals: "at://did:plc:me/app.bsky.feed.post/new1" }
+              - { path: "$.url", equals: "https://bsky.app/profile/did:plc:me/post/new1" }
               - { path: "$.cid", equals: "cid-new1" }
       - assert:
           mock:
@@ -613,7 +627,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.deleted", equals: "at://did:plc:me/app.bsky.feed.post/p9" }
+            json:
+              - { path: "$.action", equals: delete }
+              - { path: "$.target", equals: "at://did:plc:me/app.bsky.feed.post/p9" }
       - assert:
           mock:
             name: api
@@ -708,7 +724,7 @@ scenarios:
           exit_code: 0
           stdout:
             line: 2
-            matches: '"reason":"like"'
+            matches: '"type":"like"'
       - assert:
           mock:
             name: api
@@ -760,7 +776,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.handle", equals: "erin.test" }
+            json:
+              - { path: "$.username", equals: "erin.test" }
+              - { path: "$.url", equals: "https://bsky.app/profile/erin.test" }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.actor.searchActors, query: { name: q, equals: "erin" } }
 
@@ -865,7 +883,7 @@ scenarios:
           exit_code: 0
           stdout:
             line: 2
-            matches: '"current":true.*"handle":"new.test"|"handle":"new.test".*"current":true'
+            matches: '"current":true.*"username":"new.test"|"username":"new.test".*"current":true'
 
   - name: feed takes a pinned feed by name, and an unknown name lists the pinned ones
     mock_servers:
@@ -980,8 +998,8 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.loggedOut[0].handle", equals: "me.test" }
-              - { path: "$.loggedOut[0].did", equals: "did:plc:me" }
+              - { path: "$.loggedOut[0].username", equals: "me.test" }
+              - { path: "$.loggedOut[0].id", equals: "did:plc:me" }
       - run:
           command: bsky logout --json
           env: *env
@@ -1086,7 +1104,10 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.uri", equals: "at://did:plc:me/app.bsky.graph.block/b1" }
+            json:
+              - { path: "$.action", equals: block }
+              - { path: "$.target", equals: "did:plc:alice" }
+              - { path: "$.id", equals: "at://did:plc:me/app.bsky.graph.block/b1" }
       - assert:
           mock:
             name: api
@@ -1125,7 +1146,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.did", equals: "did:plc:alice" }
+            json: { path: "$.id", equals: "did:plc:alice" }
 
   - name: unmute and unblock undo a mute and the block record, and yourself is refused
     mock_servers:
@@ -1183,6 +1204,200 @@ scenarios:
           stdout:
             equals: "already muted @alice.test\n"
 
+  - name: follow sends the follow record once, and follows lists the accounts an account follows
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: "did:plc:alice", handle: "alice.test", displayName: "家族👨‍👩‍👧 Alice" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/f1", cid: "cid-f1" }
+          - method: GET
+            path: /xrpc/app.bsky.graph.getFollows
+            json:
+              subject: { did: did:plc:alice, handle: alice.test }
+              follows:
+                - { did: did:plc:bob, handle: bob.test, displayName: "Bob 🇯🇵" }
+    steps:
+      - *session
+      - run:
+          command: bsky follow @alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "following @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.repo", equals: "did:plc:me" }
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.record.subject", equals: "did:plc:alice" }
+      # Unfollowing an account you do not follow is a usage error.
+      - run:
+          command: bsky unfollow alice.test
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "error: you do not follow @alice.test"
+      - run:
+          command: bsky follows alice.test --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.username", equals: "bob.test" }
+              - { path: "$.id", equals: "did:plc:bob" }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.graph.getFollows, query: { name: actor, equals: "alice.test" } }
+
+  - name: unfollow deletes the follow record, and follow of an account already followed sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json:
+              did: "did:plc:alice"
+              handle: "alice.test"
+              viewer: { following: "at://did:plc:me/app.bsky.graph.follow/f1" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.graph.follow/f2", cid: "cid-f2" }
+    steps:
+      - *session
+      - run:
+          command: bsky unfollow alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "unfollowed @alice.test\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.graph.follow" }
+                - { path: "$.rkey", equals: "f1" }
+      - run:
+          command: bsky follow alice.test
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already following @alice.test\n"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  - name: repost sends the repost record once, and unrepost of a post not reposted is a usage error
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/com.atproto.identity.resolveHandle
+            json: { did: "did:plc:alice" }
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "worth sharing 🔁" }
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.repost/r1", cid: "cid-r1" }
+    steps:
+      - *session
+      - run:
+          command: bsky repost https://bsky.app/profile/alice.test/post/p1 --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.action", equals: repost }
+              - { path: "$.target", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.id", equals: "at://did:plc:me/app.bsky.feed.repost/r1" }
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.createRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.record.subject.uri", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+                - { path: "$.record.subject.cid", equals: "cid-p1" }
+      - run:
+          command: bsky unrepost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "is not reposted"
+
+  - name: unrepost deletes the repost record, and repost of a post already reposted sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "worth sharing 🔁" }
+                  viewer: { repost: at://did:plc:me/app.bsky.feed.repost/r1 }
+          - method: POST
+            path: /xrpc/com.atproto.repo.deleteRecord
+            json: {}
+          - method: POST
+            path: /xrpc/com.atproto.repo.createRecord
+            json: { uri: "at://did:plc:me/app.bsky.feed.repost/r2", cid: "cid-r2" }
+    steps:
+      - *session
+      - run:
+          command: bsky unrepost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "removed at://did:plc:me/app.bsky.feed.repost/r1\n"
+      - assert:
+          mock:
+            name: api
+            path: /xrpc/com.atproto.repo.deleteRecord
+            count: 1
+            body:
+              json:
+                - { path: "$.collection", equals: "app.bsky.feed.repost" }
+                - { path: "$.rkey", equals: "r1" }
+      - run:
+          command: bsky repost at://did:plc:alice/app.bsky.feed.post/p1
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "already reposted: at://did:plc:me/app.bsky.feed.repost/r1\n"
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
   - name: likes and reposts list who liked and reposted a post named by its bsky.app address
     mock_servers:
       - name: api
@@ -1218,7 +1433,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.actor.handle", equals: "bob.test" }
+            json: { path: "$.username", equals: "bob.test" }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getLikes, query: { name: uri, equals: "at://did:plc:alice/app.bsky.feed.post/p1" } }
       - run:
@@ -1285,7 +1500,7 @@ scenarios:
           exit_code: 0
           stdout:
             line: 1
-            matches: '"subject":\{.*"handle":"bob.test"' 
+            matches: '"username":"bob.test"' 
 
   - name: report sends a post or an account to the moderators once, and an unknown reason is a usage error
     mock_servers:
@@ -1331,7 +1546,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            json: { path: "$.id", equals: 7 }
+            json:
+              - { path: "$.action", equals: report }
+              - { path: "$.id", equals: 7 }
       - assert:
           mock:
             name: api
@@ -1599,9 +1816,17 @@ scenarios:
           mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 3, query: { name: filter, equals: "posts_no_replies" } }
       - assert:
           mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, query: { name: limit, equals: "2" } }
-      # The lexicon's own name is taken too; --json prints each feedViewPost.
+      # The lexicon's own name is taken too; --json prints a post a line,
+      # --raw each feedViewPost.
       - run:
           command: bsky author alice.test --filter posts_with_media --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\{[^\n]*"id":"at://did:plc:alice/app.bsky.feed.post/p1"[^\n]*\}\n\{[^\n]*"id":"at://did:plc:alice/app.bsky.feed.post/p2"[^\n]*\}\n$'
+      - run:
+          command: bsky author alice.test --filter posts_with_media --raw
           env: *env
       - assert:
           exit_code: 0
@@ -1617,7 +1842,7 @@ scenarios:
           stderr:
             contains: "invalid value 'everything' for '--filter <FILTER>'"
       - assert:
-          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 5 }
+          mock: { name: api, path: /xrpc/app.bsky.feed.getAuthorFeed, count: 7 }
 
   # download saves a post's pictures as the viewer's d saves one: full size,
   # named after the picture with the extension its bytes have, and a name
@@ -1683,7 +1908,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: '^\{"kind":"image","path":"[^"]*dl[/\\]+bafy1\.png","post":"at://did:plc:alice/app\.bsky\.feed\.post/p1","url":"http://[^"]+/img/plain/did:plc:alice/bafy1@jpeg"\}\n(\{"kind":"image",[^\n]*bafy[234]\.png[^\n]*\}\n){3}$'
+            matches: '^\{"path":"[^"]*dl[/\\]+bafy1\.png","postId":"at://did:plc:alice/app\.bsky\.feed\.post/p1","type":"image","url":"http://[^"]+/img/plain/did:plc:alice/bafy1@jpeg"\}\n(\{"path":[^\n]*bafy[234]\.png","postId":[^\n]*"type":"image"[^\n]*\}\n){3}$'
       - assert:
           dir: { path: dl, count: 4, contains: [bafy1.png, bafy2.png, bafy3.png, bafy4.png] }
       - assert:
@@ -1722,7 +1947,7 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.kind", equals: "video" }
+              - { path: "$.type", equals: "video" }
               - { path: "$.url", matches: '/watch/v1/playlist\.m3u8$' }
               - { path: "$.path", matches: 'downloads[/\\]v1\.ts$' }
       - assert:
@@ -1824,7 +2049,98 @@ scenarios:
           exit_code: 0
           stdout:
             json:
-              - { path: "$.post", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
+              - { path: "$.postId", equals: "at://did:plc:alice/app.bsky.feed.post/p1" }
               - { path: "$.path", matches: 'picked[/\\]bafy1\.png$' }
       - assert:
           dir: { path: picked, count: 1, contains: [bafy1.png] }
+
+  # As msky's: a job that announces a page checks what it would post, the
+  # card included, before it posts. Nothing goes up, not even the card's
+  # picture or the files attached.
+  - name: post --dry-run shows the post and its card and sends nothing
+    mock_servers:
+      - name: api
+        routes:
+          - *card_page
+          - *card_photo
+          - *card_upload
+          - *card_create
+          - method: GET
+            path: /xrpc/app.bsky.feed.getPosts
+            json:
+              posts:
+                - uri: at://did:plc:alice/app.bsky.feed.post/p1
+                  cid: cid-p1
+                  author: { did: did:plc:alice, handle: alice.test }
+                  record: { text: "hello", createdAt: "2026-09-20T10:00:00.000Z" }
+    steps:
+      - *session
+      - fixture: { file: photo.png, from: testdata/photo.png }
+      - run:
+          command: 'bsky post --dry-run --reply at://did:plc:alice/app.bsky.feed.post/p1 "新しい記事 🐈‍⬛ ${api.url}/page"'
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "dry run: nothing was sent to 127.0.0.1:${api.port}\nas @me.test\n"
+              - "reply to: at://did:plc:alice/app.bsky.feed.post/p1\n"
+              - " of 300 characters):\n新しい記事 🐈‍⬛ ${api.url}/page\n"
+              - "card of ${api.url}/page:\n  title: A note & its card\n  description: What the page is about\n  image: ${api.url}/img/photo.png\n"
+      - run:
+          command: bsky post --dry-run --json --image photo.png --alt "写真 📷" "pictures, so no card ${api.url}/page"
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.dryRun", equals: true }
+              - { path: "$.host", equals: "127.0.0.1:${api.port}" }
+              - { path: "$.username", equals: me.test }
+              - { path: "$.post.text", equals: "pictures, so no card ${api.url}/page" }
+              - { path: "$.post.files[0].type", equals: image }
+              - { path: "$.post.files[0].alt", equals: "写真 📷" }
+              - { path: "$.maxCharacters", equals: 300 }
+              - { path: "$.card", equals: null }
+      - assert:
+          mock: { name: api, path: /page, count: 1 }
+      - assert:
+          mock: { name: api, path: /img/photo.png, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.uploadBlob, count: 0 }
+      - assert:
+          mock: { name: api, path: /xrpc/com.atproto.repo.createRecord, count: 0 }
+
+  # As msky's and mstdn's whoami: which account the commands write as.
+  - name: whoami prints the account in use
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /xrpc/app.bsky.actor.getProfile
+            json: { did: did:plc:me, handle: me.test, displayName: "私 🇯🇵", followersCount: 1, followsCount: 2, postsCount: 3 }
+    steps:
+      - *session
+      - run:
+          command: bsky whoami --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.id", equals: did:plc:me }
+              - { path: "$.username", equals: me.test }
+              - { path: "$.name", equals: "私 🇯🇵" }
+              - { path: "$.postsCount", equals: 3 }
+      - assert:
+          mock: { name: api, path: /xrpc/app.bsky.actor.getProfile, query: { name: actor, equals: did:plc:me } }
+      - run:
+          command: bsky whoami
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              私 🇯🇵 @me.test
+              did:plc:me
+              1 followers  2 following  3 posts

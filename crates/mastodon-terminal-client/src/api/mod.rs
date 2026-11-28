@@ -664,6 +664,13 @@ impl Client {
             .filter(|s| !s.id.is_empty())
             .ok_or_else(|| Error::api("v1/statuses: the answer has no status in it"))
     }
+
+    /// `POST /api/v1/statuses/:id/<action>`: `favourite`, `unfavourite`,
+    /// `reblog` or `unreblog` the status `id`. Sent once, as every write is.
+    pub(crate) fn act_on(&self, id: &str, action: &str) -> Result<()> {
+        let path = format!("v1/statuses/{}/{action}", path_part(id));
+        self.post(&path, &json!({}), None).map(drop)
+    }
 }
 
 /// Which statuses of an account `account_statuses` asks for.

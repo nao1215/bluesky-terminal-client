@@ -136,8 +136,20 @@ fn user_json(a: &Account, origin: &str) -> Value {
     })
 }
 
-/// A status as `--json` prints it, its `user` as [`user_json`] puts it and
-/// its text as [`html::to_text`] reads it (`content` keeps the HTML).
+/// A file's `type` in the JSON every client prints: a GIF that Mastodon
+/// made a looping video is a video, and what Mastodon cannot tell is a file.
+pub(crate) fn file_type(kind: &str) -> &'static str {
+    match kind {
+        "image" => "image",
+        "video" | "gifv" => "video",
+        "audio" => "audio",
+        _ => "file",
+    }
+}
+
+/// A status as `--json` prints it, the post of `doc/json.md`: its `user`
+/// as [`user_json`] puts it and its text as [`html::to_text`] reads it
+/// (`content` keeps the HTML).
 pub(crate) fn status_json(s: &Status, origin: &str) -> Value {
     let files: Vec<Value> = s
         .media_attachments
@@ -145,7 +157,8 @@ pub(crate) fn status_json(s: &Status, origin: &str) -> Value {
         .map(|m| {
             json!({
                 "id": m.id,
-                "type": m.kind,
+                "type": file_type(&m.kind),
+                "mime": null,
                 "url": m.source(),
                 "previewUrl": m.preview_url,
                 "description": m.description,
@@ -171,15 +184,16 @@ pub(crate) fn status_json(s: &Status, origin: &str) -> Value {
         "sensitive": s.sensitive,
         "visibility": s.visibility,
         "language": s.language,
-        "favouritesCount": s.favourites_count,
-        "reblogsCount": s.reblogs_count,
+        "likeCount": s.favourites_count,
+        "repostCount": s.reblogs_count,
         "repliesCount": s.replies_count,
         "files": files,
         "mentions": s.mentions.iter().map(|m| &m.acct).collect::<Vec<_>>(),
         "tags": s.tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
         "poll": poll,
         "replyId": s.in_reply_to_id,
-        "reblog": s.reblog.as_deref().map(|r| status_json(r, origin)),
+        "quoteId": null,
+        "repostOf": s.reblog.as_deref().map(|r| status_json(r, origin)),
     })
 }
 
@@ -214,6 +228,7 @@ pub(crate) fn account(a: &Account, origin: &str) -> String {
 
 /// An account as `whoami --json` and `profile --json` print it: a status's
 /// `user` with its address, what it says about itself and its counts.
+/// Mastodon says whether you follow it elsewhere, so `following` is null.
 pub(crate) fn account_json(a: &Account, origin: &str) -> Value {
     let mut v = user_json(a, origin);
     v["url"] = json!(account_url(a, origin));
@@ -222,7 +237,8 @@ pub(crate) fn account_json(a: &Account, origin: &str) -> Value {
     v["bot"] = json!(a.bot);
     v["followersCount"] = json!(a.followers_count);
     v["followingCount"] = json!(a.following_count);
-    v["statusesCount"] = json!(a.statuses_count);
+    v["postsCount"] = json!(a.statuses_count);
+    v["following"] = Value::Null;
     v
 }
 
@@ -265,6 +281,16 @@ pub(crate) fn notification(n: &Notification, origin: &str) -> String {
     out
 }
 
+/// A notification's `type` in the JSON every client prints: a favourite
+/// is a like and a reblog a repost; the rest keep Mastodon's word.
+fn notification_type(kind: &str) -> &str {
+    match kind {
+        "favourite" => "like",
+        "reblog" => "repost",
+        other => other,
+    }
+}
+
 /// A notification as `notifications --json` prints it: what happened, who
 /// did it (a status's `user`, or null), and the status it is about in the
 /// shape every command prints (or null).
@@ -272,9 +298,10 @@ pub(crate) fn notification_json(n: &Notification, origin: &str) -> Value {
     json!({
         "id": n.id,
         "createdAt": n.created_at,
-        "type": n.kind,
+        "type": notification_type(&n.kind),
         "user": n.account.as_ref().map(|a| user_json(a, origin)),
-        "status": n.status.as_ref().map(|s| status_json(s, origin)),
+        "postId": n.status.as_ref().map(|s| &s.id),
+        "post": n.status.as_ref().map(|s| status_json(s, origin)),
     })
 }
 
@@ -383,29 +410,34 @@ mod tests {
         assert_eq!(v["text"], "🐈 記事 (https://e.test/a)");
         assert_eq!(v["cw"], Value::Null);
         assert_eq!(v["files"][0]["description"], "猫");
+        assert_eq!(v["files"][0]["type"], "image");
+        assert_eq!(v["files"][0]["mime"], Value::Null);
+        assert_eq!(v["likeCount"], 2);
+        assert_eq!(v["repostCount"], 4);
         assert_eq!(v["mentions"][0], "bob@other.example");
-        assert_eq!(v["reblog"]["user"]["host"], "other.example");
+        assert_eq!(v["repostOf"]["user"]["host"], "other.example");
         assert_eq!(
-            v["reblog"]["url"],
+            v["repostOf"]["url"],
             "https://mastodon.test/@bob@other.example/r"
         );
-        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        let keys = keys_of(&v);
         assert_eq!(
             keys,
             [
                 "content",
                 "createdAt",
                 "cw",
-                "favouritesCount",
                 "files",
                 "id",
                 "language",
+                "likeCount",
                 "mentions",
                 "poll",
-                "reblog",
-                "reblogsCount",
+                "quoteId",
                 "repliesCount",
                 "replyId",
+                "repostCount",
+                "repostOf",
                 "sensitive",
                 "tags",
                 "text",
@@ -415,6 +447,31 @@ mod tests {
                 "visibility"
             ]
         );
+        assert!(crate::json_keys::missing(crate::json_keys::POST, &keys).is_empty());
+        assert!(crate::json_keys::missing(crate::json_keys::USER, &keys_of(&v["user"])).is_empty());
+        assert!(
+            crate::json_keys::missing(crate::json_keys::FILE, &keys_of(&v["files"][0])).is_empty()
+        );
+    }
+
+    fn keys_of(v: &Value) -> Vec<&str> {
+        v.as_object().unwrap().keys().map(String::as_str).collect()
+    }
+
+    // A GIF made a looping video is a video, and a kind Mastodon could not
+    // tell is a file: the four types every client prints.
+    #[test]
+    fn a_file_is_one_of_the_four_types() {
+        for (kind, want) in [
+            ("image", "image"),
+            ("gifv", "video"),
+            ("video", "video"),
+            ("audio", "audio"),
+            ("unknown", "file"),
+        ] {
+            assert_eq!(file_type(kind), want);
+            assert!(crate::json_keys::FILE_TYPES.contains(&want));
+        }
     }
 
     fn a_notification(v: Value) -> Notification {
@@ -449,12 +506,12 @@ mod tests {
             a_notification(json!({"id": "n5", "created_at": "t", "type": "new\u{1b}[2J"}));
         assert_eq!(notification(&unknown, ORIGIN), "new[2J · t\n");
         let v = notification_json(&fav, ORIGIN);
-        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-        assert_eq!(keys, ["createdAt", "id", "status", "type", "user"]);
-        assert_eq!(
-            v["status"],
-            status_json(fav.status.as_ref().unwrap(), ORIGIN)
-        );
+        let keys = keys_of(&v);
+        assert_eq!(keys, ["createdAt", "id", "post", "postId", "type", "user"]);
+        assert!(crate::json_keys::missing(crate::json_keys::NOTIFICATION, &keys).is_empty());
+        assert_eq!(v["type"], "like");
+        assert_eq!(v["postId"], "109");
+        assert_eq!(v["post"], status_json(fav.status.as_ref().unwrap(), ORIGIN));
     }
 
     #[test]
@@ -476,7 +533,8 @@ mod tests {
         );
         let v = account_json(&a, ORIGIN);
         assert_eq!(v["host"], "mastodon.test");
-        assert_eq!(v["statusesCount"], 56);
+        assert_eq!(v["postsCount"], 56);
+        assert!(crate::json_keys::missing(crate::json_keys::ACCOUNT, &keys_of(&v)).is_empty());
         assert_eq!(v["description"], "こんにちは\u{1b}]52;c;eA==\u{7}\n二行目");
     }
 }

@@ -6,13 +6,13 @@
 //!
 //! The commands' output, errors and `--json` stay in English, as msky's do,
 //! so scripts read the same words everywhere; what is translated is what
-//! only a person reads: the login's directions on stderr and the page the
-//! browser is sent back to. The language is `LC_ALL`, `LC_MESSAGES` or
-//! `LANG`, the first set, else English.
+//! only a person reads: the full-screen client, the login's directions on
+//! stderr and the page the browser is sent back to. The language is
+//! `LC_ALL`, `LC_MESSAGES` or `LANG`, the first set, else English.
 //!
-//! Strings are marked where they are written with [`t`] or [`tf`]. A test
-//! reads the marks from the source and checks that every language has
-//! every string.
+//! Strings are marked where they are written with [`t`], [`tf`] or `n!`.
+//! A test reads the marks from the source and checks that every language
+//! has every string.
 //!
 //! A thread may be set on its own, which is what each test does: in a test
 //! build a thread's choice stays its own, so tests running side by side do
@@ -24,6 +24,15 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod ja;
+
+/// Mark an English string to be translated where it is shown. It is the
+/// string itself, so it can stand in a `const`.
+macro_rules! n {
+    ($s:literal) => {
+        $s
+    };
+}
+pub(crate) use n;
 
 /// A language mstdn speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -14,6 +14,15 @@ mod config;
 mod download;
 mod error;
 mod i18n;
+// The keys every client prints with --json (doc/json.md), which the tests
+// check this client's output against. Each test uses some of the lists.
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "each client's tests read only the lists of what it prints"
+)]
+#[path = "../../../doc/json_keys.rs"]
+mod json_keys;
 mod metadata;
 mod mfm;
 mod miauth;
@@ -198,6 +207,17 @@ mod tests {
     fn usage_error(args: &[&str]) -> String {
         let e = Cli::try_parse_from(args).unwrap_err();
         first_paragraph(&e.to_string())
+    }
+
+    // -n asks for how many: none is a mistake said before anything is
+    // asked, not an empty answer.
+    #[test]
+    fn a_limit_of_none_is_a_usage_error() {
+        assert_eq!(
+            usage_error(&["msky", "timeline", "-n", "0"]),
+            "invalid value '0' for '--limit <LIMIT>': it is how many to list, so 1 or more"
+        );
+        assert!(Cli::try_parse_from(["msky", "timeline", "-n", "1"]).is_ok());
     }
 
     // clap names the missing arguments on the lines after the first; the

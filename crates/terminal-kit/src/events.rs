@@ -24,6 +24,7 @@ pub struct Input {
 }
 
 impl Input {
+    /// Starts reading the terminal's input; on Windows it opens the console.
     pub fn new() -> io::Result<Input> {
         Ok(Input {
             #[cfg(windows)]
