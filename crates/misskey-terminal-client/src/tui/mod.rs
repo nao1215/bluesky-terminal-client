@@ -57,6 +57,9 @@ const ANSWER_TICK: Duration = Duration::from_millis(5);
 /// Most input events handled before the screen is drawn again: keys that
 /// come faster than a frame (a held j) are applied together.
 const EVENTS_PER_FRAME: usize = 64;
+/// Longest q waits for writes still on their way: a server that never
+/// answers does not keep msky open.
+const QUIT_WAIT: Duration = Duration::from_secs(3);
 
 /// Environment variable naming the folder downloaded pictures are kept
 /// in between runs; `off` keeps none.
@@ -311,6 +314,9 @@ fn event_loop(
             dirty = true;
         }
     }
+    // A write sent just before q, such as the notifications marked read on
+    // their tab, reaches the server before msky ends.
+    worker.finish_writes(QUIT_WAIT);
     Ok(())
 }
 

@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- A setting too long for the settings screen, such as a download folder, is cut between whole emoji: its start could be left as half a flag, a skin tone or the end of a family.
+- `q` right after a write, such as `4` marking the notifications read, waits up to 3 seconds for it to reach the server: msky ended before the request left, and the notifications stayed unread.
 - A note whose line ends with a space just where it wraps no longer shows a blank line under that line, and a line of spaces wider than the column is one blank line rather than two, as bsky shows them: msky's copy of the text layout lacked bsky's fix.
 
 ## [0.1.1] - 2026-11-28
