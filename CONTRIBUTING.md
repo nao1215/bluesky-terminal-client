@@ -23,7 +23,7 @@ just test        # unit tests of every crate
 just lint        # clippy with warnings as errors
 just fmt-check   # formatting
 just doc         # rustdoc with warnings as errors
-just e2e         # every end-to-end suite (just e2e-bsky, just e2e-msky, just e2e-mstdn for one)
+just e2e         # every end-to-end suite (just e2e-bsky, just e2e-msky, just e2e-mstdn, just e2e-nstr for one)
 just deny        # dependency advisories and licenses (needs cargo-deny)
 just coverage    # line coverage of the unit tests and every E2E suite together (needs cargo-llvm-cov)
 just release-test  # the release scripts, without a tag

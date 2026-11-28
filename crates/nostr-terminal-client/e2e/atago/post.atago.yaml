@@ -1,0 +1,136 @@
+# nstr post: a text note signed with the key in keyFile and sent to the
+# relays. The relay is testdata/relay.py on 127.0.0.1, so nothing reaches a
+# real relay. It writes the key file (alice's throwaway key, mode 0600) next
+# to the config, checks the ID and the BIP-340 signature of the event it is
+# sent before it answers OK, and writes the event to published.json.
+version: "1"
+
+suite:
+  name: nstr post
+
+scenarios:
+  - name: post signs the note and the relay accepts it
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --dead
+        ready:
+          file: ready.txt
+          store: relay
+    steps:
+      - run:
+          command: nstr post "新しい記事 🐈‍⬛ https://debimate.jp/post/a/"
+          env: &env
+            NSTR_CONFIG_DIR: ${workdir}/cfg
+            TZ: UTC
+      # The relay that refuses connections is a warning; one relay took it.
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^nostr:note1[02-9ac-hj-np-z]{58}\n$'
+          stderr:
+            contains: "warning: ws://127.0.0.1:"
+            not_contains: "${relay}"
+      - assert:
+          file:
+            path: published.json
+            json:
+              - { path: "$.content", equals: "新しい記事 🐈‍⬛ https://debimate.jp/post/a/" }
+              - { path: "$.kind", equals: 1 }
+              - { path: "$.tags", equals: [] }
+              - { path: "$.pubkey", equals: 76c5012018add43f4d5b3842e479d47850333e4b86525946862477546eed7742 }
+      - run:
+          command: nstr post "二つ目 👨‍👩‍👧" --json
+          env: *env
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - { path: "$.action", equals: post }
+              - { path: "$.acceptedRelays", equals: 1 }
+              - { path: "$.already", equals: false }
+              - { path: "$.target", equals: null }
+              - { path: "$.url", equals: null }
+              - { path: "$.id", matches: "^[0-9a-f]{64}$" }
+              - { path: "$.uri", matches: "^nostr:note1[02-9ac-hj-np-z]{58}$" }
+      - assert:
+          file:
+            path: published.json
+            json: { path: "$.content", equals: "二つ目 👨‍👩‍👧" }
+
+  # The relay answers OK false: the note is not published anywhere, so exit
+  # 4 with the relay's reason, and it is sent once.
+  - name: a note the relay rejects is exit 4
+    services:
+      - name: relay
+        command: 'python3 "${specdir}/testdata/relay.py" --reject "blocked: e2e relay takes no notes"'
+        ready:
+          file: ready.txt
+          store: relay
+    steps:
+      - run:
+          command: nstr post "届かない"
+          env: *env
+      - assert:
+          exit_code: 4
+          stdout:
+            empty: true
+          stderr:
+            equals: "error: no relay completed the operation: ${relay}: publish rejected: blocked: e2e relay takes no notes\n"
+      - run:
+          command: nstr post "届かない" --json
+          env: *env
+      - assert:
+          exit_code: 4
+          stdout:
+            json:
+              - { path: "$.status", equals: 4 }
+              - { path: "$.error", equals: "no relay completed the operation: ${relay}: publish rejected: blocked: e2e relay takes no notes" }
+      - assert:
+          file:
+            path: published.json
+            exists: false
+
+  # Without keyFile nstr reads but does not post (usage, exit 1).
+  - name: posting without keyFile is exit 1 and sends nothing
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py" --no-key
+        ready:
+          file: ready.txt
+    steps:
+      - run:
+          command: nstr post x
+          env: *env
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "error: posting requires keyFile in the config\nhint: run `nstr --help` for usage\n"
+      - assert:
+          file:
+            path: requests.jsonl
+            exists: false
+
+  # A key file others can read is refused (exit 3) before anything is
+  # signed. Windows has no such mode bits, and nstr checks them on Unix only.
+  - name: a key file others can read is exit 3 and sends nothing
+    skip:
+      os: windows  # file modes are a Unix check; chmod has no such effect there
+    services:
+      - name: relay
+        command: python3 "${specdir}/testdata/relay.py"
+        ready:
+          file: ready.txt
+    steps:
+      - run:
+          command: chmod 644 cfg/key
+      - run:
+          command: nstr post x
+          env: *env
+      - assert:
+          exit_code: 3
+          stderr:
+            equals: "error: key file must be accessible only to its owner; run chmod 600 on it\n"
+      - assert:
+          file:
+            path: requests.jsonl
+            exists: false

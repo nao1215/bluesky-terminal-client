@@ -1,0 +1,6 @@
+# Every spec here runs nstr with a home of its own, so no spec reads the
+# config (or a key) of whoever runs the suite. Each spec names
+# NSTR_CONFIG_DIR as well, pointing at the config the relay stand-in wrote.
+defaults:
+  run:
+    sandbox_home: true
