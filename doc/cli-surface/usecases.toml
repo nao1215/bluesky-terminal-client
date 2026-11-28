@@ -10,6 +10,7 @@
 [bsky]
 "--account (-a)" = { usecase = "", without = "" }
 "--json" = { usecase = "the imozuru research skills save search results as JSON lines for their sources", without = "scripts would have to parse the text meant for people" }
+"--raw" = { usecase = "a script written against bsky 0.15.0 --json, which printed the server's own objects, keeps working by switching the flag", without = "those scripts would break on the new --json shape with no way to get the AppView's objects (cid, labels, embeds as sent) from bsky" }
 "--service" = { usecase = "", without = "" }
 "accounts" = { usecase = "", without = "" }
 "app-passwords" = { usecase = "", without = "" }

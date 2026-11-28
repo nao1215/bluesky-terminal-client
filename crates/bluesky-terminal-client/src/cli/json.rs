@@ -248,7 +248,7 @@ pub(super) fn wrote(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use terminal_kit::json::{self as shape, missing};
+    use crate::json_keys::{self as shape, missing};
 
     fn keys_of(v: &Value) -> Vec<&str> {
         v.as_object().unwrap().keys().map(String::as_str).collect()
