@@ -564,8 +564,8 @@ mod tests {
     #[test]
     fn a_session_printed_for_debugging_hides_its_token() {
         let shown = format!("{:?}", account("https://misskey.test", "alice"));
-        assert!(!shown.contains(FAKE), "{shown}");
-        assert!(shown.contains("alice"), "{shown}");
+        assert!(!shown.contains(FAKE), "the token is hidden");
+        assert!(shown.contains("alice"), "the username is shown");
     }
 
     #[test]

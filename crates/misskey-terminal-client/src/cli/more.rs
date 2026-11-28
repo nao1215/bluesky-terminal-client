@@ -977,7 +977,10 @@ mod report_tests {
             None,
         )
         .unwrap_err();
-        assert!(e.message().contains("only once confirmed"), "{e:?}");
+        assert!(
+            e.message().contains("only once confirmed"),
+            "only once confirmed"
+        );
         // Asked, and n: not sent.
         let mut asked = Vec::new();
         let e = report(

@@ -1194,7 +1194,10 @@ mod tests {
             .0
             .unwrap_err();
         assert_eq!(e.kind(), Kind::Usage);
-        assert!(e.message().starts_with("you do not follow @bob@"), "{e:?}");
+        assert!(
+            e.message().starts_with("you do not follow @bob@"),
+            "not followed"
+        );
         let (url2, _) = follow_server(r#"{"id":"u-me","username":"me"}"#);
         login(dir.path(), &url2, crate::miauth::PERMISSIONS);
         let e = run_follow(&ctx(&url2, dir.path(), false), "me", true)
@@ -1212,7 +1215,10 @@ mod tests {
         let e = run_follow(&ctx(&url, dir.path(), false), "bob", true)
             .0
             .unwrap_err();
-        assert!(e.message().contains("it lacks write:following"), "{e:?}");
+        assert!(
+            e.message().contains("it lacks write:following"),
+            "lacks write:following"
+        );
         let e = run_follow(
             &ctx(&url, dir.path(), false),
             "https://other.test/@bob",
@@ -1221,7 +1227,7 @@ mod tests {
         .0
         .unwrap_err();
         assert_eq!(e.kind(), Kind::Usage);
-        assert!(e.hint().unwrap().contains("@name@host"), "{e:?}");
+        assert!(e.hint().unwrap().contains("@name@host"), "another server");
         assert!(paths(&calls).is_empty());
     }
 

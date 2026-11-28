@@ -626,7 +626,10 @@ mod tests {
         account_changes(&mut app, &worker, &store);
         assert_eq!(app.session.as_ref().unwrap().username, "bob");
         let status = app.status.as_ref().unwrap();
-        assert!(status.error, "{}", status.text);
-        assert!(status.text.contains("accounts.json"), "{}", status.text);
+        assert!(status.error, "the status is an error");
+        assert!(
+            status.text.contains("accounts.json"),
+            "the status names accounts.json"
+        );
     }
 }

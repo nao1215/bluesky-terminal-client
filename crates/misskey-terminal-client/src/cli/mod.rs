@@ -1444,7 +1444,7 @@ mod tests {
     #[case("https://misskey.io/")]
     fn what_is_not_an_account_is_a_usage_error(#[case] typed: &str) {
         let e = parse_user(typed).unwrap_err();
-        assert_eq!(e.kind(), crate::error::Kind::Usage, "{}", e.message());
+        assert_eq!(e.kind(), crate::error::Kind::Usage, "a usage error");
     }
 
     #[rstest]
@@ -2106,7 +2106,7 @@ mod tests {
         let e = run_relations(&ctx, None, true, Side::Follows)
             .0
             .unwrap_err();
-        assert!(e.message().starts_with("not logged in on"), "{e:?}");
+        assert!(e.message().starts_with("not logged in on"), "not logged in");
         save(dir.path(), &url, "me");
         let e = run_relations(&ctx, Some("bob"), true, Side::Follows)
             .0

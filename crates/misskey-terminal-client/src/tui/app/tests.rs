@@ -472,7 +472,7 @@ fn the_viewer_shows_every_file_and_d_saves_them() {
     }
     let jobs = app.handle_key(key('d'));
     let Job::Download { files, .. } = &jobs[0].1 else {
-        panic!("{jobs:?}")
+        panic!("not a download")
     };
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].2.id, "c");
@@ -480,7 +480,7 @@ fn the_viewer_shows_every_file_and_d_saves_them() {
     assert_eq!(app.overlay, None);
     let jobs = app.handle_key(key('d'));
     let Job::Download { files, .. } = &jobs[0].1 else {
-        panic!("{jobs:?}")
+        panic!("not a download")
     };
     assert_eq!(files.len(), 3);
     app.handle_answer(
@@ -2258,7 +2258,7 @@ fn e_on_your_own_profile_edits_it() {
     type_str(&mut app, ".png");
     let jobs = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
     let Job::SaveProfile(change) = &jobs[0].1 else {
-        panic!("{jobs:?}")
+        panic!("not a profile save")
     };
     assert_eq!(change.name.as_deref(), Some("猫 🐈‍⬛"));
     assert_eq!(change.description, None);
@@ -2730,14 +2730,17 @@ fn bang_reports_a_note_once_y_confirms() {
     app.handle_key(code(KeyCode::Enter));
     let jobs = app.handle_key(key('y'));
     let Job::Report { user_id, comment } = &jobs[0].1 else {
-        panic!("{jobs:?}")
+        panic!("not a report")
     };
     assert_eq!(user_id, "u-bob");
     assert!(
         comment.starts_with("Breaks the server's rules or the law\nNote: "),
-        "{comment}"
+        "the reason comes first"
     );
-    assert!(comment.ends_with("\n-----\n荒らし 🚫"), "{comment}");
+    assert!(
+        comment.ends_with("\n-----\n荒らし 🚫"),
+        "the note comes last"
+    );
     assert!(app.handle_key(key('y')).is_empty(), "sent once");
     app.handle_answer(jobs[0].0, Event::Reported(Ok(())));
     assert!(app.overlay.is_none());
@@ -2797,7 +2800,7 @@ fn a_thread_is_read_ahead_where_the_selection_rests() {
     assert_eq!(app.read_ahead.kept(), 1);
     // v: shown at once, nothing asked.
     let jobs = app.handle_key(key('v'));
-    assert!(jobs.is_empty(), "{jobs:?}");
+    assert!(jobs.is_empty(), "no job");
     let th = app.threads.last().unwrap();
     assert!(th.list.loaded);
     assert_eq!(th.list.current().unwrap().note.id, "a");
@@ -2895,7 +2898,7 @@ fn m_on_a_profile_opens_the_conversation_with_them() {
             with: crate::tui::worker::ChatWith::User("u-bob".into()),
             until: None
         }));
-    assert!(jobs.iter().all(|(_, j)| !j.writes()), "{jobs:?}");
+    assert!(jobs.iter().all(|(_, j)| !j.writes()), "no job writes");
     // Your own profile: nothing to open.
     let jobs = app.open_profile(crate::tui::worker::Who::Me);
     app.handle_answer(
