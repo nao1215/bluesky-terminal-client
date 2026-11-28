@@ -100,6 +100,11 @@ fn graphemes(s: &str) -> usize {
 /// counted with each address put as that many `x` and each mention as
 /// `@name`.
 pub(crate) fn counted(text: &str, per_url: usize) -> usize {
+    // Zero means the server counts the original text, including URLs and
+    // remote handles; it does not mean links take zero characters.
+    if per_url == 0 {
+        return graphemes(text);
+    }
     let mut countable = String::with_capacity(text.len());
     let mut prev: Option<char> = None;
     let mut i = 0;
@@ -257,10 +262,14 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
             "the post is {n} characters{with_cw}; {host} takes up to {}",
             l.max_characters
         ))
-        .with_hint(format!(
-            "an address counts as {} characters, and @name@host as @name",
-            l.characters_reserved_per_url
-        )));
+        .with_hint(if l.characters_reserved_per_url == 0 {
+            "URLs and remote mentions count at their original length".to_string()
+        } else {
+            format!(
+                "an address counts as {} characters, and @name@host as @name",
+                l.characters_reserved_per_url
+            )
+        }));
     }
     if !d.files.is_empty() && l.max_media_attachments == 0 {
         return Err(Error::unsupported("media attachments", host));
@@ -286,6 +295,16 @@ fn too_much(d: &Draft, l: &Limits, host: &str) -> Result<()> {
         )));
     }
     for f in &d.files {
+        if let Some(max) = l.media_body_limit {
+            let size = crate::api::media_upload_size(&f.name, &f.data, Some(&f.alt));
+            if size > max {
+                return Err(Error::usage(format!(
+                    "{} needs {size} bytes; {host} takes multipart uploads up to {max} bytes (including headers and alt text)",
+                    f.name,
+                )));
+            }
+            continue;
+        }
         let max = if f.video {
             l.video_size_limit
         } else {
@@ -394,8 +413,18 @@ pub(super) fn post(
 /// The same validation, uploads, processing wait and post used by the composer.
 pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
-    if extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some() {
-        client.require_quotes(extra["quoted_status_id"].as_str())?;
+    let mut extra = extra.clone();
+    if let Some(id) = extra["quoted_status_id"].as_str() {
+        let parameter = client.require_quotes(Some(id))?;
+        if parameter != "quoted_status_id"
+            && let Some(fields) = extra.as_object_mut()
+            && let Some(id) = fields.remove("quoted_status_id")
+        {
+            fields.insert(parameter.to_string(), id);
+        }
+    }
+    if extra.get("quote_approval_policy").is_some() {
+        client.require_quotes(None)?;
     }
     too_much(&d, &client.limits(), client.host())?;
     submit(
@@ -404,7 +433,7 @@ pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value)
         &d,
         a.reply.as_deref(),
         &mut WallClock,
-        extra,
+        &extra,
         |e| e,
     )
 }

@@ -153,6 +153,7 @@ pub(crate) struct Status {
     /// The status this one boosts, for a boost.
     pub reblog: Option<Box<Status>>,
     pub quote: Option<Quote>,
+    pub pleroma: PleromaStatus,
     pub quote_approval: Option<QuoteApproval>,
     pub media_attachments: Vec<Media>,
     pub emojis: Vec<Emoji>,
@@ -180,7 +181,23 @@ pub(crate) struct QuoteApproval {
     pub current_user: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub(crate) struct PleromaStatus {
+    pub quote: Option<Box<Status>>,
+    pub quote_id: Option<String>,
+}
+
 impl Status {
+    pub(crate) fn quote_view(&self) -> Option<(&str, Option<&Status>)> {
+        if let Some(quote) = &self.quote {
+            Some((&quote.state, quote.quoted_status.as_deref()))
+        } else if self.pleroma.quote_id.is_some() {
+            Some(("accepted", self.pleroma.quote.as_deref()))
+        } else {
+            None
+        }
+    }
     /// What a reader sees: the status a boost boosts, else the status.
     pub(crate) fn shown(&self) -> &Status {
         self.reblog.as_deref().unwrap_or(self)
@@ -252,6 +269,9 @@ pub(crate) struct Limits {
     pub description_limit: usize,
     pub image_size_limit: Option<u64>,
     pub video_size_limit: Option<u64>,
+    /// Pleroma-compatible uploads bound the entire multipart request.
+    pub media_body_limit: Option<u64>,
+    pub extension_quotes: bool,
 }
 
 impl Default for Limits {
@@ -263,6 +283,8 @@ impl Default for Limits {
             description_limit: 1500,
             image_size_limit: None,
             video_size_limit: None,
+            media_body_limit: None,
+            extension_quotes: false,
         }
     }
 }
@@ -273,30 +295,63 @@ impl Limits {
     pub(crate) fn from_instance(v: &serde_json::Value) -> Limits {
         let d = Limits::default();
         let c = &v["configuration"];
+        let metadata = &v["pleroma"]["metadata"];
+        let pleroma_api = metadata["features"]
+            .as_array()
+            .is_some_and(|features| features.iter().any(|f| f == "pleroma_api"));
         let n = |v: &serde_json::Value| {
             v.as_u64()
                 .and_then(|n| usize::try_from(n).ok())
                 .filter(|n| *n > 0)
         };
         Limits {
+            extension_quotes: metadata["features"]
+                .as_array()
+                .is_some_and(|features| features.iter().any(|f| f == "quote_posting")),
             max_characters: n(&c["statuses"]["max_characters"])
                 // An old version or a fork says it at the top.
                 .or_else(|| n(&v["max_toot_chars"]))
                 .unwrap_or(d.max_characters),
-            characters_reserved_per_url: n(&c["statuses"]["characters_reserved_per_url"])
-                .unwrap_or(d.characters_reserved_per_url),
+            characters_reserved_per_url: c["statuses"]["characters_reserved_per_url"]
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok())
+                .unwrap_or(if pleroma_api {
+                    0
+                } else {
+                    d.characters_reserved_per_url
+                }),
             max_media_attachments: c["statuses"]["max_media_attachments"]
                 .as_u64()
                 .and_then(|n| usize::try_from(n).ok())
+                .or_else(|| {
+                    v["max_media_attachments"]
+                        .as_u64()
+                        .and_then(|n| usize::try_from(n).ok())
+                })
                 .unwrap_or(d.max_media_attachments),
             description_limit: n(&c["media_attachments"]["description_limit"])
+                .or_else(|| n(&v["description_limit"]))
+                .or_else(|| n(&metadata["description_limit"]))
                 .unwrap_or(d.description_limit),
             image_size_limit: c["media_attachments"]["image_size_limit"]
                 .as_u64()
+                .or_else(|| v["upload_limit"].as_u64())
                 .filter(|n| *n > 0),
             video_size_limit: c["media_attachments"]["video_size_limit"]
                 .as_u64()
+                .or_else(|| v["upload_limit"].as_u64())
                 .filter(|n| *n > 0),
+            // The advertised Pleroma API extension uses Plug's multipart
+            // request budget. Neither a Mastodon-looking version string nor
+            // an absent feature in the extension list decides this behavior.
+            media_body_limit: pleroma_api
+                .then(|| {
+                    v["upload_limit"]
+                        .as_u64()
+                        .or_else(|| c["media_attachments"]["video_size_limit"].as_u64())
+                        .filter(|n| *n > 0)
+                })
+                .flatten(),
         }
     }
 }
