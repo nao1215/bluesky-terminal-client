@@ -1,5 +1,51 @@
 use super::*;
 
+#[rstest::rstest]
+#[case::success(false)]
+#[case::failure(true)]
+fn an_older_message_refresh_cannot_change_a_newer_page(#[case] failed: bool) {
+    let mut app = chat_tab();
+    let old = press(&mut app, code(KeyCode::Enter))[0];
+    let new = press(&mut app, key('R'))[0];
+    app.handle_answer(
+        new,
+        Event::Messages {
+            convo_id: "a".into(),
+            cursor: None,
+            result: Ok(Page {
+                items: vec![a_message("new", "new message")],
+                cursor: Some("older".into()),
+            }),
+        },
+    );
+    let jobs = app.handle_answer(
+        old,
+        Event::Messages {
+            convo_id: "a".into(),
+            cursor: None,
+            result: if failed {
+                Err(Error::api("stale error"))
+            } else {
+                Ok(Page {
+                    items: vec![a_message("old", "old message")],
+                    cursor: Some("stale".into()),
+                })
+            },
+        },
+    );
+    let open = app.chat.open.as_ref().unwrap();
+    assert_eq!(
+        open.messages
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect::<Vec<_>>(),
+        ["new"]
+    );
+    assert!(open.error.is_none());
+    assert!(app.status.as_ref().is_none_or(|s| !s.error));
+    assert!(jobs.is_empty(), "a stale page must not mark messages read");
+}
+
 #[test]
 fn a_conversation_is_marked_read_when_it_is_opened_not_when_it_is_listed() {
     let mut app = chat_tab();
