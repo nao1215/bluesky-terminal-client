@@ -55,13 +55,19 @@ fn server_label(host: &str, instance: &Value, nodeinfo: &Value) -> String {
 
 impl Client {
     /// Probe the documented quote fields before any upload or status write.
-    pub(crate) fn require_quotes(&self, status: Option<&str>) -> super::Result<()> {
+    pub(crate) fn require_quotes(&self, status: Option<&str>) -> super::Result<&'static str> {
         let available = if let Some(id) = status {
             let status = self.status(id)?;
             if status.id.is_empty() {
                 return Err(Error::api("invalid status while checking quote support"));
             }
-            status.quote_approval.is_some()
+            if status.quote_approval.is_some() {
+                true
+            } else if self.limits().extension_quotes {
+                return Ok("quote_id");
+            } else {
+                false
+            }
         } else {
             let account = self.get_one("v1/accounts/verify_credentials", &[])?;
             if account["id"].as_str().is_none_or(str::is_empty) {
@@ -70,9 +76,13 @@ impl Client {
             account["source"]["quote_policy"].is_string()
         };
         if available {
-            Ok(())
+            Ok("quoted_status_id")
         } else {
-            Err(self.unsupported("quote posts"))
+            Err(self.unsupported(if status.is_some() {
+                "quote posts"
+            } else {
+                "quote approval policies"
+            }))
         }
     }
 

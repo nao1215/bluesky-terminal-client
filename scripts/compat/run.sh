@@ -35,4 +35,7 @@ report_dir="${MSTDN_COMPAT_REPORT_DIR:-$ROOT/target/compat/$MSTDN_COMPAT_SYSTEM}
 mkdir -p -- "$report_dir"
 cp -- "$MSTDN_COMPAT_WORK/atago.json" "$report_dir/atago.json"
 cp -- "$MSTDN_COMPAT_SEED/seed.json" "$report_dir/seed.json"
+if [[ -f "$MSTDN_COMPAT_SEED/responses.json" ]]; then
+    cp -- "$MSTDN_COMPAT_SEED/responses.json" "$report_dir/responses.json"
+fi
 exit "$result"

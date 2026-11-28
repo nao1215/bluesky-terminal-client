@@ -488,6 +488,10 @@ fn an_upload_sends_the_file_and_says_whether_it_is_ready() {
     assert_eq!(m.id, "m2");
     let log = log.lock().unwrap();
     assert!(log[1].body.contains("Content-Type: audio/mpeg\r\n"));
+    assert_eq!(
+        log[1].body.len() as u64,
+        media_upload_size("song.mp3", b"ID3 not much", None)
+    );
     assert!(!log[1].body.contains("name=\"description\""));
     let first = &log[0];
     assert_eq!(first.path(), "/api/v2/media");

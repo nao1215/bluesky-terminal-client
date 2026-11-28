@@ -1596,9 +1596,26 @@ scenarios:
   - assert:
       exit_code: 0
   only:
-    env: MSTDN_COMPAT_GOTOSOCIAL
+    env: MSTDN_NO_QUOTES
 - name: 'usable: quote with the server capability'
   steps:
+  - run:
+      command: 'mstdn --json post "compatibility CLI quote" --quote ${env:MSTDN_SEED_TEXT} --dry-run'
+      timeout: 30s
+  - assert:
+      exit_code: 0
+      stdout: {json: {path: $.post.quoteId, equals: '${env:MSTDN_SEED_TEXT}'}}
+  - run:
+      command: 'mstdn --json post "compatibility CLI quote" --quote ${env:MSTDN_SEED_TEXT}'
+      timeout: 30s
+  - assert: {exit_code: 0}
+  - store: {name: cli_quote, from: {stdout: {json: {path: $.id}}}}
+  - run:
+      command: 'mstdn --json status ${cli_quote}'
+      timeout: 30s
+  - assert:
+      exit_code: 0
+      stdout: {json: {path: $.quoteId, equals: '${env:MSTDN_SEED_TEXT}'}}
   - pty:
       command: mstdn
       graphics: kitty
@@ -1632,7 +1649,7 @@ scenarios:
       - expect_screen:
           contains: Quote post
           timeout: 10s
-      - send: compatibility quote
+      - send: 'compatibility quote #compatmadequote'
       - send:
           key: ctrl-s
       - expect_screen:
@@ -1641,8 +1658,16 @@ scenarios:
       - send: q
   - assert:
       exit_code: 0
+  - http:
+      runner: peer
+      method: GET
+      path: /api/v1/timelines/tag/compatmadequote
+      header: {Authorization: 'Bearer ${env:MSTDN_TOKEN}'}
+  - assert:
+      status: 200
+      body: {json: {path: '${env:MSTDN_QUOTE_PATH}', equals: '${env:MSTDN_SEED_TEXT}'}}
   only:
-    env: MSTDN_COMPAT_MASTODON
+    env: MSTDN_HAS_QUOTES
 - name: 'heavy: four pictures and client attachment ceiling'
   steps:
   - run:
@@ -1719,14 +1744,14 @@ scenarios:
           stable_for: 150ms
           timeout: 10s
       - exec:
-          command: docker stop ${env:MSTDN_COMPAT_CONTAINER}
+          command: python3 ${env:MSTDN_COMPAT_ROOT}/scripts/compat/server.py stop
           timeout: 40s
       - send: R
       - expect_screen:
           matches: (?i)(connect|refused)
           timeout: 20s
       - exec:
-          command: docker start ${env:MSTDN_COMPAT_CONTAINER}
+          command: python3 ${env:MSTDN_COMPAT_ROOT}/scripts/compat/server.py start
           timeout: 40s
       - exec:
           command: python3 ${env:MSTDN_COMPAT_ROOT}/scripts/compat/server.py ready ${env:MSTDN_HOST}
@@ -1743,17 +1768,21 @@ scenarios:
   - assert:
       exit_code: 0
 - name: 'behavior: a blocked account is a resource error and unblocking restores reads'
+  only: {env: MSTDN_BLOCKED_HIDDEN}
   steps:
-  - http:
+  - &block_peer
+    http:
       runner: peer
       method: POST
       path: /api/v1/accounts/${env:MSTDN_SEED_ALICE}/block
       header: {Authorization: 'Bearer ${env:MSTDN_TOKEN_SECOND}'}
       json: {}
   - assert: {status: 200}
-  - run: {command: 'mstdn --json status ${env:MSTDN_SEED_REPLY}', timeout: 60s}
+  - &read_blocked
+    run: {command: 'mstdn --json status ${env:MSTDN_SEED_REPLY}', timeout: 60s}
   - assert: {exit_code: 4, stdout: {json: {path: $.status, equals: 4}}}
-  - http:
+  - &unblock_peer
+    http:
       runner: peer
       method: POST
       path: /api/v1/accounts/${env:MSTDN_SEED_ALICE}/unblock
@@ -1761,7 +1790,19 @@ scenarios:
       json: {}
   - assert: {status: 200}
   - run: {command: 'mstdn --json status ${env:MSTDN_SEED_REPLY}', timeout: 60s}
-  - assert: {exit_code: 0, stdout: {json: {path: $.id, equals: '${env:MSTDN_SEED_REPLY}'}}}
+  - &readable_reply
+    assert: {exit_code: 0, stdout: {json: {path: $.id, equals: '${env:MSTDN_SEED_REPLY}'}}}
+- name: 'behavior: blocking leaves a public status readable'
+  only: {env: MSTDN_BLOCKED_PUBLIC}
+  steps:
+  - *block_peer
+  - assert: {status: 200}
+  - *read_blocked
+  - *readable_reply
+  - *unblock_peer
+  - assert: {status: 200}
+  - *read_blocked
+  - *readable_reply
 - name: 'usable: search accounts in the full-screen client'
   steps:
   - pty:
@@ -1806,4 +1847,37 @@ scenarios:
   - run: {command: 'mstdn --json status ${created}', timeout: 60s}
   - assert: {exit_code: 0, stdout: {json: {path: '$.files[0].type', equals: video}}}
   - run: {command: 'mstdn --json post "over video bytes" --video "${env:MSTDN_COMPAT_SEED}/over-video.mp4"', timeout: 60s}
-  - assert: {exit_code: 1, stdout: {contains: ['takes files smaller than', '${env:MSTDN_LIMIT_VIDEO}']}}
+  - assert: {exit_code: 1, stdout: {contains: ['${env:MSTDN_LIMIT_VIDEO_MESSAGE}', '${env:MSTDN_LIMIT_VIDEO}']}}
+- name: 'usable: unsupported quote policy preserves the draft and permits recovery'
+  only: {env: MSTDN_NO_QUOTE_POLICY}
+  steps:
+  - pty:
+      command: mstdn
+      graphics: kitty
+      rows: 36
+      cols: 140
+      timeout: 60s
+      env: {MSTDN_CACHE_DIR: 'off', MSTDN_GRAPHICS: kitty}
+      session:
+      - expect_screen: {contains: Home, timeout: 10s}
+      - send: n
+      - expect_screen: {contains: New post, timeout: 10s}
+      - send: compatibility policy draft
+      - send: {key: ctrl-q}
+      - expect_screen: {contains: 'Quote approval: anyone', timeout: 10s}
+      - send: {key: ctrl-s}
+      - expect_screen:
+          contains: [does not support quote approval, policies, 127.0.0.1]
+          timeout: 10s
+      - send: {key: esc}
+      - expect_screen: {contains: compatibility policy draft, not_contains: any key closes this, timeout: 10s}
+      - send: {key: ctrl-q}
+      - expect_screen: {contains: 'Quote approval: followers only', timeout: 10s}
+      - send: {key: ctrl-q}
+      - expect_screen: {contains: 'Quote approval: only me', timeout: 10s}
+      - send: {key: ctrl-q}
+      - expect_screen: {not_contains: 'Quote approval:', contains: compatibility policy draft, timeout: 10s}
+      - send: {key: ctrl-s}
+      - expect_screen: {contains: posted, timeout: 10s}
+      - send: q
+  - assert: {exit_code: 0}

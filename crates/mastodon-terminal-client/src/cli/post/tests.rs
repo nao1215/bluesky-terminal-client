@@ -279,6 +279,116 @@ fn a_post_is_counted_as_mastodon_counts_it(#[case] text: &str, #[case] want: usi
     assert_eq!(counted(text, 23), want);
 }
 
+#[test]
+fn zero_url_reservation_counts_original_urls_and_remote_mentions() {
+    let text = "👩🏽‍💻 https://example.invalid/long/path @bob@example.invalid";
+    assert_eq!(counted(text, 0), graphemes(text));
+    assert!(counted(text, 0) > counted(text, 23));
+}
+
+#[test]
+fn multipart_budget_includes_alt_text_and_escaped_file_names() {
+    let mut draft = Draft {
+        text: "upload".into(),
+        cw: None,
+        reply: None,
+        files: vec![local("猫", 12, true)],
+    };
+    draft.files[0].name = "a\"b.mp4".into();
+    let size =
+        crate::api::media_upload_size(&draft.files[0].name, &draft.files[0].data, Some("猫"));
+    let mut limits = Limits {
+        media_body_limit: Some(size),
+        ..Limits::default()
+    };
+    assert!(too_much(&draft, &limits, "local").is_ok());
+    limits.media_body_limit = Some(size - 1);
+    assert!(
+        too_much(&draft, &limits, "local")
+            .unwrap_err()
+            .message()
+            .contains("multipart uploads")
+    );
+}
+
+#[rstest]
+#[case(include_str!("../../../testdata/compat/pleroma-live.json"))]
+#[case(include_str!("../../../testdata/compat/akkoma-live.json"))]
+fn live_extension_quotes_use_the_advertised_contract_without_approval_policies(
+    #[case] source: &str,
+) {
+    let fixture: serde_json::Value = serde_json::from_str(source).unwrap();
+    let root = fixture["emoji_reaction"]["body"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (url, calls) = serve(Arc::new(move |call, _| {
+        let key = match call.path() {
+            "/api/v2/instance" => "instance_v2",
+            "/api/v1/instance" => "instance_v1",
+            "/api/v1/statuses" => "extension_quote",
+            "/api/v1/accounts/verify_credentials" => {
+                return reply(200, &fixture["status"]["body"]["account"].to_string());
+            }
+            path if path.starts_with("/api/v1/statuses/") => "emoji_reaction",
+            _ => return reply(404, "{}"),
+        };
+        reply(
+            fixture[key]["status"].as_u64().unwrap() as u16,
+            &fixture[key]["body"].to_string(),
+        )
+    }));
+    let client = Client::new(&url);
+    let made = composed(&client, &args("quote"), &json!({"quoted_status_id": root})).unwrap();
+    assert_eq!(made.quote_view().unwrap().1.unwrap().id, root);
+    assert_eq!(format::status_json(&made, &url)["quoteId"], root);
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = ctx_of(&url, dir.path(), true, &["read", "write"]);
+    let mut a = args("CLI quote");
+    a.quote = Some(root.clone());
+    a.dry_run = true;
+    let mut out = Vec::new();
+    post(&ctx, &mut out, &a, &mut b"".as_slice(), &mut WallClock).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&out).unwrap()["post"]["quoteId"],
+        root
+    );
+    assert_eq!(
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.method == "POST")
+            .count(),
+        1
+    );
+    a.dry_run = false;
+    post(
+        &ctx,
+        &mut Vec::new(),
+        &a,
+        &mut b"".as_slice(),
+        &mut WallClock,
+    )
+    .unwrap();
+    let error = composed(
+        &client,
+        &args("policy"),
+        &json!({"quote_approval_policy": "public"}),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), Kind::Unsupported);
+    assert!(error.message().contains("quote approval policies"));
+    let calls = calls.lock().unwrap();
+    let writes: Vec<_> = calls.iter().filter(|call| call.method == "POST").collect();
+    assert_eq!(writes.len(), 2);
+    for write in writes {
+        let body: serde_json::Value = serde_json::from_str(&write.body).unwrap();
+        assert_eq!(body["quote_id"], root);
+        assert!(body.get("quoted_status_id").is_none());
+    }
+}
+
 // What can be told from the command line alone is a usage error before
 // the login is even read.
 #[rstest]
@@ -435,6 +545,8 @@ fn text_and_count_limits_are_inclusive_and_byte_limits_are_exclusive() {
         description_limit: 3,
         image_size_limit: Some(10),
         video_size_limit: Some(20),
+        media_body_limit: None,
+        extension_quotes: false,
     };
     let d = |text: &str, cw: Option<&str>, files: Vec<Local>| Draft {
         text: text.into(),

@@ -7,6 +7,9 @@ scenarios:
   - name: api
     routes:
     - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json: {id: '7', source: {quote_policy: public}}
+    - method: GET
       path: /api/v2/instance
       json:
         version: 4.5.0
