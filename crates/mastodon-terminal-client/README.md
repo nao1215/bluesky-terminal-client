@@ -78,7 +78,7 @@ The thread of a selection resting for 400 ms is read ahead; `v` uses a fresh res
 
 Profile editing reads the account's unformatted source and sends only changed attributes in one `PATCH /api/v1/accounts/update_credentials`. Avatar and header pictures use the shared file browser and have their metadata stripped before saving. Cancelling sends nothing, and a refused save keeps the draft. Login already requests `read write`, which covers profile editing and conversations; no scope change or new environment variable is needed.
 
-Quote creation is enabled by the version from `/api/v2/instance`, starting at Mastodon 4.5; an older or unknown version explains why `Q` is unavailable and sends nothing. Received quotes are drawn regardless of version, with a placeholder for quotes awaiting approval or unavailable to the reader. The server enforces the quoted post's policy; a known denial is refused locally.
+Quote creation is enabled by the version from `/api/v2/instance`, starting at Mastodon 4.5 (or advertised Mastodon API version 7); an older or unknown version explains why `Q` is unavailable and sends nothing. Received quotes are drawn regardless of version, with a placeholder for quotes awaiting approval or unavailable to the reader. The server enforces the quoted post's policy; a known denial is refused locally.
 
 Columns keep their own selection and pagination and are saved per account in `settings.json`. Chat reads `/api/v1/conversations` and the context of its latest direct status, refreshing the visible conversation or list every 15 seconds. Only direct statuses with the same participants appear in an open conversation, replies keep direct visibility, and the conversation is marked read after Enter opens it and the messages load. A refused read restores the unread flag; a refused send keeps the input.
 
@@ -176,6 +176,9 @@ When a server says it is busy (429, 502, 503, 504), mstdn reads up to three more
 | 2 | The full-screen client was started without a terminal, or the terminal failed |
 | 3 | A file could not be read or written |
 | 4 | The server could not be reached or said no |
+| 5 | A requested server feature is unsupported |
+
+HTTP 501 returns status 5. For optional endpoints, a 404 returns 5 only when the advertised server version predates the feature; other 404s and authentication failures remain 4. Quote creation checks the server version or Mastodon API version before uploads or posting, including `--dry-run`; an unknown capability or failed check returns 4.
 
 ## Environment
 

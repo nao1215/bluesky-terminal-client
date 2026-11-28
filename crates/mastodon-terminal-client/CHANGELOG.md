@@ -40,3 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - JSON posts now expose the quoted post ID. New commands use the common account, message and action JSON shapes; `notifications --seen` saves the newest displayed notification as read.
 - The account picker adds browser OAuth login and confirmed local logout. Settings include the download folder and browser, with environment overrides preserved.
 - The full-screen client displays link cards and opens their URLs with `O`, and synchronizes notification markers and unread counts with the server. A rejected read-marker save restores the unread count.
+
+### Fixed
+
+- Unsupported server features now return exit status 5 and JSON `status: 5`, while authentication failures and missing resources remain API errors.
+- Quote posts check server support before uploading or publishing, preventing older servers from silently publishing an ordinary post instead.
