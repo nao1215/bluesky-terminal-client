@@ -834,7 +834,7 @@ fn profile(ctx: &Ctx, out: &mut dyn Write, actor: Option<&str>) -> Result<()> {
 
 /// The hashtag `query` is, without its `#`: `#rust`, a word of letters,
 /// digits and `_`.
-fn hashtag(query: &str) -> Option<&str> {
+pub(crate) fn hashtag(query: &str) -> Option<&str> {
     let tag = query.trim().strip_prefix('#')?;
     (!tag.is_empty() && tag.chars().all(|c| c.is_alphanumeric() || c == '_')).then_some(tag)
 }

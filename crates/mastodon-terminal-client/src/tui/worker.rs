@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::json;
 use terminal_kit::inflight::InFlight;
 
-use crate::api::types::{Limits, Notification, Status};
+use crate::api::types::{Account, Limits, Media, Notification, Status};
 use crate::api::{Client, Next, Page, random_hex};
 use crate::cli::{TimelineKind, Visibility};
 use crate::error::{Error, Result};
@@ -41,6 +41,19 @@ pub(crate) enum Job {
     Post(Box<Draft>),
     /// Open an address in the web browser.
     OpenLink { url: String },
+    /// A search page; hashtags use max_id, other searches an offset.
+    Search {
+        query: String,
+        accounts: bool,
+        next: Option<String>,
+    },
+    /// An account and its posts; none means the account in use.
+    Profile {
+        id: Option<String>,
+        max_id: Option<String>,
+    },
+    /// Save the original attachments using the command's naming policy.
+    Download { id: String, files: Vec<Media> },
     /// The limits of a post on the server.
     Limits,
 }
@@ -108,6 +121,15 @@ pub(crate) enum Event {
     /// Whether a browser was started.
     Opened(bool),
     Limits(Limits),
+    Search {
+        next: Option<String>,
+        result: Result<SearchPage>,
+    },
+    Profile {
+        more: bool,
+        result: Result<ProfilePage>,
+    },
+    Downloaded(Result<usize>),
 }
 
 impl Job {
@@ -138,6 +160,15 @@ impl Job {
             Job::Post(_) => Event::Posted(Err(e)),
             Job::OpenLink { .. } => Event::Opened(false),
             Job::Limits => Event::Limits(Limits::default()),
+            Job::Search { next, .. } => Event::Search {
+                next,
+                result: Err(e),
+            },
+            Job::Profile { max_id, .. } => Event::Profile {
+                more: max_id.is_some(),
+                result: Err(e),
+            },
+            Job::Download { .. } => Event::Downloaded(Err(e)),
         }
     }
 }
@@ -174,6 +205,19 @@ pub(crate) fn run(job: Job, client: &Client) -> Event {
         Job::Post(d) => Event::Posted(post(client, &d).map(Box::new)),
         Job::OpenLink { url } => Event::Opened(crate::browser::open(&url)),
         Job::Limits => Event::Limits(client.limits()),
+        Job::Search {
+            query,
+            accounts,
+            next,
+        } => Event::Search {
+            result: search(client, &query, accounts, next.as_deref()),
+            next,
+        },
+        Job::Profile { id, max_id } => Event::Profile {
+            more: max_id.is_some(),
+            result: profile(client, id.as_deref(), max_id.as_deref()),
+        },
+        Job::Download { id, files } => Event::Downloaded(download(&id, &files)),
     }
 }
 
@@ -289,6 +333,11 @@ impl Worker {
         })
     }
 
+    /// Use the new account for jobs queued from now on; queued jobs keep theirs.
+    pub(crate) fn set_client(&mut self, client: Client) {
+        self.client = client;
+    }
+
     /// Send `job`, numbered `seq`.
     pub(crate) fn send(&self, seq: u64, job: Job) {
         let write = job.changes_server();
@@ -317,6 +366,78 @@ impl Worker {
     pub(crate) fn try_recv(&self) -> Option<(u64, Event)> {
         self.answers.try_recv().ok()
     }
+}
+
+/// The results of one search page.
+#[derive(Debug)]
+pub(crate) struct SearchPage {
+    pub posts: Vec<Status>,
+    pub accounts: Vec<Account>,
+    pub next: Option<String>,
+}
+/// An account's header and one page of its posts.
+#[derive(Debug)]
+pub(crate) struct ProfilePage {
+    pub account: Account,
+    pub posts: Page<Status>,
+}
+fn search(client: &Client, query: &str, accounts: bool, next: Option<&str>) -> Result<SearchPage> {
+    if !accounts && let Some(tag) = crate::cli::hashtag(query) {
+        let p = client.timeline(
+            &format!("v1/timelines/tag/{}", crate::api::percent_encode(tag)),
+            &[],
+            PAGE,
+            next,
+        )?;
+        let next = next_of(&p, |s: &Status| &s.id);
+        return Ok(SearchPage {
+            posts: p.items,
+            accounts: Vec::new(),
+            next,
+        });
+    }
+    if !client.logged_in() {
+        return Err(Error::usage("log in to search accounts or posts"));
+    }
+    let offset = next.and_then(|n| n.parse::<usize>().ok()).unwrap_or(0);
+    let p = client.search(
+        query,
+        if accounts { "accounts" } else { "statuses" },
+        false,
+        PAGE,
+        offset,
+    )?;
+    let count = if accounts {
+        p.accounts.len()
+    } else {
+        p.statuses.len()
+    };
+    Ok(SearchPage {
+        posts: p.statuses,
+        accounts: p.accounts,
+        next: (count == PAGE).then(|| (offset + count).to_string()),
+    })
+}
+fn profile(client: &Client, id: Option<&str>, max_id: Option<&str>) -> Result<ProfilePage> {
+    let account = match id {
+        Some(id) => client.account(id)?,
+        None => client.me()?,
+    };
+    let posts = client.account_statuses(
+        &account.id,
+        &crate::api::StatusFilter::default(),
+        PAGE,
+        max_id,
+    )?;
+    Ok(ProfilePage { account, posts })
+}
+fn download(id: &str, files: &[Media]) -> Result<usize> {
+    let dir = crate::download::download_dir(None)?;
+    let agent = crate::api::agent();
+    for (i, file) in files.iter().enumerate() {
+        crate::download::save(&agent, file, &dir, &crate::download::file_stem(id, i + 1))?;
+    }
+    Ok(files.len())
 }
 
 #[cfg(test)]

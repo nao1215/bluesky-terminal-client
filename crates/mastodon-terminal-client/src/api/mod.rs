@@ -523,6 +523,13 @@ impl Client {
         self.get_list("v1/notifications", &q)
     }
 
+    /// Read an account by its ID on this server.
+    pub(crate) fn account(&self, id: &str) -> Result<Account> {
+        let path = format!("v1/accounts/{}", path_part(id));
+        serde_json::from_value(self.get_one(&path, &[])?)
+            .map_err(|e| Error::api(format!("{path}: unexpected answer: {e}")))
+    }
+
     /// `GET /api/v1/accounts/verify_credentials`: the account the token is of.
     pub(crate) fn me(&self) -> Result<Account> {
         let v = self.get_one("v1/accounts/verify_credentials", &[])?;

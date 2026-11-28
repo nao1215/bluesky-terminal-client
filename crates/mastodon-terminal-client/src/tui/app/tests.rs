@@ -639,7 +639,7 @@ fn any_key() -> impl Strategy<Value = KeyEvent> {
     prop_oneof![
         prop::sample::select(vec![
             'j', 'k', 'g', 'G', 'v', 'w', 'l', 'b', 'r', 'n', '.', 'T', '?', 'R', '1', '2', '3',
-            '4', 'x', '👍',
+            '4', '5', '6', '/', 's', 'A', 'd', ' ', 'x', '👍',
         ])
         .prop_map(|c| key(KeyCode::Char(c))),
         prop::sample::select(vec![
@@ -689,6 +689,9 @@ proptest! {
                     Job::Post(_) => Event::Posted(Ok(Box::new(status("posted")))),
                     Job::OpenLink { .. } => Event::Opened(true),
                     Job::Limits => Event::Limits(Limits::default()),
+                    Job::Search { next, .. } => Event::Search { next, result: Err(Error::api("search failed")) },
+                    Job::Profile { max_id, .. } => Event::Profile { more: max_id.is_some(), result: Err(Error::api("profile failed")) },
+                    Job::Download { .. } => Event::Downloaded(Ok(1)),
                 };
                 app.handle_answer(seq, ev);
             }
@@ -703,4 +706,268 @@ proptest! {
             }
         }
     }
+}
+
+#[test]
+fn search_input_gates_visitors_and_stale_results_do_not_replace_new_queries() {
+    let (mut app, _) = App::new(None, "http://127.0.0.1:9");
+    assert!(press(&mut app, KeyCode::Char('5')).is_empty());
+    assert!(app.search.editing);
+    typed(&mut app, "rust");
+    assert!(press(&mut app, KeyCode::Enter).is_empty());
+    assert!(app.message.as_ref().unwrap().text.contains("#hashtags"));
+    press(&mut app, KeyCode::Char('/'));
+    app.search.input = TextInput::single("#rust");
+    let old = press(&mut app, KeyCode::Enter).remove(0);
+    assert_eq!(
+        old.1,
+        Job::Search {
+            query: "#rust".into(),
+            accounts: false,
+            next: None
+        }
+    );
+    press(&mut app, KeyCode::Char('/'));
+    app.search.input = TextInput::single("#日本語");
+    let fresh = press(&mut app, KeyCode::Enter).remove(0);
+    for (seq, id) in [(fresh.0, "new"), (old.0, "old")] {
+        app.handle_answer(
+            seq,
+            Event::Search {
+                next: None,
+                result: Ok(crate::tui::worker::SearchPage {
+                    posts: vec![status(id)],
+                    accounts: Vec::new(),
+                    next: Some("cursor".into()),
+                }),
+            },
+        );
+    }
+    assert_eq!(app.selected().unwrap().id, "new");
+    let jobs = press(&mut app, KeyCode::Char('j'));
+    assert!(
+        matches!(&jobs[0].1, Job::Search { next: Some(n), query, .. } if n == "cursor" && query == "#日本語")
+    );
+    assert!(press(&mut app, KeyCode::Char('t')).is_empty());
+    assert!(app.search.accounts);
+}
+
+#[test]
+fn search_accounts_and_profiles_use_the_selected_account_and_page_its_posts() {
+    let mut app = with_home(&["1"]);
+    press(&mut app, KeyCode::Char('/'));
+    app.handle_paste("ferris");
+    app.handle_key(ctrl('t'));
+    let (seq, job) = press(&mut app, KeyCode::Enter).remove(0);
+    assert_eq!(
+        job,
+        Job::Search {
+            query: "ferris".into(),
+            accounts: true,
+            next: None
+        }
+    );
+    let user = account("ferris");
+    app.handle_answer(
+        seq,
+        Event::Search {
+            next: None,
+            result: Ok(crate::tui::worker::SearchPage {
+                posts: Vec::new(),
+                accounts: vec![user.clone()],
+                next: None,
+            }),
+        },
+    );
+    let (seq, job) = press(&mut app, KeyCode::Enter).remove(0);
+    assert_eq!(
+        job,
+        Job::Profile {
+            id: Some(user.id.clone()),
+            max_id: None
+        }
+    );
+    app.handle_answer(
+        seq,
+        Event::Profile {
+            more: false,
+            result: Ok(crate::tui::worker::ProfilePage {
+                account: user.clone(),
+                posts: Page {
+                    items: vec![status("p1")],
+                    next: Next::MaxId("p1".into()),
+                },
+            }),
+        },
+    );
+    assert_eq!(app.tab, Tab::Profile);
+    assert_eq!(app.selected().unwrap().id, "p1");
+    let (seq, job) = press(&mut app, KeyCode::Char('j')).remove(0);
+    assert_eq!(
+        job,
+        Job::Profile {
+            id: Some(user.id),
+            max_id: Some("p1".into())
+        }
+    );
+    app.handle_answer(
+        seq,
+        Event::Profile {
+            more: true,
+            result: Err(Error::api("offline")),
+        },
+    );
+    assert_eq!(app.selected().unwrap().id, "p1");
+    assert_eq!(app.profile.posts.error.as_deref(), Some("offline"));
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.tab, Tab::Search);
+    let jobs = press(&mut app, KeyCode::Char('6'));
+    assert_eq!(
+        jobs[0].1,
+        Job::Profile {
+            id: None,
+            max_id: None
+        }
+    );
+}
+
+#[test]
+fn enter_opens_the_author_v_opens_the_thread_and_profiles_reject_old_answers() {
+    let mut app = with_home(&["1", "2"]);
+    let (seq, job) = press(&mut app, KeyCode::Enter).remove(0);
+    assert!(matches!(job, Job::Profile { id: Some(_), .. }));
+    let current = press(&mut app, KeyCode::Char('6')).remove(0);
+    app.handle_answer(
+        seq,
+        Event::Profile {
+            more: false,
+            result: Ok(crate::tui::worker::ProfilePage {
+                account: account("stale"),
+                posts: Page {
+                    items: vec![status("stale")],
+                    next: Next::End,
+                },
+            }),
+        },
+    );
+    assert!(app.profile.account.is_none());
+    assert_eq!(app.profile.posts.waiting, Some(current.0));
+    press(&mut app, KeyCode::Char('1'));
+    assert!(matches!(
+        press(&mut app, KeyCode::Char('v'))[0].1,
+        Job::Thread { .. }
+    ));
+}
+
+#[test]
+fn media_viewer_respects_warning_steps_replays_downloads_and_closes() {
+    use crate::api::types::Media;
+    let mut app = with_home(&["1"]);
+    let s = &mut app.timelines[0].items[0];
+    s.spoiler_text = "spoiler".into();
+    s.media_attachments = vec![
+        Media {
+            kind: "image".into(),
+            url: Some("http://127.0.0.1:9/p.png".into()),
+            ..Default::default()
+        },
+        Media {
+            kind: "video".into(),
+            url: Some("http://127.0.0.1:9/v.mp4".into()),
+            ..Default::default()
+        },
+    ];
+    press(&mut app, KeyCode::Char(' '));
+    assert!(app.overlay.is_none());
+    press(&mut app, KeyCode::Char('w'));
+    press(&mut app, KeyCode::Char(' '));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Viewer { index: 0, .. })
+    ));
+    press(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Char('r'));
+    assert!(matches!(
+        app.overlay,
+        Some(Overlay::Viewer {
+            index: 1,
+            generation: 1,
+            ..
+        })
+    ));
+    let (seq, job) = press(&mut app, KeyCode::Char('d')).remove(0);
+    assert!(matches!(job, Job::Download { files, id } if files.len() == 2 && id == "1"));
+    app.handle_answer(seq, Event::Downloaded(Err(Error::io("disk full"))));
+    assert!(app.message.as_ref().unwrap().error);
+    press(&mut app, KeyCode::Esc); // dismiss error
+    press(&mut app, KeyCode::Char('q'));
+    assert!(app.overlay.is_none());
+    assert!(!app.quit);
+}
+
+#[test]
+fn account_switch_drops_old_answers_including_writes_and_keeps_settings() {
+    let mut app = with_home(&["1"]);
+    app.apply_settings(Some(Settings::default()), ColorDepth::TrueColor);
+    let old = press(&mut app, KeyCode::Char('l')).remove(0);
+    let mut other = me();
+    other.service = "http://127.0.0.1:8".into();
+    other.username = "other".into();
+    app.accounts = vec![me(), other.clone()];
+    press(&mut app, KeyCode::Char('A'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.take_switch(), Some(other.clone()));
+    let jobs = app.switched(other);
+    assert!(jobs.iter().all(|(n, _)| *n > old.0));
+    app.handle_answer(
+        old.0,
+        Event::Favourited {
+            id: "1".into(),
+            on: true,
+            result: Err(Error::api("old account failed")),
+        },
+    );
+    assert!(app.message.is_none());
+    assert!(app.timelines[0].items.is_empty());
+    assert!(app.settings.is_some());
+    assert_eq!(app.host(), "127.0.0.1:8");
+}
+
+#[test]
+fn settings_language_overrides_locale_persists_and_reset_restores_locale() {
+    use crate::i18n::{self, Lang};
+    i18n::set(Lang::Ja);
+    let mut app = with_home(&["1"]);
+    let mut settings = Settings::default();
+    settings.language = Some("en".into());
+    app.apply_settings(Some(settings), ColorDepth::TrueColor);
+    assert_eq!(i18n::current(), Lang::En);
+    press(&mut app, KeyCode::Char('s'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(i18n::current(), Lang::Ja);
+    assert_eq!(
+        app.take_settings_save().unwrap().language.as_deref(),
+        Some("ja")
+    );
+    assert!(matches!(app.overlay, Some(Overlay::Settings { .. })));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('x'));
+    assert!(app.take_settings_save().unwrap().language.is_none());
+    assert_eq!(i18n::current(), Lang::Ja);
+    i18n::set(Lang::En);
+}
+
+#[test]
+fn broken_settings_are_never_written_by_the_language_picker() {
+    let mut app = with_home(&[]);
+    app.apply_settings(None, ColorDepth::TrueColor);
+    press(&mut app, KeyCode::Char('s'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Enter);
+    assert!(app.take_settings_save().is_none());
 }

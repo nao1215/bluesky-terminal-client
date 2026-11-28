@@ -275,3 +275,69 @@ fn the_scroll_keeps_the_selection_on_screen() {
         assert!((selected - top + 1) * 3 <= 10 || top == selected);
     }
 }
+
+#[test]
+fn new_screens_draw_in_both_languages_and_small_terminals() {
+    for lang in crate::i18n::Lang::ALL {
+        crate::i18n::set(lang);
+        let mut app = app_with(vec![status("1", "<script>bad</script> hello")]);
+        app.accounts = vec![app.session.clone().unwrap()];
+        app.profile.account = Some(Account {
+            acct: "bob\x1b[31m".into(),
+            note: "<p>Biography</p>".into(),
+            ..Default::default()
+        });
+        app.profile.posts.loaded = true;
+        for tab in [Tab::Search, Tab::Profile] {
+            app.tab = tab;
+            for (w, h) in [(120, 40), (24, 8), (10, 4)] {
+                let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+                term.draw(|f| draw(f, &mut app)).unwrap();
+            }
+        }
+        for overlay in [
+            Overlay::Settings { selected: 0 },
+            Overlay::Languages { selected: 1 },
+            Overlay::Accounts { selected: 0 },
+            Overlay::Viewer {
+                files: vec![Media {
+                    kind: "video".into(),
+                    url: Some("http://127.0.0.1:9/clip.mp4".into()),
+                    description: Some("Caption".into()),
+                    ..Default::default()
+                }],
+                index: 0,
+                generation: 0,
+            },
+        ] {
+            app.overlay = Some(overlay);
+            let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+            term.draw(|f| draw(f, &mut app)).unwrap();
+            let text: String = term
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            if matches!(app.overlay, Some(Overlay::Viewer { .. })) {
+                assert!(text.contains("Caption"));
+            }
+        }
+    }
+    crate::i18n::set(crate::i18n::Lang::En);
+}
+
+#[test]
+fn search_scrolls_long_input_and_places_the_cursor_at_the_edit_position() {
+    let mut app = app_with(Vec::new());
+    app.handle_key(KeyEvent::from(KeyCode::Char('/')));
+    app.handle_paste(&"a".repeat(60));
+    let mut term = Terminal::new(TestBackend::new(24, 12)).unwrap();
+    term.draw(|f| draw(f, &mut app)).unwrap();
+    // The bordered field is 22 cells wide; the cursor is on the third line.
+    assert_eq!(term.get_cursor_position().unwrap(), (17, 2).into());
+    app.handle_key(KeyEvent::from(KeyCode::Home));
+    term.draw(|f| draw(f, &mut app)).unwrap();
+    assert_eq!(term.get_cursor_position().unwrap(), (1, 2).into());
+}

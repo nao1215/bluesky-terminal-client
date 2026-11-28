@@ -2,8 +2,8 @@
 # msky's suite drives msky: the home timeline with a boost, a content
 # warning opened with w, the next page by max_id, a thread, a favourite and
 # a boost, the local and federated timelines, the notifications, the help,
-# the theme picker, and the composer posting a reply. mstdn draws no
-# pictures yet; the steps say `graphics: kitty` as msky's do, so that on
+# the theme picker, and the composer posting a reply. The steps use
+# `graphics: kitty` as msky's do, so that on
 # Windows atago runs them under the OpenConsole it ships, which keeps an
 # emoji of several code points whole (the system's ConPTY splits it). Every server is an
 # atago mock: nothing reaches a real Mastodon server. The tokens are
@@ -94,6 +94,7 @@ scenarios:
           env: &env
             MSTDN_CONFIG_DIR: ${workdir}/cfg
             MSTDN_BROWSER: "true"
+            MSTDN_CACHE_DIR: "off"
             TZ: UTC
           timeout: 20s
           session:

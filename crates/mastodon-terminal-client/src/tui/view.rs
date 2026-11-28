@@ -7,6 +7,8 @@
 //! [`truncate_line`]), so an escape sequence in a post is drawn as text.
 
 use ratatui::Frame;
+use terminal_kit::media::images::Images;
+mod browse;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -34,9 +36,15 @@ const COMPOSE_W: u16 = 72;
 pub(crate) const MIN_W: u16 = 24;
 pub(crate) const MIN_H: u16 = 8;
 
+#[cfg(test)]
 pub(crate) fn draw(frame: &mut Frame, app: &mut App) {
+    draw_with_images(frame, app, &mut Images::none());
+}
+
+pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Images) {
     let area = frame.area();
     let th = app.theme;
+    images.begin_frame(area.as_size(), th.dim());
     frame.render_widget(Block::new().style(th.base()), area);
     if area.width < MIN_W || area.height < MIN_H {
         draw_too_small(frame, area, &th);
@@ -58,7 +66,9 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App) {
         t: th,
     };
     if let Some(thread) = app.threads.last_mut() {
-        draw_thread(frame, body, &mut thread.rows, &ctx);
+        draw_thread(frame, body, &mut thread.rows, &ctx, images);
+    } else if matches!(app.tab, Tab::Search | Tab::Profile) {
+        browse::draw_browse(frame, body, app, images, &ctx);
     } else {
         match app.tab.kind() {
             Some(kind) => {
@@ -75,7 +85,7 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App) {
                         }
                         _ => n!("No posts yet. Press R to refresh."),
                     };
-                    draw_statuses(frame, body, list, empty, &ctx);
+                    draw_statuses(frame, body, list, empty, &ctx, images);
                 }
             }
             None if app.session.is_none() => {
@@ -86,7 +96,7 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
-    draw_status(frame, status_row, app);
+    draw_status(frame, status_row, app, images);
     let counted = match &app.overlay {
         Some(Overlay::Compose(c)) => Some(app.counted(c)),
         _ => None,
@@ -101,14 +111,58 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App) {
     match &mut app.overlay {
         Some(Overlay::Help { scroll }) => draw_help(frame, area, scroll, &th),
         Some(Overlay::Actions { selected }) => {
-            draw_choices(frame, area, t("Actions"), &actions, *selected, &th);
+            draw_choices(frame, body, t("Actions"), &actions, *selected, &th);
         }
         Some(Overlay::Themes { selected, .. }) => {
             let rows: Vec<String> = THEMES.iter().map(|t| t.name.to_string()).collect();
-            draw_choices(frame, area, t("Theme"), &rows, *selected, &th);
+            draw_choices(frame, body, t("Theme"), &rows, *selected, &th);
         }
         Some(Overlay::Compose(c)) => {
             draw_compose(frame, area, c, counted.unwrap_or((0, 0)), &th);
+        }
+        Some(Overlay::Viewer {
+            files,
+            index,
+            generation,
+        }) => browse::draw_viewer(frame, body, files, *index, *generation, images, &th),
+        Some(Overlay::Settings { selected }) => {
+            let rows = vec![
+                format!("{}: {}", t("Theme"), THEMES[app.theme_index].name),
+                format!("{}: {}", t("Language"), crate::i18n::current().code()),
+            ];
+            draw_choices(frame, body, t("Settings"), &rows, *selected, &th);
+        }
+        Some(Overlay::Languages { selected }) => draw_choices(
+            frame,
+            body,
+            t("Language"),
+            &["English".into(), "日本語".into()],
+            *selected,
+            &th,
+        ),
+        Some(Overlay::Accounts { selected }) => {
+            let rows: Vec<_> = app
+                .accounts
+                .iter()
+                .map(|a| {
+                    format!(
+                        "{} @{}@{}",
+                        if app.session.as_ref().is_some_and(|s| s.service == a.service) {
+                            "*"
+                        } else {
+                            " "
+                        },
+                        crate::text::one_line(&a.username),
+                        a.host()
+                    )
+                })
+                .collect();
+            let rows = if rows.is_empty() {
+                vec![t("No saved accounts. Run mstdn login.").into()]
+            } else {
+                rows
+            };
+            draw_choices(frame, body, t("Accounts"), &rows, *selected, &th);
         }
         None => {}
     }
@@ -210,7 +264,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let name = drawable(&name).into_owned();
     let room = usize::from(area.width).saturating_sub(used);
     let name_w = cells(&name);
-    if name_w < room {
+    if name_w <= room {
         spans.push(Span::raw(" ".repeat(room - name_w)));
         spans.push(Span::styled(name, th.accent()));
     }
@@ -246,10 +300,15 @@ fn hint_lines(hints: &[keys::Hint], width: u16, th: &Theme) -> Vec<Line<'static>
 }
 
 /// The last message on the left; activity on the right, as bsky's.
-fn draw_status(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_status(frame: &mut Frame, area: Rect, app: &App, images: &Images) {
     let th = app.theme;
     let right = if app.pending() > 0 {
         format!("{} ", t("loading…"))
+    } else if images.shows() {
+        format!(
+            "{} ",
+            terminal_kit::terminal::protocol_name(images.protocol_type())
+        )
     } else {
         format!("{} ", t("text"))
     };
@@ -639,6 +698,7 @@ fn draw_statuses<T: StatusRow + Keyed>(
     list: &mut List<T>,
     empty: &str,
     ctx: &Ctx,
+    images: &mut Images,
 ) {
     let th = &ctx.t;
     if !list.loaded && list.items.is_empty() {
@@ -660,7 +720,16 @@ fn draw_statuses<T: StatusRow + Keyed>(
             status_lines(item.status(), w, ctx)
         })
         .collect();
-    let height = |i: usize| lines.get(i).map_or(1, |l| l.len() as u16 + 1);
+    let pictures: Vec<_> = list
+        .items
+        .iter()
+        .map(|item| browse::thumbnails(item.status().shown(), ctx, images.shows()))
+        .collect();
+    let height = |i: usize| {
+        lines.get(i).map_or(1, |l| {
+            l.len() as u16 + 1 + if pictures[i].is_empty() { 0 } else { 8 }
+        })
+    };
     list.offset = scroll_offset(
         list.selected,
         list.offset,
@@ -687,7 +756,23 @@ fn draw_statuses<T: StatusRow + Keyed>(
                 l.style = l.style.patch(Style::new().bold());
             }
         }
+        let picture_line = lines[i].len().saturating_sub(1);
+        if !pictures[i].is_empty() {
+            drawn.splice(picture_line..picture_line, vec![Line::default(); 8]);
+        }
         frame.render_widget(Paragraph::new(drawn), content);
+        let pic_y = content.y.saturating_add(picture_line as u16);
+        if !pictures[i].is_empty() && pic_y + 8 <= area.bottom() {
+            let count = pictures[i].len() as u16;
+            let width = (content.width.saturating_sub(count.saturating_sub(1)) / count).min(36);
+            for (n, url) in pictures[i].iter().enumerate() {
+                images.draw(
+                    frame,
+                    Rect::new(content.x + n as u16 * (width + 1), pic_y, width, 8),
+                    url,
+                );
+            }
+        }
         y += height(i);
     }
     if let Some(e) = &list.error {
@@ -704,7 +789,13 @@ fn draw_statuses<T: StatusRow + Keyed>(
     }
 }
 
-fn draw_thread(frame: &mut Frame, area: Rect, rows: &mut List<Row>, ctx: &Ctx) {
+fn draw_thread(
+    frame: &mut Frame,
+    area: Rect,
+    rows: &mut List<Row>,
+    ctx: &Ctx,
+    images: &mut Images,
+) {
     let th = &ctx.t;
     let [title, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     let mut head = vec![Span::styled(
@@ -721,6 +812,7 @@ fn draw_thread(frame: &mut Frame, area: Rect, rows: &mut List<Row>, ctx: &Ctx) {
         rows,
         n!("No posts yet. Press R to refresh."),
         ctx,
+        images,
     );
 }
 

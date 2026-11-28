@@ -19,6 +19,12 @@ pub(crate) trait Keyed {
     fn key(&self) -> &str;
 }
 
+impl Keyed for crate::api::types::Account {
+    fn key(&self) -> &str {
+        &self.id
+    }
+}
+
 impl Keyed for Status {
     fn key(&self) -> &str {
         &self.id

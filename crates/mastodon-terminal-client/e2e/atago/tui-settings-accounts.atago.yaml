@@ -1,0 +1,108 @@
+version: "1"
+suite:
+  name: mstdn settings and accounts
+secrets: [e2e-fake-stage2-first, e2e-fake-stage2-second]
+scenarios:
+  - name: settings keep theme and language before the locale and preserve unknown keys
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/timelines/public, json: [] }
+    steps:
+      - fixture: { file: cfg/settings.json, content: '{"language":"en","later":{"kept":true}}' }
+      - pty:
+          command: mstdn --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: ja_JP.UTF-8 }
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "1 Home" }
+            - send: s
+            - expect_screen: { contains: ["Settings", "Theme:", "Language: en"] }
+            - send: { key: enter }
+            - expect_screen: { contains: ["enter apply", "esc cancel"] }
+            - send: g
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: "Settings" }
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: ["English", "日本語"] }
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: ["1 ホーム", "設定", "言語: ja"] }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "言語: ja" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert:
+          file:
+            path: cfg/settings.json
+            json:
+              - { path: "$.language", equals: ja }
+              - { path: "$.theme", equals: bluesky-dark }
+              - { path: "$.later.kept", equals: true }
+      - pty:
+          command: mstdn --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 120
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 15s
+          session:
+            - expect_screen: { contains: "1 ホーム" }
+            - send: s
+            - expect_screen: { contains: ["設定", "bluesky-dark", "言語: ja"] }
+            - send: { key: esc }
+            - expect_screen: { not_contains: "言語: ja" }
+            - send: q
+      - assert: { exit_code: 0 }
+
+  - name: A switches saved accounts and later actions use the new server and token
+    mock_servers:
+      - name: api
+        routes:
+          - { method: GET, path: /api/v1/timelines/home, json: [{ id: old1, account: { acct: first }, content: "<p>First account timeline</p>" }] }
+          - { method: GET, path: /api/v2/instance, json: {} }
+          - { method: POST, path: /api/v1/statuses/new1/favourite, json: {} }
+      - name: second
+        routes:
+          - { method: GET, path: /api/v1/timelines/home, json: [{ id: new1, account: { acct: second }, content: "<p>Second account timeline</p>" }] }
+          - { method: GET, path: /api/v2/instance, json: {} }
+          - { method: POST, path: /api/v1/statuses/new1/favourite, json: {} }
+    steps:
+      - fixture:
+          file: cfg/accounts/127.0.0.1_${api.port}.json
+          content: '{"service":"${api.url}","userId":"1","username":"first","token":"e2e-fake-stage2-first","scopes":["read","write"]}'
+      # localhost sorts after 127.0.0.1, regardless of the ports chosen.
+      - fixture:
+          file: cfg/accounts/localhost_${second.port}.json
+          content: '{"service":"http://localhost:${second.port}","userId":"2","username":"second","token":"e2e-fake-stage2-second","scopes":["read","write"]}'
+      - fixture: { file: cfg/accounts.json, content: '{"current":"127.0.0.1:${api.port}"}' }
+      - pty:
+          command: mstdn
+          graphics: kitty
+          rows: 30
+          cols: 140
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 20s
+          session:
+            - expect_screen: { contains: "First account timeline" }
+            - send: A
+            - expect_screen: { contains: ["Accounts", "@first@127.0.0.1", "@second@localhost"] }
+            - send: j
+            - send: { key: enter }
+            - expect_screen: { contains: "Second account timeline", not_contains: "First account timeline" }
+            - send: l
+            - expect_screen: { contains: "favourited" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert:
+          file: { path: cfg/accounts.json, json: { path: "$.current", equals: "localhost:${second.port}" } }
+      - assert:
+          mock: { name: second, path: /api/v1/timelines/home, header: { name: Authorization, equals: "Bearer e2e-fake-stage2-second" } }
+      - assert:
+          mock: { name: second, path: /api/v1/statuses/new1/favourite, count: 1, header: { name: Authorization, equals: "Bearer e2e-fake-stage2-second" } }
+      - assert: { mock: { name: api, path: /api/v1/statuses/new1/favourite, count: 0 } }

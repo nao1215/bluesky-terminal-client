@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use terminal_kit::input::TextInput;
 
-use crate::api::types::{Limits, Notification, Status};
+use crate::api::types::{Account, Limits, Media, Notification, Status};
+mod browse;
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::{Session, Settings};
 use crate::error::Result;
@@ -22,6 +23,7 @@ use crate::tui::keys;
 use crate::tui::list::{List, Row, ThreadView};
 use crate::tui::theme::{self, ColorDepth, THEMES, Theme};
 use crate::tui::worker::{Draft, Event, Job, next_of};
+pub(crate) use browse::{Profile, Search};
 
 /// The jobs a key or an answer starts, each with its number.
 pub(crate) type Jobs = Vec<(u64, Job)>;
@@ -40,10 +42,19 @@ pub(crate) enum Tab {
     Local,
     Federated,
     Notifications,
+    Search,
+    Profile,
 }
 
 impl Tab {
-    pub(crate) const ALL: [Tab; 4] = [Tab::Home, Tab::Local, Tab::Federated, Tab::Notifications];
+    pub(crate) const ALL: [Tab; 6] = [
+        Tab::Home,
+        Tab::Local,
+        Tab::Federated,
+        Tab::Notifications,
+        Tab::Search,
+        Tab::Profile,
+    ];
 
     pub(crate) fn title(self) -> &'static str {
         match self {
@@ -51,6 +62,8 @@ impl Tab {
             Tab::Local => n!("Local"),
             Tab::Federated => n!("Federated"),
             Tab::Notifications => n!("Notifications"),
+            Tab::Search => n!("Search"),
+            Tab::Profile => n!("Profile"),
         }
     }
 
@@ -60,7 +73,7 @@ impl Tab {
             Tab::Home => Some(TimelineKind::Home),
             Tab::Local => Some(TimelineKind::Local),
             Tab::Federated => Some(TimelineKind::Public),
-            Tab::Notifications => None,
+            Tab::Notifications | Tab::Search | Tab::Profile => None,
         }
     }
 
@@ -189,6 +202,20 @@ pub(crate) enum Overlay {
         before: usize,
     },
     Compose(Box<Compose>),
+    Settings {
+        selected: usize,
+    },
+    Languages {
+        selected: usize,
+    },
+    Accounts {
+        selected: usize,
+    },
+    Viewer {
+        files: Vec<Media>,
+        index: usize,
+        generation: u32,
+    },
 }
 
 /// A line on the status row, or an error over the screen.
@@ -216,6 +243,12 @@ pub(crate) struct App {
     /// Home, Local and Federated.
     pub timelines: [List<Status>; 3],
     pub notifications: List<Notification>,
+    pub search: Search,
+    pub profile: Profile,
+    pub accounts: Vec<Session>,
+    switch_to: Option<Session>,
+    locale: crate::i18n::Lang,
+    settings_return: bool,
     /// The threads opened, the last on top.
     pub threads: Vec<ThreadView>,
     pub overlay: Option<Overlay>,
@@ -223,7 +256,7 @@ pub(crate) struct App {
     pub opened: HashSet<String>,
     pub message: Option<Message>,
     pub theme: Theme,
-    theme_index: usize,
+    pub theme_index: usize,
     depth: ColorDepth,
     /// The settings kept for the next run, when they can be.
     settings: Option<Settings>,
@@ -257,6 +290,12 @@ impl App {
             tab,
             timelines: Default::default(),
             notifications: List::default(),
+            search: Search::default(),
+            profile: Profile::default(),
+            accounts: Vec::new(),
+            switch_to: None,
+            locale: crate::i18n::current(),
+            settings_return: false,
             threads: Vec::new(),
             overlay: None,
             opened: HashSet::new(),
@@ -284,6 +323,12 @@ impl App {
     /// `depth`.
     pub(crate) fn apply_settings(&mut self, settings: Option<Settings>, depth: ColorDepth) {
         self.depth = depth;
+        let lang = settings
+            .as_ref()
+            .and_then(|s| s.language.as_deref())
+            .and_then(crate::i18n::Lang::from_code)
+            .unwrap_or(self.locale);
+        crate::i18n::set(lang);
         let name = settings.as_ref().and_then(|s| s.theme.clone());
         self.settings = settings;
         let (i, t) = theme::chosen(name.as_deref(), depth);
@@ -359,6 +404,11 @@ impl App {
     /// Ask for the first page of `tab`, or the next one with `more`. A tab
     /// the server shows no visitor is not asked for without an account.
     fn load_tab(&mut self, tab: Tab, more: bool) -> Jobs {
+        match tab {
+            Tab::Search => return self.run_search(more),
+            Tab::Profile => return self.load_profile(more),
+            _ => {}
+        }
         if tab.needs_login() && self.session.is_none() {
             return Vec::new();
         }
@@ -391,6 +441,14 @@ impl App {
     fn show_tab(&mut self, tab: Tab) -> Jobs {
         self.tab = tab;
         self.threads.clear();
+        if tab == Tab::Search {
+            self.search.editing = true;
+            return Vec::new();
+        }
+        if tab == Tab::Profile {
+            self.profile = Profile::default();
+            return self.load_profile(false);
+        }
         let loaded = match tab.kind() {
             Some(kind) => {
                 let l = self.timeline(kind);
@@ -411,6 +469,17 @@ impl App {
     pub(crate) fn selected(&self) -> Option<&Status> {
         if let Some(th) = self.threads.last() {
             return th.rows.current().map(|r| r.status.shown());
+        }
+        match self.tab {
+            Tab::Search => {
+                return if self.search.accounts {
+                    None
+                } else {
+                    self.search.posts.current().map(Status::shown)
+                };
+            }
+            Tab::Profile => return self.profile.posts.current().map(Status::shown),
+            _ => {}
         }
         match self.tab.kind() {
             Some(kind) => self.timeline(kind).current().map(Status::shown),
@@ -433,6 +502,9 @@ impl App {
         if let Some(th) = self.threads.last_mut() {
             th.rows.step(by);
             return Vec::new();
+        }
+        if matches!(self.tab, Tab::Search | Tab::Profile) {
+            return self.browse_step(by);
         }
         let wants = match self.tab.kind() {
             Some(kind) => {
@@ -581,6 +653,8 @@ impl App {
         for l in &mut self.timelines {
             l.items.iter_mut().for_each(&mut visit);
         }
+        self.search.posts.items.iter_mut().for_each(&mut visit);
+        self.profile.posts.items.iter_mut().for_each(&mut visit);
         for n in &mut self.notifications.items {
             if let Some(s) = n.status.as_mut() {
                 visit(s);
@@ -649,11 +723,17 @@ impl App {
         if let Some(overlay) = self.overlay.take() {
             return self.overlay_key(overlay, key);
         }
+        if self.tab == Tab::Search && self.threads.is_empty() && self.search.editing {
+            return self.search_key(key);
+        }
         self.list_key(key)
     }
 
     /// Text pasted: into the composer's field, when it is open.
     pub(crate) fn handle_paste(&mut self, text: &str) {
+        if self.overlay.is_none() && self.tab == Tab::Search && self.search.editing {
+            self.search.input.insert_str(text);
+        }
         if let Some(Overlay::Compose(c)) = &mut self.overlay
             && c.sending.is_none()
         {
@@ -668,10 +748,13 @@ impl App {
                 Vec::new()
             }
             KeyCode::Esc => {
+                if self.threads.is_empty() && self.tab == Tab::Profile {
+                    self.tab = self.profile.back.take().unwrap_or(Tab::Home);
+                }
                 self.threads.pop();
                 Vec::new()
             }
-            KeyCode::Char(c @ '1'..='4') => {
+            KeyCode::Char(c @ '1'..='6') => {
                 let i = usize::from(c as u8 - b'1');
                 self.show_tab(Tab::ALL[i])
             }
@@ -687,7 +770,41 @@ impl App {
             KeyCode::Char('g') | KeyCode::Home => self.jump(false),
             KeyCode::Char('G') | KeyCode::End => self.jump(true),
             KeyCode::Char('R') | KeyCode::F(5) => self.refresh(),
-            KeyCode::Char('v') | KeyCode::Enter => self.open_thread(),
+            KeyCode::Char('v') => self.open_thread(),
+            KeyCode::Enter => self.open_profile(),
+            KeyCode::Char('/') => {
+                self.tab = Tab::Search;
+                self.threads.clear();
+                self.search.editing = true;
+                Vec::new()
+            }
+            KeyCode::Char('i') if self.tab == Tab::Search => {
+                self.search.editing = true;
+                Vec::new()
+            }
+            KeyCode::Char('t') if self.tab == Tab::Search && self.threads.is_empty() => {
+                self.search.accounts = !self.search.accounts;
+                self.run_search(false)
+            }
+            KeyCode::Char(' ') => {
+                self.open_viewer();
+                Vec::new()
+            }
+            KeyCode::Char('d') => self.download(),
+            KeyCode::Char('A') => {
+                self.overlay = Some(Overlay::Accounts {
+                    selected: self
+                        .accounts
+                        .iter()
+                        .position(|s| Some(s) == self.session.as_ref())
+                        .unwrap_or(0),
+                });
+                Vec::new()
+            }
+            KeyCode::Char('s') => {
+                self.overlay = Some(Overlay::Settings { selected: 0 });
+                Vec::new()
+            }
             KeyCode::Char('w') => {
                 self.toggle_warning();
                 Vec::new()
@@ -791,10 +908,12 @@ impl App {
                     KeyCode::Char('G') | KeyCode::End => Some(last),
                     KeyCode::Enter => {
                         self.keep_theme(selected);
+                        self.return_settings();
                         return Vec::new();
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
                         self.use_theme(before);
+                        self.return_settings();
                         return Vec::new();
                     }
                     _ => None,
@@ -805,6 +924,7 @@ impl App {
                 Vec::new()
             }
             Overlay::Compose(c) => self.compose_key(c, key),
+            other => self.extra_overlay_key(other, key),
         }
     }
 
@@ -915,8 +1035,16 @@ impl App {
 
     /// Handle the answer to job `seq`; the jobs it starts.
     pub(crate) fn handle_answer(&mut self, seq: u64, ev: Event) -> Jobs {
-        self.waiting.remove(&seq);
+        if !self.waiting.remove(&seq) {
+            return Vec::new();
+        }
         match ev {
+            Event::Search { next, result } => self.search_answer(seq, next.is_none(), result),
+            Event::Profile { more, result } => self.profile_answer(seq, !more, result),
+            Event::Downloaded(result) => match result {
+                Ok(n) => self.say(tf("saved {} files", &[&n.to_string()])),
+                Err(e) => self.fail(e.message().to_string()),
+            },
             Event::Timeline {
                 kind,
                 max_id,

@@ -1,0 +1,110 @@
+# Inline thumbnails, the viewer, silent H.264 playback, and collision-safe downloads.
+version: "1"
+suite:
+  name: mstdn media
+scenarios:
+  - name: pictures and video are drawn and original files are saved without overwriting
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            json:
+              - id: media1
+                account: { id: "2", acct: alice, username: alice }
+                content: "<p>Pictures and video</p>"
+                media_attachments:
+                  - { id: photo, type: image, url: "${api.url}/photo.png", preview_url: "${api.url}/thumb.png", description: "Mountain photo" }
+                  - { id: video, type: video, url: "${api.url}/clip.mp4", preview_url: "${api.url}/thumb.png", description: "Silent clip" }
+          - { method: GET, path: /thumb.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /clip.mp4, body_file: testdata/clip.mp4, header: { Content-Type: video/mp4 } }
+    steps:
+      - fixture: { file: want/photo.png, from: testdata/photo.png }
+      - fixture: { file: want/clip.mp4, from: testdata/clip.mp4 }
+      - fixture: { file: dl/media1-1.png, content: original }
+      - pty:
+          command: mstdn --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 110
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "${workdir}/cache", MSTDN_DOWNLOAD_DIR: "${workdir}/dl", MSTDN_GRAPHICS: kitty, LC_ALL: C.UTF-8 }
+          timeout: 30s
+          session:
+            - expect_screen: { contains: ["Pictures and video", "Mountain photo"], images: { min_count: 1 } }
+            - send: " "
+            - expect_screen: { contains: ["1/2", "Mountain photo"], images: { min_count: 1 } }
+            - send: l
+            - expect_screen: { contains: ["2/2", "Silent clip", "ended  r plays it again"] }
+            - send: r
+            - expect_screen: { contains: "ended  r plays it again", stable_for: 500ms }
+            - send: d
+            - expect_screen: { contains: "saved 2 files" }
+            - send: q
+            - expect_screen: { contains: "Pictures and video" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { file: { path: dl/media1-1.png, contains: original } }
+      - assert: { file: { path: "dl/media1-1 (1).png", equals_file: want/photo.png } }
+      - assert: { file: { path: dl/media1-2.mp4, equals_file: want/clip.mp4 } }
+      - assert: { dir: { path: cache/images, min_count: 1 } }
+      - assert: { mock: { name: api, path: /photo.png } }
+      - assert: { mock: { name: api, path: /clip.mp4 } }
+
+  - name: hidden content does not fetch its pictures until w opens it
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            json:
+              - id: cw1
+                account: { acct: bob }
+                spoiler_text: "Hidden media"
+                content: "<p>Revealed</p>"
+                media_attachments: [{ id: m1, type: image, url: "${api.url}/hidden.png" }]
+          - { method: GET, path: /hidden.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - pty:
+          command: mstdn --host ${api.url}
+          graphics: kitty
+          rows: 30
+          cols: 100
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 15s
+          session:
+            - expect_screen: { contains: "Hidden media", not_contains: "Revealed", images: { count: 0 }, stable_for: 500ms }
+            - send: " "
+            - expect_screen: { contains: "press w to open the content warning first" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { mock: { name: api, path: /hidden.png, count: 0 } }
+
+  - name: a text terminal keeps alt text and the viewer explains its fallback without fetching
+    mock_servers:
+      - name: api
+        routes:
+          - method: GET
+            path: /api/v1/timelines/public
+            json:
+              - id: text1
+                account: { acct: bob }
+                content: "<p>Text terminal</p>"
+                media_attachments: [{ id: m1, type: image, url: "${api.url}/photo.png", description: "Accessible photo" }]
+          - { method: GET, path: /photo.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+    steps:
+      - pty:
+          command: mstdn --host ${api.url}
+          rows: 30
+          cols: 120
+          env: { MSTDN_CONFIG_DIR: "${workdir}/cfg", MSTDN_CACHE_DIR: "off", LC_ALL: C.UTF-8 }
+          timeout: 15s
+          session:
+            - expect_screen: { contains: ["Text terminal", "ALT Accessible photo"] }
+            - send: " "
+            - expect_screen: { contains: ["Accessible photo", "this terminal cannot show pictures or video"] }
+            - send: q
+            - expect_screen: { contains: "Text terminal" }
+            - send: q
+      - assert: { exit_code: 0 }
+      - assert: { mock: { name: api, path: /photo.png, count: 0 } }

@@ -51,6 +51,9 @@ pub(crate) struct Settings {
     /// The theme `T` chose, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Preferred display language, before the locale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// Keys a newer version wrote, kept on saving.
     #[serde(flatten)]
     other: serde_json::Map<String, serde_json::Value>,
