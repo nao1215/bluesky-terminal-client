@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use terminal_kit::inflight::InFlight;
 
 use crate::api::Client;
 use crate::api::types::{ChatMessage, DriveFile, Note, Notification, User};
@@ -166,6 +169,28 @@ impl Job {
         matches!(
             self,
             Job::Post { .. } | Job::React { .. } | Job::Renote { .. } | Job::Delete { .. }
+        )
+    }
+}
+
+impl Job {
+    /// Whether it changes something on the server, which quitting right
+    /// after sending it must not lose: a note, a reaction, a renote, a
+    /// deletion, notifications marked read, a report, the profile, a chat
+    /// message, a mute or block, a follow.
+    pub(crate) fn changes_server(&self) -> bool {
+        matches!(
+            self,
+            Job::Post { .. }
+                | Job::React { .. }
+                | Job::Renote { .. }
+                | Job::Delete { .. }
+                | Job::MarkRead
+                | Job::Report { .. }
+                | Job::SaveProfile(_)
+                | Job::ChatSend { .. }
+                | Job::Guard { .. }
+                | Job::Follow { .. }
         )
     }
 }
@@ -885,7 +910,9 @@ fn guarded(job: Job, run: impl FnOnce(Job) -> Event) -> Event {
 /// Threads that run jobs.
 const WORKERS: usize = 4;
 
-type Queued = (u64, Job, Client);
+/// A job, its number, the account it acts as, and whether it changes the
+/// server.
+type Queued = (u64, Job, Client, bool);
 
 /// Handle to the running workers.
 pub(crate) struct Worker {
@@ -893,6 +920,8 @@ pub(crate) struct Worker {
     client: Mutex<Client>,
     jobs: Sender<Queued>,
     answers: Receiver<(u64, Event)>,
+    /// The jobs that change the server, sent and not done yet.
+    writes: InFlight,
 }
 
 impl Worker {
@@ -902,16 +931,21 @@ impl Worker {
         let (jobs, queue) = channel::<Queued>();
         let queue = Arc::new(Mutex::new(queue));
         let (tx, answers) = channel();
+        let writes = InFlight::default();
         for _ in 0..WORKERS {
             let queue = Arc::clone(&queue);
             let tx = tx.clone();
+            let writes = writes.clone();
             crate::tui::spawn("msky-worker", move || {
                 loop {
                     let next = queue.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                    let Ok((seq, job, client)) = next else {
+                    let Ok((seq, job, client, write)) = next else {
                         return;
                     };
                     let event = guarded(job, |job| run(job, &client));
+                    if write {
+                        writes.done();
+                    }
                     if tx.send((seq, event)).is_err() {
                         return;
                     }
@@ -922,6 +956,7 @@ impl Worker {
             client: Mutex::new(client),
             jobs,
             answers,
+            writes,
         })
     }
 
@@ -932,11 +967,23 @@ impl Worker {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
+        let write = job.changes_server();
+        if write {
+            self.writes.start();
+        }
         #[expect(
             clippy::let_underscore_must_use,
             reason = "the threads end only when the worker is dropped, so a send fails only on the way out"
         )]
-        let _: std::result::Result<(), _> = self.jobs.send((seq, job, client));
+        let _: std::result::Result<(), _> = self.jobs.send((seq, job, client, write));
+    }
+
+    /// Wait, for at most `limit`, until every job sent that changes the
+    /// server is done: q right after 4 quit before the notifications were
+    /// marked read, and the request never left. Returns at once when none
+    /// is on its way.
+    pub(crate) fn finish_writes(&self, limit: Duration) {
+        self.writes.wait(limit);
     }
 
     /// Act as `client` from the next job on.
@@ -955,7 +1002,7 @@ mod tests {
     use super::*;
     use crate::api::stub_tests::{reply, serve};
     use serde_json::Value;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     fn wait(w: &Worker) -> (u64, Event) {
         let start = Instant::now();
@@ -1176,6 +1223,39 @@ mod tests {
             format!("the note is 6 characters; {} takes 5", client.host())
         );
         assert_eq!(log.lock().unwrap().len(), 4);
+    }
+
+    // Quitting waits for a write still on its way, and only for that: the
+    // notifications marked read just before q reach the server.
+    #[test]
+    fn a_write_on_its_way_is_finished_before_quitting() {
+        let (url, log) = serve(Arc::new(|_, _, _| {
+            std::thread::sleep(Duration::from_millis(300));
+            reply(204, "")
+        }));
+        let w = Worker::spawn(Client::new(&url).with_token(Some("fake-token-for-tests".into())))
+            .unwrap();
+        let start = Instant::now();
+        w.finish_writes(Duration::from_secs(5));
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "nothing to wait for"
+        );
+        w.send(
+            1,
+            Job::Timeline {
+                kind: TimelineKind::Home,
+                until: None,
+            },
+        );
+        w.send(2, Job::MarkRead);
+        w.finish_writes(Duration::from_secs(5));
+        let log = log.lock().unwrap();
+        assert!(
+            log.iter()
+                .any(|(p, _)| p == "/api/notifications/mark-all-as-read"),
+            "{log:?}"
+        );
     }
 
     // A reaction replacing another takes the old one back first; a renote

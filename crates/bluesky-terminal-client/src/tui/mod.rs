@@ -54,6 +54,9 @@ const ANSWER_TICK: Duration = Duration::from_millis(5);
 /// arrive faster than a frame draws (a held j) are applied together, so the
 /// selection keeps up with the key instead of trailing behind it.
 const EVENTS_PER_FRAME: usize = 64;
+/// Longest q waits for writes still on their way: a server that never
+/// answers does not keep bsky open.
+const QUIT_WAIT: Duration = Duration::from_secs(3);
 
 /// Run the client until the user quits.
 /// `session` is the account to start as, if any; `accounts` holds every
@@ -319,6 +322,9 @@ fn event_loop(
             dirty = true;
         }
     }
+    // A write sent just before q, such as a like or the notifications
+    // marked seen, reaches the server before bsky ends.
+    worker.finish_writes(QUIT_WAIT);
     Ok(())
 }
 

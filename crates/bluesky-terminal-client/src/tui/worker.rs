@@ -522,6 +522,8 @@ pub(crate) struct Worker {
     rx: Receiver<(u64, Event)>,
     /// Jobs no thread was left to take, answered with their own failure.
     unsent: std::cell::RefCell<std::collections::VecDeque<(u64, Event)>>,
+    /// The jobs of the write lane, sent and not done yet.
+    writing: terminal_kit::inflight::InFlight,
 }
 
 impl Worker {
@@ -546,13 +548,14 @@ impl Worker {
             editor_base: None,
         };
         let events = ev_tx.clone();
+        let writing = terminal_kit::inflight::InFlight::default();
+        let done = writing.clone();
         crate::tui::spawn("bsky-write", move || {
             for (seq, job, acting) in write_rx {
                 state.acting = acting;
-                if events
-                    .send((seq, guarded(job, |job| state.run(job))))
-                    .is_err()
-                {
+                let event = guarded(job, |job| state.run(job));
+                done.done();
+                if events.send((seq, event)).is_err() {
                     break;
                 }
             }
@@ -589,6 +592,7 @@ impl Worker {
             reads,
             rx: ev_rx,
             unsent: Default::default(),
+            writing,
         })
     }
 
@@ -615,19 +619,30 @@ impl Worker {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        let lane = if job.reads() {
-            &self.reads
-        } else {
-            &self.writes
-        };
+        let write = !job.reads();
+        let lane = if write { &self.writes } else { &self.reads };
+        if write {
+            self.writing.start();
+        }
         // The threads only stop when the UI drops the worker, and a job that
         // panics is answered like one that failed. Were they gone all the
         // same, the job is answered with its failure rather than never, which
         // left the screen waiting for it for good.
         if let Err(std::sync::mpsc::SendError((seq, job, _))) = lane.send((seq, job, acting)) {
+            if write {
+                self.writing.done();
+            }
             let failed = job.failed(Error::api("the worker has stopped; restart bsky"));
             self.unsent.borrow_mut().push_back((seq, failed));
         }
+    }
+
+    /// Wait, for at most `limit`, until every job sent to the write lane
+    /// is done: q right after a write (a like, notifications marked seen)
+    /// quit before it left, and the server never had it. Returns at once
+    /// when none is on its way.
+    pub(crate) fn finish_writes(&self, limit: std::time::Duration) {
+        self.writing.wait(limit);
     }
 
     /// A finished job and the `seq` it was sent with, if any.
@@ -1101,9 +1116,14 @@ mod tests {
             reads,
             rx,
             unsent: Default::default(),
+            writing: Default::default(),
         };
         worker.send(7, Job::Timeline);
         worker.send(8, Job::UpdateSeen("now".into()));
+        // A write no thread took is not waited for on the way out.
+        let start = Instant::now();
+        worker.finish_writes(Duration::from_secs(5));
+        assert!(start.elapsed() < Duration::from_millis(100));
         match worker.try_recv() {
             Some((7, Event::Timeline(Err(e)))) => {
                 assert!(e.message().contains("stopped"), "{}", e.message());
