@@ -118,6 +118,10 @@ Only bsky makes link cards and speaks nine languages (msky and mstdn speak Engli
 | bsky `s`: settings | bsky without pictures |
 | ![bsky: the settings screen](crates/bluesky-terminal-client/doc/img/settings.png) | ![bsky: the timeline as text](crates/bluesky-terminal-client/doc/img/text.png) |
 
+bsky: the selected post's video plays in the timeline, and its thumbnail comes back when the selection moves on
+
+![bsky: a video post plays in the timeline, the selection moves down and back](crates/bluesky-terminal-client/doc/img/timeline-video.gif)
+
 msky `+`: an antenna, then the notifications, beside the home timeline
 
 ![msky: an antenna and the notifications added beside the home timeline, then scrolled](crates/misskey-terminal-client/doc/img/columns.gif)
