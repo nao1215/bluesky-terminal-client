@@ -15,6 +15,7 @@ fn args(text: &str) -> PostArgs {
         alts: Vec::new(),
         video: None,
         reply: None,
+        quote: None,
         cw: None,
         sensitive: false,
         visibility: Visibility::Public,
@@ -463,4 +464,82 @@ fn there_may_be_an_alt_for_each_file_and_no_more() {
     a.alts.push("two".into());
     let e = draft(&a, &mut "".as_bytes()).err().unwrap();
     assert_eq!(e.message(), "there is more --alt than pictures and videos");
+}
+
+#[test]
+fn quote_is_resolved_and_sent_and_dry_run_does_not_write() {
+    let (origin, calls) = serve(Arc::new(|c, _| match c.path() {
+        "/api/v2/instance" => reply(200, r#"{"version":"4.5.0"}"#),
+        "/api/v1/statuses/42" => reply(
+            200,
+            r#"{"id":"42","quote_approval":{"current_user":"automatic"}}"#,
+        ),
+        "/api/v1/statuses" => reply(200, r#"{"id":"43","account":{"acct":"me"}}"#),
+        _ => reply(200, "{}"),
+    }));
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = ctx_of(&origin, dir.path(), true, &["read", "write"]);
+    let mut a = args("comment");
+    a.quote = Some("42".into());
+    a.dry_run = true;
+    let mut out = Vec::new();
+    post(&ctx, &mut out, &a, &mut b"".as_slice(), &mut WallClock).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&out).unwrap()["post"]["quoteId"],
+        "42"
+    );
+    assert!(calls.lock().unwrap().iter().all(|c| c.method == "GET"));
+    a.dry_run = false;
+    post(
+        &ctx,
+        &mut Vec::new(),
+        &a,
+        &mut b"".as_slice(),
+        &mut WallClock,
+    )
+    .unwrap();
+    let calls = calls.lock().unwrap();
+    let write = calls.iter().find(|c| c.method == "POST").unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&write.body).unwrap(),
+        json!({"status":"comment","visibility":"public","quoted_status_id":"42"})
+    );
+}
+
+#[rstest]
+#[case(200, r#"{"version":"4.4.3"}"#, Kind::Unsupported)]
+#[case(200, "{}", Kind::Api)]
+#[case(403, r#"{"error":"forbidden"}"#, Kind::Api)]
+fn unsupported_or_unknown_quotes_never_upload_or_post(
+    #[case] status: u16,
+    #[case] body: &str,
+    #[case] kind: Kind,
+) {
+    let body = body.to_owned();
+    let (origin, calls) = serve(Arc::new(move |_, _| reply(status, &body)));
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = ctx_of(&origin, dir.path(), true, &["read", "write"]);
+    let mut a = args("comment");
+    a.quote = Some("42".into());
+    a.images.push(photo(dir.path()));
+    for dry_run in [true, false] {
+        a.dry_run = dry_run;
+        let e = post(
+            &ctx,
+            &mut Vec::new(),
+            &a,
+            &mut b"".as_slice(),
+            &mut WallClock,
+        )
+        .unwrap_err();
+        assert_eq!(e.kind(), kind);
+    }
+    let client = Client::new(&origin);
+    for extra in [
+        json!({"quoted_status_id":"42"}),
+        json!({"quote_approval_policy":"public"}),
+    ] {
+        assert_eq!(composed(&client, &a, &extra).unwrap_err().kind(), kind);
+    }
+    assert!(calls.lock().unwrap().iter().all(|c| c.method == "GET"));
 }

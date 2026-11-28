@@ -34,3 +34,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - Custom emoji are drawn as pictures in posts, display names, profiles and notifications on terminals with graphics, with shortcodes kept on other terminals.
 - `+` adds list, hashtag, notification and search columns beside Home; `H` and `L` focus columns, `<` and `>` move them, and `x` then `y` closes one. Columns are saved per account.
 - Chat (`7`) reads direct conversations, marks a conversation read when opened, and replies with direct visibility; `m` on a profile starts a direct message. Refused writes keep the message or restore the unread flag.
+
+- Commands now favourite and boost posts, take those actions back, delete posts, follow, mute and block accounts, and list their related accounts. Favourites, bookmarks and Mastodon lists can be read from the command line.
+- `report` accepts a reason and comment with explicit confirmation; `chat` lists direct conversations, reads one-to-one history and sends direct posts. `search --accounts` finds accounts and `post --quote` quotes posts on Mastodon 4.5 or later.
+- JSON posts now expose the quoted post ID. New commands use the common account, message and action JSON shapes; `notifications --seen` saves the newest displayed notification as read.
+- The account picker adds browser OAuth login and confirmed local logout. Settings include the download folder and browser, with environment overrides preserved.
+- The full-screen client displays link cards and opens their URLs with `O`, and synchronizes notification markers and unread counts with the server. A rejected read-marker save restores the unread count.
+
+### Fixed
+
+- Unsupported server features now return exit status 5 and JSON `status: 5`, while authentication failures and missing resources remain API errors.
+- Quote posts check server support before uploading or publishing, preventing older servers from silently publishing an ordinary post instead.

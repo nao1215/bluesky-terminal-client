@@ -214,6 +214,7 @@ impl App {
         let job = Job::Download {
             id: s.id.clone(),
             files: s.media_attachments.clone(),
+            directory: self.settings.as_ref().and_then(|s| s.download_dir.clone()),
         };
         self.say(t("saving files…"));
         vec![self.job(job)]
@@ -263,6 +264,16 @@ impl App {
     }
     pub(super) fn extra_overlay_key(&mut self, overlay: Overlay, key: KeyEvent) -> Jobs {
         match overlay {
+            Overlay::Login {
+                input,
+                url,
+                waiting,
+            } => self.login_key(key, input, url, waiting),
+            Overlay::Logout { host } => {
+                if key.code == KeyCode::Char('y') {
+                    self.logout_host = Some(host);
+                }
+            }
             Overlay::Viewer {
                 files,
                 mut index,
@@ -301,41 +312,8 @@ impl App {
                     generation,
                 });
             }
-            Overlay::Settings { mut selected } => {
-                match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => return Vec::new(),
-                    KeyCode::Char('j') | KeyCode::Down => selected = 1,
-                    KeyCode::Char('k') | KeyCode::Up => selected = 0,
-                    KeyCode::Enter => {
-                        self.settings_return = true;
-                        self.overlay = Some(if selected == 0 {
-                            Overlay::Themes {
-                                selected: self.theme_index,
-                                before: self.theme_index,
-                            }
-                        } else {
-                            Overlay::Languages {
-                                selected: usize::from(i18n::current() == Lang::Ja),
-                            }
-                        });
-                        return Vec::new();
-                    }
-                    KeyCode::Char('x') => {
-                        if let Some(s) = &mut self.settings {
-                            if selected == 0 {
-                                s.theme = None;
-                            } else {
-                                s.language = None;
-                            }
-                            let settings = self.settings.clone();
-                            self.apply_settings(settings, self.depth);
-                            self.settings_save = true;
-                        }
-                    }
-                    _ => {}
-                }
-                self.overlay = Some(Overlay::Settings { selected });
-            }
+            Overlay::SettingText { row, input } => self.setting_text_key(key, row, input),
+            Overlay::Settings { selected } => self.settings_key(key, selected),
             Overlay::Languages { mut selected } => {
                 match key.code {
                     KeyCode::Esc | KeyCode::Char('q') => {
@@ -362,6 +340,22 @@ impl App {
             }
             Overlay::Accounts { mut selected } => {
                 match key.code {
+                    KeyCode::Char('a') => {
+                        self.overlay = Some(Overlay::Login {
+                            input: TextInput::single(""),
+                            url: None,
+                            waiting: false,
+                        });
+                        return Vec::new();
+                    }
+                    KeyCode::Char('x') => {
+                        if let Some(s) = self.accounts.get(selected) {
+                            self.overlay = Some(Overlay::Logout {
+                                host: s.host().to_string(),
+                            });
+                        }
+                        return Vec::new();
+                    }
                     KeyCode::Esc | KeyCode::Char('q' | 'A') => return Vec::new(),
                     KeyCode::Char('j') | KeyCode::Down => {
                         selected = (selected + 1).min(self.accounts.len().saturating_sub(1))

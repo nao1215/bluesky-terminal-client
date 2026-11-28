@@ -1,0 +1,472 @@
+version: '1'
+suite:
+  name: mstdn TUI parity
+scenarios:
+- name: add an account with browser OAuth then decline and confirm logout
+  skip:
+    os: windows
+  mock_servers:
+  - name: api
+    routes:
+    - &id001
+      method: GET
+      path: /api/v1/timelines/public
+      json: []
+      status: 200
+    - &id002
+      method: GET
+      path: /api/v2/instance
+      json: {}
+      status: 200
+    - &id003
+      method: GET
+      path: /api/v1/timelines/home
+      json:
+      - id: '1'
+        account:
+          id: '7'
+          acct: alice
+        content: <p>Account login succeeded</p>
+      status: 200
+    - &id004
+      method: GET
+      path: /api/v1/notifications
+      json: []
+      status: 200
+    - &id005
+      method: GET
+      path: /api/v1/markers
+      json: {}
+      status: 200
+    - &id006
+      method: GET
+      path: /api/v1/notifications/unread_count
+      json:
+        count: 0
+      status: 200
+    - method: POST
+      path: /api/v1/apps
+      json:
+        client_id: fake-client
+        client_secret: fake-secret
+      status: 200
+    - method: POST
+      path: /oauth/token
+      json:
+        access_token: parity-fake-token
+        scope: read write
+      status: 200
+    - method: GET
+      path: /api/v1/accounts/verify_credentials
+      json:
+        id: '7'
+        username: alice
+        acct: alice
+      status: 200
+  steps:
+  - fixture:
+      file: browser.sh
+      from: testdata/browser.sh
+      mode: '0755'
+  - pty:
+      command: mstdn --host ${api.url}
+      rows: 36
+      cols: 140
+      timeout: 25s
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_TOKEN: ''
+        LC_ALL: C.UTF-8
+        MSTDN_BROWSER: ${workdir}/browser.sh
+      session:
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+      - send: A
+      - expect_screen:
+          contains: No saved accounts.
+          stable_for: 150ms
+      - send: a
+      - expect_screen:
+          contains: Server address
+          stable_for: 150ms
+      - send: ${api.url}
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Account login succeeded
+          stable_for: 150ms
+      - send: A
+      - expect_screen:
+          contains: '@alice@127.0.0.1'
+          stable_for: 150ms
+      - send: x
+      - expect_screen:
+          contains: y confirms
+          stable_for: 150ms
+      - send: n
+      - expect_screen:
+          contains: Account login succeeded
+          stable_for: 150ms
+      - send: A
+      - expect_screen:
+          contains: '@alice@127.0.0.1'
+          stable_for: 150ms
+      - send: x
+      - expect_screen:
+          contains: y confirms
+          stable_for: 150ms
+      - send: y
+      - expect_screen:
+          contains: No saved accounts.
+          stable_for: 150ms
+      - send:
+          key: esc
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+          not_contains: No saved accounts.
+      - send: q
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/apps
+        method: POST
+        count: 1
+  - assert:
+      mock:
+        name: api
+        path: /oauth/token
+        method: POST
+        count: 1
+  - assert:
+      mock:
+        name: api
+        path: /oauth/token
+        body:
+          contains:
+          - grant_type=authorization_code
+          - code=e2e-loopback-code
+          - client_id=fake-client
+          - code_verifier=
+  - assert:
+      mock:
+        name: api
+        method: POST
+        path: /api/v1/apps
+        body:
+          json:
+          - path: $.client_name
+            equals: mstdn
+          - path: $.scopes
+            equals: read write
+          - path: $.redirect_uris
+            matches: '^http://127[.]0[.]0[.]1:[0-9]+/callback
+
+              urn:ietf:wg:oauth:2[.]0:oob$'
+          - path: $.website
+            equals: https://github.com/nao1215/social-terminal-clients
+  - assert:
+      file:
+        path: cfg/accounts/127.0.0.1_${api.port}.json
+        exists: false
+- name: cancelling browser login saves no account and does not exchange a token
+  mock_servers:
+  - name: api
+    routes:
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+    - method: POST
+      path: /api/v1/apps
+      json:
+        client_id: fake-client
+        client_secret: fake-secret
+      status: 200
+  steps:
+  - pty:
+      command: mstdn --host ${api.url}
+      rows: 36
+      cols: 140
+      timeout: 25s
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_TOKEN: ''
+        LC_ALL: C.UTF-8
+        MSTDN_BROWSER: missing-test-browser
+      session:
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+      - send: A
+      - expect_screen:
+          contains: No saved accounts.
+          stable_for: 150ms
+      - send: a
+      - expect_screen:
+          contains: Server address
+          stable_for: 150ms
+      - send: ${api.url}
+      - send:
+          key: enter
+      - expect_screen:
+          contains: oauth/authorize
+          stable_for: 150ms
+      - send:
+          key: esc
+      - expect_screen:
+          contains: No saved accounts.
+          stable_for: 150ms
+      - send:
+          key: esc
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+          not_contains: No saved accounts.
+      - send: q
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /oauth/token
+        method: POST
+        count: 0
+- name: notification marker syncs the viewed notification
+  mock_servers:
+  - name: api
+    routes:
+    - *id001
+    - *id002
+    - *id003
+    - method: GET
+      path: /api/v1/notifications
+      json:
+      - id: '42'
+        type: follow
+        account:
+          acct: bob
+      status: 200
+    - method: GET
+      path: /api/v1/markers
+      json:
+        notifications:
+          last_read_id: '40'
+      status: 200
+    - method: GET
+      path: /api/v1/notifications/unread_count
+      json:
+        count: 9
+      status: 200
+    - method: POST
+      path: /api/v1/markers
+      json:
+        notifications:
+          last_read_id: '42'
+      status: 200
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"alice","token":"parity-fake-token","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn --host ${api.url}
+      rows: 36
+      cols: 140
+      timeout: 25s
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_TOKEN: ''
+        LC_ALL: C.UTF-8
+      session:
+      - expect_screen:
+          contains: Notifications (9)
+          stable_for: 150ms
+      - send: '4'
+      - expect_screen:
+          contains: followed you
+          stable_for: 150ms
+          not_contains: Notifications (9)
+      - send: q
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/markers
+        method: POST
+        count: 1
+        body:
+          equals: '{"notifications":{"last_read_id":"42"}}'
+- name: notification marker refusal restores server unread count
+  mock_servers:
+  - name: api
+    routes:
+    - *id001
+    - *id002
+    - *id003
+    - method: GET
+      path: /api/v1/notifications
+      json:
+      - id: '42'
+        type: follow
+        account:
+          acct: bob
+      status: 200
+    - method: GET
+      path: /api/v1/markers
+      json:
+        notifications:
+          last_read_id: '40'
+      status: 200
+    - method: GET
+      path: /api/v1/notifications/unread_count
+      json:
+        count: 9
+      status: 200
+    - method: POST
+      path: /api/v1/markers
+      json:
+        error: marker refused
+      status: 403
+  steps:
+  - fixture:
+      file: cfg/accounts/127.0.0.1_${api.port}.json
+      content: '{"service":"${api.url}","userId":"7","username":"alice","token":"parity-fake-token","scopes":["read","write"]}'
+  - fixture:
+      file: cfg/accounts.json
+      content: '{"current":"127.0.0.1:${api.port}"}'
+  - pty:
+      command: mstdn --host ${api.url}
+      rows: 36
+      cols: 140
+      timeout: 25s
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_TOKEN: ''
+        LC_ALL: C.UTF-8
+      session:
+      - expect_screen:
+          contains: Notifications (9)
+          stable_for: 150ms
+      - send: '4'
+      - expect_screen:
+          contains: marker refused
+          stable_for: 150ms
+      - send:
+          key: esc
+      - expect_screen:
+          contains: Notifications (9)
+          stable_for: 150ms
+          not_contains: marker refused
+      - send: q
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      mock:
+        name: api
+        path: /api/v1/markers
+        method: POST
+        count: 1
+        body:
+          equals: '{"notifications":{"last_read_id":"42"}}'
+- name: download and browser settings can be saved cancelled and reset
+  mock_servers:
+  - name: api
+    routes:
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+  steps:
+  - pty:
+      command: mstdn --host ${api.url}
+      rows: 36
+      cols: 140
+      timeout: 25s
+      env:
+        MSTDN_CONFIG_DIR: ${workdir}/cfg
+        MSTDN_CACHE_DIR: 'off'
+        MSTDN_TOKEN: ''
+        LC_ALL: C.UTF-8
+      session:
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+      - send: s
+      - expect_screen:
+          contains: Settings
+          stable_for: 150ms
+      - send: jj
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Download folder
+          stable_for: 150ms
+      - send: downloads-parity
+      - send:
+          key: enter
+      - expect_screen:
+          contains: 'Download folder: downloads-parity'
+          stable_for: 150ms
+      - send: j
+      - send:
+          key: enter
+      - expect_screen:
+          contains: Browser
+          stable_for: 150ms
+      - send: browser-parity
+      - send:
+          key: enter
+      - expect_screen:
+          contains: 'Browser: browser-parity'
+          stable_for: 150ms
+      - send:
+          key: enter
+      - send: discard
+      - send:
+          key: esc
+      - expect_screen:
+          contains: 'Browser: browser-parity'
+          stable_for: 150ms
+          not_contains: discard
+      - send:
+          key: esc
+      - expect_screen:
+          contains: 1 Home
+          stable_for: 150ms
+          not_contains: Settings
+      - send: q
+  - assert:
+      exit_code: 0
+      stderr:
+        empty: true
+  - assert:
+      file:
+        path: cfg/settings.json
+        json:
+        - path: $.download_dir
+          equals: downloads-parity
+        - path: $.browser
+          equals: browser-parity

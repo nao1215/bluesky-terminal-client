@@ -90,7 +90,7 @@ A Misskey reaction is a `like`, with the reaction in `reaction`. Mastodon's `fav
 
 ## Message
 
-A direct message (bsky and msky `chat`):
+A direct message (bsky, msky and mstdn `chat`):
 
 | Key | What it is |
 |---|---|
@@ -138,15 +138,23 @@ A write prints one object:
 
 More keys: bsky `cid`, and for `app-passwords add` the `password`; msky `reaction`, `requested` (a follow the account has to accept), and a report's `comment`; mstdn `uri`; nstr `uri` and `acceptedRelays` (the number of relays acknowledging the publication).
 
-`post --dry-run --json` prints what would be sent and sends nothing: `{"dryRun": true, "host", "username", "post": {"text", "cw", "visibility", "replyId", "files"}, ...}`; msky and bsky add the quote's `quoteId`, msky the link preview the server would make, and bsky the `card` its first link would get.
+`post --dry-run --json` prints what would be sent and sends nothing: `{"dryRun": true, "host", "username", "post": {"text", "cw", "visibility", "replyId", "files"}, ...}`; msky, bsky and mstdn add the quote's `quoteId`, msky the link preview the server would make, and bsky the `card` its first link would get.
 
 ## Errors
 
-A command that fails prints `{"error", "hint", "status"}` to stdout as well as the error to stderr, and exits with `status`: 1 a usage error, 2 no terminal to draw in, 3 a local file, 4 the network or the server.
+A command that fails prints `{"error", "hint", "status"}` to stdout as well as the error to stderr, and exits with `status`: 1 a usage error, 2 no terminal to draw in, 3 a local file, 4 the network or the server, 5 an unsupported server feature.
 
 ## Before this shape
 
 bsky 0.15.0 and earlier printed the server's own objects. `bsky --raw` still prints them for what it reads, in place of the shape above (a write prints the object above with `--raw` too), and `thread --raw` the thread as one object. msky 0.1.1 and earlier printed this shape with Misskey's names: `reactionCount` is `likeCount` now, `renoteCount` `repostCount`, `renoteId` and `renote` are `quoteId` for a quote and `repostOf` for a renote; a file's `type` is its `mime`; a notification's `note` is `post`, with `postId`; `notesCount` is `postsCount`. A write printed `{"uri", "id"}`, `{"deleted"}` and the like, and prints the object above now. `download` printed `{"note", "kind", "url", "path"}`, and a dry run's `note` is `post`. A chat message's sender was `from`; it is `user`.
+
+## Mastodon lists and direct conversations
+
+`mstdn likes`, `reposts`, `followers`, `follows`, `mutes`, `blocks` and `search --accounts` print the common user objects. `favourites`, `bookmarks` and `list ID` print common post objects. `lists` prints `{"id", "name"}` for each Mastodon list. `bookmark` and `unbookmark` use the common write object with the post ID in `target`.
+
+`mstdn chat` without an actor prints `id`, `members` (users), `lastMessage` (a message or null), `unread` (the server's boolean), `unreadCount: null` and `muted: null`: Mastodon conversations do not supply a message count or muted flag. `chat ACTOR` and `chat ACTOR TEXT` print common messages; `text` is converted from the direct status HTML. History is limited to available one-to-one conversation contexts, ordered oldest first within the most recent requested messages.
+
+Mastodon `follow` adds `requested` for pending approval. `report` adds the submitted `comment`. Idempotent Mastodon action endpoints do not expose whether they changed state, so their write object uses `already: false`, `id: null` and `url: null`; this means an action was accepted, not that its previous state was known. `quoteId` is the embedded quoted status ID when supplied by the server, including inside `repostOf`; unavailable or withheld quotes remain null.
 
 ## Nostr additions
 

@@ -274,7 +274,13 @@ fn only_writes_change_the_server() {
         }
         .changes_server()
     );
-    assert!(!Job::OpenLink { url: String::new() }.changes_server());
+    assert!(
+        !Job::OpenLink {
+            url: String::new(),
+            program: None
+        }
+        .changes_server()
+    );
 }
 
 // A job whose work panics is answered with its own failure.

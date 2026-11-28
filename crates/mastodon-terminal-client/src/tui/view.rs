@@ -8,6 +8,7 @@
 
 use ratatui::Frame;
 use terminal_kit::media::images::Images;
+mod accounts;
 mod browse;
 mod chat;
 mod deck;
@@ -116,7 +117,23 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
         _ => Vec::new(),
     };
     let column_choices = app.column_choices();
+    let settings_rows = app.settings_rows();
     match &mut app.overlay {
+        Some(Overlay::Login {
+            input,
+            url,
+            waiting,
+        }) => accounts::login(frame, body, input, url.as_deref(), *waiting, &th),
+        Some(Overlay::Logout { host }) => {
+            let inner = popup(frame, body, 64, 6, t("Log out"), &th);
+            frame.render_widget(
+                wrapped(
+                    &tf("Remove the saved login for {}? y confirms", &[host]),
+                    inner.width,
+                ),
+                inner,
+            );
+        }
         Some(Overlay::AddColumn { selected, query }) => {
             deck::picker(frame, area, *selected, query, &column_choices, &th)
         }
@@ -163,11 +180,28 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
             index,
             generation,
         }) => browse::draw_viewer(frame, body, files, *index, *generation, images, &th),
+        Some(Overlay::SettingText { row, input }) => {
+            let inner = popup(
+                frame,
+                body,
+                72,
+                7,
+                t(if *row == 2 {
+                    n!("Download folder")
+                } else {
+                    n!("Browser")
+                }),
+                &th,
+            );
+            let layout = input.layout(usize::from(inner.width.max(1)));
+            frame.render_widget(Paragraph::new(layout.lines.join("\n")), inner);
+            frame.set_cursor_position((
+                inner.x + (layout.cursor.1 as u16).min(inner.width.saturating_sub(1)),
+                inner.y,
+            ));
+        }
         Some(Overlay::Settings { selected }) => {
-            let rows = vec![
-                format!("{}: {}", t("Theme"), THEMES[app.theme_index].name),
-                format!("{}: {}", t("Language"), crate::i18n::current().code()),
-            ];
+            let rows = settings_rows;
             draw_choices(frame, body, t("Settings"), &rows, *selected, &th);
         }
         Some(Overlay::Languages { selected }) => draw_choices(
@@ -196,7 +230,7 @@ pub(crate) fn draw_with_images(frame: &mut Frame, app: &mut App, images: &mut Im
                 })
                 .collect();
             let rows = if rows.is_empty() {
-                vec![t("No saved accounts. Run mstdn login.").into()]
+                vec![t("No saved accounts. Press a to log in.").into()]
             } else {
                 rows
             };
@@ -706,6 +740,22 @@ fn status_lines_nested(
                     truncate(&format!("  ALT {alt}"), width),
                     th.dim(),
                 ));
+            }
+        }
+    }
+    if shown && let Some(card) = &s.card {
+        for line in [
+            card.title.as_str(),
+            card.description.as_str(),
+            card.url.as_str(),
+        ] {
+            if !line.is_empty() {
+                lines.extend(
+                    wrap(&crate::text::drawable(line), width.saturating_sub(2).max(1))
+                        .into_iter()
+                        .take(3)
+                        .map(|line| Line::styled(format!("│ {line}"), th.dim())),
+                );
             }
         }
     }

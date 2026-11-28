@@ -60,6 +60,7 @@ pub(crate) struct PostArgs {
     pub alts: Vec<String>,
     pub video: Option<PathBuf>,
     pub reply: Option<String>,
+    pub quote: Option<String>,
     pub cw: Option<String>,
     pub sensitive: bool,
     pub visibility: Visibility,
@@ -220,6 +221,9 @@ fn draft(a: &PostArgs, stdin: &mut dyn Read) -> Result<Draft> {
         );
     }
     let reply = a.reply.as_deref().map(parse_status).transpose()?;
+    if let Some(q) = &a.quote {
+        parse_status(q)?;
+    }
     let mut files = Vec::new();
     for (i, (path, video)) in paths.into_iter().enumerate() {
         let data = std::fs::read(&path)
@@ -349,7 +353,7 @@ pub(super) fn post(
     }
     let client = ctx.writer(&scopes, "post")?;
     // The limits are the server's own, from its instance's configuration.
-    let limits = client.limits();
+    let limits = client.posting_limits(a.quote.is_some())?;
     too_much(&d, &limits, client.host())?;
     // The account is asked for only to say who would post.
     let me = if a.dry_run { me(ctx, &client)? } else { None };
@@ -357,6 +361,14 @@ pub(super) fn post(
         (Some((at, id)), Some(typed)) => Some(replied(ctx, &client, typed, at.as_deref(), id)?),
         _ => None,
     };
+    let quote = a
+        .quote
+        .as_deref()
+        .map(|typed| {
+            let (at, id) = parse_status(typed)?;
+            replied(ctx, &client, typed, at.as_deref(), &id)
+        })
+        .transpose()?;
     if a.dry_run {
         return dry_run(
             ctx,
@@ -366,6 +378,7 @@ pub(super) fn post(
             &d,
             me.as_ref(),
             reply.as_ref(),
+            quote.as_ref(),
             &limits,
         );
     }
@@ -375,7 +388,9 @@ pub(super) fn post(
         &d,
         reply.as_ref().map(|r| r.id.as_str()),
         clock,
-        &json!({}),
+        &quote
+            .as_ref()
+            .map_or_else(|| json!({}), |q| json!({"quoted_status_id": q.id})),
         |e| ctx.explained(e),
     )?;
     let url = format::status_url(client.origin(), &made);
@@ -391,7 +406,9 @@ pub(super) fn post(
 /// The same validation, uploads, processing wait and post used by the composer.
 pub(crate) fn composed(client: &Client, a: &PostArgs, extra: &serde_json::Value) -> Result<Status> {
     let d = draft(a, &mut a.text.as_bytes())?;
-    too_much(&d, &client.limits(), client.host())?;
+    let quote =
+        extra.get("quoted_status_id").is_some() || extra.get("quote_approval_policy").is_some();
+    too_much(&d, &client.posting_limits(quote)?, client.host())?;
     submit(
         client,
         a,
@@ -493,6 +510,7 @@ fn dry_run(
     d: &Draft,
     me: Option<&Account>,
     reply: Option<&Status>,
+    quote: Option<&Status>,
     limits: &Limits,
 ) -> Result<()> {
     let n =
@@ -522,6 +540,7 @@ fn dry_run(
                     "sensitive": a.sensitive || d.cw.is_some(),
                     "visibility": a.visibility.name(),
                     "replyId": reply.map(|r| &r.id),
+                    "quoteId": quote.map(|q| &q.id),
                     "files": files,
                 },
                 "characters": n,
@@ -545,6 +564,12 @@ fn dry_run(
         s.push_str(&format!(
             "reply to: {}\n",
             format::status_url(client.origin(), r)
+        ));
+    }
+    if let Some(q) = quote {
+        s.push_str(&format!(
+            "quote: {}\n",
+            format::status_url(client.origin(), q)
         ));
     }
     for f in &d.files {

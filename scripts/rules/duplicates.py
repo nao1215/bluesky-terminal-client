@@ -57,6 +57,8 @@ The adjacent msky/mstdn --help exit-status paragraphs now have a matching
 fingerprint: they intentionally document the shared exit contract in each
 client's own help, not a second implementation of it. This incidental prose
 match is retained; the removed error implementation fingerprints are dropped.
+Adding mstdn's missing exit-5 help text refreshes only that existing fingerprint;
+the adjacent command startup code has not changed.
 
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """
