@@ -412,7 +412,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '5'
+      - send: '/'
       - expect_screen:
           timeout: 10s
           contains: Search
@@ -612,7 +612,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '6'
+      - send: '5'
       - expect_screen:
           timeout: 10s
           contains: compat_
@@ -2248,7 +2248,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '6'
+      - send: '5'
       - expect_screen:
           timeout: 10s
           contains: compat_
@@ -3882,7 +3882,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '5'
+      - send: '/'
       - expect_screen:
           timeout: 10s
           contains: Search
@@ -3930,7 +3930,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '5'
+      - send: '/'
       - expect_screen:
           timeout: 10s
           contains: Search
@@ -4036,7 +4036,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '6'
+      - send: '5'
       - expect_screen:
           timeout: 10s
           contains: compat-picture-
@@ -4067,7 +4067,7 @@ scenarios:
           timeout: 10s
           contains: 1 Home
           stable_for: 200ms
-      - send: '6'
+      - send: '5'
       - expect_screen:
           timeout: 10s
           contains: compat-reply

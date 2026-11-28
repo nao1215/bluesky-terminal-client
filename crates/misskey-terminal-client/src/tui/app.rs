@@ -37,12 +37,11 @@ pub(crate) use settings::{Environment, SettingRow};
 pub(crate) use write::Compose;
 
 /// The tabs. Each timeline is a tab of its own, and the tabs are always
-/// the same ones in the same order, as bsky's are 1 to 5.
+/// the same ones in the same order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tab {
     Timeline(TimelineKind),
     Notifications,
-    Search,
     Profile,
     Chat,
     /// The Home tab with columns beside the home timeline, added with `+`.
@@ -51,12 +50,11 @@ pub(crate) enum Tab {
 
 /// The tabs, in the order of their numbers. Social, home and local mixed,
 /// is not one of them; `msky timeline social` reads it.
-pub(crate) const TABS: [Tab; 7] = [
+pub(crate) const TABS: [Tab; 6] = [
     Tab::Timeline(TimelineKind::Home),
     Tab::Timeline(TimelineKind::Local),
     Tab::Timeline(TimelineKind::Global),
     Tab::Notifications,
-    Tab::Search,
     Tab::Profile,
     Tab::Chat,
 ];
@@ -69,7 +67,6 @@ impl Tab {
             Tab::Timeline(TimelineKind::Social) => n!("Social"),
             Tab::Timeline(TimelineKind::Global) => n!("Global"),
             Tab::Notifications => n!("Notifications"),
-            Tab::Search => n!("Search"),
             Tab::Profile => n!("Profile"),
             Tab::Chat => n!("Chat"),
             Tab::Columns => n!("Home"),
@@ -438,6 +435,8 @@ pub(crate) struct App {
     /// The server, `https://misskey.io`.
     pub origin: String,
     pub tab: Tab,
+    /// The timeline to return to after searching from any list.
+    pub last_timeline: Tab,
     /// Every timeline, by [`TimelineKind::index`]: switching back to one
     /// finds it where it was left.
     pub timelines: [List<Note>; 4],
@@ -552,6 +551,7 @@ impl App {
             session,
             origin: origin.to_string(),
             tab: TABS[0],
+            last_timeline: TABS[0],
             timelines: Default::default(),
             notifications: List::default(),
             search: Search::default(),
@@ -620,6 +620,7 @@ impl App {
         self.renoted.clear();
         self.fresh.clear();
         self.search = Search::default();
+        self.last_timeline = Tab::Timeline(TimelineKind::Home);
         self.profile = Profile::default();
         self.chat = ChatPane::default();
         // Another server or account may have chat: it is asked again.
@@ -1017,7 +1018,7 @@ impl App {
         if self.overlay.is_some() {
             return self.overlay_key(key);
         }
-        if self.tab == Tab::Search && self.search.editing && self.threads.is_empty() {
+        if self.search.editing {
             return self.search_key(key);
         }
         if self.tab == Tab::Chat
@@ -1351,18 +1352,7 @@ impl App {
                     return self.switch_tab(tab);
                 }
             }
-            KeyCode::Char('/') => {
-                let jobs = self.switch_tab(Tab::Search);
-                self.search.editing = true;
-                return jobs;
-            }
-            KeyCode::Char('i') if self.tab == Tab::Search && !in_thread => {
-                self.search.editing = true;
-            }
-            KeyCode::Char('t') if self.tab == Tab::Search && !in_thread => {
-                self.toggle_search_mode();
-                return self.run_search();
-            }
+            KeyCode::Char('/') if !in_thread => self.open_search(),
             KeyCode::Char('m') if self.tab == Tab::Profile && !in_thread => {
                 return self.message_shown();
             }
@@ -1370,6 +1360,11 @@ impl App {
             KeyCode::Char('M') => return self.toggle_mute(),
             KeyCode::Char('B') => return self.toggle_block(),
             KeyCode::Enter => return self.open_selected_profile(),
+            KeyCode::Esc
+                if !in_thread && (self.search_shown() || self.search.pending.is_some()) =>
+            {
+                self.close_search();
+            }
             KeyCode::Esc if !in_thread && self.tab == Tab::Profile => return self.profile_back(),
             KeyCode::Tab => return self.switch_tab(self.next_tab(1)),
             KeyCode::BackTab => return self.switch_tab(self.next_tab(-1)),
@@ -1387,6 +1382,9 @@ impl App {
                     self.overlay = Some(Overlay::Actions { selected: 0 });
                 }
             }
+            KeyCode::Char('v') if !in_thread && self.search_accounts() => {
+                return self.open_selected_profile();
+            }
             KeyCode::Char('v') => return self.open_thread(),
             KeyCode::Char(' ') => return self.open_viewer(),
             KeyCode::Char('o') => return self.open_in_browser(),
@@ -1400,12 +1398,11 @@ impl App {
     }
 
     fn switch_tab(&mut self, tab: Tab) -> Jobs {
+        self.close_search();
         self.tab = tab;
         // Choosing a tab is a new place to be, not a detour to return from.
         self.threads.clear();
         self.profile.came_from = None;
-        // Arriving at an empty Search tab means wanting to type, as in bsky.
-        self.search.editing = tab == Tab::Search && self.search.input.is_empty();
         if tab == Tab::Chat {
             return self.show_chat();
         }
@@ -1416,6 +1413,7 @@ impl App {
             return self.settle_timeline();
         }
         if let Tab::Timeline(kind) = tab {
+            self.last_timeline = tab;
             let list = &self.timelines[kind.index()];
             if !list.loaded && !list.loading {
                 return self.load_timeline(kind);
@@ -1524,6 +1522,9 @@ impl App {
             th.list.step(delta);
             return Vec::new();
         }
+        if self.search_shown() {
+            return self.step_browse(delta);
+        }
         match self.tab {
             Tab::Timeline(kind) => {
                 let list = &mut self.timelines[kind.index()];
@@ -1543,7 +1544,7 @@ impl App {
                     None => Vec::new(),
                 }
             }
-            Tab::Search | Tab::Profile => self.step_browse(delta),
+            Tab::Profile => self.step_browse(delta),
             // The tab's own keys move through it.
             Tab::Chat => Vec::new(),
             Tab::Columns => self.step_column(delta),
@@ -1561,10 +1562,13 @@ impl App {
             }
             return vec![(seq, job)];
         }
+        if self.search_shown() {
+            return self.refresh_browse();
+        }
         match self.tab {
             Tab::Timeline(kind) => self.load_timeline(kind),
             Tab::Notifications => self.load_notifications(),
-            Tab::Search | Tab::Profile => self.refresh_browse(),
+            Tab::Profile => self.refresh_browse(),
             Tab::Chat => Vec::new(),
             Tab::Columns => self.refresh_column(),
         }
@@ -1575,13 +1579,15 @@ impl App {
         if let Some(th) = self.threads.last() {
             return th.list.current().map(|r| &r.note);
         }
+        if self.search_shown() {
+            return match self.search.result_mode {
+                SearchMode::Notes => self.search.notes.current(),
+                SearchMode::Accounts => None,
+            };
+        }
         match self.tab {
             Tab::Timeline(kind) => self.timelines[kind.index()].current(),
             Tab::Notifications => self.notifications.current().and_then(|n| n.note.as_ref()),
-            Tab::Search => match self.search.mode {
-                SearchMode::Notes => self.search.notes.current(),
-                SearchMode::Accounts => None,
-            },
             Tab::Profile => self.profile.notes.current(),
             Tab::Chat => None,
             Tab::Columns => self.column_note(),
@@ -1594,6 +1600,7 @@ impl App {
     }
 
     fn open_thread(&mut self) -> Jobs {
+        self.search.pending = None;
         let Some(id) = self.shown_note().map(|n| n.id.clone()) else {
             return Vec::new();
         };

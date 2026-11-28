@@ -31,7 +31,7 @@ mod settings;
 #[cfg(test)]
 mod tests;
 
-use browse::{draw_profile, draw_search};
+use browse::{draw_profile, draw_search_box, draw_search_results};
 use compose::{draw_compose, draw_reactions};
 
 /// Width of the selection marker column.
@@ -97,6 +97,8 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     };
     if let Some(th) = app.threads.last_mut() {
         draw_thread(frame, body, th, images, &ctx);
+    } else if app.search_shown() {
+        draw_search_results(frame, body, &mut app.search, images, &ctx);
     } else {
         match app.tab {
             Tab::Timeline(kind) => {
@@ -112,7 +114,6 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
             Tab::Notifications => {
                 draw_notifications(frame, body, &mut app.notifications, images, &ctx);
             }
-            Tab::Search => draw_search(frame, body, &mut app.search, images, &ctx),
             Tab::Profile => draw_profile(frame, body, &mut app.profile, images, &ctx),
             Tab::Columns => draw_columns(frame, body, &mut app.columns, images, &ctx),
             Tab::Chat => {
@@ -123,6 +124,9 @@ pub(crate) fn draw(frame: &mut Frame, app: &mut App, images: &mut Images) {
     }
     frame.render_widget(Paragraph::new(hint_lines), hint_row);
     draw_status(frame, status_row, app, images);
+    if app.search.editing {
+        draw_search_box(frame, body, &app.search, &t);
+    }
     match &app.overlay {
         Some(Overlay::Help { scroll }) => {
             let mut scroll = *scroll;
@@ -317,7 +321,15 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     let mut spans = Vec::new();
     let shown = app.shown_tab();
     for (i, &tab) in app.tabs().iter().enumerate() {
-        let title = i18n::t(tab.title());
+        let title = if app.search.tab == Some(tab) {
+            let query = match app.search.result_mode {
+                crate::tui::app::SearchMode::Notes => &app.search.notes_query,
+                crate::tui::app::SearchMode::Accounts => &app.search.users_query,
+            };
+            i18n::tf("Search: {}", &[query])
+        } else {
+            i18n::t(tab.title()).to_string()
+        };
         let label = match (tab, app.unread_label()) {
             (Tab::Notifications, Some(count)) => format!(" {} {title} {count} ", i + 1),
             (Tab::Chat, _) if app.chat.unread(app.my_user_id()) > 0 => format!(

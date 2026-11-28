@@ -1,6 +1,19 @@
 //! Translations into Japanese, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    ("Search (Posts)", "検索 (投稿)"),
+    ("Search (Accounts)", "検索 (アカウント)"),
+    ("No results for \"{}\"", "「{}」の検索結果はありません"),
+    (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter 検索 · Ctrl+T 投稿/アカウント · Esc キャンセル",
+    ),
+    ("posts/accounts", "投稿/アカウント"),
+    ("open the search box", "検索ボックスを開く"),
+    (
+        "cancel the box or return to the timeline",
+        "検索ボックスを閉じるかタイムラインへ戻る",
+    ),
     ("Accounts", "アカウント"),
     ("Add a column", "カラムを追加"),
     (
@@ -81,7 +94,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Theme", "テーマ"),
     ("Thread", "スレッド"),
     ("Viewer", "ビューア"),
-    ("accounts", "アカウント"),
     ("accounts: switch, log out", "アカウント: 切替、ログアウト"),
     ("actions", "操作"),
     ("add", "追加"),
@@ -148,7 +160,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "自分のノートを削除 (y で確定)",
     ),
     ("do it", "実行"),
-    ("done", "完了"),
     ("download", "保存"),
     ("download folder: {}", "保存先フォルダ: {}"),
     ("edit profile", "プロフィール編集"),
@@ -191,7 +202,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "決定"),
     ("language: {}", "言語: {}"),
-    ("leave the search box", "検索欄を離れる"),
     ("list", "リスト"),
     (
         "list what the keys do to the note",
@@ -247,7 +257,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("note", "ノート"),
     ("notes", "ノート"),
-    ("notes / accounts", "ノート / アカウント"),
     ("nothing changed", "変更はありません"),
     ("open", "開く"),
     ("open / choose", "開く / 選ぶ"),
@@ -344,7 +353,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("scroll", "スクロール"),
     ("search", "検索"),
     ("search emoji", "絵文字を検索"),
-    ("search notes or accounts", "ノートかアカウントを検索"),
     (
         "search, then move through the results",
         "検索して結果を移動",
@@ -375,10 +383,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("the default; enter changes it", "既定値。enter で変更"),
     ("the folder above", "一つ上のフォルダ"),
     ("the reasons", "理由の一覧"),
-    (
-        "the search box has focus when you arrive",
-        "タブに来ると検索欄に入力できる",
-    ),
     ("the system's", "システムの既定"),
     ("the tabs, in the order shown", "タブ (表示順)"),
     (
@@ -396,7 +400,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("this help", "このヘルプ"),
     ("type another server's host", "他のサーバーのホスト名を入力"),
-    ("type in the search box again", "もう一度検索欄に入力"),
     (
         "unknown theme {}; using {}",
         "テーマ {} はありません。{} を使います",
@@ -495,8 +498,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Quote {}", "{} を引用"),
     ("React", "リアクション"),
     ("Reply to {}", "{} に返信"),
-    ("Search accounts:", "アカウントを検索:"),
-    ("Search notes:", "ノートを検索:"),
     ("Terminal too small", "端末が小さすぎます"),
     (
         "The server to log in on (MiAuth: msky never sees the password)",

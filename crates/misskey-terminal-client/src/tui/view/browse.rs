@@ -1,5 +1,4 @@
-//! The Search tab and the Profile tab, drawn as bsky's: the search box over
-//! its results, and an account's header over its notes.
+//! Search results, the search overlay, and profile headers and notes.
 
 use super::*;
 use crate::tui::app::{Profile, Search, SearchMode};
@@ -120,54 +119,70 @@ fn draw_accounts(
     }
 }
 
-pub(super) fn draw_search(
+pub(super) fn draw_search_results(
     frame: &mut Frame,
     area: Rect,
     s: &mut Search,
     images: &mut Images,
     ctx: &Ctx,
 ) {
-    let t = &ctx.t;
-    let [bar, list] = Layout::vertical([Constraint::Length(2), Constraint::Min(1)]).areas(area);
-    let label = match s.mode {
-        SearchMode::Notes => n!("Search notes:"),
-        SearchMode::Accounts => n!("Search accounts:"),
+    let (empty, query) = match s.result_mode {
+        SearchMode::Notes => (s.notes.items.is_empty(), &s.notes_query),
+        SearchMode::Accounts => (s.users.items.is_empty(), &s.users_query),
     };
-    let style = if s.editing {
-        t.accent().bold()
-    } else {
-        t.dim()
+    if empty {
+        frame.render_widget(
+            Paragraph::new(i18n::tf("No results for \"{}\"", &[query])).style(ctx.t.dim()),
+            area,
+        );
+        return;
+    }
+    match s.result_mode {
+        SearchMode::Notes => draw_notes(
+            frame,
+            area,
+            &mut s.notes,
+            images,
+            n!("No notes found."),
+            ctx,
+        ),
+        SearchMode::Accounts => draw_accounts(frame, area, &mut s.users, images, ctx),
+    }
+}
+
+/// A bordered input near the top, over the list it will replace.
+pub(super) fn draw_search_box(frame: &mut Frame, area: Rect, s: &Search, t: &Theme) {
+    let width = 72.min(area.width.saturating_sub(2));
+    let rect = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + 1,
+        width,
+        height: 4.min(area.height.saturating_sub(1)),
     };
-    let label = format!(" {} ", i18n::t(label));
-    frame.render_widget(Paragraph::new(label.as_str()).style(style), bar);
-    let w = cells(&label) as u16;
-    let field = Rect {
-        x: bar.x + w.min(bar.width),
-        width: bar.width.saturating_sub(w + 1),
-        height: 1,
-        ..bar
+    let title = match s.mode {
+        SearchMode::Notes => i18n::t("Search (Posts)"),
+        SearchMode::Accounts => i18n::t("Search (Accounts)"),
     };
-    compose::draw_single_input(frame, field, &s.input, s.editing);
-    match s.mode {
-        SearchMode::Notes => {
-            if !s.notes.loaded && !s.notes.loading {
-                frame.render_widget(
-                    Paragraph::new(format!(" {}", i18n::t("type a query and press enter")))
-                        .style(t.dim()),
-                    list,
-                );
-                return;
-            }
-            draw_notes(
-                frame,
-                list,
-                &mut s.notes,
-                images,
-                n!("No notes found."),
-                ctx,
-            );
-        }
-        SearchMode::Accounts => draw_accounts(frame, list, &mut s.users, images, ctx),
+    let block = Block::bordered()
+        .title(title)
+        .style(t.base())
+        .border_style(t.accent());
+    let inner = block.inner(rect);
+    frame.render_widget(Clear, rect);
+    frame.render_widget(block, rect);
+    if inner.height > 0 {
+        compose::draw_single_input(frame, Rect { height: 1, ..inner }, &s.input, true);
+    }
+    if inner.height > 1 {
+        frame.render_widget(
+            Paragraph::new(i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel"))
+                .style(t.dim()),
+            Rect {
+                y: inner.y + 1,
+                height: 1,
+                ..inner
+            },
+        );
     }
 }
 

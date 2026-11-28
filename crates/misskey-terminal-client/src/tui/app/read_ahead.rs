@@ -62,7 +62,11 @@ impl App {
     /// pending: the screen does not wait for it. Only on a list: the rows
     /// of a thread open are mostly that thread again.
     pub(crate) fn poll_read_ahead(&mut self, now: Instant) -> Jobs {
-        let shown = if self.overlay.is_none() && self.threads.is_empty() && self.session.is_some() {
+        let shown = if self.overlay.is_none()
+            && !self.search.editing
+            && self.threads.is_empty()
+            && self.session.is_some()
+        {
             self.shown_note().map(|n| n.id.clone())
         } else {
             None
