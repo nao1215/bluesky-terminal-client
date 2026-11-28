@@ -65,7 +65,7 @@ fn typing_in_the_search_box_does_not_trigger_commands() {
 #[test]
 fn following_yourself_is_refused() {
     let mut app = logged_in();
-    let jobs = app.handle_key(key('5'));
+    let jobs = app.handle_key(key('4'));
     assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
     let me: Profile =
         serde_json::from_value(json!({"did": "did:plc:me", "handle": "me.test"})).unwrap();
@@ -77,7 +77,7 @@ fn following_yourself_is_refused() {
 #[test]
 fn profile_editor_loads_then_saves_the_fields() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     let jobs = app.handle_key(key('e'));
     assert!(matches!(jobs[..], [Job::LoadProfileEditor]));
     app.handle_event(Event::ProfileEditor(Ok(
@@ -122,7 +122,7 @@ fn editing_someone_elses_profile_is_refused() {
 #[test]
 fn esc_goes_back_to_the_search_the_profile_was_opened_from() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('/'));
     app.handle_key(ctrl('t'));
     type_str(&mut app, "carol");
     app.handle_key(code(KeyCode::Enter));
@@ -145,18 +145,21 @@ fn esc_goes_back_to_the_search_the_profile_was_opened_from() {
     assert_eq!(app.tab, Tab::Profile);
     // R reloads the profile and still remembers where it came from.
     app.handle_key(key('R'));
-    assert_eq!(app.profile.came_from, Some(Tab::Search));
+    assert_eq!(app.profile.came_from, Some(Tab::Timeline));
     let jobs = app.handle_key(code(KeyCode::Esc));
     assert!(jobs.is_empty(), "going back fetches nothing: {jobs:?}");
-    assert_eq!(app.tab, Tab::Search);
+    assert_eq!(app.tab, Tab::Timeline);
     assert_eq!(app.search.input.text(), "carol");
     assert_eq!(
         app.search.actors.selected, 1,
         "the selection is where it was"
     );
-    assert!(!app.search.editing, "back to the results, not to typing");
+    assert!(
+        !matches!(app.overlay, Some(Overlay::Search)),
+        "back to the results, not to typing"
+    );
     // The Profile tab shows the user's own profile next time.
-    let jobs = app.handle_key(key('5'));
+    let jobs = app.handle_key(key('4'));
     assert!(matches!(&jobs[..], [Job::OpenProfile(a)] if a == "did:plc:me"));
 }
 
@@ -175,7 +178,7 @@ fn choosing_a_tab_forgets_the_way_back() {
     let mut app = logged_in();
     app.handle_key(code(KeyCode::Enter)); // alice, from the timeline
     app.handle_key(key('1'));
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     assert_eq!(app.profile.came_from, None);
     // Esc on someone else's profile with nowhere to go back to: your own.
     let jobs = app.handle_key(code(KeyCode::Esc));
@@ -228,7 +231,7 @@ fn a_second_follow_press_waits_for_the_first_answer() {
 #[test]
 fn a_late_editor_answer_does_not_overwrite_typing() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.handle_key(key('e'));
     let fields = || crate::tui::worker::ProfileFields {
         display_name: "Server".into(),
@@ -266,7 +269,7 @@ fn an_expired_refresh_token_brings_back_the_login_form() {
 #[test]
 fn a_picker_opened_with_t_closes_to_the_list_after_one_from_the_settings() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.handle_key(key('s'));
     app.handle_key(code(KeyCode::Enter));
     assert!(matches!(app.overlay, Some(Overlay::Themes { .. })));
@@ -285,7 +288,7 @@ fn a_picker_opened_with_t_closes_to_the_list_after_one_from_the_settings() {
 }
 
 #[test]
-fn a_failed_search_settles_even_after_leaving_the_tab() {
+fn a_search_left_before_its_failure_does_not_change_the_timeline() {
     let mut app = logged_in();
     app.handle_key(key('/'));
     type_str(&mut app, "x");
@@ -296,7 +299,9 @@ fn a_failed_search_settles_even_after_leaving_the_tab() {
         query: "x".into(),
         result: Err(Error::api("boom")),
     });
-    assert!(app.search.posts.loaded);
+    assert!(app.search.requested.is_none());
+    assert!(app.search.active.is_none());
+    assert!(app.status.is_none());
 }
 
 #[test]
@@ -317,80 +322,10 @@ fn a_failed_profile_says_why_and_a_stale_one_is_dropped() {
     assert!(app.profile.error.is_none());
 }
 
-#[rstest::rstest]
-#[case::digit(KeyEvent::from(KeyCode::Char('3')))]
-#[case::tab(KeyEvent::from(KeyCode::Tab))]
-#[case::slash(KeyEvent::from(KeyCode::Char('/')))]
-fn arriving_at_an_empty_search_tab_types_into_the_box(#[case] arrive: KeyEvent) {
-    let mut app = logged_in();
-    app.handle_key(arrive);
-    // Tab goes by the Chat tab first, which is next to the Timeline.
-    if arrive.code == KeyCode::Tab {
-        app.handle_key(arrive);
-    }
-    assert_eq!(app.tab, Tab::Search);
-    // q, l and f would quit, like and follow on a result list.
-    type_str(&mut app, "q l f");
-    assert!(!app.quit);
-    assert_eq!(app.search.input.text(), "q l f");
-    let jobs = app.handle_key(code(KeyCode::Enter));
-    assert!(matches!(&jobs[..], [Job::SearchPosts(q)] if q == "q l f"));
-    // After Enter the results have the keys: j moves, it is not typed.
-    app.handle_event(Event::SearchPosts {
-        query: "q l f".into(),
-        result: Ok(vec![
-            post("at://s/1", "did:plc:x", false),
-            post("at://s/2", "did:plc:y", false),
-        ]
-        .into()),
-    });
-    app.handle_key(key('j'));
-    assert_eq!(app.search.posts.selected, 1);
-    assert_eq!(app.search.input.text(), "q l f");
-}
-
-#[test]
-fn backtab_arrives_at_search_focused_too() {
-    let mut app = logged_in();
-    // From the Timeline back round Profile and Notifications, to Search.
-    for _ in 0..3 {
-        app.handle_key(code(KeyCode::BackTab));
-    }
-    assert_eq!(app.tab, Tab::Search);
-    assert!(app.search.editing);
-}
-
-#[test]
-fn coming_back_to_a_search_with_results_leaves_the_keys_to_the_results() {
-    let mut app = logged_in();
-    app.handle_key(key('3'));
-    type_str(&mut app, "rust");
-    app.handle_key(code(KeyCode::Enter));
-    app.handle_key(key('1'));
-    app.handle_key(key('3'));
-    assert!(!app.search.editing, "j/k must move through the results");
-    // i (or /) goes back to typing.
-    app.handle_key(key('i'));
-    assert!(app.search.editing);
-    type_str(&mut app, "!");
-    assert_eq!(app.search.input.text(), "rust!");
-}
-
-#[test]
-fn tab_leaves_the_search_box_for_the_next_tab() {
-    let mut app = logged_in();
-    app.handle_key(key('3'));
-    type_str(&mut app, "abc");
-    app.handle_key(code(KeyCode::Tab));
-    assert_eq!(app.tab, Tab::Notifications);
-    assert!(!app.search.editing);
-    assert_eq!(app.search.input.text(), "abc");
-}
-
 #[test]
 fn paste_reaches_the_focused_search_box() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('/'));
     app.handle_paste("pasted words");
     assert_eq!(app.search.input.text(), "pasted words");
 }
@@ -525,7 +460,7 @@ fn the_error_of_a_profile_left_is_not_shown_on_the_next() {
 #[test]
 fn a_failed_search_does_not_page_the_results_of_the_one_before() {
     let mut app = logged_in();
-    app.handle_key(key('3'));
+    app.handle_key(key('/'));
     type_str(&mut app, "cats");
     app.handle_key(code(KeyCode::Enter));
     let posts: Vec<Post> = (0..3)

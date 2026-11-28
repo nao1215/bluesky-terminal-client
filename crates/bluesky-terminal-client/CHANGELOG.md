@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- `/` opens a search box over the current list, and results replace the timeline. Esc cancels the box or returns to the timeline with its selection, scroll position and inline video playback restored. The Search tab is gone; the remaining tabs use `1` to `4`. Ctrl+T in the box switches between posts and accounts.
+
 - `--json` prints the shape msky and mstdn print (`doc/json.md` in the repository lists every key) in place of the server's own objects. Scripts that read those move to `--raw`, or to these keys:
 
   | 0.15.0 | Now |

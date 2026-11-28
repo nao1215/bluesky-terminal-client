@@ -58,7 +58,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains:
                   - "Old Name"
@@ -116,7 +116,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -196,7 +196,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -254,7 +254,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -318,7 +318,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -377,7 +377,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "1 タイムライン"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "あなたです"
             - send: e
@@ -425,7 +425,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -474,7 +474,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "this is you  [ e Edit profile ]  [ s Settings ]"
             - send: e
@@ -617,7 +617,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: "No posts from accounts you follow yet"
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: ["@me.test", "My first post"]
             # One post, so the first move is already near the end. The next
@@ -670,7 +670,7 @@ scenarios:
             - expect_screen:
                 contains: "Photo from the mountains"
                 images: { count: 1 }
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: ["this is you  [ e Edit profile ]  [ s Settings ]", "s settings"]
             - send: s
@@ -725,7 +725,7 @@ scenarios:
                 images: { count: 0 }
                 stable_for: 300ms
             # Back to auto: the picture is drawn again, without a restart.
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -777,7 +777,7 @@ scenarios:
             - expect_screen:
                 contains: "Photo from the mountains"
                 images: { count: 1 }
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "[ s Settings ]"
             - send: s
@@ -843,7 +843,7 @@ scenarios:
           session:
             - expect_screen:
                 contains: ["1 Timeline", "Photo from the mountains"]
-            - send: "5"
+            - send: "4"
             - expect_screen:
                 contains: "s settings"
             - send: s
@@ -860,7 +860,7 @@ scenarios:
             - send: { key: enter }
             # Back on the settings, now in Japanese.
             - expect_screen:
-                contains: ["設定", "言語", "日本語", "5 プロフィール"]
+                contains: ["設定", "言語", "日本語", "4 プロフィール"]
             - send: { key: esc }
             - expect_screen:
                 contains: "e プロフィール編集"

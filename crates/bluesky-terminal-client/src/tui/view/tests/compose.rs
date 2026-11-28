@@ -173,7 +173,7 @@ fn a_short_profile_editor_keeps_the_description_being_typed() {
     use crossterm::event::{KeyCode, KeyEvent};
     for h in [8, 10, 12] {
         let (mut app, _) = App::new(Some(session()), "x");
-        app.handle_key(KeyEvent::from(KeyCode::Char('5')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('4')));
         app.handle_event(Event::Profile(Ok((own_profile(), posts(1).into()))));
         app.handle_key(KeyEvent::from(KeyCode::Char('e')));
         app.handle_event(Event::ProfileEditor(Ok(

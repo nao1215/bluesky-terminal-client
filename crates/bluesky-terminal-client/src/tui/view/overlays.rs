@@ -632,3 +632,41 @@ pub(super) fn draw_help(
         foot,
     );
 }
+
+/// A single input over the list near its top. The list underneath is unchanged.
+pub(super) fn draw_search_box(
+    frame: &mut Frame,
+    area: Rect,
+    search: &crate::tui::app::Search,
+    t: &Theme,
+) {
+    let width = area.width.saturating_sub(4).min(76);
+    let hint = i18n::t("Enter search · Ctrl+T posts/accounts · Esc cancel");
+    let hint_lines: Vec<Line> = wrap(hint, usize::from(width.saturating_sub(4)).max(1))
+        .into_iter()
+        .map(|line| Line::styled(line, t.dim()))
+        .collect();
+    let height = (hint_lines.len() as u16 + 3).min(area.height);
+    let rect = Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + u16::from(area.height > height),
+        width,
+        height,
+    );
+    let mode = match search.mode {
+        SearchMode::Posts => i18n::t("Posts"),
+        SearchMode::Accounts => i18n::t("Accounts"),
+    };
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(format!(" {} · {mode} ", i18n::t("Search")))
+        .border_style(t.accent())
+        .style(t.base());
+    let inner = block.inner(rect);
+    frame.render_widget(Clear, rect);
+    frame.render_widget(block, rect);
+    let [input, hint_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+    draw_single_input(frame, input, &search.input, true);
+    frame.render_widget(Paragraph::new(hint_lines), hint_area);
+}

@@ -161,7 +161,7 @@ fn the_chat_tab_is_read_again_only_while_it_is_shown() {
 #[test]
 fn m_on_a_profile_opens_the_conversation_with_them() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     // Your own profile has nobody to message.
     assert!(app.handle_key(key('m')).is_empty());
     app.open_profile(Some("did:plc:alice".into()));
@@ -312,7 +312,7 @@ fn reading_the_list_again_keeps_the_pages_loaded_and_the_selection() {
 #[test]
 fn a_late_answer_to_m_does_not_take_the_screen() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
@@ -382,7 +382,7 @@ fn m_for_the_conversation_already_open_keeps_its_draft() {
     app.handle_key(key('i'));
     type_str(&mut app, "draft 🇯🇵");
     app.handle_key(code(KeyCode::Esc));
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
@@ -403,7 +403,7 @@ fn m_for_the_conversation_already_open_keeps_its_draft() {
 #[test]
 fn a_question_takes_the_next_key_on_the_chat_tab_too() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),
@@ -462,7 +462,7 @@ fn a_message_that_comes_while_the_conversation_is_open_is_marked_read() {
 #[test]
 fn m_before_the_chat_tab_was_shown_loads_the_list_too() {
     let mut app = logged_in();
-    app.handle_key(key('5'));
+    app.handle_key(key('4'));
     app.open_profile(Some("did:plc:alice".into()));
     app.handle_event(Event::Profile(Ok((
         serde_json::from_value(json!({"did": "did:plc:alice", "handle": "alice.test"})).unwrap(),

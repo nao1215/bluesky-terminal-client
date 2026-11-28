@@ -13,6 +13,9 @@ impl App {
         if matches!(job, Job::OpenProfile(_)) {
             self.profile_asked = self.sent;
         }
+        if matches!(job, Job::SearchPosts(_) | Job::SearchActors(_)) {
+            self.search.requested_seq = Some(self.sent);
+        }
         if job.reads() {
             self.reads_out.insert(self.sent);
         } else {
@@ -116,6 +119,23 @@ impl App {
     pub(super) fn superseded(&mut self, seq: u64, event: &Event) -> bool {
         if seq < self.account_since {
             return true;
+        }
+        // A failed or abandoned search keeps the old results. It must not
+        // supersede their in-flight next page and leave it waiting forever.
+        match event {
+            Event::SearchPosts { query, result }
+                if result.is_err()
+                    || !self.wants_search_at(SearchMode::Posts, query, Some(seq)) =>
+            {
+                return false;
+            }
+            Event::SearchActors { query, result }
+                if result.is_err()
+                    || !self.wants_search_at(SearchMode::Accounts, query, Some(seq)) =>
+            {
+                return false;
+            }
+            _ => {}
         }
         // A cursor is opaque and can be reused after refreshing. Compare
         // next pages with the accepted first page as well, without letting
@@ -497,6 +517,7 @@ impl App {
         self.timeline = List::default();
         self.feeds.clear();
         self.feeds_asked = false;
+        self.leave_search();
         self.search.posts = List::default();
         self.search.actors = List::default();
         self.profile = ProfilePane::default();
@@ -640,14 +661,31 @@ impl App {
             Event::PinnedFeeds(Err(_)) => self.feeds_asked = false,
             // Searches run beside each other: an answer for a query that
             // has since been replaced is dropped.
-            Event::SearchPosts { query, .. } if query != self.search.posts_query => {}
-            Event::SearchActors { query, .. } if query != self.search.actors_query => {}
+            Event::SearchPosts { query, .. } if !self.wants_search(SearchMode::Posts, &query) => {}
+            Event::SearchActors { query, .. }
+                if !self.wants_search(SearchMode::Accounts, &query) => {}
             Event::SearchPosts {
-                result: Ok(posts), ..
-            } => self.search.posts.set(posts),
+                query,
+                result: Ok(posts),
+            } => {
+                if self.search.posts_query != query {
+                    self.search.posts = List::default();
+                }
+                self.search.posts_query = query;
+                self.search.posts.set(posts);
+                self.show_search(SearchMode::Posts);
+            }
             Event::SearchActors {
-                result: Ok(actors), ..
-            } => self.search.actors.set(actors),
+                query,
+                result: Ok(actors),
+            } => {
+                if self.search.actors_query != query {
+                    self.search.actors = List::default();
+                }
+                self.search.actors_query = query;
+                self.search.actors.set(actors);
+                self.show_search(SearchMode::Accounts);
+            }
             Event::Profile(Ok((profile, posts))) => {
                 if self.wanted_profile(&profile) {
                     // The same profile read again (R, a post sent) keeps the
@@ -966,12 +1004,10 @@ impl App {
                 self.fail(&e);
             }
             Event::SearchPosts { result: Err(e), .. } => {
-                self.search.posts.failed(&e);
-                self.fail(&e);
+                self.search_failed(&e);
             }
             Event::SearchActors { result: Err(e), .. } => {
-                self.search.actors.failed(&e);
-                self.fail(&e);
+                self.search_failed(&e);
             }
             // An error of a profile left for another since is not that one's
             // (an answer that came is checked by who it is about).

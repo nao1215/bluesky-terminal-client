@@ -56,7 +56,7 @@ fn a_reload_sent_before_a_deletes_answer_keeps_the_post_gone() {
 #[test]
 fn a_post_sent_from_your_profile_loads_it_again() {
     let mut app = logged_in();
-    let jobs = app.handle_key(key('5'));
+    let jobs = app.handle_key(key('4'));
     assert!(matches!(&jobs[..], [Job::OpenProfile(_)]), "{jobs:?}");
     app.handle_key(key('n'));
     type_str(&mut app, "hello");

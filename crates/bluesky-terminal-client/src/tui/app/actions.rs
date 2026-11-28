@@ -80,11 +80,11 @@ impl App {
             return vec![Job::Thread(th.uri.clone())];
         }
         match self.tab {
+            Tab::Timeline if self.search.active.is_some() => self.refresh_search(),
             Tab::Timeline => {
                 self.info(n!("refreshing…"));
                 vec![Job::Timeline]
             }
-            Tab::Search => self.run_search(),
             // Read again in place, as the other lists are: the profile and
             // its posts stay while it loads, and the answer keeps the
             // selection on the post it was on.

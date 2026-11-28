@@ -2,6 +2,13 @@
 
 pub(super) const TABLE: &[(&str, &str)] = &[
     (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Enter поиск · Ctrl+T посты/аккаунты · Esc отмена",
+    ),
+    ("Esc back to timeline", "Esc назад к ленте"),
+    ("No results for \"{}\"", "Нет результатов для «{}»"),
+    ("open the search box", "открыть поле поиска"),
+    (
         "Play videos in the timeline",
         "Воспроизводить видео в ленте",
     ),
@@ -72,7 +79,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "Бесед пока нет. m в чужом профиле начинает беседу.",
     ),
     ("No notifications yet.", "Уведомлений пока нет."),
-    ("No posts found.", "Посты не найдены."),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "Постов от ваших подписок пока нет. Нажмите R, чтобы обновить.",
@@ -131,7 +137,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "настройка из переменной BSKY_ не меняется",
     ),
-    ("accounts", "аккаунты"),
     (
         "accounts: switch, add, log out",
         "аккаунты: сменить, добавить, выйти",
@@ -286,11 +291,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "удалить свой пост"),
     ("deleting…", "удаление…"),
     ("do it", "выполнить"),
-    ("done", "готово"),
     ("download", "скачать"),
     ("downloading…", "загрузка…"),
     ("edit profile", "изменить профиль"),
-    ("edit query", "изменить запрос"),
     ("edit your profile", "изменить свой профиль"),
     ("ended  r plays it again", "конец  r — ещё раз"),
     ("enter apply  esc cancel", "enter применить  esc отмена"),
@@ -388,7 +391,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "сохранить"),
     ("language: {}", "язык: {}"),
-    ("leave the search box", "выйти из поля поиска"),
     ("like / remove like", "нравится / убрать лайк"),
     ("like it", "нравится"),
     ("like removed", "лайк убран"),
@@ -474,7 +476,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "след. поле или альт. текст",
     ),
-    ("next tab", "след. вкладка"),
     ("no account yet", "аккаунтов пока нет"),
     (
         "no folders here; space chooses this one",
@@ -571,8 +572,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "опубликовано"),
     ("posts", "посты"),
-    ("posts / accounts", "посты / аккаунты"),
-    ("press / or i to type", "нажмите / или i для ввода"),
     (
         "press y to block @{}, any other key to leave them be",
         "y — заблокировать @{}, другая клавиша — отмена",
@@ -671,7 +670,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "поиск, затем по результатам",
     ),
-    ("search:", "поиск:"),
     ("searching…", "поиск…"),
     ("send", "отправить"),
     (
@@ -757,10 +755,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "профиль изменён в другом месте после открытия редактора; нажмите Esc и e, чтобы начать с текущей версии",
     ),
     (
-        "the search box has focus when you arrive",
-        "при входе фокус в поле поиска",
-    ),
-    (
         "the session expired; log in again",
         "сессия истекла; войдите снова",
     ),
@@ -840,8 +834,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "это видео не в H.264 (тип потока 0x{}), bsky не может его декодировать",
     ),
-    ("type in the search box again", "снова ввести в поле поиска"),
-    ("type, then enter", "введите и нажмите enter"),
     ("unblock them", "разблокировать"),
     ("unblocked", "разблокировано"),
     ("unfollow", "отписаться"),

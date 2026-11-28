@@ -1,6 +1,13 @@
 //! Translations into French, by the English they translate.
 
 pub(super) const TABLE: &[(&str, &str)] = &[
+    (
+        "Enter search · Ctrl+T posts/accounts · Esc cancel",
+        "Entrée rechercher · Ctrl+T posts/comptes · Échap annuler",
+    ),
+    ("Esc back to timeline", "Échap retour au fil"),
+    ("No results for \"{}\"", "Aucun résultat pour « {} »"),
+    ("open the search box", "ouvrir la zone de recherche"),
     ("Play videos in the timeline", "Lire les vidéos dans le fil"),
     (
         "enter turns timeline playback on or off",
@@ -72,7 +79,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "No notifications yet.",
         "Aucune notification pour l’instant.",
     ),
-    ("No posts found.", "Aucun post trouvé."),
     (
         "No posts from accounts you follow yet. Press R to refresh.",
         "Aucun post des comptes que tu suis. Appuie sur R pour actualiser.",
@@ -134,7 +140,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "a setting a BSKY_ variable sets stays",
         "un réglage fixé par une variable BSKY_ reste",
     ),
-    ("accounts", "comptes"),
     (
         "accounts: switch, add, log out",
         "comptes : changer, ajouter, déconnecter",
@@ -295,11 +300,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("delete your post", "supprimer ton post"),
     ("deleting…", "suppression…"),
     ("do it", "exécuter"),
-    ("done", "terminé"),
     ("download", "télécharger"),
     ("downloading…", "téléchargement…"),
     ("edit profile", "modifier le profil"),
-    ("edit query", "modifier la recherche"),
     ("edit your profile", "modifier ton profil"),
     ("ended  r plays it again", "terminé  r pour rejouer"),
     ("enter apply  esc cancel", "enter appliquer  esc annuler"),
@@ -403,7 +406,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("keep", "valider"),
     ("language: {}", "langue : {}"),
-    ("leave the search box", "quitter le champ de recherche"),
     ("like / remove like", "j’aime / retirer le j’aime"),
     ("like it", "aimer"),
     ("like removed", "j’aime retiré"),
@@ -504,7 +506,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "next field, or a picture's alt text",
         "champ suivant ou texte alt d’une image",
     ),
-    ("next tab", "onglet suivant"),
     ("no account yet", "aucun compte pour l’instant"),
     (
         "no folders here; space chooses this one",
@@ -604,8 +605,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ),
     ("posted", "publié"),
     ("posts", "posts"),
-    ("posts / accounts", "posts / comptes"),
-    ("press / or i to type", "appuie sur / ou i pour saisir"),
     (
         "press y to block @{}, any other key to leave them be",
         "appuie sur y pour bloquer @{}, une autre touche pour annuler",
@@ -713,7 +712,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "search, then move through the results",
         "rechercher, puis parcourir les résultats",
     ),
-    ("search:", "recherche :"),
     ("searching…", "recherche…"),
     ("send", "envoyer"),
     (
@@ -803,10 +801,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     (
         "the profile was changed elsewhere since the editor opened; press Esc and e to start from the current version",
         "le profil a été modifié ailleurs depuis l’ouverture de l’éditeur ; appuie sur Esc puis e pour repartir de la version actuelle",
-    ),
-    (
-        "the search box has focus when you arrive",
-        "le champ de recherche a le focus à l’arrivée",
     ),
     (
         "the session expired; log in again",
@@ -900,11 +894,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
         "this video is not H.264 (stream type 0x{}), which bsky cannot decode",
         "cette vidéo n’est pas en H.264 (type de flux 0x{}), que bsky ne sait pas décoder",
     ),
-    (
-        "type in the search box again",
-        "saisir à nouveau dans la recherche",
-    ),
-    ("type, then enter", "saisis, puis enter"),
     ("unblock them", "débloquer"),
     ("unblocked", "débloqué"),
     ("unfollow", "ne plus suivre"),

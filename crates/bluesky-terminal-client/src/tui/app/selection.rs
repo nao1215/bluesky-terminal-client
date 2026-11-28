@@ -38,17 +38,9 @@ impl App {
         if let Some(thread) = self.threads.last() {
             return videos(&thread.list, ThreadRow::post);
         }
-        let list = match self.tab {
-            Tab::Timeline => Some(&self.timeline),
-            Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
-            Tab::Profile => Some(&self.profile.posts),
-            Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
-                Some(Rows::Posts(list)) => Some(list),
-                _ => None,
-            },
-            _ => None,
-        };
-        list.map(|list| videos(list, Some)).unwrap_or_default()
+        self.current_posts()
+            .map(|list| videos(list, Some))
+            .unwrap_or_default()
     }
 
     /// The notifications shown, when the view is a list of them: the
@@ -69,11 +61,13 @@ impl App {
     }
 
     /// The post list of the current view, if it shows posts.
-    fn current_posts(&mut self) -> Option<&mut List<Post>> {
+    fn current_posts_mut(&mut self) -> Option<&mut List<Post>> {
         match self.tab {
+            Tab::Timeline if self.search.active == Some(SearchMode::Posts) => {
+                Some(&mut self.search.posts)
+            }
+            Tab::Timeline if self.search.active == Some(SearchMode::Accounts) => None,
             Tab::Timeline => Some(&mut self.timeline),
-            Tab::Search if self.search.mode == SearchMode::Posts => Some(&mut self.search.posts),
-            Tab::Search => None,
             Tab::Profile => Some(&mut self.profile.posts),
             Tab::Notifications => None,
             Tab::Columns => match self.columns.focused_mut().map(|c| &mut c.rows) {
@@ -92,7 +86,7 @@ impl App {
             // Only a reply, mention, or quote is a post to act on.
             return l.current()?.post.clone();
         }
-        self.current_posts()?.current().cloned()
+        self.current_posts_mut()?.current().cloned()
     }
 
     /// The account `f` and Enter act on in the current view.
@@ -104,7 +98,7 @@ impl App {
             return l.current().map(|i| i.n.author.clone());
         }
         match self.tab {
-            Tab::Search if self.search.mode == SearchMode::Accounts => {
+            Tab::Timeline if self.search.active == Some(SearchMode::Accounts) => {
                 self.search.actors.current().cloned()
             }
             Tab::Profile => self.profile.profile.clone(),
@@ -143,7 +137,9 @@ impl App {
             return l.current().map(|i| &i.n.author);
         }
         match self.tab {
-            Tab::Search if self.search.mode == SearchMode::Accounts => self.search.actors.current(),
+            Tab::Timeline if self.search.active == Some(SearchMode::Accounts) => {
+                self.search.actors.current()
+            }
             Tab::Profile => self.profile.profile.as_ref(),
             _ => self.shown_post().map(|p| &p.author),
         }
@@ -167,16 +163,23 @@ impl App {
         if let Some(l) = self.shown_notifications() {
             return l.current().and_then(|i| i.post.as_ref());
         }
-        let list = match self.tab {
+        self.current_posts().and_then(List::current)
+    }
+
+    /// The same post list drives actions, inline playback and read-ahead.
+    fn current_posts(&self) -> Option<&List<Post>> {
+        match self.tab {
+            Tab::Timeline if self.search.active == Some(SearchMode::Posts) => {
+                Some(&self.search.posts)
+            }
+            Tab::Timeline if self.search.active == Some(SearchMode::Accounts) => None,
             Tab::Timeline => Some(&self.timeline),
-            Tab::Search if self.search.mode == SearchMode::Posts => Some(&self.search.posts),
             Tab::Profile => Some(&self.profile.posts),
             Tab::Columns => match self.columns.focused().map(|c| &c.rows) {
                 Some(Rows::Posts(l)) => Some(l),
                 _ => None,
             },
             _ => None,
-        };
-        list.and_then(List::current)
+        }
     }
 }

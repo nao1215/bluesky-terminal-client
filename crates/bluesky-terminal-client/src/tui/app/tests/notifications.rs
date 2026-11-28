@@ -10,7 +10,7 @@ fn notifications_load_once_and_are_marked_seen() {
     assert!(app.notifications.items[0].fresh);
     // Coming back does not fetch again; R does.
     app.handle_key(key('1'));
-    assert!(app.handle_key(key('4')).is_empty());
+    assert!(app.handle_key(key('3')).is_empty());
     assert!(matches!(
         &app.handle_key(key('R'))[..],
         [Job::Notifications]
@@ -20,7 +20,7 @@ fn notifications_load_once_and_are_marked_seen() {
 #[test]
 fn nothing_unread_sends_no_update_seen() {
     let mut app = logged_in();
-    app.handle_key(key('4'));
+    app.handle_key(key('3'));
     let jobs = app.handle_event(Event::Notifications {
         seen_at: "t".into(),
         result: Ok(vec![notif("follow", "at://f", true, None, None)].into()),
@@ -170,11 +170,11 @@ fn a_failed_mark_as_seen_is_tried_again() {
         result: Ok(vec![notif("reply", "at://r/1", false, None, None)].into()),
     });
     assert_eq!(app.unread, 1);
-    let jobs = app.handle_key(key('4'));
+    let jobs = app.handle_key(key('3'));
     assert!(matches!(&jobs[..], [Job::UpdateSeen(_)]), "{jobs:?}");
     app.handle_event(Event::Seen(Err(Error::api("boom"))));
     app.handle_key(key('1'));
-    let jobs = app.handle_key(key('4'));
+    let jobs = app.handle_key(key('3'));
     assert!(
         app.unread == 0 || matches!(&jobs[..], [Job::UpdateSeen(_)]),
         "unread {} and back on the tab: {jobs:?}",
@@ -205,6 +205,6 @@ fn a_failed_mark_is_not_sent_after_a_newer_one() {
     );
     app.handle_event(Event::Seen(Ok(())));
     app.handle_key(key('1'));
-    let jobs = app.handle_key(key('4'));
+    let jobs = app.handle_key(key('3'));
     assert!(jobs.is_empty(), "an older mark is sent again: {jobs:?}");
 }

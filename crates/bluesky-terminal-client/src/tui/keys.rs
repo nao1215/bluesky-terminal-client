@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::api::types::Media;
 use crate::i18n::{n, t};
-use crate::tui::app::{App, Overlay, SearchMode, SettingEdit, Tab};
+use crate::tui::app::{App, Overlay, SettingEdit, Tab};
 
 /// A key and what it does.
 pub(crate) type Hint = (&'static str, &'static str);
@@ -22,7 +22,7 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Global"),
         keys: &[
-            ("1 2 3 4 5", n!("the tabs, in the order shown")),
+            ("1 2 3 4", n!("the tabs, in the order shown")),
             ("tab shift+tab", n!("next / previous tab")),
             ("T", n!("choose a color theme")),
             ("A", n!("accounts: switch, add, log out")),
@@ -72,12 +72,12 @@ pub(crate) const HELP: &[Section] = &[
     Section {
         title: n!("Search"),
         keys: &[
-            ("type", n!("the search box has focus when you arrive")),
+            ("/", n!("open the search box")),
             ("enter", n!("search, then move through the results")),
-            ("/ i", n!("type in the search box again")),
-            ("ctrl+t t", n!("search posts or accounts")),
+            ("ctrl+t", n!("search posts or accounts")),
             ("f", n!("follow / unfollow the account or author")),
-            ("esc", n!("leave the search box")),
+            ("esc", n!("cancel")),
+            ("esc", n!("back to timeline")),
         ],
     },
     Section {
@@ -245,6 +245,9 @@ fn view_hints(app: &App) -> Vec<Hint> {
         ];
     }
     match &app.overlay {
+        Some(Overlay::Search) => {
+            return vec![("", n!("Enter search · Ctrl+T posts/accounts · Esc cancel"))];
+        }
         Some(Overlay::Compose(c)) if c.browser.is_some() => return browser_hints(),
         Some(Overlay::EditProfile(e)) if e.browser.is_some() => return browser_hints(),
         Some(Overlay::Compose(c)) => {
@@ -360,32 +363,18 @@ fn view_hints(app: &App) -> Vec<Hint> {
         ];
     }
     let mut v: Vec<Hint> = match app.tab {
-        Tab::Search if app.search.editing => {
-            return vec![
-                ("enter", n!("search")),
-                ("ctrl+t", n!("posts / accounts")),
-                ("tab", n!("next tab")),
-                ("esc", n!("done")),
-            ];
-        }
-        Tab::Search if app.search.mode == SearchMode::Accounts => vec![
+        Tab::Timeline if app.search.active.is_some() => vec![
+            ("", n!("Esc back to timeline")),
             ("j k", n!("move")),
             (".", n!("actions")),
-            ("/", n!("edit query")),
-            ("t", n!("posts")),
-        ],
-        Tab::Search => vec![
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("/", n!("edit query")),
-            ("t", n!("accounts")),
+            ("/", n!("search")),
         ],
         Tab::Timeline => vec![
             ("j k", n!("move")),
             (".", n!("actions")),
             ("space", n!("view")),
             ("n", n!("post")),
-            ("R", n!("refresh")),
+            ("/", n!("search")),
         ],
         Tab::Chat => match &app.chat.open {
             Some(o) if o.typing => return vec![("enter", n!("send")), ("esc", n!("stop writing"))],
@@ -413,25 +402,21 @@ fn view_hints(app: &App) -> Vec<Hint> {
             ("space", n!("view")),
             ("R", n!("refresh")),
         ],
-        Tab::Profile if app.profile.actor.is_some() => vec![
-            ("esc", back_label(app.profile.came_from)),
-            ("j k", n!("move")),
-            (".", n!("actions")),
-            ("space", n!("view")),
-        ],
         Tab::Profile => {
-            let mut v = vec![
-                ("j k", n!("move")),
-                (".", n!("actions")),
-                ("e", n!("edit profile")),
-                ("s", n!("settings")),
-                ("R", n!("reload")),
-            ];
-            // Your own profile, opened from a list: Esc still goes back.
-            if app.profile.came_from.is_some() {
-                v.insert(0, ("esc", back_label(app.profile.came_from)));
+            let mut profile_keys = vec![("j k", n!("move")), (".", n!("actions"))];
+            if app.profile.actor.is_some() {
+                profile_keys.push(("space", n!("view")));
+            } else {
+                profile_keys.extend([
+                    ("e", n!("edit profile")),
+                    ("s", n!("settings")),
+                    ("R", n!("reload")),
+                ]);
             }
-            v
+            if app.profile.came_from.is_some() || app.profile.actor.is_some() {
+                profile_keys.insert(0, ("esc", back_label(app)));
+            }
+            profile_keys
         }
     };
     // Help comes first: a narrow terminal cuts the row from the right, and `?`
@@ -570,9 +555,9 @@ fn browser_hints() -> Vec<Hint> {
 }
 
 /// What Esc on the Profile tab goes back to.
-fn back_label(from: Option<Tab>) -> &'static str {
-    match from {
-        Some(Tab::Search) => n!("back to search"),
+fn back_label(app: &App) -> &'static str {
+    match app.profile.came_from {
+        Some(Tab::Timeline) if app.search.active.is_some() => n!("back to search"),
         Some(Tab::Timeline) => n!("back to timeline"),
         Some(Tab::Notifications) => n!("back to notifications"),
         Some(Tab::Columns) => n!("back to timeline"),
