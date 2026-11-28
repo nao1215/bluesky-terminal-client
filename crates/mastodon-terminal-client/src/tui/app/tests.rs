@@ -382,6 +382,59 @@ fn a_refused_post_keeps_the_text() {
     assert_eq!(app.handle_key(ctrl('s')).len(), 1);
 }
 
+#[test]
+fn unsupported_actions_restore_state_and_deliver_the_error_once() {
+    for key_char in ['l', 'b'] {
+        let mut app = with_home(&["1", "2"]);
+        let jobs = press(&mut app, KeyCode::Char(key_char));
+        let error = Error::unsupported("reactions", "127.0.0.1:9");
+        let event = || {
+            if key_char == 'l' {
+                Event::Favourited {
+                    id: "1".into(),
+                    on: true,
+                    result: Err(error.clone()),
+                }
+            } else {
+                Event::Boosted {
+                    id: "1".into(),
+                    on: true,
+                    result: Err(error.clone()),
+                }
+            }
+        };
+        app.handle_answer(jobs[0].0, event());
+        assert!(app.acting.is_empty());
+        let s = app.selected().unwrap();
+        assert_eq!((s.favourites_count, s.reblogs_count), (0, 0));
+        assert!(!s.favourited.unwrap_or(false));
+        assert!(!s.reblogged.unwrap_or(false));
+        assert_eq!(app.message.as_ref().unwrap().text, error.message());
+        press(&mut app, KeyCode::Char('x'));
+        app.handle_answer(jobs[0].0, event());
+        assert!(app.message.is_none());
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.selected().unwrap().id, "2");
+    }
+    let mut app = with_home(&[]);
+    press(&mut app, KeyCode::Char('n'));
+    typed(&mut app, "keep this draft");
+    let jobs = app.handle_key(ctrl('s'));
+    app.handle_answer(
+        jobs[0].0,
+        Event::Posted(Err(Error::unsupported("posts", "127.0.0.1:9"))),
+    );
+    let Some(Overlay::Compose(c)) = &app.overlay else {
+        panic!("draft lost")
+    };
+    assert_eq!(c.text.text(), "keep this draft");
+    assert!(c.sending.is_none());
+    press(&mut app, KeyCode::Char('x'));
+    press(&mut app, KeyCode::Esc);
+    assert!(app.overlay.is_none());
+    assert!(!app.quit);
+}
+
 // Nothing, or more than the server takes, is not sent.
 #[test]
 fn an_empty_or_too_long_post_is_not_sent() {
@@ -1445,6 +1498,33 @@ fn profile_editor(app: &mut App) {
 }
 
 #[test]
+fn missing_editable_profile_fields_closes_the_editor_and_reports_once() {
+    let mut app = with_home(&["10"]);
+    app.tab = Tab::Profile;
+    let account = Account {
+        id: "7".into(),
+        ..Account::default()
+    };
+    app.profile.account = Some(account.clone());
+    let jobs = press(&mut app, KeyCode::Char('e'));
+    app.handle_answer(jobs[0].0, Event::ProfileEditor(Ok(account.clone())));
+    assert!(app.overlay.is_none());
+    assert!(
+        app.message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("editable profile fields")
+    );
+    assert!(app.message.as_ref().unwrap().text.contains(&app.origin));
+    press(&mut app, KeyCode::Esc);
+    app.handle_answer(jobs[0].0, Event::ProfileEditor(Ok(account)));
+    assert!(app.message.is_none());
+    press(&mut app, KeyCode::Char('1'));
+    assert_eq!(app.selected().unwrap().id, "10");
+}
+
+#[test]
 fn profile_editor_sends_only_changes_on_save_and_keeps_a_refused_draft() {
     let mut app = with_home(&[]);
     assert!(press(&mut app, KeyCode::Char('e')).is_empty());
@@ -1519,15 +1599,19 @@ fn profile_flags_raw_bio_fields_and_cancel_are_lossless() {
 #[test]
 fn quotes_require_a_supported_server_and_confirmation_and_keep_refused_text() {
     let mut app = with_home(&["s"]);
-    for version in ["", "4.4.9", "unknown", "4"] {
-        app.limits = Limits::from_instance(&serde_json::json!({"version":version}));
-        assert!(press(&mut app, KeyCode::Char('Q')).is_empty());
-        assert!(app.overlay.is_none());
-    }
-    for version in ["4.5.0", "4.5.0-rc1", "4.10.0", "5.0.0"] {
-        assert!(Limits::from_instance(&serde_json::json!({"version":version})).quotes);
-    }
-    app.limits.quotes = true;
+    assert!(press(&mut app, KeyCode::Char('Q')).is_empty());
+    assert!(app.overlay.is_none());
+    assert!(
+        app.message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("does not support quote posts")
+    );
+    press(&mut app, KeyCode::Char('x'));
+    app.timelines[0].items[0].quote_approval = Some(crate::api::types::QuoteApproval {
+        current_user: "automatic".into(),
+    });
     press(&mut app, KeyCode::Char('Q'));
     typed(&mut app, "My quote");
     app.handle_key(ctrl('q'));
@@ -1747,6 +1831,23 @@ fn writing_while_an_adopted_thread_loads_reloads_after_the_write_finishes() {
     );
     assert!(matches!(&reload[0].1,Job::Thread { id } if id == "s"));
     assert_eq!(app.threads[0].rows.waiting, Some(reload[0].0));
+}
+
+#[test]
+fn retry_notice_keeps_the_job_pending_and_ignores_completed_jobs() {
+    let mut app = with_home(&["10"]);
+    let jobs = press(&mut app, KeyCode::Char('R'));
+    let seq = jobs[0].0;
+    app.handle_answer(seq, Event::Retrying("server asks to wait".into()));
+    assert!(app.waiting.contains(&seq));
+    assert_eq!(app.message.as_ref().unwrap().text, "server asks to wait");
+    app.handle_answer(seq, page(vec![status("11"), status("10")], Next::End));
+    assert!(!app.waiting.contains(&seq));
+    assert_eq!(app.timelines[0].items[0].id, "11");
+    assert_eq!(app.selected().unwrap().id, "10");
+    app.message = None;
+    app.handle_answer(seq, Event::Retrying("stale notice".into()));
+    assert!(app.message.is_none());
 }
 
 #[test]

@@ -13,7 +13,7 @@ use std::time::Duration;
 use terminal_kit::inflight::InFlight;
 
 use crate::api::types::{Account, Limits, Media, Notification, Status};
-use crate::api::{Client, Next, Page};
+use crate::api::{self, Client, Next, Page};
 use crate::cli::{TimelineKind, Visibility};
 use crate::error::{Error, Result};
 
@@ -187,6 +187,7 @@ pub(crate) struct Thread {
 /// A finished job.
 #[derive(Debug)]
 pub(crate) enum Event {
+    Retrying(String),
     NotificationState(Result<(Option<String>, Option<usize>)>),
     NotificationsMarked {
         id: String,
@@ -536,6 +537,12 @@ impl Worker {
                         let Ok((seq, job, client, write)) = next else {
                             return;
                         };
+                        let notices = tx.clone();
+                        let client = client.with_retry_wait(Arc::new(move |wait, host| {
+                            let _sent = notices
+                                .send((seq, Event::Retrying(api::retry_message(wait, host))));
+                            std::thread::sleep(wait);
+                        }));
                         let event = guarded(job, |job| run(job, &client));
                         if write {
                             writes.done();

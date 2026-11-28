@@ -78,10 +78,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Search…", "検索…"),
     ("Add column", "列を追加"),
     (
-        "this server does not support quote posts (Mastodon 4.5 required)",
-        "このサーバーは引用投稿に未対応です（Mastodon 4.5 以上が必要）",
-    ),
-    (
         "this post does not allow quoting",
         "この投稿は引用できません",
     ),
@@ -113,10 +109,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Header (ctrl+o)", "ヘッダー（ctrl+o）"),
     ("nothing changed", "変更はありません"),
     ("profile saved", "プロフィールを保存しました"),
-    (
-        "the server did not return editable profile fields",
-        "編集用のプロフィール項目を取得できませんでした",
-    ),
     ("Edit profile", "プロフィール編集"),
     ("edit your own profile", "自分のプロフィールを編集"),
     ("next / previous field", "次 / 前の項目"),

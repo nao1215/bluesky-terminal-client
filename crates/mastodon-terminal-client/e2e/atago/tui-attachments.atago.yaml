@@ -287,7 +287,7 @@ scenarios:
       - send: {key: enter}
       - expect_screen: {contains: 'Alt:', stable_for: 150ms}
       - send: {key: ctrl-s}
-      - expect_screen: {contains: takes files up to 1 bytes, stable_for: 150ms}
+      - expect_screen: {contains: takes files smaller than 1 bytes, stable_for: 150ms}
       - send: {key: esc}
       - expect_screen: {contains: New post, stable_for: 150ms}
       - send: {key: esc}

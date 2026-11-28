@@ -193,7 +193,11 @@ impl App {
             Ok(account) => {
                 let Some(source) = &account.source else {
                     self.overlay = None;
-                    self.fail(t("the server did not return editable profile fields"));
+                    self.fail(
+                        Error::unsupported("editable profile fields", &self.origin)
+                            .message()
+                            .to_owned(),
+                    );
                     return;
                 };
                 e.fields[0] = TextInput::single(&account.display_name);

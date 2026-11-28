@@ -257,7 +257,6 @@ pub(crate) struct Token {
 /// default for a server that does not say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Limits {
-    pub quotes: bool,
     pub max_characters: usize,
     pub characters_reserved_per_url: usize,
     pub max_media_attachments: usize,
@@ -269,7 +268,6 @@ pub(crate) struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            quotes: false,
             max_characters: 500,
             characters_reserved_per_url: 23,
             max_media_attachments: 4,
@@ -292,17 +290,15 @@ impl Limits {
                 .filter(|n| *n > 0)
         };
         Limits {
-            quotes: v["api_versions"]["mastodon"]
-                .as_u64()
-                .is_some_and(|n| n >= 7)
-                || release(v).is_some_and(|v| v >= (4, 5)),
             max_characters: n(&c["statuses"]["max_characters"])
                 // An old version or a fork says it at the top.
                 .or_else(|| n(&v["max_toot_chars"]))
                 .unwrap_or(d.max_characters),
             characters_reserved_per_url: n(&c["statuses"]["characters_reserved_per_url"])
                 .unwrap_or(d.characters_reserved_per_url),
-            max_media_attachments: n(&c["statuses"]["max_media_attachments"])
+            max_media_attachments: c["statuses"]["max_media_attachments"]
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok())
                 .unwrap_or(d.max_media_attachments),
             description_limit: n(&c["media_attachments"]["description_limit"])
                 .unwrap_or(d.description_limit),
@@ -314,12 +310,6 @@ impl Limits {
                 .filter(|n| *n > 0),
         }
     }
-}
-
-/// The advertised release; suffixes such as `4.5.0+glitch` are accepted.
-pub(super) fn release(instance: &serde_json::Value) -> Option<(u32, u32)> {
-    let mut parts = instance["version"].as_str()?.split('.');
-    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
 #[cfg(test)]

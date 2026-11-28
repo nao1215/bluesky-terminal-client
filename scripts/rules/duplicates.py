@@ -53,12 +53,14 @@ not belong in terminal-kit's drawing API. No new implementation copy is retained
 The local Misskey/Sharkey compatibility work shares Error, Kind and their
 formatting in terminal-kit; bsky, msky and mstdn re-export that implementation,
 and nstr preserves its serializable shape while using the same formatter.
-The adjacent msky/mstdn --help exit-status paragraphs now have a matching
-fingerprint: they intentionally document the shared exit contract in each
-client's own help, not a second implementation of it. This incidental prose
-match is retained; the removed error implementation fingerprints are dropped.
-Adding mstdn's missing exit-5 help text refreshes only that existing fingerprint;
-the adjacent command startup code has not changed.
+The msky/mstdn startup match adjacent to --help has a new fingerprint after
+their exit-status text changed. Account selection remains client-specific;
+the removed error implementation fingerprints are dropped. Mastodon's
+unsupported-feature constructor now also lives in the shared Error type.
+
+Routing retry notices through the TUI removed the shared stderr formatting
+match and shifted the existing Client constructor match; neither adds copied
+implementation. The constructors keep their per-client API ownership.
 
 Needs npx (Node.js). Usage: duplicates.py [--update]
 """

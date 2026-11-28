@@ -25,7 +25,7 @@ mod write;
 use crate::api::types::Relationship;
 use crate::cli::{TimelineKind, Visibility};
 use crate::config::{Session, Settings};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::i18n::{n, t, tf};
 use crate::tui::keys;
 use crate::tui::list::{List, Row, ThreadView};
@@ -843,15 +843,19 @@ impl App {
             self.needs_account();
             return;
         }
-        if !self.limits.quotes {
-            self.say(t(
-                "this server does not support quote posts (Mastodon 4.5 required)",
-            ));
-            return;
-        }
         let Some(s) = self.selected().cloned() else {
             return;
         };
+        // This field is the documented quote capability on a successfully
+        // read status. A compatibility version says nothing about it.
+        if s.quote_approval.is_none() {
+            self.fail(
+                Error::unsupported("quote posts", &self.origin)
+                    .message()
+                    .to_owned(),
+            );
+            return;
+        }
         if s.visibility == "direct"
             || (!self.own(&s.account)
                 && s.quote_approval
@@ -1284,7 +1288,7 @@ impl App {
                 }
             }
             KeyCode::Char('p') if ctrl => c.visibility = next_visibility(c.visibility),
-            KeyCode::Char('q') if ctrl && self.limits.quotes => {
+            KeyCode::Char('q') if ctrl => {
                 c.quote_policy = match c.quote_policy.as_deref() {
                     None => Some("public".into()),
                     Some("public") => Some("followers".into()),
@@ -1364,11 +1368,17 @@ impl App {
 
     /// Handle the answer to job `seq`; the jobs it starts.
     pub(crate) fn handle_answer(&mut self, seq: u64, ev: Event) -> Jobs {
-        if self.read_ahead_answer(seq, &ev) {
-            return Vec::new();
-        }
-        if !self.waiting.remove(&seq) {
-            return Vec::new();
+        if matches!(ev, Event::Retrying(_)) {
+            if !self.waiting.contains(&seq) {
+                return Vec::new();
+            }
+        } else {
+            if self.read_ahead_answer(seq, &ev) {
+                return Vec::new();
+            }
+            if !self.waiting.remove(&seq) {
+                return Vec::new();
+            }
         }
         let write_finished = matches!(
             &ev,
@@ -1383,6 +1393,7 @@ impl App {
                 | Event::ConversationRead(_)
         );
         match ev {
+            Event::Retrying(message) => self.say(message),
             Event::NotificationState(result) => self.notification_state(seq, result),
             Event::NotificationsMarked { id, result } => self.notifications_marked(seq, id, result),
             Event::Conversations { first, result } => self.conversations_answer(seq, first, result),

@@ -292,3 +292,33 @@ fn a_job_that_panics_is_answered_with_its_failure() {
     };
     assert_eq!(result.unwrap_err().message(), "internal error: boom");
 }
+
+#[test]
+fn retry_notices_reach_the_ui_before_the_completed_read() {
+    let (url, log) = serve(Arc::new(|_, n| {
+        if n == 0 {
+            Reply {
+                status: 429,
+                headers: vec![("Retry-After", "0".into())],
+                body: br#"{"error":"wait"}"#.to_vec(),
+            }
+        } else {
+            reply(200, "[]")
+        }
+    }));
+    let w = Worker::spawn(client(&url)).unwrap();
+    w.send(
+        9,
+        Job::Timeline {
+            kind: TimelineKind::Home,
+            max_id: None,
+        },
+    );
+    let (seq, notice) = wait(&w);
+    assert_eq!(seq, 9);
+    assert!(matches!(notice, Event::Retrying(s) if s.contains("trying again in 0 s")));
+    let (seq, event) = wait(&w);
+    assert_eq!(seq, 9);
+    assert!(matches!(event, Event::Timeline { result: Ok(_), .. }));
+    assert_eq!(log.lock().unwrap().len(), 2);
+}

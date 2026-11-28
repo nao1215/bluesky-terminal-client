@@ -1077,6 +1077,7 @@ scenarios:
       path: /api/v1/statuses/42
       json:
         id: '42'
+        quote_approval: {current_user: automatic}
       status: 200
     - method: POST
       path: /api/v1/statuses

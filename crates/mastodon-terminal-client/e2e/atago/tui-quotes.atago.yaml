@@ -28,6 +28,9 @@ scenarios:
             account:
               acct: bob
     - method: GET
+      path: /api/v1/statuses/10
+      json: {id: "10", quote_approval: {current_user: automatic}}
+    - method: GET
       path: /api/v1/notifications
       json: []
     - method: POST
@@ -117,6 +120,9 @@ scenarios:
             account:
               acct: bob
     - method: GET
+      path: /api/v1/statuses/10
+      json: {id: "10", quote_approval: {current_user: automatic}}
+    - method: GET
       path: /api/v1/notifications
       json: []
     - method: POST
@@ -169,7 +175,7 @@ scenarios:
         method: POST
         path: /api/v1/statuses
         count: 0
-- name: older server refuses quotes
+- name: a readable status without quote capability refuses quotes
   mock_servers:
   - name: api
     routes:
@@ -185,8 +191,6 @@ scenarios:
         account:
           acct: alice
         content: <p>Original post</p>
-        quote_approval:
-          current_user: automatic
         quote:
           state: accepted
           quoted_status:
@@ -194,6 +198,9 @@ scenarios:
             content: <p>Nested quote</p>
             account:
               acct: bob
+    - method: GET
+      path: /api/v1/statuses/10
+      json: {id: "10", quote_approval: {current_user: automatic}}
     - method: GET
       path: /api/v1/notifications
       json: []
@@ -226,7 +233,9 @@ scenarios:
           stable_for: 500ms
       - send: Q
       - expect_screen:
-          contains: this server does not support quote posts
+          contains: does not support quote posts
+      - send: x
+      - expect_screen: {contains: Original post, not_contains: does not support quote posts}
       - send: q
   - assert:
       exit_code: 0
