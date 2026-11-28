@@ -1,0 +1,4216 @@
+version: '1'
+suite:
+  name: msky live catalog
+scenarios:
+- name: 'usable: token identifies the account'
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.username
+          equals: compat_admin
+- name: 'usable: home timeline reads seeded notes'
+  steps:
+  - run:
+      command: msky timeline home -n 100 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 100
+  - assert:
+      stdout:
+        contains: compat-
+- name: 'usable: local timeline reads seeded notes'
+  steps:
+  - run:
+      command: msky timeline local -n 100 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 100
+  - assert:
+      stdout:
+        contains: compat-
+- name: 'usable: global timeline reads seeded notes'
+  steps:
+  - run:
+      command: msky timeline global -n 100 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 100
+  - assert:
+      stdout:
+        contains: compat-
+- name: 'usable: three pages of seeded text notes'
+  steps:
+  - run:
+      command: msky search "#compatcatalog" -n 1000 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 500
+  - assert:
+      stdout:
+        contains:
+        - compat-text-499
+        - compat-text-000
+- name: 'usable: post reply thread and delete'
+  steps:
+  - run:
+      command: msky post "compat-native-post" --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.action
+          equals: post
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky post "compat-native-reply" --reply ${note} --json
+  - store:
+      name: reply
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky thread ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 2
+  - assert:
+      stdout:
+        contains:
+        - ${reply}
+        - ${note}
+        - compat-native-reply
+  - run:
+      command: msky delete ${reply} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.action
+          equals: delete
+  - run:
+      command: msky delete ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.action
+          equals: delete
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+        - path: $.error
+          matches: NO_SUCH_NOTE
+        - path: $.status
+          equals: 4
+- name: 'usable: reactions custom emoji and renote removal'
+  steps:
+  - run:
+      command: msky post "compat-native-react" --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky like ${note} --reaction 👍 --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.likeCount
+          equals: 1
+  - run:
+      command: msky reactions ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 1
+  - run:
+      command: msky unlike ${note} --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.likeCount
+          equals: 0
+  - run:
+      command: 'msky like ${note} --reaction :compat: --json'
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - run:
+      command: msky reactions ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.reaction
+          equals: ':compat@.:'
+  - run:
+      command: msky repost ${note} --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.repostCount
+          equals: 1
+  - run:
+      command: msky unrepost ${note} --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - run:
+      command: msky renotes ${note} --json
+      retry:
+        times: 20
+        interval: 250ms
+        until:
+          exit_code: 0
+          stdout:
+            empty: true
+  - assert:
+      exit_code: 0
+      stdout:
+        empty: true
+- name: 'usable: renote count returns to zero'
+  skip:
+    env: MSKY_STALE_RENOTE
+  steps:
+  - run:
+      command: msky note ${env:MSKY_SEED_RENOTE_TARGET} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.repostCount
+          equals: 0
+- name: 'usable: known stale renote count from the server'
+  only:
+    env: MSKY_STALE_RENOTE
+  expect_fail:
+    reason: The server removed the renote but retained renoteCount; see COMPAT.md.
+  steps:
+  - run:
+      command: msky note ${env:MSKY_SEED_RENOTE_TARGET} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.repostCount
+          equals: 0
+- name: 'usable: upload picture with alt text'
+  steps:
+  - run:
+      command: msky post "compat-upload-picture" --image ${env:MSKY_SEED_PICTURE_PATH} --alt "compat alt 👨‍👩‍👧 👍🏽
+        🇯🇵 漢字 العربية é" --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.files[0].type
+          equals: image
+        - path: $.files[0].description
+          equals: compat alt 👨‍👩‍👧 👍🏽 🇯🇵 漢字 العربية é
+- name: 'usable: upload video with alt text'
+  steps:
+  - run:
+      command: msky post "compat-upload-video" --video ${env:MSKY_SEED_VIDEO_PATH} --alt "compat alt 👨‍👩‍👧 👍🏽 🇯🇵
+        漢字 العربية é" --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.files[0].type
+          equals: video
+        - path: $.files[0].description
+          equals: compat alt 👨‍👩‍👧 👍🏽 🇯🇵 漢字 العربية é
+- name: 'usable: content warning and public visibility'
+  steps:
+  - run:
+      command: msky post "compat-warning" --cw "compat warning" --visibility public --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: compat warning
+        - path: $.visibility
+          equals: public
+- name: 'usable: content warning and home visibility'
+  steps:
+  - run:
+      command: msky post "compat-warning" --cw "compat warning" --visibility home --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: compat warning
+        - path: $.visibility
+          equals: home
+- name: 'usable: content warning and followers visibility'
+  steps:
+  - run:
+      command: msky post "compat-warning" --cw "compat warning" --visibility followers --json
+  - store:
+      name: note
+      from:
+        stdout:
+          json:
+            path: $.id
+  - run:
+      command: msky note ${note} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.cw
+          equals: compat warning
+        - path: $.visibility
+          equals: followers
+- name: 'usable: read specified visibility seeded through API'
+  steps:
+  - run:
+      command: msky note ${env:MSKY_SEED_SPECIFIED} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        json:
+        - path: $.visibility
+          equals: specified
+- name: 'usable: notifications include seeded interactions'
+  steps:
+  - run:
+      command: msky notifications -n 2000 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        contains:
+        - '"type":"mention"'
+        - '"type":"reply"'
+        - '"type":"like"'
+        - '"type":"repost"'
+        - '"type":"follow"'
+- name: 'usable: download preserves the picture'
+  steps:
+  - fixture:
+      file: expected.png
+      from: ../atago/testdata/photo.png
+  - run:
+      command: msky download ${env:MSKY_SEED_PICTURE_FIRST} -o downloaded --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 4
+  - assert:
+      dir:
+        path: downloaded
+        count: 4
+  - assert:
+      file:
+        path: downloaded/${env:MSKY_SEED_PICTURE_FIRST}-1.png
+        equals_file: expected.png
+  - assert:
+      file:
+        path: downloaded/${env:MSKY_SEED_PICTURE_FIRST}-2.png
+        equals_file: expected.png
+  - assert:
+      file:
+        path: downloaded/${env:MSKY_SEED_PICTURE_FIRST}-3.png
+        equals_file: expected.png
+  - assert:
+      file:
+        path: downloaded/${env:MSKY_SEED_PICTURE_FIRST}-4.png
+        equals_file: expected.png
+- name: 'usable: kitty opens thread pictures video searches accounts composes and quits'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '5'
+      - expect_screen:
+          timeout: 10s
+          contains: Search
+          stable_for: 200ms
+      - send: compat-wide-root
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          contains: compat-wide-root
+          stable_for: 200ms
+      - send: v
+      - expect_screen:
+          timeout: 10s
+          contains:
+          - Thread
+          - compat-wide-
+          stable_for: 200ms
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          not_contains: Thread
+          contains: compat-wide-root
+          stable_for: 200ms
+      - send: /
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: Search
+      - send:
+          key: ctrl-u
+      - send: compat-upload-picture
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: compat-upload-picture
+          images:
+            min_count: 1
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          stable_for: 200ms
+          contains: 1/1
+          images:
+            min_count: 1
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: compat-upload-picture
+      - send: /
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: Search
+      - send:
+          key: ctrl-u
+      - send: compat-upload-video
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: compat-upload-video
+          images:
+            min_count: 1
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          stable_for: 200ms
+          contains: ■ ended
+          images:
+            min_count: 1
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: compat-upload-video
+      - send: /
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains: Search
+      - send:
+          key: ctrl-u
+      - send: compat_admin
+      - send:
+          key: ctrl-t
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          stable_for: 200ms
+          contains:
+          - Search accounts
+          - '@compat_admin'
+      - send: n
+      - expect_screen:
+          timeout: 10s
+          contains: New note
+          stable_for: 200ms
+      - send: compat-pty-write
+      - send:
+          key: ctrl-s
+      - expect_screen:
+          timeout: 10s
+          contains: 'posted '
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'heavy: video author timeline paged to its end'
+  steps:
+  - run:
+      command: msky author compat_user --filter video -n 1000 --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 101
+- name: 'heavy: pictures author timeline paged to its end'
+  steps:
+  - run:
+      command: msky author compat_pictures --filter media -n 1000 --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 101
+- name: 'heavy: fifty deep replies'
+  steps:
+  - run:
+      command: msky thread ${env:MSKY_SEED_DEEP_LEAF} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 51
+  - assert:
+      stdout:
+        contains:
+        - compat-deep-root
+        - compat-deep-049
+- name: 'heavy: two hundred direct replies'
+  steps:
+  - run:
+      command: msky thread ${env:MSKY_SEED_WIDE_ROOT} --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 201
+  - assert:
+      stdout:
+        contains:
+        - compat-wide-000
+        - compat-wide-199
+- name: 'heavy: at least five hundred notifications paged to the end'
+  steps:
+  - run:
+      command: msky notifications -n 2000 --json
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        min_count: 500
+  - assert:
+      stdout:
+        contains: '"type":"follow"'
+- name: 'heavy: scroll one hundred video posts down and back'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+      timeout: 240s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '6'
+      - expect_screen:
+          timeout: 10s
+          contains: compat_
+          stable_for: 200ms
+      - send: j
+      - send: j
+      - expect_screen:
+          timeout: 10s
+          contains: compat-video-099
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-099
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-098
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-098
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-097
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-097
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-096
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-096
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-095
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-095
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-094
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-094
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-093
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-093
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-092
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-092
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-091
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-091
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-090
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-090
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-089
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-089
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-088
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-088
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-087
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-087
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-086
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-086
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-085
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-085
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-084
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-084
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-083
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-083
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-082
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-082
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-081
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-081
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-080
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-080
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-079
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-079
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-078
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-078
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-077
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-077
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-076
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-076
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-075
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-075
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-074
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-074
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-073
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-073
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-072
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-072
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-071
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-071
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-070
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-070
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-069
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-069
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-068
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-068
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-067
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-067
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-066
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-066
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-065
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-065
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-064
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-064
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-063
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-063
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-062
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-062
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-061
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-061
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-060
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-060
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-059
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-059
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-058
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-058
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-057
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-057
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-056
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-056
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-055
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-055
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-054
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-054
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-053
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-053
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-052
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-052
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-051
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-051
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-050
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-050
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-049
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-049
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-048
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-048
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-047
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-047
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-046
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-046
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-045
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-045
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-044
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-044
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-043
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-043
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-042
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-042
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-041
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-041
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-040
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-040
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-039
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-039
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-038
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-038
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-037
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-037
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-036
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-036
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-035
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-035
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-034
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-034
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-033
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-033
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-032
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-032
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-031
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-031
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-030
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-030
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-029
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-029
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-028
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-028
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-027
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-027
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-026
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-026
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-025
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-025
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-024
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-024
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-023
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-023
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-022
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-022
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-021
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-021
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-020
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-020
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-019
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-019
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-018
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-018
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-017
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-017
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-016
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-016
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-015
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-015
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-014
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-014
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-013
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-013
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-012
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-012
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-011
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-011
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-010
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-010
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-009
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-009
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-008
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-008
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-007
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-007
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-006
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-006
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-005
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-005
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-004
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-004
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-003
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-003
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-002
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-002
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-001
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-001
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-000
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-000
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-001
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-001
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-002
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-002
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-003
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-003
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-004
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-004
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-005
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-005
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-006
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-006
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-007
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-007
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-008
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-008
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-009
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-009
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-010
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-010
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-011
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-011
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-012
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-012
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-013
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-013
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-014
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-014
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-015
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-015
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-016
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-016
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-017
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-017
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-018
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-018
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-019
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-019
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-020
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-020
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-021
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-021
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-022
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-022
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-023
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-023
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-024
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-024
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-025
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-025
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-026
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-026
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-027
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-027
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-028
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-028
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-029
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-029
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-030
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-030
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-031
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-031
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-032
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-032
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-033
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-033
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-034
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-034
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-035
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-035
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-036
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-036
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-037
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-037
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-038
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-038
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-039
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-039
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-040
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-040
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-041
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-041
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-042
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-042
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-043
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-043
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-044
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-044
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-045
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-045
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-046
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-046
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-047
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-047
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-048
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-048
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-049
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-049
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-050
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-050
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-051
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-051
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-052
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-052
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-053
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-053
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-054
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-054
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-055
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-055
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-056
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-056
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-057
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-057
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-058
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-058
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-059
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-059
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-060
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-060
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-061
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-061
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-062
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-062
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-063
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-063
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-064
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-064
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-065
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-065
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-066
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-066
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-067
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-067
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-068
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-068
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-069
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-069
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-070
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-070
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-071
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-071
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-072
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-072
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-073
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-073
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-074
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-074
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-075
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-075
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-076
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-076
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-077
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-077
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-078
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-078
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-079
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-079
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-080
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-080
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-081
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-081
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-082
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-082
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-083
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-083
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-084
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-084
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-085
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-085
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-086
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-086
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-087
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-087
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-088
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-088
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-089
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-089
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-090
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-090
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-091
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-091
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-092
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-092
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-093
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-093
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-094
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-094
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-095
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-095
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-096
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-096
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-097
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-097
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-098
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-098
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-video-099
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-video-099
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          contains: ■ ended
+          images:
+            min_count: 1
+          stable_for: 200ms
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          contains: compat-video-099
+          stable_for: 200ms
+          matches: ▌.*compat-video-099
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'heavy: scroll one hundred picture posts down and back'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+      timeout: 240s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '6'
+      - expect_screen:
+          timeout: 10s
+          contains: compat_
+          stable_for: 200ms
+      - send: j
+      - expect_screen:
+          timeout: 10s
+          contains: compat-picture-099
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-099
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-098
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-098
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-097
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-097
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-096
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-096
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-095
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-095
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-094
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-094
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-093
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-093
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-092
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-092
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-091
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-091
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-090
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-090
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-089
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-089
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-088
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-088
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-087
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-087
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-086
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-086
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-085
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-085
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-084
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-084
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-083
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-083
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-082
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-082
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-081
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-081
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-080
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-080
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-079
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-079
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-078
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-078
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-077
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-077
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-076
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-076
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-075
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-075
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-074
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-074
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-073
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-073
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-072
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-072
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-071
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-071
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-070
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-070
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-069
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-069
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-068
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-068
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-067
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-067
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-066
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-066
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-065
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-065
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-064
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-064
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-063
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-063
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-062
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-062
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-061
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-061
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-060
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-060
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-059
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-059
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-058
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-058
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-057
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-057
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-056
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-056
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-055
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-055
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-054
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-054
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-053
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-053
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-052
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-052
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-051
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-051
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-050
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-050
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-049
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-049
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-048
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-048
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-047
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-047
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-046
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-046
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-045
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-045
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-044
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-044
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-043
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-043
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-042
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-042
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-041
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-041
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-040
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-040
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-039
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-039
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-038
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-038
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-037
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-037
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-036
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-036
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-035
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-035
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-034
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-034
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-033
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-033
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-032
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-032
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-031
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-031
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-030
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-030
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-029
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-029
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-028
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-028
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-027
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-027
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-026
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-026
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-025
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-025
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-024
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-024
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-023
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-023
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-022
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-022
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-021
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-021
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-020
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-020
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-019
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-019
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-018
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-018
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-017
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-017
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-016
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-016
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-015
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-015
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-014
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-014
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-013
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-013
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-012
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-012
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-011
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-011
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-010
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-010
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-009
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-009
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-008
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-008
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-007
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-007
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-006
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-006
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-005
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-005
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-004
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-004
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-003
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-003
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-002
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-002
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-001
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-001
+      - send: j
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-000
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-000
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-001
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-001
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-002
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-002
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-003
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-003
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-004
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-004
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-005
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-005
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-006
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-006
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-007
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-007
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-008
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-008
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-009
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-009
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-010
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-010
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-011
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-011
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-012
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-012
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-013
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-013
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-014
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-014
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-015
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-015
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-016
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-016
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-017
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-017
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-018
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-018
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-019
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-019
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-020
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-020
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-021
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-021
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-022
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-022
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-023
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-023
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-024
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-024
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-025
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-025
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-026
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-026
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-027
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-027
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-028
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-028
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-029
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-029
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-030
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-030
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-031
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-031
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-032
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-032
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-033
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-033
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-034
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-034
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-035
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-035
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-036
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-036
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-037
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-037
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-038
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-038
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-039
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-039
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-040
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-040
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-041
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-041
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-042
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-042
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-043
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-043
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-044
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-044
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-045
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-045
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-046
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-046
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-047
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-047
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-048
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-048
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-049
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-049
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-050
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-050
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-051
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-051
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-052
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-052
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-053
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-053
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-054
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-054
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-055
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-055
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-056
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-056
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-057
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-057
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-058
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-058
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-059
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-059
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-060
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-060
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-061
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-061
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-062
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-062
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-063
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-063
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-064
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-064
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-065
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-065
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-066
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-066
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-067
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-067
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-068
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-068
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-069
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-069
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-070
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-070
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-071
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-071
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-072
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-072
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-073
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-073
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-074
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-074
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-075
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-075
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-076
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-076
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-077
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-077
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-078
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-078
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-079
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-079
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-080
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-080
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-081
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-081
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-082
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-082
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-083
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-083
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-084
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-084
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-085
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-085
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-086
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-086
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-087
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-087
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-088
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-088
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-089
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-089
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-090
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-090
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-091
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-091
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-092
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-092
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-093
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-093
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-094
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-094
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-095
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-095
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-096
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-096
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-097
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-097
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-098
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-098
+      - send: k
+      - expect_screen:
+          timeout: 3s
+          contains: compat-picture-099
+          images:
+            min_count: 1
+          stable_for: 200ms
+          matches: ▌.*compat-picture-099
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          contains: esc
+          images:
+            min_count: 1
+          stable_for: 200ms
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          contains: compat-picture-099
+          stable_for: 200ms
+          matches: ▌.*compat-picture-099
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'heavy: unsupported codec offers saving'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '5'
+      - expect_screen:
+          timeout: 10s
+          contains: Search
+          stable_for: 200ms
+      - send: compat-unsupported-vp9
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          contains: compat-unsupported-vp9
+          stable_for: 200ms
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          contains:
+          - which this player cannot decode
+          - d download
+          stable_for: 200ms
+      - send:
+          key: esc
+      - expect_screen:
+          timeout: 10s
+          contains: compat-unsupported-vp9
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'heavy: unicode text keeps the hint row'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '5'
+      - expect_screen:
+          timeout: 10s
+          contains: Search
+          stable_for: 200ms
+      - send: compat-unicode
+      - send:
+          key: enter
+      - expect_screen:
+          timeout: 10s
+          contains:
+          - compat-unicode
+          - 👨‍👩‍👧
+          - 漢字
+          - العربية
+          stable_for: 200ms
+      - expect_screen:
+          timeout: 10s
+          line: 39
+          contains: help
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'speed: timeline'
+  steps:
+  - run:
+      command: msky timeline -n 100 --json
+      timeout: 10s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+- name: 'speed: notifications'
+  steps:
+  - run:
+      command: msky notifications -n 100 --json
+      timeout: 10s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+- name: 'speed: search'
+  steps:
+  - run:
+      command: msky search "#compatcatalog" -n 100 --json
+      timeout: 10s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 10s
+- name: 'speed: picture post'
+  steps:
+  - run:
+      command: msky post "compat-speed-picture" --image ${env:MSKY_SEED_PICTURE_PATH} --json
+      timeout: 15s
+  - assert:
+      exit_code: 0
+      duration:
+        lt: 15s
+- name: 'speed: first timeline'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains:
+          - 1 Home
+          - compat-
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'speed: first picture'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+        MSKY_TOKEN: ${env:MSKY_THIRD_TOKEN}
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '6'
+      - expect_screen:
+          timeout: 10s
+          contains: compat-picture-
+          images:
+            min_count: 1
+          stable_for: 200ms
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'speed: first video'
+  steps:
+  - pty:
+      command: msky
+      graphics: kitty
+      rows: 40
+      cols: 120
+      sandbox_home: true
+      env:
+        MSKY_CONFIG_DIR: ${workdir}/cfg
+        MSKY_CACHE_DIR: 'off'
+        MSKY_SERVERS_URL: 'off'
+        MSKY_DOWNLOAD_DIR: ${workdir}/downloads
+        NO_COLOR: ''
+        MSKY_TOKEN: ${env:MSKY_SECOND_TOKEN}
+      timeout: 120s
+      session:
+      - expect_screen:
+          timeout: 10s
+          contains: 1 Home
+          stable_for: 200ms
+      - send: '6'
+      - expect_screen:
+          timeout: 10s
+          contains: compat-reply
+          stable_for: 200ms
+      - send: ' '
+      - expect_screen:
+          timeout: 15s
+          contains: ■ ended
+          images:
+            min_count: 1
+          stable_for: 200ms
+      - send: q
+      - send: q
+  - assert:
+      exit_code: 0
+- name: 'behavior: refresh preserves the seeded search result'
+  steps:
+  - run:
+      command: msky search "#compatcatalog" -n 1000 --json
+      deterministic:
+        runs: 2
+  - assert:
+      exit_code: 0
+      stdout:
+        matches: (?m)^\{
+        count: 500
+- name: 'behavior: wrong token remains authentication status four'
+  steps:
+  - run:
+      command: msky whoami --json
+      env:
+        MSKY_TOKEN: compat-invalid-token
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+        - path: $.status
+          equals: 4
+        - path: $.error
+          matches: AUTHENTICATION_FAILED
+- name: 'behavior: missing permission is not unsupported'
+  steps:
+  - run:
+      command: msky chat --json
+      env:
+        MSKY_TOKEN: ${env:MSKY_RESTRICTED_TOKEN}
+  - assert:
+      exit_code: 4
+      stdout:
+        json:
+        - path: $.status
+          equals: 4
+        - path: $.error
+          matches: PERMISSION_DENIED
+- name: 'behavior: deleted post'
+  steps:
+  - run:
+      command: msky note ${env:MSKY_SEED_DELETED} --json
+  - assert:
+      exit_code: 4
+      stdout:
+        contains: NO_SUCH_NOTE
+- name: 'behavior: blocked followers-only post is not exposed'
+  steps:
+  - run:
+      command: msky note ${env:MSKY_SEED_BLOCKED} --json
+  - assert:
+      exit_code: 4
+- name: 'usable: gap - JSON Lines unique ordered ID set across pages'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'usable: gap - specified visibility writes have no recipient command flag'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'heavy: gap - each visible media post has its own thumbnail'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'heavy: gap - inline timeline video playback is not implemented'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'heavy: gap - grapheme cell spill detection needs screen geometry predicates'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'speed: gap - per-expect latency and distinct video frame measurements'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'behavior: gap - real-server request tracing for writes sent exactly once'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'behavior: gap - federation requires more than one server'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+- name: 'behavior: gap - video processing readiness cannot be forced by these upload APIs'
+  skip:
+    env: MSKY_SKIP_GAP
+  steps:
+  - run:
+      command: msky whoami --json
+  - assert:
+      exit_code: 0
+secrets:
+- ${env:MSKY_TOKEN}
+- ${env:MSKY_SECOND_TOKEN}
+- ${env:MSKY_THIRD_TOKEN}
+- ${env:MSKY_ADMIN_TOKEN}
+- ${env:MSKY_RESTRICTED_TOKEN}
