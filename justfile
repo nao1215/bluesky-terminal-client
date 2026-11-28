@@ -59,7 +59,7 @@ ci: test lint fmt-check doc e2e
 build-release:
     cargo build --release --locked --workspace
 
-# Line coverage of the unit tests and both E2E suites together, as lcov.info (needs cargo-llvm-cov and atago)
+# Line coverage of the unit tests and every E2E suite together, as lcov.info (needs cargo-llvm-cov and atago)
 coverage:
     ./scripts/coverage.sh
 

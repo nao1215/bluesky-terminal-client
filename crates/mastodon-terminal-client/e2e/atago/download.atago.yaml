@@ -34,10 +34,9 @@ scenarios:
           command: mstdn download 300 -o 写真 --host ${api.url}
       - assert:
           exit_code: 0
+          # The paths are the system's: `\` between the parts on Windows.
           stdout:
-            equals: |
-              写真/299-1.png
-              写真/299-2.mp4
+            matches: '^写真[/\\]299-1\.png\n写真[/\\]299-2\.mp4\n$'
       - assert:
           file:
             path: 写真/299-1.png
@@ -52,7 +51,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: '"path":"写真/299-1 \(1\)\.png","status":"http://127\.0\.0\.1:[0-9]+/@bob@far\.test/299","url":"http://127\.0\.0\.1:[0-9]+/files/original/a\.png"'
+            matches: '"path":"写真(/|\\\\)299-1 \(1\)\.png","status":"http://127\.0\.0\.1:[0-9]+/@bob@far\.test/299","url":"http://127\.0\.0\.1:[0-9]+/files/original/a\.png"'
       - run:
           command: mstdn download 301 --host ${api.url}
           env:
@@ -81,4 +80,4 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: 'dl/12-1\.png\n$'
+            matches: 'dl[/\\]12-1\.png\n$'

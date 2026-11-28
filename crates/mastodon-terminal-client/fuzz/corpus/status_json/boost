@@ -1,0 +1,1 @@
+{"id": "301", "account": {"acct": "alice"}, "reblog": {"id": "299", "account": {"acct": "bob@far.test"}, "content": "<p>x</p>", "media_attachments": [{"id": "m2", "type": "video", "url": "https://far.test/b.mp4"}]}}

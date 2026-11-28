@@ -13,8 +13,12 @@
 # is uploaded, reading an MP4's video track and putting text others wrote on
 # one line.
 #
+# In mstdn (crates/mastodon-terminal-client) it is pointed at reading a
+# status's HTML back into the text its author wrote and putting text others
+# wrote on one line.
+#
 # The text layout, the picture scaling and the text field live in the
-# terminal-kit crate of the workspace, which both clients use, so
+# terminal-kit crate of the workspace, which the clients use, so
 # mutation.yml runs cargo mutants with --workspace.
 examine_globs = [
   "crates/terminal-kit/src/text.rs",
@@ -29,13 +33,15 @@ examine_globs = [
   "crates/misskey-terminal-client/src/metadata.rs",
   "crates/misskey-terminal-client/src/tui/mp4.rs",
   "crates/misskey-terminal-client/src/text.rs",
+  "crates/mastodon-terminal-client/src/html.rs",
+  "crates/mastodon-terminal-client/src/text.rs",
 ]
 
-# A mutant in terminal-kit is judged by bsky's and msky's tests too, which
+# A mutant in terminal-kit is judged by the clients' tests too, which
 # draw whole screens with it.
 test_workspace = true
 
-# bsky's and msky's unit tests are in their bin targets and terminal-kit's in
+# The clients' unit tests are in their bin targets and terminal-kit's in
 # its lib target; --all-targets runs them all and leaves the doc tests out.
 # They run in about forty seconds.
 additional_cargo_test_args = ["--all-targets"]
