@@ -539,25 +539,10 @@ pub(super) fn draw_posts<T: PostRow>(
                 ..content
             };
             if whole {
-                draw_image_row(frame, img_area, &pl.images, images);
-                // The selected post's video plays over its thumbnail, from
-                // its first picture on; view::draw stops it when the
-                // selection moves.
-                if i == list.selected
-                    && inline_video()
-                    && let Some(playlist) = &pl.video
-                {
-                    let each = image_box_width(img_area.width, 1);
-                    images.draw_video(
-                        frame,
-                        Rect {
-                            width: each,
-                            ..img_area
-                        },
-                        playlist,
-                        INLINE_REPLAY,
-                    );
-                }
+                let playlist = (i == list.selected && inline_video())
+                    .then_some(pl.video.as_deref())
+                    .flatten();
+                draw_post_media(frame, img_area, &pl.images, playlist, images);
             }
             next += pl.image_rows;
         }
@@ -615,6 +600,31 @@ pub(super) fn draw_lines<'a>(
     for (y, line) in (area.top()..area.bottom()).zip(lines) {
         buf.set_line(area.x, y, line, area.width);
     }
+}
+
+/// The selected video's picture, or the post's thumbnails.
+pub(super) fn draw_post_media(
+    frame: &mut Frame,
+    area: Rect,
+    urls: &[String],
+    playlist: Option<&str>,
+    images: &mut Images,
+) {
+    if let Some(playlist) = playlist {
+        let width = image_box_width(area.width, 1);
+        // Keep the thumbnail ready for when selection leaves this post,
+        // without rendering it underneath the video. Kitty marks its first
+        // transmission as sent when rendered into the buffer; overwriting
+        // that cell with video would lose the only copy of its pixels.
+        for url in urls {
+            images.prefetch(url, width, area.height);
+        }
+        images.draw_video(frame, Rect { width, ..area }, playlist, INLINE_REPLAY);
+        if images.video_shown() {
+            return;
+        }
+    }
+    draw_image_row(frame, area, urls, images);
 }
 
 pub(super) fn draw_image_row(frame: &mut Frame, area: Rect, urls: &[String], images: &mut Images) {

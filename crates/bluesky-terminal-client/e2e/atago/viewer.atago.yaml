@@ -162,7 +162,7 @@ scenarios:
       - assert:
           image: { path: downloads/setup.png, width: 100, height: 100 }
 
-  - name: with BSKY_INLINE_VIDEO=1 the selected post's video plays in the timeline
+  - name: with BSKY_INLINE_VIDEO=1 selection switches inline videos and restores their thumbnails
     mock_servers:
       - name: api
         routes:
@@ -182,16 +182,36 @@ scenarios:
                       thumbnail: "${api.url}/watch/v1/thumbnail.png"
                       alt: "A test pattern"
                       aspectRatio: { width: 16, height: 9 }
-          - { method: GET, path: /watch/v1/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/v2
+                    cid: cid-v2
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "Second video", createdAt: "2026-09-20T09:00:00.000Z" }
+                    embed:
+                      $type: app.bsky.embed.video#view
+                      cid: bafyvideo2
+                      playlist: "${api.url}/watch/v2/playlist.m3u8"
+                      thumbnail: "${api.url}/watch/v2/thumbnail.png"
+                      aspectRatio: { width: 16, height: 9 }
+                - post:
+                    uri: at://did:plc:alice/app.bsky.feed.post/p3
+                    cid: cid-p3
+                    author: { did: did:plc:alice, handle: alice.test, displayName: Alice, viewer: { following: at://did:plc:me/app.bsky.graph.follow/fa } }
+                    record: { text: "No video here", createdAt: "2026-09-20T08:00:00.000Z" }
+          - { method: GET, path: /watch/v1/thumbnail.png, delay: 2s, body_file: testdata/avatar-alice.png, header: { Content-Type: image/png } }
           - { method: GET, path: /watch/v1/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
           - { method: GET, path: /watch/v1/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
           - { method: GET, path: /watch/v1/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
+          - { method: GET, path: /watch/v2/thumbnail.png, body_file: testdata/photo.png, header: { Content-Type: image/png } }
+          - { method: GET, path: /watch/v2/playlist.m3u8, body_file: testdata/hls/playlist.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v2/v/video.m3u8, body_file: testdata/hls/v/video.m3u8, header: { Content-Type: application/vnd.apple.mpegurl } }
+          - { method: GET, path: /watch/v2/v/seg0.ts, body_file: testdata/hls/v/seg0.ts, header: { Content-Type: video/mp2t } }
     steps:
       - *session
       - pty:
           command: bsky
           graphics: kitty
-          rows: 30
+          rows: 50
           cols: 100
           env:
             BSKY_CONFIG_DIR: ${workdir}/cfg
@@ -207,12 +227,38 @@ scenarios:
                 contains: "Watch this"
                 not_contains: "1/1"
                 images: { min_count: 2 }
+                # The first thumbnail arrives after the video's first frame.
+                stable_for: 3s
+            - send: j
+            - expect_screen:
+                contains: ["Watch this", "Second video"]
+                not_contains: "1/1"
+                # The square thumbnail must actually be transmitted on
+                # leaving the first post. Video frames are 16:9.
+                images:
+                  contains: [{ width: 220, height: 220 }]
                 stable_for: 1500ms
+            - send: k
+            - expect_screen:
+                contains: "Watch this"
+                stable_for: 1500ms
+            - send: j
+            - expect_screen:
+                contains: "Second video"
+                stable_for: 1500ms
+            - send: j
+            - expect_screen:
+                contains: "No video here"
+                images:
+                  contains: [{ width: 220, height: 220 }, { width: 300, height: 220 }]
+                stable_for: 500ms
             - send: q
       - assert:
           exit_code: 0
       - assert:
-          mock: { name: api, path: /watch/v1/v/seg0.ts, min_count: 1 }
+          mock: { name: api, path: /watch/v1/v/seg0.ts, count: 2 }
+      - assert:
+          mock: { name: api, path: /watch/v2/v/seg0.ts, count: 2 }
 
   - name: space plays a post's video, r plays it again, and esc stops it
     mock_servers:
